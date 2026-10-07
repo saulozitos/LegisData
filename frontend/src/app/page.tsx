@@ -398,17 +398,6 @@ export default function DashboardPage() {
           onSelectPolitician={handleSelectPoliticianFromParty}
         />
       </main>
-
-      {/* Rodapé Científico */}
-      <footer className="border-t border-slate-900 bg-slate-950/80 py-6 mt-12 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span>Fontes Oficiais: Banco Central (SGS), IBGE (SIDRA), Câmara dos Deputados, Senado Federal, TSE e IPEA</span>
-          </div>
-          <p>© {new Date().getFullYear()} LegisData 1.0 • Plataforma de Transparência e Inteligência Política</p>
-        </div>
-      </footer>
     </div>
   );
 }

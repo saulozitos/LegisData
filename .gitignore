@@ -1,19 +1,23 @@
+# Segredos e Ambientes
+.env
+.env.local
+.env.*
+*.pem
+*.key
+
 # Python
+.venv/
+venv/
+env/
+ENV/
 __pycache__/
+*.pyc
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
-venv/
-ENV/
-.venv/
 
-# Environment files
-.env
-.env.local
-
-# Node.js / Next.js
+# Node / Next.js
 node_modules/
 .next/
 out/
@@ -23,6 +27,9 @@ dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Checkpoints do ETL
+etl/data/checkpoint_*.json
 
 # Database & Cache
 *.sqlite3

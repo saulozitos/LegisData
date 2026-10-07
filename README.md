@@ -8,6 +8,7 @@
 [![Data Engine](https://img.shields.io/badge/ETL-Pandas%20%7C%20NumPy-150458?style=for-the-badge&logo=pandas)](https://pandas.pydata.org/)
 [![Containers](https://img.shields.io/badge/Containers-Docker%20%7C%20Compose-2496ED?style=for-the-badge&logo=docker)](https://www.docker.com/)
 [![Versão](https://img.shields.io/badge/Versão-LegisData%202.0-emerald?style=for-the-badge)](https://github.com/)
+[![Licença](https://img.shields.io/badge/Licen%C3%A7a-GNU%20AGPLv3-blue.svg?style=for-the-badge)](LICENSE)
 
 ---
 
@@ -189,4 +190,4 @@ npm run build
 
 ## 📜 8. Licença e Transparência
 
-Este projeto é software livre licenciado sob a [MIT License](LICENSE). Todas as informações exibidas constituem patrimônio público acessível sob os ditames da Lei nº 12.527/2011 (LAI) e da legislação eleitoral brasileira.
+Este projeto é software livre licenciado sob a [GNU Affero General Public License v3.0 (GNU AGPLv3)](LICENSE). Copyright (c) 2026 Saulo Araujo Campos. Todas as informações exibidas constituem patrimônio público acessível sob os ditames da Lei nº 12.527/2011 (LAI) e da legislação eleitoral brasileira.
