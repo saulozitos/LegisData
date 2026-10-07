@@ -5,11 +5,14 @@
 
 function resolveApiBaseUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
-  if (!envUrl) {
-    return "http://localhost:8000/api/v1";
+  if (envUrl) {
+    const clean = envUrl.replace(/\/+$/, "");
+    return clean.endsWith("/api/v1") ? clean : `${clean}/api/v1`;
   }
-  const clean = envUrl.replace(/\/+$/, "");
-  return clean.endsWith("/api/v1") ? clean : `${clean}/api/v1`;
+  if (typeof window !== "undefined") {
+    return "/api/v1";
+  }
+  return (process.env.INTERNAL_BACKEND_URL || "http://127.0.0.1:8000") + "/api/v1";
 }
 
 const API_BASE_URL = resolveApiBaseUrl();

@@ -44,7 +44,8 @@ services:
     depends_on:
       - backend
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
+      - INTERNAL_BACKEND_URL=http://backend:8000
       - PORT=3000
     ports:
       - "3000:3000"
