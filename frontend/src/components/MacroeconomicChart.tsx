@@ -49,6 +49,62 @@ const MANDATE_ZONES = [
   { id: "lula3", label: "Lula 3", start: 2023, end: 2026, color: "#ef4444" },
 ];
 
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: any[];
+  label?: string | number;
+  showIbovespa?: boolean;
+}
+
+function MacroeconomicTooltip({ active, payload, label, showIbovespa }: CustomTooltipProps) {
+  if (active && payload && payload.length) {
+    const item = payload[0].payload as ResumoMacroeconomicoAnual;
+    return (
+      <div className="bg-slate-950/95 border border-slate-700/80 p-3.5 rounded-xl shadow-2xl backdrop-blur-md text-xs space-y-1.5 min-w-[220px]">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2">
+          <span className="font-bold text-slate-100 text-sm">Ano {label}</span>
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+            {item.presidente_dominante}
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-emerald-400">
+          <span>Crescimento PIB Real:</span>
+          <span className="font-bold">
+            {item.pib_crescimento_real_pct !== null
+              ? `${item.pib_crescimento_real_pct > 0 ? "+" : ""}${item.pib_crescimento_real_pct.toFixed(2)}%`
+              : "N/D"}
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-rose-400">
+          <span>Inflação Anual (IPCA):</span>
+          <span className="font-bold">
+            {item.ipca_acumulado_ano_pct !== null
+              ? `${item.ipca_acumulado_ano_pct.toFixed(2)}%`
+              : "N/D"}
+          </span>
+        </div>
+        {item.cambio_dolar_medio && (
+          <div className="flex items-center justify-between text-slate-400 border-t border-slate-800/80 pt-1 mt-1">
+            <span>Câmbio Médio:</span>
+            <span className="font-medium text-slate-200">
+              R$ {item.cambio_dolar_medio.toFixed(2)}
+            </span>
+          </div>
+        )}
+        {showIbovespa && item.ibovespa_fechamento && (
+          <div className="flex items-center justify-between text-purple-400 border-t border-slate-800/80 pt-1 mt-1">
+            <span>Ibovespa (Fechamento):</span>
+            <span className="font-bold">
+              {Math.round(item.ibovespa_fechamento).toLocaleString("pt-BR")} pts
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+  return null;
+}
+
 function MacroeconomicChartBase({
   data,
   selectedMandateId,
@@ -70,56 +126,6 @@ function MacroeconomicChartBase({
     }
     return filtered;
   }, [data, filterMode, activeMandateInfo, zoomMandate]);
-
-  // Custom Tooltip estilizado
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      const item = payload[0].payload as ResumoMacroeconomicoAnual;
-      return (
-        <div className="bg-slate-950/95 border border-slate-700/80 p-3.5 rounded-xl shadow-2xl backdrop-blur-md text-xs space-y-1.5 min-w-[220px]">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2">
-            <span className="font-bold text-slate-100 text-sm">Ano {label}</span>
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-              {item.presidente_dominante}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-emerald-400">
-            <span>Crescimento PIB Real:</span>
-            <span className="font-bold">
-              {item.pib_crescimento_real_pct !== null
-                ? `${item.pib_crescimento_real_pct > 0 ? "+" : ""}${item.pib_crescimento_real_pct.toFixed(2)}%`
-                : "N/D"}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-rose-400">
-            <span>Inflação Anual (IPCA):</span>
-            <span className="font-bold">
-              {item.ipca_acumulado_ano_pct !== null
-                ? `${item.ipca_acumulado_ano_pct.toFixed(2)}%`
-                : "N/D"}
-            </span>
-          </div>
-          {item.cambio_dolar_medio && (
-            <div className="flex items-center justify-between text-slate-400 border-t border-slate-800/80 pt-1 mt-1">
-              <span>Câmbio Médio:</span>
-              <span className="font-medium text-slate-200">
-                R$ {item.cambio_dolar_medio.toFixed(2)}
-              </span>
-            </div>
-          )}
-          {showIbovespa && item.ibovespa_fechamento && (
-            <div className="flex items-center justify-between text-purple-400 border-t border-slate-800/80 pt-1 mt-1">
-              <span>Ibovespa (Fechamento):</span>
-              <span className="font-bold">
-                {Math.round(item.ibovespa_fechamento).toLocaleString("pt-BR")} pts
-              </span>
-            </div>
-          )}
-        </div>
-      );
-    }
-    return null;
-  };
 
   return (
     <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 backdrop-blur-md">
@@ -277,7 +283,7 @@ function MacroeconomicChartBase({
               />
             )}
 
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<MacroeconomicTooltip showIbovespa={showIbovespa} />} />
             <Legend
               verticalAlign="top"
               height={36}

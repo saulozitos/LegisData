@@ -1,0 +1,79 @@
+name: CI Quality Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-checks:
+    name: Backend Tests & Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Instalar Dependências do Backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install httpx
+
+      - name: Validar Sintaxe e Compilação Python
+        run: |
+          python -m compileall backend/app backend/tests
+
+      - name: Executar Testes Automatizados (FastAPI / Schemas)
+        run: |
+          PYTHONPATH=backend python -m unittest discover -s backend/tests -p "test_*.py" -v
+
+  frontend-checks:
+    name: Frontend Build, Lint & Typecheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: frontend/package.json
+
+      - name: Instalar Dependências do Frontend
+        working-directory: frontend
+        run: |
+          npm ci || npm install
+
+      - name: Validação de Tipagem TypeScript (tsc)
+        working-directory: frontend
+        run: |
+          npx tsc --noEmit
+
+      - name: Análise Estática de Código (ESLint)
+        working-directory: frontend
+        run: |
+          npm run lint
+
+      - name: Compilação de Produção (Next.js Build)
+        working-directory: frontend
+        run: |
+          npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
