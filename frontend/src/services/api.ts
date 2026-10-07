@@ -150,10 +150,37 @@ export interface TrajectoryPoint {
   m1_pib: number | null;
   m1_ipca: number | null;
   m1_usd: number | null;
+  m1_salario_minimo?: number | null;
+  m1_extrema_pobreza?: number | null;
+  m1_analfabetismo?: number | null;
+  m1_inseguranca_alimentar?: number | null;
+  m1_gini?: number | null;
+  m1_homicidios?: number | null;
+  m1_feminicidios?: number | null;
+  m1_desmatamento?: number | null;
   m2_calendar_year: number | null;
   m2_pib: number | null;
   m2_ipca: number | null;
   m2_usd: number | null;
+  m2_salario_minimo?: number | null;
+  m2_extrema_pobreza?: number | null;
+  m2_analfabetismo?: number | null;
+  m2_inseguranca_alimentar?: number | null;
+  m2_gini?: number | null;
+  m2_homicidios?: number | null;
+  m2_feminicidios?: number | null;
+  m2_desmatamento?: number | null;
+}
+
+export interface CompareSocialMetrics {
+  extrema_pobreza_inicial_pct?: number | null;
+  extrema_pobreza_final_pct?: number | null;
+  analfabetismo_inicial_pct?: number | null;
+  analfabetismo_final_pct?: number | null;
+  inseguranca_alimentar_inicial_pct?: number | null;
+  inseguranca_alimentar_final_pct?: number | null;
+  gini_inicial?: number | null;
+  gini_final?: number | null;
 }
 
 export interface CompareDeltas {
@@ -163,15 +190,59 @@ export interface CompareDeltas {
   pib_medio_relative_pct: number;
   pib_acumulado_diff_pp: number;
   cambio_variacao_diff_pp: number | null;
+  salario_minimo_brl_diff?: number | null;
+  salario_minimo_brl_relative_pct?: number | null;
   salario_minimo_usd_diff: number | null;
   salario_minimo_usd_relative_pct: number | null;
+  extrema_pobreza_diff_pp?: number | null;
+  analfabetismo_diff_pp?: number | null;
+  inseguranca_alimentar_diff_pp?: number | null;
+  gini_diff?: number | null;
+  homicidios_medio_diff?: number | null;
+  feminicidios_medio_diff?: number | null;
+  desmatamento_medio_diff?: number | null;
+}
+
+export interface AreaRepasseComparison {
+  area: string;
+  sublabel: string;
+  m1_total: number;
+  m2_total: number;
+  diff_brl: number;
+  growth_pct: number;
+}
+
+export interface UFRepasseComparison {
+  uf: string;
+  estado_nome: string;
+  regiao: string;
+  m1_total: number;
+  m2_total: number;
+  diff_brl: number;
+  growth_pct: number;
+  m1_per_capita: number;
+  m2_per_capita: number;
+  diff_per_capita: number;
+  areas: Record<string, { m1: number; m2: number; diff: number; growth_pct: number }>;
+}
+
+export interface RepassesComparison {
+  by_area: Record<string, AreaRepasseComparison>;
+  by_uf: UFRepasseComparison[];
+  summary: {
+    m1_total_geral: number;
+    m2_total_geral: number;
+    diff_total_brl: number;
+    growth_total_pct: number;
+  };
 }
 
 export interface CompareMandatesResponse {
-  mandate1: MandatoPerformance;
-  mandate2: MandatoPerformance;
+  mandate1: MandatoPerformance & { sociais?: CompareSocialMetrics };
+  mandate2: MandatoPerformance & { sociais?: CompareSocialMetrics };
   deltas: CompareDeltas;
   normalized_trajectory: TrajectoryPoint[];
+  repasses_comparison?: RepassesComparison;
 }
 
 async function fetchJson<T>(endpoint: string, fallbackData: T): Promise<T> {

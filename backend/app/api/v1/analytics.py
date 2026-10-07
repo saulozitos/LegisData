@@ -74,9 +74,11 @@ def compare_mandates(
 ):
     """
     Confronto direto e analítico de dois mandatos presidenciais com:
-    - KPIs lado a lado
-    - Diferença percentual / delta em pontos percentuais (IPCA acumulado, PIB médio e variação cambial)
-    - Trajetória temporal normalizada por 'Ano do Mandato' (Ano 1, Ano 2, Ano 3, Ano 4)
+    - KPIs Macroeconômicos, Sociais (Extrema Pobreza, Analfabetismo, Insegurança Alimentar, Gini),
+      Segurança Pública (Homicídios, Feminicídios) e Desmatamento Amazônia.
+    - Deltas comparativos (Mandato B - Mandato A).
+    - Trajetória temporal normalizada por 'Ano do Mandato' (Ano 1 a Ano N).
+    - Distribuição de Verbas e Repasses Federais por Estados e Áreas Temáticas (Saúde, Educação, Infraestrutura, Segurança).
     """
     file_path = DATA_DIR / "indicadores_por_mandato.json"
     if not file_path.exists():
@@ -98,10 +100,52 @@ def compare_mandates(
         df_macro = pd.read_csv(macro_csv)
         macro_dict = df_macro.set_index("ano").to_dict(orient="index")
 
+    # Carregar dados sociais anuais
+    sociais_file = DATA_DIR / "indicadores_sociais_anuais.json"
+    sociais_map = {}
+    if sociais_file.exists():
+        with open(sociais_file, "r", encoding="utf-8") as f:
+            for item in json.load(f):
+                sociais_map[item["ano"]] = item
+
+    # Carregar dados de segurança pública
+    seg_file = DATA_DIR / "seguranca_publica_historico.json"
+    seg_map = {}
+    if seg_file.exists():
+        with open(seg_file, "r", encoding="utf-8") as f:
+            for item in json.load(f):
+                seg_map[item["ano"]] = item
+
+    # Carregar repasses federais por estado
+    repasses_file = DATA_DIR / "repasses_federais_uf.json"
+    repasses_list = []
+    if repasses_file.exists():
+        with open(repasses_file, "r", encoding="utf-8") as f:
+            repasses_list = json.load(f)
+
     # Anos cobertos por cada mandato
     years1 = _get_mandate_years(m1)
     years2 = _get_mandate_years(m2)
     max_years = max(len(years1), len(years2))
+
+    # Extração de Métricas Sociais Consolidadas
+    def _extract_social(years):
+        rows = [sociais_map.get(y) for y in years if y in sociais_map]
+        if not rows:
+            return {}
+        return {
+            "extrema_pobreza_inicial_pct": _clean_val(rows[0].get("extrema_pobreza_pct")),
+            "extrema_pobreza_final_pct": _clean_val(rows[-1].get("extrema_pobreza_pct")),
+            "analfabetismo_inicial_pct": _clean_val(rows[0].get("analfabetismo")),
+            "analfabetismo_final_pct": _clean_val(rows[-1].get("analfabetismo")),
+            "inseguranca_alimentar_inicial_pct": _clean_val(rows[0].get("inseguranca_alimentar_pct")),
+            "inseguranca_alimentar_final_pct": _clean_val(rows[-1].get("inseguranca_alimentar_pct")),
+            "gini_inicial": _clean_val(rows[0].get("gini")),
+            "gini_final": _clean_val(rows[-1].get("gini")),
+        }
+
+    s1 = _extract_social(years1)
+    s2 = _extract_social(years2)
 
     # Trajetória normalizada (Ano 1 a Ano N)
     normalized_trajectory = []
@@ -111,6 +155,10 @@ def compare_mandates(
 
         row1 = macro_dict.get(y1, {}) if y1 else {}
         row2 = macro_dict.get(y2, {}) if y2 else {}
+        soc1 = sociais_map.get(y1, {}) if y1 else {}
+        soc2 = sociais_map.get(y2, {}) if y2 else {}
+        sg1 = seg_map.get(y1, {}) if y1 else {}
+        sg2 = seg_map.get(y2, {}) if y2 else {}
 
         normalized_trajectory.append({
             "label": f"Ano {i + 1}",
@@ -119,14 +167,31 @@ def compare_mandates(
             "m1_pib": _clean_val(row1.get("pib_crescimento_real_pct")),
             "m1_ipca": _clean_val(row1.get("ipca_acumulado_ano_pct")),
             "m1_usd": _clean_val(row1.get("cambio_dolar_medio")),
+            "m1_salario_minimo": _clean_val(row1.get("salario_minimo")),
+            "m1_extrema_pobreza": _clean_val(soc1.get("extrema_pobreza_pct")),
+            "m1_analfabetismo": _clean_val(soc1.get("analfabetismo")),
+            "m1_inseguranca_alimentar": _clean_val(soc1.get("inseguranca_alimentar_pct")),
+            "m1_gini": _clean_val(soc1.get("gini")),
+            "m1_homicidios": _clean_val(sg1.get("taxa_homicidios")),
+            "m1_feminicidios": _clean_val(sg1.get("taxa_feminicidios")),
+            "m1_desmatamento": _clean_val(row1.get("taxa_desmatamento_amazonia")),
+
             "m2_calendar_year": y2,
             "m2_pib": _clean_val(row2.get("pib_crescimento_real_pct")),
             "m2_ipca": _clean_val(row2.get("ipca_acumulado_ano_pct")),
             "m2_usd": _clean_val(row2.get("cambio_dolar_medio")),
+            "m2_salario_minimo": _clean_val(row2.get("salario_minimo")),
+            "m2_extrema_pobreza": _clean_val(soc2.get("extrema_pobreza_pct")),
+            "m2_analfabetismo": _clean_val(soc2.get("analfabetismo")),
+            "m2_inseguranca_alimentar": _clean_val(soc2.get("inseguranca_alimentar_pct")),
+            "m2_gini": _clean_val(soc2.get("gini")),
+            "m2_homicidios": _clean_val(sg2.get("taxa_homicidios")),
+            "m2_feminicidios": _clean_val(sg2.get("taxa_feminicidios")),
+            "m2_desmatamento": _clean_val(row2.get("taxa_desmatamento_amazonia")),
         })
 
     # Cálculo dos Deltas (M2 em relação a M1)
-    # 1. IPCA acumulado (usa IPCA pós-Real para Itamar se aplicável)
+    # 1. IPCA acumulado
     ipca1 = float(m1.get("ipca_pos_real_pct") or m1.get("ipca_acumulado_pct") or 0)
     ipca2 = float(m2.get("ipca_pos_real_pct") or m2.get("ipca_acumulado_pct") or 0)
     ipca_delta_pp = round(ipca2 - ipca1, 2)
@@ -159,9 +224,114 @@ def compare_mandates(
     sm_usd_delta = round(sm_usd2 - sm_usd1, 2)
     sm_usd_relative_pct = round(((sm_usd2 - sm_usd1) / sm_usd1) * 100, 2) if sm_usd1 > 0 else 0.0
 
+    # Deltas Sociais
+    ep1 = s1.get("extrema_pobreza_final_pct")
+    ep2 = s2.get("extrema_pobreza_final_pct")
+    ep_delta_pp = round(ep2 - ep1, 2) if ep1 is not None and ep2 is not None else None
+
+    an1 = s1.get("analfabetismo_final_pct")
+    an2 = s2.get("analfabetismo_final_pct")
+    an_delta_pp = round(an2 - an1, 2) if an1 is not None and an2 is not None else None
+
+    fome1 = s1.get("inseguranca_alimentar_final_pct") or m1.get("fome_final_pct")
+    fome2 = s2.get("inseguranca_alimentar_final_pct") or m2.get("fome_final_pct")
+    fome_delta_pp = round(fome2 - fome1, 2) if fome1 is not None and fome2 is not None else None
+
+    gini1 = s1.get("gini_final")
+    gini2 = s2.get("gini_final")
+    gini_delta = round(gini2 - gini1, 3) if gini1 is not None and gini2 is not None else None
+
+    # Deltas Segurança e Meio Ambiente
+    hom1 = float(m1.get("homicidios_medio") or 0)
+    hom2 = float(m2.get("homicidios_medio") or 0)
+    hom_delta = round(hom2 - hom1, 2) if hom1 and hom2 else None
+
+    fem1 = float(m1.get("feminicidios_medio") or 0)
+    fem2 = float(m2.get("feminicidios_medio") or 0)
+    fem_delta = round(fem2 - fem1, 2) if fem1 and fem2 else None
+
+    desm1 = float(m1.get("desmatamento_medio_anual_km2") or 0)
+    desm2 = float(m2.get("desmatamento_medio_anual_km2") or 0)
+    desm_delta = round(desm2 - desm1, 2) if desm1 and desm2 else None
+
+    # Repasses Federais por Estado e Área
+    m1_repasses = [r for r in repasses_list if r.get("mandato_id_ref") == mandate1]
+    m2_repasses = [r for r in repasses_list if r.get("mandato_id_ref") == mandate2]
+
+    areas_meta = [
+        {"area": "Saúde", "sublabel": "SUS & FNS"},
+        {"area": "Educação", "sublabel": "FUNDEB & FNDE"},
+        {"area": "Infraestrutura", "sublabel": "Infraestrutura & Cidades"},
+        {"area": "Segurança Pública", "sublabel": "Segurança Pública & Polícias"},
+    ]
+
+    by_area = {}
+    for a in areas_meta:
+        nome_area = a["area"]
+        v1 = sum(r["valor_pago_brl"] for r in m1_repasses if r.get("area_tematica") == nome_area)
+        v2 = sum(r["valor_pago_brl"] for r in m2_repasses if r.get("area_tematica") == nome_area)
+        diff = round(v2 - v1, 2)
+        growth = round(((v2 - v1) / v1) * 100, 2) if v1 > 0 else 0.0
+        by_area[nome_area] = {
+            "area": nome_area,
+            "sublabel": a["sublabel"],
+            "m1_total": round(v1, 2),
+            "m2_total": round(v2, 2),
+            "diff_brl": diff,
+            "growth_pct": growth
+        }
+
+    all_ufs = sorted(list(set(r["uf"] for r in repasses_list)))
+    by_uf = []
+    for uf in all_ufs:
+        u1 = [r for r in m1_repasses if r.get("uf") == uf]
+        u2 = [r for r in m2_repasses if r.get("uf") == uf]
+        estado_nome = u1[0]["estado_nome"] if u1 else (u2[0]["estado_nome"] if u2 else uf)
+        regiao = u1[0]["regiao"] if u1 else (u2[0]["regiao"] if u2 else "")
+        tot1 = sum(r["valor_pago_brl"] for r in u1)
+        tot2 = sum(r["valor_pago_brl"] for r in u2)
+        pc1 = u1[0]["valor_per_capita_brl"] if u1 and "valor_per_capita_brl" in u1[0] else 0.0
+        pc2 = u2[0]["valor_per_capita_brl"] if u2 and "valor_per_capita_brl" in u2[0] else 0.0
+        diff_pc = round(pc2 - pc1, 2)
+        growth_uf = round(((tot2 - tot1) / tot1) * 100, 2) if tot1 > 0 else 0.0
+
+        areas_breakdown = {}
+        for a in areas_meta:
+            nome_area = a["area"]
+            av1 = sum(r["valor_pago_brl"] for r in u1 if r.get("area_tematica") == nome_area)
+            av2 = sum(r["valor_pago_brl"] for r in u2 if r.get("area_tematica") == nome_area)
+            areas_breakdown[nome_area] = {
+                "m1": round(av1, 2),
+                "m2": round(av2, 2),
+                "diff": round(av2 - av1, 2),
+                "growth_pct": round(((av2 - av1) / av1) * 100, 2) if av1 > 0 else 0.0
+            }
+
+        by_uf.append({
+            "uf": uf,
+            "estado_nome": estado_nome,
+            "regiao": regiao,
+            "m1_total": round(tot1, 2),
+            "m2_total": round(tot2, 2),
+            "diff_brl": round(tot2 - tot1, 2),
+            "growth_pct": growth_uf,
+            "m1_per_capita": round(pc1, 2),
+            "m2_per_capita": round(pc2, 2),
+            "diff_per_capita": diff_pc,
+            "areas": areas_breakdown
+        })
+
+    tot_geral_1 = sum(item["m1_total"] for item in by_area.values())
+    tot_geral_2 = sum(item["m2_total"] for item in by_area.values())
+
+    m1_enriched = dict(m1)
+    m1_enriched["sociais"] = s1
+    m2_enriched = dict(m2)
+    m2_enriched["sociais"] = s2
+
     return {
-        "mandate1": m1,
-        "mandate2": m2,
+        "mandate1": m1_enriched,
+        "mandate2": m2_enriched,
         "deltas": {
             "ipca_acumulado_diff_pp": ipca_delta_pp,
             "ipca_acumulado_relative_pct": ipca_delta_relative_pct,
@@ -172,9 +342,26 @@ def compare_mandates(
             "salario_minimo_brl_diff": sm_brl_delta,
             "salario_minimo_brl_relative_pct": sm_brl_relative_pct,
             "salario_minimo_usd_diff": sm_usd_delta,
-            "salario_minimo_usd_relative_pct": sm_usd_relative_pct
+            "salario_minimo_usd_relative_pct": sm_usd_relative_pct,
+            "extrema_pobreza_diff_pp": ep_delta_pp,
+            "analfabetismo_diff_pp": an_delta_pp,
+            "inseguranca_alimentar_diff_pp": fome_delta_pp,
+            "gini_diff": gini_delta,
+            "homicidios_medio_diff": hom_delta,
+            "feminicidios_medio_diff": fem_delta,
+            "desmatamento_medio_diff": desm_delta,
         },
-        "normalized_trajectory": normalized_trajectory
+        "normalized_trajectory": normalized_trajectory,
+        "repasses_comparison": {
+            "by_area": by_area,
+            "by_uf": by_uf,
+            "summary": {
+                "m1_total_geral": round(tot_geral_1, 2),
+                "m2_total_geral": round(tot_geral_2, 2),
+                "diff_total_brl": round(tot_geral_2 - tot_geral_1, 2),
+                "growth_total_pct": round(((tot_geral_2 - tot_geral_1) / tot_geral_1) * 100, 2) if tot_geral_1 > 0 else 0.0
+            }
+        }
     }
 
 
