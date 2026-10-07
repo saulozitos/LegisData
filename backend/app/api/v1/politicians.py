@@ -17,9 +17,10 @@ from app.models import (
     CargoPoliticoEnum, CasaLegislativaEnum, PoliticianAssetDeclaration,
     DespesaCota, EmendaParlamentar, CertidaoJudicial, DoacaoCampanha
 )
+from app.core.config import PROCESSED_DATA_DIR
 
 router = APIRouter()
-DATA_DIR = Path(__file__).resolve().parents[4] / "etl" / "data" / "processed"
+DATA_DIR = PROCESSED_DATA_DIR
 
 SIMBOLICO_KEYWORDS = [
     "homenagem", "dia nacional", "dia municipal", "dia estadual", "semana nacional",

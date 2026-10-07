@@ -3,9 +3,10 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
+from app.core.config import PROCESSED_DATA_DIR
 
 router = APIRouter()
-DATA_DIR = Path(__file__).resolve().parents[4] / "etl" / "data" / "processed"
+DATA_DIR = PROCESSED_DATA_DIR
 
 
 @router.get("/annual-summary", response_model=List[Dict[str, Any]])

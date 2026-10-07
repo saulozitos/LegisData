@@ -18,9 +18,10 @@ from app.models import (
     StateSocialIndicator,
     StatePresidentialElectionResult
 )
+from app.core.config import PROCESSED_DATA_DIR
 
 router = APIRouter()
-DATA_DIR = Path(__file__).resolve().parents[4] / "etl" / "data" / "processed"
+DATA_DIR = PROCESSED_DATA_DIR
 
 
 def _clean_val(v):
@@ -309,9 +310,12 @@ def get_wage_disparity():
     """
     file_path = DATA_DIR / "salario_vs_inflacao.json"
     if not file_path.exists():
-        from etl.extractors.salario_inflacao_extractor import SalarioInflacaoExtractor
-        extractor = SalarioInflacaoExtractor()
-        return extractor.run()
+        try:
+            from etl.extractors.salario_inflacao_extractor import SalarioInflacaoExtractor
+            extractor = SalarioInflacaoExtractor()
+            return extractor.run()
+        except ImportError:
+            raise HTTPException(status_code=404, detail="Dados de disparidade salarial não encontrados. Execute o pipeline de ETL.")
 
     with open(file_path, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -329,9 +333,12 @@ def get_congress_composition(
     """
     file_path = DATA_DIR / "composicao_congresso.json"
     if not file_path.exists():
-        from etl.extractors.composicao_extractor import save_composicao_congresso, COMPOSICAO_CONGRESSO_HISTORICO
-        save_composicao_congresso()
-        composicoes = COMPOSICAO_CONGRESSO_HISTORICO
+        try:
+            from etl.extractors.composicao_extractor import save_composicao_congresso, COMPOSICAO_CONGRESSO_HISTORICO
+            save_composicao_congresso()
+            composicoes = COMPOSICAO_CONGRESSO_HISTORICO
+        except ImportError:
+            raise HTTPException(status_code=404, detail="Dados de composição do Congresso não encontrados. Execute o pipeline de ETL.")
     else:
         with open(file_path, "r", encoding="utf-8") as f:
             composicoes = json.load(f)

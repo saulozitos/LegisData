@@ -10,9 +10,10 @@ from app.models import (
     Proposition, VotingSession, ParliamentaryVote,
     VotoOpcaoEnum, CasaLegislativaEnum, Politician, PoliticalParty, Mandate, PartyAffiliation
 )
+from app.core.config import PROCESSED_DATA_DIR
 
 router = APIRouter()
-DATA_DIR = Path(__file__).resolve().parents[4] / "etl" / "data" / "processed"
+DATA_DIR = PROCESSED_DATA_DIR
 
 
 def _build_house_placar(db: Session, sessions: List[VotingSession]) -> tuple:

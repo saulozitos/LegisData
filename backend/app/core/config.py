@@ -1,6 +1,29 @@
 import os
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from typing import List
+
+
+def get_processed_data_dir() -> Path:
+    """
+    Localiza o diretório de dados processados do ETL com suporte a múltiplos ambientes:
+    - Docker container mount em /etl_data/processed
+    - Docker container mount em /etl/data/processed
+    - Desenvolvimento local a partir da raiz do repositório
+    """
+    candidates = [
+        Path("/etl_data/processed"),
+        Path("/etl/data/processed"),
+        Path(__file__).resolve().parents[3] / "etl" / "data" / "processed",
+        Path(__file__).resolve().parents[2] / "etl" / "data" / "processed",
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return Path("/etl_data/processed")
+
+
+PROCESSED_DATA_DIR = get_processed_data_dir()
 
 
 class Settings(BaseSettings):
