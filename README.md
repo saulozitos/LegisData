@@ -1,13 +1,15 @@
-# 🇧🇷 LegisData - Arsenal Antidesinformação, Transparência & Inteligência Política
+# LegisData
 
-> **Plataforma cívica e de auditoria pública que cruza macroeconomia, indicadores socioambientais, votações nominais, financiadores de campanha (TSE), custos de gabinete (CEAP), emendas orçamentárias, o Basômetro governista e a relevância real das leis propostas.**
+> **Plataforma Open-Source de Transparência e Inteligência Política**
+>
+> Arsenal cívico e de auditoria pública que cruza macroeconomia, indicadores socioambientais, votações nominais, financiadores de campanha (TSE), custos de gabinete (CEAP), emendas orçamentárias, o Basômetro governista e a relevância real das proposições legislativas.
 
 [![Frontend](https://img.shields.io/badge/Frontend-Next.js%2016%20%7C%20TypeScript%20%7C%20Tailwind-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.11-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Database](https://img.shields.io/badge/Database-PostgreSQL%2016%20%7C%20Prisma-336791?style=for-the-badge&logo=postgresql)](https://www.postgresql.org/)
 [![Data Engine](https://img.shields.io/badge/ETL-Pandas%20%7C%20NumPy-150458?style=for-the-badge&logo=pandas)](https://pandas.pydata.org/)
 [![Containers](https://img.shields.io/badge/Containers-Docker%20%7C%20Compose-2496ED?style=for-the-badge&logo=docker)](https://www.docker.com/)
-[![Versão](https://img.shields.io/badge/Versão-LegisData%202.0-emerald?style=for-the-badge)](https://github.com/)
+[![Versão](https://img.shields.io/badge/Versão-LegisData%20v1.0-emerald?style=for-the-badge)](https://github.com/)
 [![Licença](https://img.shields.io/badge/Licen%C3%A7a-GNU%20AGPLv3-blue.svg?style=for-the-badge)](LICENSE)
 
 ---
@@ -16,16 +18,18 @@
 
 > ### 🤖 Nota de Desenvolvimento (Vibe Coding)
 > **Este projeto foi idealizado e arquitetado por mim, mas seu código-fonte foi integralmente desenvolvido através da metodologia de *Vibe Coding* (programação assistida por Inteligência Artificial / LLMs). A stack tecnológica utilizada (Python, FastAPI, Next.js, Prisma) não faz parte do meu domínio principal. Meu foco foi a engenharia de prompts, visão do produto de dados, regras de negócio e arquitetura da informação para criar uma plataforma robusta de transparência pública.**
+>
+> *Autor: Saulo Araujo Campos • Licenciado sob GNU AGPLv3*
 
 ---
 
-## 🎯 1. Propósito e Arsenal Antidesinformação
+## 🎯 1. Propósito e Arsenal Cívico
 
-O **LegisData** foi concebido como uma resposta técnica, visual e independente à polarização vazia e à desinformação que contaminam o debate cívico brasileiro. Em vez de recortes descontextualizados de redes sociais, a plataforma centraliza **dados abertos oficiais** de múltiplos órgãos de Estado para responder com rigor empírico às principais perguntas do eleitor:
+O **LegisData** foi concebido como uma resposta técnica, visual e independente à polarização vazia e à desinformação no debate público brasileiro. Em vez de narrativas sem lastro empírico, a plataforma centraliza **dados abertos oficiais** de múltiplos órgãos de Estado para responder com rigor às principais perguntas do cidadão:
 
 1. **Quem Paga a Conta? (Financiamento Eleitoral):** De onde veio o dinheiro que elegeu o parlamentar? Quais foram seus maiores doadores (partidos, fundos públicos e pessoas físicas)?
 2. **O Basômetro (Adesão ao Governo):** O parlamentar vota alinhado com a base governista ou faz oposição sistemática nas matérias de interesse do Palácio do Planalto?
-3. **Detector de Leis Inúteis (Taxa de Relevância):** O congressista atua em reformas econômicas e políticas públicas estruturais ou gasta o mandato propondo homenagens, títulos honorários e datas comemorativas?
+3. **Detector de Leis Inúteis (Taxa de Relevância):** O congressista atua em reformas econômicas e políticas públicas estruturais ou concentra o mandato em homenagens, títulos honorários e datas comemorativas?
 4. **Custo do Mandato (Cota Parlamentar - CEAP):** Quanto o gabinete gasta em passagens aéreas, divulgação e locações, e quais empresas mais faturam com esses reembolsos?
 5. **A Trilha do Dinheiro (Emendas Orçamentárias):** Para onde vão as emendas individuais, de bancada e Emendas PIX do parlamentar?
 6. **Raio-X Judicial & Ficha Limpa:** Auditoria de certidões cíveis e criminais do TSE, STF e tribunais estaduais à luz da Lei Complementar nº 135/2010.
@@ -49,7 +53,7 @@ Todos os dados são coletados de forma rastreável por extratores dedicados (`Us
 
 ---
 
-## 🛡️ 3. As Novas Funcionalidades do LegisData 2.0
+## 🛡️ 3. Funcionalidades e Pilares do LegisData
 
 ### 💰 1. Quem Paga a Conta? (Financiadores de Campanha)
 - **Modelagem Relacional:** Tabela `doacoes_campanha` (`DoacaoCampanha` no SQLAlchemy / Prisma) com `politico_id`, `ano_eleicao`, `nome_doador`, `cpf_cnpj_doador`, `valor_doado` e `tipo_receita`.
@@ -118,15 +122,15 @@ Todos os dados são coletados de forma rastreável por extratores dedicados (`Us
 
 ### Passo 1: Clonar o Repositório
 ```bash
-git clone https://github.com/seu-usuario/politica-brasil-dashboard.git
-cd politica-brasil-dashboard
+git clone https://github.com/seu-usuario/legisdata.git
+cd legisdata
 ```
 
 ### Passo 2: Subir o PostgreSQL via Docker
 ```bash
 make up-db
 ```
-*(Ou diretamente via Docker: `docker compose up -d db`)*
+*(Ou diretamente via Docker: `docker compose up -d postgres`)*
 
 ### Passo 3: Configurar o Ambiente Virtual Python
 ```bash

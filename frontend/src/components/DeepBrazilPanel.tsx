@@ -211,7 +211,7 @@ export default function DeepBrazilPanel({ mandateId }: DeepBrazilPanelProps = {}
         </div>
       )}
 
-      {/* Gráfico de Evolução da Fome e Desigualdade com Zoom Automático por Mandato (Fase 16) */}
+      {/* Gráfico de Evolução da Fome e Desigualdade com Zoom Automático por Mandato */}
       <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 backdrop-blur-md space-y-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">

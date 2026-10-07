@@ -102,7 +102,7 @@ class AnnualMacroeconomicSummary(TimeStampedModel):
     dominant_president_name: Mapped[Optional[str]] = mapped_column("presidenteDominanteNome", String(150), nullable=True)
     ibovespa_close: Mapped[Optional[Decimal]] = mapped_column("ibovespaFechamentoAno", Numeric(12, 2), nullable=True)
 
-    # Indicadores Socioambientais e Macroeconômicos Expandidos (Fase 16)
+    # Indicadores Socioambientais e Macroeconômicos Expandidos
     crescimento_pib_percentual: Mapped[Optional[Decimal]] = mapped_column("crescimentoPibPercentual", Numeric(6, 2), nullable=True)
     inflacao_anual_ipca: Mapped[Optional[Decimal]] = mapped_column("inflacaoAnualIpca", Numeric(14, 4), nullable=True)
     inflacao_acumulada_mandato: Mapped[Optional[Decimal]] = mapped_column("inflacaoAcumuladaMandato", Numeric(14, 4), nullable=True)
@@ -110,7 +110,7 @@ class AnnualMacroeconomicSummary(TimeStampedModel):
     taxa_desmatamento_amazonia: Mapped[Optional[Decimal]] = mapped_column("taxaDesmatamentoAmazonia", Numeric(10, 2), nullable=True)
     inseguranca_alimentar_pct: Mapped[Optional[Decimal]] = mapped_column("insegurancaAlimentarPct", Numeric(5, 2), nullable=True)
 
-    # Indicadores Expandidos de Câmbio, Renda e Segurança Pública (Fase 18)
+    # Indicadores Expandidos de Câmbio, Renda e Segurança Pública
     cotacao_dolar_fechamento: Mapped[Optional[Decimal]] = mapped_column("cotacaoDolarFechamento", Numeric(12, 4), nullable=True)
     salario_minimo: Mapped[Optional[Decimal]] = mapped_column("salarioMinimo", Numeric(10, 2), nullable=True)
     taxa_homicidios: Mapped[Optional[Decimal]] = mapped_column("taxaHomicidios", Numeric(6, 2), nullable=True)

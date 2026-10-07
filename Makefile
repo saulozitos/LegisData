@@ -2,7 +2,7 @@
 
 help:
 	@echo "=========================================================="
-	@echo "    POLÍTICA & ECONOMIA BRASILEIRA - COMANDOS MAKEFILE    "
+	@echo "                   LEGISDATA - MAKEFILE                   "
 	@echo "=========================================================="
 	@echo "Esteira de Dados (ETL & Carga):"
 	@echo "  make run-all          - Executa toda a esteira (BCB + Câmara + Senado + TSE + Carga DB)"

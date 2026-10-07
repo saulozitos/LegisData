@@ -329,7 +329,7 @@ export default function PerformanceKpis({
         </div>
       </div>
 
-      {/* 2. Lista de Cards com Rolagem Horizontal Fluida (Fase 18) */}
+      {/* 2. Lista de Cards com Rolagem Horizontal Fluida */}
       <div className="flex flex-nowrap overflow-x-auto gap-4 pb-4 pt-1 custom-scrollbar snap-x scroll-smooth">
         {/* Card 1: Crescimento Médio do PIB */}
         <div

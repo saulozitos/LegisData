@@ -897,7 +897,7 @@ export async function getSocialElectionsCorrelation(ano?: number): Promise<Socia
 }
 
 // ==========================================
-// FASE 10: PRODUTIVIDADE & EXPLORADOR LEGISLATIVO
+// PRODUTIVIDADE & EXPLORADOR LEGISLATIVO
 // ==========================================
 
 export interface SetorDistribuicaoItem {
@@ -1075,7 +1075,7 @@ export async function getPropositionNominalVotesSplit(
 }
 
 // ==========================================
-// FASE 15: DIÁRIO DO CONGRESSO (CALENDÁRIO)
+// DIÁRIO DO CONGRESSO (CALENDÁRIO)
 // ==========================================
 
 export interface SessaoCalendarioItem {

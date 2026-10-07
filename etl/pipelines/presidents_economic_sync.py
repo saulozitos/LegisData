@@ -70,7 +70,7 @@ class PresidentsEconomicSyncPipeline:
         ibovespa_df = self.bcb_extractor.fetch_ibovespa_annual_closing()
         logger.info(f"-> Ibovespa Fechamento Anual: {len(ibovespa_df)} anos registrados.")
 
-        # 2.1 Extrair indicadores socioambientais expandidos (Fase 16)
+        # 2.1 Extrair indicadores socioambientais expandidos
         logger.info("-> Extraindo dados de desemprego (IBGE), desmatamento (INPE/PRODES) e fome...")
         unemployment_dict = self.social_extractor.get_annual_unemployment_history()
         
@@ -84,7 +84,7 @@ class PresidentsEconomicSyncPipeline:
             if item.get("inseguranca_alimentar_pct") is not None
         }
 
-        # 2.2 Extrair indicadores de segurança pública (IPEA / FBSP - Fase 18)
+        # 2.2 Extrair indicadores de segurança pública (IPEA / FBSP)
         logger.info("-> Extraindo dados de homicídios e feminicídios (IPEA/FBSP)...")
         self.seguranca_extractor.fetch_seguranca_history(use_cache=use_cache)
         homicide_dict = self.seguranca_extractor.get_annual_homicide_rates()

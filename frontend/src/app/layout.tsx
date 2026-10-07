@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "LegisData | Plataforma de Transparência e Inteligência Política",
-  description: "LegisData combate a desinformação cruzando economia, meio ambiente, votações nominais, custos de mandato (CEAP), emendas parlamentares e checagem de ficha limpa.",
+  title: "LegisData",
+  description: "Plataforma Open-Source de Transparência e Inteligência Política. Auditoria de mandatos, custos de gabinete (CEAP), emendas orçamentárias, votações nominais e indicadores macroeconômicos brasileiros.",
   keywords: ["LegisData", "transparência pública", "política brasileira", "gastos parlamentares", "emendas", "economia", "ficha limpa"],
   authors: [{ name: "Saulo Araujo Campos" }],
   openGraph: {
-    title: "LegisData - Inteligência e Transparência Política",
-    description: "Plataforma analítica aberta: atuação parlamentar, custos da CEAP, trilha de emendas e indicadores macroeconômicos brasileiros.",
+    title: "LegisData",
+    description: "Plataforma Open-Source de Transparência e Inteligência Política.",
     type: "website",
   },
 };

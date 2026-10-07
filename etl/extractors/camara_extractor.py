@@ -1,7 +1,7 @@
 """
 Extrator de Dados Abertos da Câmara dos Deputados (API v2)
 Documentação oficial: https://dadosabertos.camara.leg.br/api/v2/
-Fase 10: Escala de Proposições, Setorização Temática e Contagem de Autoria.
+Coleta de Proposições, Setorização Temática e Contagem de Autoria.
 """
 
 import time

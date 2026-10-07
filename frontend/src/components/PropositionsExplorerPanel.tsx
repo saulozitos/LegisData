@@ -247,7 +247,7 @@ export default function PropositionsExplorerPanel({
         <div className="relative z-10 space-y-3">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
             <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-            Fase 10: Produtividade Parlamentar & Mural de Votações
+            Produtividade Parlamentar & Mural de Votações
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
             Explorador Geral de Proposições & Autoria
