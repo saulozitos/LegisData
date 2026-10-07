@@ -23,6 +23,18 @@
 
 ---
 
+## 📺 Demonstração da Plataforma
+
+<p align="center">
+  <a href="assets/LegisData.mp4" title="Clique para assistir ao tour completo de 6 minutos em alta resolução">
+    <img src="assets/preview.gif" alt="Demonstração da Plataforma LegisData" width="100%" />
+  </a>
+  <br>
+  <em>▶️ <b>Demonstração da plataforma em execução:</b> clique na animação acima para assistir ao tour completo em alta definição (<a href="assets/LegisData.mp4">Versão MP4</a> | <a href="assets/LegisData.webm">Versão WebM</a>).</em>
+</p>
+
+---
+
 ## 🎯 1. Propósito e Arsenal Cívico
 
 O **LegisData** foi concebido como uma resposta técnica, visual e independente à polarização vazia e à desinformação no debate público brasileiro. Em vez de narrativas sem lastro empírico, a plataforma centraliza **dados abertos oficiais** de múltiplos órgãos de Estado para responder com rigor às principais perguntas do cidadão:
