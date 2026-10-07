@@ -1554,7 +1554,9 @@ class DatabaseLoader:
             logger.info(f"-> Tabela de despesas CEAP já possui {existing_count} registros. Mantendo registros existentes.")
             return
 
-        ceap_file = PROCESSED_DATA_DIR / "despesas_ceap_2019_2026.json"
+        ceap_file = PROCESSED_DATA_DIR / "despesas_ceap_historico.json"
+        if not ceap_file.exists():
+            ceap_file = PROCESSED_DATA_DIR / "despesas_ceap_2019_2026.json"
         if ceap_file.exists():
             with open(ceap_file, "r", encoding="utf-8") as f:
                 ceap_dict = json.load(f)
@@ -1590,7 +1592,7 @@ class DatabaseLoader:
                         session.add(desp_obj)
                         total_inseridos += 1
             session.flush()
-            logger.info(f"-> {total_inseridos} registros de despesas da CEAP inseridos no PostgreSQL a partir de despesas_ceap_2019_2026.json.")
+            logger.info(f"-> {total_inseridos} registros de despesas da CEAP inseridos no PostgreSQL a partir de {ceap_file.name}.")
             return
 
         ceap_ext = CeapExtractor()
@@ -1640,7 +1642,9 @@ class DatabaseLoader:
             logger.info(f"-> Tabela de emendas já possui {existing_count} registros. Mantendo registros existentes.")
             return
 
-        emendas_file = PROCESSED_DATA_DIR / "emendas_parlamentares_2019_2026.json"
+        emendas_file = PROCESSED_DATA_DIR / "emendas_parlamentares_historico.json"
+        if not emendas_file.exists():
+            emendas_file = PROCESSED_DATA_DIR / "emendas_parlamentares_2019_2026.json"
         if emendas_file.exists():
             with open(emendas_file, "r", encoding="utf-8") as f:
                 emendas_list = json.load(f)

@@ -36,7 +36,9 @@ def _normalize_name(text: Optional[str]) -> str:
 def _get_processed_ceap(electoral_name: str, civil_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
     global _ceap_cache
     if _ceap_cache is None:
-        file_path = DATA_DIR / "despesas_ceap_2019_2026.json"
+        file_path = DATA_DIR / "despesas_ceap_historico.json"
+        if not file_path.exists():
+            file_path = DATA_DIR / "despesas_ceap_2019_2026.json"
         if file_path.exists():
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
@@ -64,7 +66,9 @@ def _get_processed_ceap(electoral_name: str, civil_name: Optional[str] = None) -
 def _get_processed_emendas(electoral_name: str, civil_name: Optional[str] = None) -> List[Dict[str, Any]]:
     global _emendas_cache
     if _emendas_cache is None:
-        file_path = DATA_DIR / "emendas_parlamentares_2019_2026.json"
+        file_path = DATA_DIR / "emendas_parlamentares_historico.json"
+        if not file_path.exists():
+            file_path = DATA_DIR / "emendas_parlamentares_2019_2026.json"
         if file_path.exists():
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
