@@ -1,0 +1,10 @@
+# Dependências do Pipeline de Ingestão e ETL (Python)
+pandas>=2.0.0
+requests>=2.31.0
+numpy>=1.24.0
+python-dateutil>=2.8.2
+urllib3>=2.0.0
+tqdm>=4.66.0
+pydantic>=2.5.0
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9

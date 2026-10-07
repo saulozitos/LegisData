@@ -1,0 +1,182 @@
+[
+  {
+    "ano": 1995,
+    "desmatamento_km2": 29059.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 1996,
+    "desmatamento_km2": 18161.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 1997,
+    "desmatamento_km2": 13227.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 1998,
+    "desmatamento_km2": 17383.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 1999,
+    "desmatamento_km2": 17259.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2000,
+    "desmatamento_km2": 15850.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2001,
+    "desmatamento_km2": 18165.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2002,
+    "desmatamento_km2": 21650.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2003,
+    "desmatamento_km2": 25396.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2004,
+    "desmatamento_km2": 27772.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2005,
+    "desmatamento_km2": 19014.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2006,
+    "desmatamento_km2": 14286.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2007,
+    "desmatamento_km2": 11651.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2008,
+    "desmatamento_km2": 12911.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2009,
+    "desmatamento_km2": 7464.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2010,
+    "desmatamento_km2": 7000.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2011,
+    "desmatamento_km2": 6418.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2012,
+    "desmatamento_km2": 4571.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2013,
+    "desmatamento_km2": 5891.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2014,
+    "desmatamento_km2": 5012.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2015,
+    "desmatamento_km2": 6207.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2016,
+    "desmatamento_km2": 7893.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2017,
+    "desmatamento_km2": 6947.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2018,
+    "desmatamento_km2": 7536.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2019,
+    "desmatamento_km2": 10129.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2020,
+    "desmatamento_km2": 10851.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2021,
+    "desmatamento_km2": 13038.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2022,
+    "desmatamento_km2": 11594.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2023,
+    "desmatamento_km2": 9001.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  },
+  {
+    "ano": 2024,
+    "desmatamento_km2": 6288.0,
+    "fonte": "INPE / PRODES (Amazônia Legal)",
+    "unidade": "km²"
+  }
+]

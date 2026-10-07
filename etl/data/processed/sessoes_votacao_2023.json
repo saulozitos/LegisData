@@ -1,0 +1,72 @@
+[
+  {
+    "sessao_externa_id": "2357053-122",
+    "proposicao_camara_id": 2357053,
+    "proposicao_titulo": "Novo Arcabouço Fiscal",
+    "data_hora": "2023-08-22T20:44:12",
+    "titulo_pauta": "Votação sobre Novo Arcabouço Fiscal",
+    "descricao": "Rejeitada a Emenda nº 15 do Senado Federal. Sim: 153; não: 270; abstenção: 1; total: 424.",
+    "aprovada": false,
+    "total_votos_registrados": 425
+  },
+  {
+    "sessao_externa_id": "2196833-395",
+    "proposicao_camara_id": 2196833,
+    "proposicao_titulo": "Reforma Tributária do Consumo",
+    "data_hora": "2023-07-07T14:56:23",
+    "titulo_pauta": "Votação sobre Reforma Tributária do Consumo",
+    "descricao": "Suprimido o texto. Sim: 307; não: 166; abstenção: 5; total: 478.",
+    "aprovada": false,
+    "total_votos_registrados": 486
+  },
+  {
+    "sessao_externa_id": "2359135-39",
+    "proposicao_camara_id": 2359135,
+    "proposicao_titulo": "Reajuste do Salário Mínimo e Isenção do IRPF",
+    "data_hora": "2023-08-23T21:32:29",
+    "titulo_pauta": "Votação sobre Reajuste do Salário Mínimo e Isenção do IRPF",
+    "descricao": "Aprovada a Medida Provisória nº 1.172, de 2023, na forma do Projeto de Lei de Conversão, ressalvados os destaques. Sim: 439; não: 1; abstenção: 1; total: 441.",
+    "aprovada": true,
+    "total_votos_registrados": 442
+  },
+  {
+    "sessao_externa_id": "2351179-51",
+    "proposicao_camara_id": 2351179,
+    "proposicao_titulo": "Igualdade Salarial entre Homens e Mulheres",
+    "data_hora": "2023-05-04T12:02:58",
+    "titulo_pauta": "Votação sobre Igualdade Salarial entre Homens e Mulheres",
+    "descricao": "Aprovada a Subemenda Substitutiva Global ao Projeto de Lei nº 1.085, de 2023, adotada pela relatora da Comissão de Defesa dos Direitos da Mulher, ressalvados os destaques. Sim: 325; não: 36; abstenção: 3; total: 364.",
+    "aprovada": true,
+    "total_votos_registrados": 365
+  },
+  {
+    "sessao_externa_id": "2374400-121",
+    "proposicao_camara_id": 2374400,
+    "proposicao_titulo": "Tributação e Regulação de Apostas Esportivas (Bets)",
+    "data_hora": "2023-12-22T00:28:30",
+    "titulo_pauta": "Votação sobre Tributação e Regulação de Apostas Esportivas (Bets)",
+    "descricao": "Rejeitada a Emenda do Senado Federal nº 3. Sim: 120; não: 261; abstenção: 1; total: 382.",
+    "aprovada": false,
+    "total_votos_registrados": 383
+  },
+  {
+    "sessao_externa_id": "2360503-74",
+    "proposicao_camara_id": 2360503,
+    "proposicao_titulo": "Retomada do Voto de Qualidade no CARF",
+    "data_hora": "2023-07-07T17:01:08",
+    "titulo_pauta": "Votação sobre Retomada do Voto de Qualidade no CARF",
+    "descricao": "Suprimido o texto. Sim: 112; não: 284; abstenção: 1; total: 397.",
+    "aprovada": false,
+    "total_votos_registrados": 398
+  },
+  {
+    "sessao_externa_id": "345311-279",
+    "proposicao_camara_id": 345311,
+    "proposicao_titulo": "Marco Temporal de Terras Indígenas",
+    "data_hora": "2023-05-30T20:45:28",
+    "titulo_pauta": "Votação sobre Marco Temporal de Terras Indígenas",
+    "descricao": "Mantido o texto. Sim: 290; não: 142; abstenção: 1; total: 433.",
+    "aprovada": false,
+    "total_votos_registrados": 434
+  }
+]

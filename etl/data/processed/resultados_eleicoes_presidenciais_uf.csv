@@ -1,0 +1,217 @@
+ano_eleicao,mandato_id_ref,uf,estado_nome,regiao,candidato_vencedor_nome,partido_vencedor_sigla,votos_vencedor_pct,candidato_segundo_nome,partido_segundo_sigla,votos_segundo_pct,turno
+1994,fhc-1,AC,Acre,Norte,Fernando Henrique Cardoso,PSDB,52.3,Luiz Inácio Lula da Silva,PT,31.5,1
+1994,fhc-1,AL,Alagoas,Nordeste,Fernando Henrique Cardoso,PSDB,52.1,Luiz Inácio Lula da Silva,PT,31.2,1
+1994,fhc-1,AP,Amapá,Norte,Fernando Henrique Cardoso,PSDB,46.8,Luiz Inácio Lula da Silva,PT,37.1,1
+1994,fhc-1,AM,Amazonas,Norte,Fernando Henrique Cardoso,PSDB,47.5,Luiz Inácio Lula da Silva,PT,36.2,1
+1994,fhc-1,BA,Bahia,Nordeste,Fernando Henrique Cardoso,PSDB,48.2,Luiz Inácio Lula da Silva,PT,34.1,1
+1994,fhc-1,CE,Ceará,Nordeste,Fernando Henrique Cardoso,PSDB,53.4,Luiz Inácio Lula da Silva,PT,30.2,1
+1994,fhc-1,DF,Distrito Federal,Centro-Oeste,Fernando Henrique Cardoso,PSDB,44.5,Luiz Inácio Lula da Silva,PT,41.2,1
+1994,fhc-1,ES,Espírito Santo,Sudeste,Fernando Henrique Cardoso,PSDB,58.9,Luiz Inácio Lula da Silva,PT,24.7,1
+1994,fhc-1,GO,Goiás,Centro-Oeste,Fernando Henrique Cardoso,PSDB,61.2,Luiz Inácio Lula da Silva,PT,22.4,1
+1994,fhc-1,MA,Maranhão,Nordeste,Fernando Henrique Cardoso,PSDB,54.0,Luiz Inácio Lula da Silva,PT,29.5,1
+1994,fhc-1,MT,Mato Grosso,Centro-Oeste,Fernando Henrique Cardoso,PSDB,62.5,Luiz Inácio Lula da Silva,PT,20.8,1
+1994,fhc-1,MS,Mato Grosso do Sul,Centro-Oeste,Fernando Henrique Cardoso,PSDB,63.0,Luiz Inácio Lula da Silva,PT,21.2,1
+1994,fhc-1,MG,Minas Gerais,Sudeste,Fernando Henrique Cardoso,PSDB,60.2,Luiz Inácio Lula da Silva,PT,23.5,1
+1994,fhc-1,PA,Pará,Norte,Fernando Henrique Cardoso,PSDB,49.8,Luiz Inácio Lula da Silva,PT,33.5,1
+1994,fhc-1,PB,Paraíba,Nordeste,Fernando Henrique Cardoso,PSDB,51.2,Luiz Inácio Lula da Silva,PT,33.1,1
+1994,fhc-1,PR,Paraná,Sul,Fernando Henrique Cardoso,PSDB,63.1,Luiz Inácio Lula da Silva,PT,21.0,1
+1994,fhc-1,PE,Pernambuco,Nordeste,Fernando Henrique Cardoso,PSDB,49.1,Luiz Inácio Lula da Silva,PT,35.8,1
+1994,fhc-1,PI,Piauí,Nordeste,Fernando Henrique Cardoso,PSDB,53.6,Luiz Inácio Lula da Silva,PT,30.1,1
+1994,fhc-1,RJ,Rio de Janeiro,Sudeste,Fernando Henrique Cardoso,PSDB,58.4,Luiz Inácio Lula da Silva,PT,25.1,1
+1994,fhc-1,RN,Rio Grande do Norte,Nordeste,Fernando Henrique Cardoso,PSDB,55.4,Luiz Inácio Lula da Silva,PT,29.8,1
+1994,fhc-1,RS,Rio Grande do Sul,Sul,Fernando Henrique Cardoso,PSDB,46.5,Luiz Inácio Lula da Silva,PT,38.2,1
+1994,fhc-1,RO,Rondônia,Norte,Fernando Henrique Cardoso,PSDB,58.4,Luiz Inácio Lula da Silva,PT,24.2,1
+1994,fhc-1,RR,Roraima,Norte,Fernando Henrique Cardoso,PSDB,56.1,Luiz Inácio Lula da Silva,PT,26.2,1
+1994,fhc-1,SC,Santa Catarina,Sul,Fernando Henrique Cardoso,PSDB,64.2,Luiz Inácio Lula da Silva,PT,21.5,1
+1994,fhc-1,SP,São Paulo,Sudeste,Fernando Henrique Cardoso,PSDB,65.8,Luiz Inácio Lula da Silva,PT,20.3,1
+1994,fhc-1,SE,Sergipe,Nordeste,Fernando Henrique Cardoso,PSDB,47.8,Luiz Inácio Lula da Silva,PT,35.6,1
+1994,fhc-1,TO,Tocantins,Norte,Fernando Henrique Cardoso,PSDB,55.2,Luiz Inácio Lula da Silva,PT,28.4,1
+1998,fhc-2,AC,Acre,Norte,Fernando Henrique Cardoso,PSDB,55.4,Luiz Inácio Lula da Silva,PT,32.1,1
+1998,fhc-2,AL,Alagoas,Nordeste,Fernando Henrique Cardoso,PSDB,56.4,Luiz Inácio Lula da Silva,PT,29.1,1
+1998,fhc-2,AP,Amapá,Norte,Fernando Henrique Cardoso,PSDB,48.1,Luiz Inácio Lula da Silva,PT,39.2,1
+1998,fhc-2,AM,Amazonas,Norte,Fernando Henrique Cardoso,PSDB,53.2,Luiz Inácio Lula da Silva,PT,34.0,1
+1998,fhc-2,BA,Bahia,Nordeste,Fernando Henrique Cardoso,PSDB,52.1,Luiz Inácio Lula da Silva,PT,35.4,1
+1998,fhc-2,CE,Ceará,Nordeste,Fernando Henrique Cardoso,PSDB,55.6,Luiz Inácio Lula da Silva,PT,32.8,1
+1998,fhc-2,DF,Distrito Federal,Centro-Oeste,Luiz Inácio Lula da Silva,PT,44.5,Fernando Henrique Cardoso,PSDB,43.2,1
+1998,fhc-2,ES,Espírito Santo,Sudeste,Fernando Henrique Cardoso,PSDB,56.7,Luiz Inácio Lula da Silva,PT,30.2,1
+1998,fhc-2,GO,Goiás,Centro-Oeste,Fernando Henrique Cardoso,PSDB,62.4,Luiz Inácio Lula da Silva,PT,25.1,1
+1998,fhc-2,MA,Maranhão,Nordeste,Fernando Henrique Cardoso,PSDB,58.1,Luiz Inácio Lula da Silva,PT,28.4,1
+1998,fhc-2,MT,Mato Grosso,Centro-Oeste,Fernando Henrique Cardoso,PSDB,61.5,Luiz Inácio Lula da Silva,PT,26.0,1
+1998,fhc-2,MS,Mato Grosso do Sul,Centro-Oeste,Fernando Henrique Cardoso,PSDB,58.9,Luiz Inácio Lula da Silva,PT,27.5,1
+1998,fhc-2,MG,Minas Gerais,Sudeste,Fernando Henrique Cardoso,PSDB,53.7,Luiz Inácio Lula da Silva,PT,32.1,1
+1998,fhc-2,PA,Pará,Norte,Fernando Henrique Cardoso,PSDB,52.6,Luiz Inácio Lula da Silva,PT,35.1,1
+1998,fhc-2,PB,Paraíba,Nordeste,Fernando Henrique Cardoso,PSDB,53.4,Luiz Inácio Lula da Silva,PT,34.5,1
+1998,fhc-2,PR,Paraná,Sul,Fernando Henrique Cardoso,PSDB,60.3,Luiz Inácio Lula da Silva,PT,27.4,1
+1998,fhc-2,PE,Pernambuco,Nordeste,Fernando Henrique Cardoso,PSDB,47.2,Luiz Inácio Lula da Silva,PT,42.1,1
+1998,fhc-2,PI,Piauí,Nordeste,Fernando Henrique Cardoso,PSDB,54.8,Luiz Inácio Lula da Silva,PT,32.6,1
+1998,fhc-2,RJ,Rio de Janeiro,Sudeste,Fernando Henrique Cardoso,PSDB,51.4,Luiz Inácio Lula da Silva,PT,34.2,1
+1998,fhc-2,RN,Rio Grande do Norte,Nordeste,Fernando Henrique Cardoso,PSDB,56.2,Luiz Inácio Lula da Silva,PT,31.8,1
+1998,fhc-2,RS,Rio Grande do Sul,Sul,Luiz Inácio Lula da Silva,PT,46.2,Fernando Henrique Cardoso,PSDB,44.1,1
+1998,fhc-2,RO,Rondônia,Norte,Fernando Henrique Cardoso,PSDB,57.1,Luiz Inácio Lula da Silva,PT,28.2,1
+1998,fhc-2,RR,Roraima,Norte,Fernando Henrique Cardoso,PSDB,60.2,Luiz Inácio Lula da Silva,PT,25.4,1
+1998,fhc-2,SC,Santa Catarina,Sul,Fernando Henrique Cardoso,PSDB,62.8,Luiz Inácio Lula da Silva,PT,25.6,1
+1998,fhc-2,SP,São Paulo,Sudeste,Fernando Henrique Cardoso,PSDB,59.8,Luiz Inácio Lula da Silva,PT,26.5,1
+1998,fhc-2,SE,Sergipe,Nordeste,Fernando Henrique Cardoso,PSDB,48.2,Luiz Inácio Lula da Silva,PT,39.5,1
+1998,fhc-2,TO,Tocantins,Norte,Fernando Henrique Cardoso,PSDB,57.5,Luiz Inácio Lula da Silva,PT,29.8,1
+2002,lula-1,AC,Acre,Norte,Luiz Inácio Lula da Silva,PT,59.6,José Serra,PSDB,40.4,2
+2002,lula-1,AL,Alagoas,Nordeste,José Serra,PSDB,50.8,Luiz Inácio Lula da Silva,PT,49.2,2
+2002,lula-1,AP,Amapá,Norte,Luiz Inácio Lula da Silva,PT,66.8,José Serra,PSDB,33.2,2
+2002,lula-1,AM,Amazonas,Norte,Luiz Inácio Lula da Silva,PT,68.4,José Serra,PSDB,31.6,2
+2002,lula-1,BA,Bahia,Nordeste,Luiz Inácio Lula da Silva,PT,65.8,José Serra,PSDB,34.2,2
+2002,lula-1,CE,Ceará,Nordeste,Luiz Inácio Lula da Silva,PT,71.8,José Serra,PSDB,28.2,2
+2002,lula-1,DF,Distrito Federal,Centro-Oeste,Luiz Inácio Lula da Silva,PT,62.3,José Serra,PSDB,37.7,2
+2002,lula-1,ES,Espírito Santo,Sudeste,Luiz Inácio Lula da Silva,PT,61.5,José Serra,PSDB,38.5,2
+2002,lula-1,GO,Goiás,Centro-Oeste,Luiz Inácio Lula da Silva,PT,53.2,José Serra,PSDB,46.8,2
+2002,lula-1,MA,Maranhão,Nordeste,Luiz Inácio Lula da Silva,PT,67.4,José Serra,PSDB,32.6,2
+2002,lula-1,MT,Mato Grosso,Centro-Oeste,Luiz Inácio Lula da Silva,PT,54.5,José Serra,PSDB,45.5,2
+2002,lula-1,MS,Mato Grosso do Sul,Centro-Oeste,Luiz Inácio Lula da Silva,PT,55.1,José Serra,PSDB,44.9,2
+2002,lula-1,MG,Minas Gerais,Sudeste,Luiz Inácio Lula da Silva,PT,66.4,José Serra,PSDB,33.6,2
+2002,lula-1,PA,Pará,Norte,Luiz Inácio Lula da Silva,PT,57.2,José Serra,PSDB,42.8,2
+2002,lula-1,PB,Paraíba,Nordeste,Luiz Inácio Lula da Silva,PT,57.8,José Serra,PSDB,42.2,2
+2002,lula-1,PR,Paraná,Sul,Luiz Inácio Lula da Silva,PT,52.8,José Serra,PSDB,47.2,2
+2002,lula-1,PE,Pernambuco,Nordeste,Luiz Inácio Lula da Silva,PT,63.5,José Serra,PSDB,36.5,2
+2002,lula-1,PI,Piauí,Nordeste,Luiz Inácio Lula da Silva,PT,64.2,José Serra,PSDB,35.8,2
+2002,lula-1,RJ,Rio de Janeiro,Sudeste,Luiz Inácio Lula da Silva,PT,79.0,José Serra,PSDB,21.0,2
+2002,lula-1,RN,Rio Grande do Norte,Nordeste,Luiz Inácio Lula da Silva,PT,60.2,José Serra,PSDB,39.8,2
+2002,lula-1,RS,Rio Grande do Sul,Sul,Luiz Inácio Lula da Silva,PT,56.0,José Serra,PSDB,44.0,2
+2002,lula-1,RO,Rondônia,Norte,Luiz Inácio Lula da Silva,PT,55.8,José Serra,PSDB,44.2,2
+2002,lula-1,RR,Roraima,Norte,Luiz Inácio Lula da Silva,PT,54.3,José Serra,PSDB,45.7,2
+2002,lula-1,SC,Santa Catarina,Sul,Luiz Inácio Lula da Silva,PT,56.7,José Serra,PSDB,43.3,2
+2002,lula-1,SP,São Paulo,Sudeste,Luiz Inácio Lula da Silva,PT,55.4,José Serra,PSDB,44.6,2
+2002,lula-1,SE,Sergipe,Nordeste,Luiz Inácio Lula da Silva,PT,66.5,José Serra,PSDB,33.5,2
+2002,lula-1,TO,Tocantins,Norte,Luiz Inácio Lula da Silva,PT,58.9,José Serra,PSDB,41.1,2
+2006,lula-2,AC,Acre,Norte,Geraldo Alckmin,PSDB,56.2,Luiz Inácio Lula da Silva,PT,43.8,2
+2006,lula-2,AL,Alagoas,Nordeste,Luiz Inácio Lula da Silva,PT,68.6,Geraldo Alckmin,PSDB,31.4,2
+2006,lula-2,AP,Amapá,Norte,Luiz Inácio Lula da Silva,PT,62.5,Geraldo Alckmin,PSDB,37.5,2
+2006,lula-2,AM,Amazonas,Norte,Luiz Inácio Lula da Silva,PT,86.8,Geraldo Alckmin,PSDB,13.2,2
+2006,lula-2,BA,Bahia,Nordeste,Luiz Inácio Lula da Silva,PT,78.1,Geraldo Alckmin,PSDB,21.9,2
+2006,lula-2,CE,Ceará,Nordeste,Luiz Inácio Lula da Silva,PT,82.4,Geraldo Alckmin,PSDB,17.6,2
+2006,lula-2,DF,Distrito Federal,Centro-Oeste,Geraldo Alckmin,PSDB,57.0,Luiz Inácio Lula da Silva,PT,43.0,2
+2006,lula-2,ES,Espírito Santo,Sudeste,Luiz Inácio Lula da Silva,PT,51.2,Geraldo Alckmin,PSDB,48.8,2
+2006,lula-2,GO,Goiás,Centro-Oeste,Geraldo Alckmin,PSDB,54.8,Luiz Inácio Lula da Silva,PT,45.2,2
+2006,lula-2,MA,Maranhão,Nordeste,Luiz Inácio Lula da Silva,PT,84.6,Geraldo Alckmin,PSDB,15.4,2
+2006,lula-2,MT,Mato Grosso,Centro-Oeste,Geraldo Alckmin,PSDB,54.7,Luiz Inácio Lula da Silva,PT,45.3,2
+2006,lula-2,MS,Mato Grosso do Sul,Centro-Oeste,Geraldo Alckmin,PSDB,55.2,Luiz Inácio Lula da Silva,PT,44.8,2
+2006,lula-2,MG,Minas Gerais,Sudeste,Luiz Inácio Lula da Silva,PT,65.2,Geraldo Alckmin,PSDB,34.8,2
+2006,lula-2,PA,Pará,Norte,Luiz Inácio Lula da Silva,PT,60.0,Geraldo Alckmin,PSDB,40.0,2
+2006,lula-2,PB,Paraíba,Nordeste,Luiz Inácio Lula da Silva,PT,75.5,Geraldo Alckmin,PSDB,24.5,2
+2006,lula-2,PR,Paraná,Sul,Geraldo Alckmin,PSDB,58.6,Luiz Inácio Lula da Silva,PT,41.4,2
+2006,lula-2,PE,Pernambuco,Nordeste,Luiz Inácio Lula da Silva,PT,78.5,Geraldo Alckmin,PSDB,21.5,2
+2006,lula-2,PI,Piauí,Nordeste,Luiz Inácio Lula da Silva,PT,77.8,Geraldo Alckmin,PSDB,22.2,2
+2006,lula-2,RJ,Rio de Janeiro,Sudeste,Luiz Inácio Lula da Silva,PT,69.7,Geraldo Alckmin,PSDB,30.3,2
+2006,lula-2,RN,Rio Grande do Norte,Nordeste,Luiz Inácio Lula da Silva,PT,73.2,Geraldo Alckmin,PSDB,26.8,2
+2006,lula-2,RS,Rio Grande do Sul,Sul,Geraldo Alckmin,PSDB,54.9,Luiz Inácio Lula da Silva,PT,45.1,2
+2006,lula-2,RO,Rondônia,Norte,Geraldo Alckmin,PSDB,53.8,Luiz Inácio Lula da Silva,PT,46.2,2
+2006,lula-2,RR,Roraima,Norte,Geraldo Alckmin,PSDB,62.8,Luiz Inácio Lula da Silva,PT,37.2,2
+2006,lula-2,SC,Santa Catarina,Sul,Geraldo Alckmin,PSDB,64.5,Luiz Inácio Lula da Silva,PT,35.5,2
+2006,lula-2,SP,São Paulo,Sudeste,Geraldo Alckmin,PSDB,52.3,Luiz Inácio Lula da Silva,PT,47.7,2
+2006,lula-2,SE,Sergipe,Nordeste,Luiz Inácio Lula da Silva,PT,70.5,Geraldo Alckmin,PSDB,29.5,2
+2006,lula-2,TO,Tocantins,Norte,Luiz Inácio Lula da Silva,PT,65.8,Geraldo Alckmin,PSDB,34.2,2
+2010,dilma-1,AC,Acre,Norte,José Serra,PSDB,70.5,Dilma Rousseff,PT,29.5,2
+2010,dilma-1,AL,Alagoas,Nordeste,Dilma Rousseff,PT,53.6,José Serra,PSDB,46.4,2
+2010,dilma-1,AP,Amapá,Norte,Dilma Rousseff,PT,62.7,José Serra,PSDB,37.3,2
+2010,dilma-1,AM,Amazonas,Norte,Dilma Rousseff,PT,80.6,José Serra,PSDB,19.4,2
+2010,dilma-1,BA,Bahia,Nordeste,Dilma Rousseff,PT,70.8,José Serra,PSDB,29.2,2
+2010,dilma-1,CE,Ceará,Nordeste,Dilma Rousseff,PT,77.4,José Serra,PSDB,22.6,2
+2010,dilma-1,DF,Distrito Federal,Centro-Oeste,José Serra,PSDB,52.8,Dilma Rousseff,PT,47.2,2
+2010,dilma-1,ES,Espírito Santo,Sudeste,José Serra,PSDB,50.9,Dilma Rousseff,PT,49.1,2
+2010,dilma-1,GO,Goiás,Centro-Oeste,José Serra,PSDB,50.8,Dilma Rousseff,PT,49.2,2
+2010,dilma-1,MA,Maranhão,Nordeste,Dilma Rousseff,PT,79.1,José Serra,PSDB,20.9,2
+2010,dilma-1,MT,Mato Grosso,Centro-Oeste,José Serra,PSDB,51.1,Dilma Rousseff,PT,48.9,2
+2010,dilma-1,MS,Mato Grosso do Sul,Centro-Oeste,José Serra,PSDB,55.1,Dilma Rousseff,PT,44.9,2
+2010,dilma-1,MG,Minas Gerais,Sudeste,Dilma Rousseff,PT,58.4,José Serra,PSDB,41.6,2
+2010,dilma-1,PA,Pará,Norte,Dilma Rousseff,PT,53.2,José Serra,PSDB,46.8,2
+2010,dilma-1,PB,Paraíba,Nordeste,Dilma Rousseff,PT,64.3,José Serra,PSDB,35.7,2
+2010,dilma-1,PR,Paraná,Sul,José Serra,PSDB,55.4,Dilma Rousseff,PT,44.6,2
+2010,dilma-1,PE,Pernambuco,Nordeste,Dilma Rousseff,PT,75.6,José Serra,PSDB,24.4,2
+2010,dilma-1,PI,Piauí,Nordeste,Dilma Rousseff,PT,69.9,José Serra,PSDB,30.1,2
+2010,dilma-1,RJ,Rio de Janeiro,Sudeste,Dilma Rousseff,PT,60.5,José Serra,PSDB,39.5,2
+2010,dilma-1,RN,Rio Grande do Norte,Nordeste,Dilma Rousseff,PT,63.5,José Serra,PSDB,36.5,2
+2010,dilma-1,RS,Rio Grande do Sul,Sul,José Serra,PSDB,50.9,Dilma Rousseff,PT,49.1,2
+2010,dilma-1,RO,Rondônia,Norte,José Serra,PSDB,52.2,Dilma Rousseff,PT,47.8,2
+2010,dilma-1,RR,Roraima,Norte,José Serra,PSDB,67.2,Dilma Rousseff,PT,32.8,2
+2010,dilma-1,SC,Santa Catarina,Sul,José Serra,PSDB,64.7,Dilma Rousseff,PT,35.3,2
+2010,dilma-1,SP,São Paulo,Sudeste,José Serra,PSDB,54.1,Dilma Rousseff,PT,45.9,2
+2010,dilma-1,SE,Sergipe,Nordeste,Dilma Rousseff,PT,57.1,José Serra,PSDB,42.9,2
+2010,dilma-1,TO,Tocantins,Norte,Dilma Rousseff,PT,58.9,José Serra,PSDB,41.1,2
+2014,dilma-2,AC,Acre,Norte,Aécio Neves,PSDB,63.9,Dilma Rousseff,PT,36.1,2
+2014,dilma-2,AL,Alagoas,Nordeste,Dilma Rousseff,PT,62.1,Aécio Neves,PSDB,37.9,2
+2014,dilma-2,AP,Amapá,Norte,Dilma Rousseff,PT,61.5,Aécio Neves,PSDB,38.5,2
+2014,dilma-2,AM,Amazonas,Norte,Dilma Rousseff,PT,65.0,Aécio Neves,PSDB,35.0,2
+2014,dilma-2,BA,Bahia,Nordeste,Dilma Rousseff,PT,70.2,Aécio Neves,PSDB,29.8,2
+2014,dilma-2,CE,Ceará,Nordeste,Dilma Rousseff,PT,76.7,Aécio Neves,PSDB,23.3,2
+2014,dilma-2,DF,Distrito Federal,Centro-Oeste,Aécio Neves,PSDB,61.9,Dilma Rousseff,PT,38.1,2
+2014,dilma-2,ES,Espírito Santo,Sudeste,Aécio Neves,PSDB,53.8,Dilma Rousseff,PT,46.2,2
+2014,dilma-2,GO,Goiás,Centro-Oeste,Aécio Neves,PSDB,57.1,Dilma Rousseff,PT,42.9,2
+2014,dilma-2,MA,Maranhão,Nordeste,Dilma Rousseff,PT,78.8,Aécio Neves,PSDB,21.2,2
+2014,dilma-2,MT,Mato Grosso,Centro-Oeste,Aécio Neves,PSDB,54.7,Dilma Rousseff,PT,45.3,2
+2014,dilma-2,MS,Mato Grosso do Sul,Centro-Oeste,Aécio Neves,PSDB,56.3,Dilma Rousseff,PT,43.7,2
+2014,dilma-2,MG,Minas Gerais,Sudeste,Dilma Rousseff,PT,52.4,Aécio Neves,PSDB,47.6,2
+2014,dilma-2,PA,Pará,Norte,Dilma Rousseff,PT,53.5,Aécio Neves,PSDB,46.5,2
+2014,dilma-2,PB,Paraíba,Nordeste,Dilma Rousseff,PT,64.3,Aécio Neves,PSDB,35.7,2
+2014,dilma-2,PR,Paraná,Sul,Aécio Neves,PSDB,61.0,Dilma Rousseff,PT,39.0,2
+2014,dilma-2,PE,Pernambuco,Nordeste,Dilma Rousseff,PT,70.2,Aécio Neves,PSDB,29.8,2
+2014,dilma-2,PI,Piauí,Nordeste,Dilma Rousseff,PT,78.3,Aécio Neves,PSDB,21.7,2
+2014,dilma-2,RJ,Rio de Janeiro,Sudeste,Dilma Rousseff,PT,54.9,Aécio Neves,PSDB,45.1,2
+2014,dilma-2,RN,Rio Grande do Norte,Nordeste,Dilma Rousseff,PT,69.9,Aécio Neves,PSDB,30.1,2
+2014,dilma-2,RS,Rio Grande do Sul,Sul,Aécio Neves,PSDB,53.5,Dilma Rousseff,PT,46.5,2
+2014,dilma-2,RO,Rondônia,Norte,Aécio Neves,PSDB,54.9,Dilma Rousseff,PT,45.1,2
+2014,dilma-2,RR,Roraima,Norte,Aécio Neves,PSDB,68.9,Dilma Rousseff,PT,31.1,2
+2014,dilma-2,SC,Santa Catarina,Sul,Aécio Neves,PSDB,64.6,Dilma Rousseff,PT,35.4,2
+2014,dilma-2,SP,São Paulo,Sudeste,Aécio Neves,PSDB,64.3,Dilma Rousseff,PT,35.7,2
+2014,dilma-2,SE,Sergipe,Nordeste,Dilma Rousseff,PT,67.0,Aécio Neves,PSDB,33.0,2
+2014,dilma-2,TO,Tocantins,Norte,Dilma Rousseff,PT,50.2,Aécio Neves,PSDB,49.8,2
+2018,bolsonaro,AC,Acre,Norte,Jair Bolsonaro,PSL,77.2,Fernando Haddad,PT,22.8,2
+2018,bolsonaro,AL,Alagoas,Nordeste,Fernando Haddad,PT,61.2,Jair Bolsonaro,PSL,38.8,2
+2018,bolsonaro,AP,Amapá,Norte,Jair Bolsonaro,PSL,50.2,Fernando Haddad,PT,49.8,2
+2018,bolsonaro,AM,Amazonas,Norte,Jair Bolsonaro,PSL,50.3,Fernando Haddad,PT,49.7,2
+2018,bolsonaro,BA,Bahia,Nordeste,Fernando Haddad,PT,72.6,Jair Bolsonaro,PSL,27.4,2
+2018,bolsonaro,CE,Ceará,Nordeste,Fernando Haddad,PT,71.1,Jair Bolsonaro,PSL,28.9,2
+2018,bolsonaro,DF,Distrito Federal,Centro-Oeste,Jair Bolsonaro,PSL,69.9,Fernando Haddad,PT,30.1,2
+2018,bolsonaro,ES,Espírito Santo,Sudeste,Jair Bolsonaro,PSL,63.1,Fernando Haddad,PT,36.9,2
+2018,bolsonaro,GO,Goiás,Centro-Oeste,Jair Bolsonaro,PSL,65.5,Fernando Haddad,PT,34.5,2
+2018,bolsonaro,MA,Maranhão,Nordeste,Fernando Haddad,PT,73.3,Jair Bolsonaro,PSL,26.7,2
+2018,bolsonaro,MT,Mato Grosso,Centro-Oeste,Jair Bolsonaro,PSL,66.4,Fernando Haddad,PT,33.6,2
+2018,bolsonaro,MS,Mato Grosso do Sul,Centro-Oeste,Jair Bolsonaro,PSL,65.2,Fernando Haddad,PT,34.8,2
+2018,bolsonaro,MG,Minas Gerais,Sudeste,Jair Bolsonaro,PSL,58.2,Fernando Haddad,PT,41.8,2
+2018,bolsonaro,PA,Pará,Norte,Fernando Haddad,PT,54.8,Jair Bolsonaro,PSL,45.2,2
+2018,bolsonaro,PB,Paraíba,Nordeste,Fernando Haddad,PT,65.0,Jair Bolsonaro,PSL,35.0,2
+2018,bolsonaro,PR,Paraná,Sul,Jair Bolsonaro,PSL,68.4,Fernando Haddad,PT,31.6,2
+2018,bolsonaro,PE,Pernambuco,Nordeste,Fernando Haddad,PT,66.5,Jair Bolsonaro,PSL,33.5,2
+2018,bolsonaro,PI,Piauí,Nordeste,Fernando Haddad,PT,77.1,Jair Bolsonaro,PSL,22.9,2
+2018,bolsonaro,RJ,Rio de Janeiro,Sudeste,Jair Bolsonaro,PSL,68.0,Fernando Haddad,PT,32.0,2
+2018,bolsonaro,RN,Rio Grande do Norte,Nordeste,Fernando Haddad,PT,63.4,Jair Bolsonaro,PSL,36.6,2
+2018,bolsonaro,RS,Rio Grande do Sul,Sul,Jair Bolsonaro,PSL,63.2,Fernando Haddad,PT,36.8,2
+2018,bolsonaro,RO,Rondônia,Norte,Jair Bolsonaro,PSL,72.2,Fernando Haddad,PT,27.8,2
+2018,bolsonaro,RR,Roraima,Norte,Jair Bolsonaro,PSL,71.5,Fernando Haddad,PT,28.5,2
+2018,bolsonaro,SC,Santa Catarina,Sul,Jair Bolsonaro,PSL,75.9,Fernando Haddad,PT,24.1,2
+2018,bolsonaro,SP,São Paulo,Sudeste,Jair Bolsonaro,PSL,68.0,Fernando Haddad,PT,32.0,2
+2018,bolsonaro,SE,Sergipe,Nordeste,Fernando Haddad,PT,67.2,Jair Bolsonaro,PSL,32.8,2
+2018,bolsonaro,TO,Tocantins,Norte,Fernando Haddad,PT,54.9,Jair Bolsonaro,PSL,45.1,2
+2022,lula-3,AC,Acre,Norte,Jair Bolsonaro,PL,70.3,Luiz Inácio Lula da Silva,PT,29.7,2
+2022,lula-3,AL,Alagoas,Nordeste,Luiz Inácio Lula da Silva,PT,58.7,Jair Bolsonaro,PL,41.3,2
+2022,lula-3,AP,Amapá,Norte,Jair Bolsonaro,PL,51.4,Luiz Inácio Lula da Silva,PT,48.6,2
+2022,lula-3,AM,Amazonas,Norte,Luiz Inácio Lula da Silva,PT,51.1,Jair Bolsonaro,PL,48.9,2
+2022,lula-3,BA,Bahia,Nordeste,Luiz Inácio Lula da Silva,PT,72.1,Jair Bolsonaro,PL,27.9,2
+2022,lula-3,CE,Ceará,Nordeste,Luiz Inácio Lula da Silva,PT,69.9,Jair Bolsonaro,PL,30.1,2
+2022,lula-3,DF,Distrito Federal,Centro-Oeste,Jair Bolsonaro,PL,58.8,Luiz Inácio Lula da Silva,PT,41.2,2
+2022,lula-3,ES,Espírito Santo,Sudeste,Jair Bolsonaro,PL,58.1,Luiz Inácio Lula da Silva,PT,41.9,2
+2022,lula-3,GO,Goiás,Centro-Oeste,Jair Bolsonaro,PL,58.7,Luiz Inácio Lula da Silva,PT,41.3,2
+2022,lula-3,MA,Maranhão,Nordeste,Luiz Inácio Lula da Silva,PT,71.1,Jair Bolsonaro,PL,28.9,2
+2022,lula-3,MT,Mato Grosso,Centro-Oeste,Jair Bolsonaro,PL,65.0,Luiz Inácio Lula da Silva,PT,35.0,2
+2022,lula-3,MS,Mato Grosso do Sul,Centro-Oeste,Jair Bolsonaro,PL,59.5,Luiz Inácio Lula da Silva,PT,40.5,2
+2022,lula-3,MG,Minas Gerais,Sudeste,Luiz Inácio Lula da Silva,PT,50.2,Jair Bolsonaro,PL,49.8,2
+2022,lula-3,PA,Pará,Norte,Luiz Inácio Lula da Silva,PT,52.2,Jair Bolsonaro,PL,47.8,2
+2022,lula-3,PB,Paraíba,Nordeste,Luiz Inácio Lula da Silva,PT,66.6,Jair Bolsonaro,PL,33.4,2
+2022,lula-3,PR,Paraná,Sul,Jair Bolsonaro,PL,62.5,Luiz Inácio Lula da Silva,PT,37.5,2
+2022,lula-3,PE,Pernambuco,Nordeste,Luiz Inácio Lula da Silva,PT,67.0,Jair Bolsonaro,PL,33.0,2
+2022,lula-3,PI,Piauí,Nordeste,Luiz Inácio Lula da Silva,PT,76.9,Jair Bolsonaro,PL,23.1,2
+2022,lula-3,RJ,Rio de Janeiro,Sudeste,Jair Bolsonaro,PL,56.5,Luiz Inácio Lula da Silva,PT,43.5,2
+2022,lula-3,RN,Rio Grande do Norte,Nordeste,Luiz Inácio Lula da Silva,PT,65.1,Jair Bolsonaro,PL,34.9,2
+2022,lula-3,RS,Rio Grande do Sul,Sul,Jair Bolsonaro,PL,56.3,Luiz Inácio Lula da Silva,PT,43.7,2
+2022,lula-3,RO,Rondônia,Norte,Jair Bolsonaro,PL,70.7,Luiz Inácio Lula da Silva,PT,29.3,2
+2022,lula-3,RR,Roraima,Norte,Jair Bolsonaro,PL,76.1,Luiz Inácio Lula da Silva,PT,23.9,2
+2022,lula-3,SC,Santa Catarina,Sul,Jair Bolsonaro,PL,69.2,Luiz Inácio Lula da Silva,PT,30.8,2
+2022,lula-3,SP,São Paulo,Sudeste,Jair Bolsonaro,PL,55.2,Luiz Inácio Lula da Silva,PT,44.8,2
+2022,lula-3,SE,Sergipe,Nordeste,Luiz Inácio Lula da Silva,PT,67.2,Jair Bolsonaro,PL,32.8,2
+2022,lula-3,TO,Tocantins,Norte,Jair Bolsonaro,PL,51.4,Luiz Inácio Lula da Silva,PT,48.6,2

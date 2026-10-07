@@ -1,0 +1,1081 @@
+mandato_id_ref,ano,uf,estado_nome,regiao,area_tematica,valor_pago_brl,populacao_estimada,valor_per_capita_brl
+itamar-franco-1992,1994,AC,Acre,Norte,Saúde,124796126.3,830026,150.35
+itamar-franco-1992,1994,AC,Acre,Norte,Educação,98054099.24,830026,118.13
+itamar-franco-1992,1994,AC,Acre,Norte,Infraestrutura,47541381.45,830026,57.28
+itamar-franco-1992,1994,AC,Acre,Norte,Segurança Pública,26742027.06,830026,32.22
+itamar-franco-1992,1994,AL,Alagoas,Nordeste,Saúde,179340929.57,3127511,57.34
+itamar-franco-1992,1994,AL,Alagoas,Nordeste,Educação,140910730.38,3127511,45.06
+itamar-franco-1992,1994,AL,Alagoas,Nordeste,Infraestrutura,68320354.12,3127511,21.84
+itamar-franco-1992,1994,AL,Alagoas,Nordeste,Segurança Pública,38430199.19,3127511,12.29
+itamar-franco-1992,1994,AP,Amapá,Norte,Saúde,98900905.64,733508,134.83
+itamar-franco-1992,1994,AP,Amapá,Norte,Educação,77707854.43,733508,105.94
+itamar-franco-1992,1994,AP,Amapá,Norte,Infraestrutura,37676535.48,733508,51.36
+itamar-franco-1992,1994,AP,Amapá,Norte,Segurança Pública,21193051.21,733508,28.89
+itamar-franco-1992,1994,AM,Amazonas,Norte,Saúde,170831802.07,3941175,43.35
+itamar-franco-1992,1994,AM,Amazonas,Norte,Educação,134224987.34,3941175,34.06
+itamar-franco-1992,1994,AM,Amazonas,Norte,Infraestrutura,65078781.74,3941175,16.51
+itamar-franco-1992,1994,AM,Amazonas,Norte,Segurança Pública,36606814.73,3941175,9.29
+itamar-franco-1992,1994,BA,Bahia,Nordeste,Saúde,595424883.75,14136417,42.12
+itamar-franco-1992,1994,BA,Bahia,Nordeste,Educação,467833837.23,14136417,33.09
+itamar-franco-1992,1994,BA,Bahia,Nordeste,Infraestrutura,226828527.14,14136417,16.05
+itamar-franco-1992,1994,BA,Bahia,Nordeste,Segurança Pública,127591046.52,14136417,9.03
+itamar-franco-1992,1994,CE,Ceará,Nordeste,Saúde,405647090.89,8791688,46.14
+itamar-franco-1992,1994,CE,Ceará,Nordeste,Educação,318722714.27,8791688,36.25
+itamar-franco-1992,1994,CE,Ceará,Nordeste,Infraestrutura,154532225.1,8791688,17.58
+itamar-franco-1992,1994,CE,Ceará,Nordeste,Segurança Pública,86924376.62,8791688,9.89
+itamar-franco-1992,1994,DF,Distrito Federal,Centro-Oeste,Saúde,91771758.74,2817068,32.58
+itamar-franco-1992,1994,DF,Distrito Federal,Centro-Oeste,Educação,72106381.87,2817068,25.6
+itamar-franco-1992,1994,DF,Distrito Federal,Centro-Oeste,Infraestrutura,34960670.0,2817068,12.41
+itamar-franco-1992,1994,DF,Distrito Federal,Centro-Oeste,Segurança Pública,19665376.87,2817068,6.98
+itamar-franco-1992,1994,ES,Espírito Santo,Sudeste,Saúde,137644367.79,3833486,35.91
+itamar-franco-1992,1994,ES,Espírito Santo,Sudeste,Educação,108149146.12,3833486,28.21
+itamar-franco-1992,1994,ES,Espírito Santo,Sudeste,Infraestrutura,52435949.63,3833486,13.68
+itamar-franco-1992,1994,ES,Espírito Santo,Sudeste,Segurança Pública,29495221.67,3833486,7.69
+itamar-franco-1992,1994,GO,Goiás,Centro-Oeste,Saúde,254241261.06,7055228,36.04
+itamar-franco-1992,1994,GO,Goiás,Centro-Oeste,Educação,199760990.83,7055228,28.31
+itamar-franco-1992,1994,GO,Goiás,Centro-Oeste,Infraestrutura,96853813.74,7055228,13.73
+itamar-franco-1992,1994,GO,Goiás,Centro-Oeste,Segurança Pública,54480270.23,7055228,7.72
+itamar-franco-1992,1994,MA,Maranhão,Nordeste,Saúde,349303465.93,6775152,51.56
+itamar-franco-1992,1994,MA,Maranhão,Nordeste,Educação,274452723.23,6775152,40.51
+itamar-franco-1992,1994,MA,Maranhão,Nordeste,Infraestrutura,133067987.02,6775152,19.64
+itamar-franco-1992,1994,MA,Maranhão,Nordeste,Segurança Pública,74850742.7,6775152,11.05
+itamar-franco-1992,1994,MT,Mato Grosso,Centro-Oeste,Saúde,151613776.76,3658813,41.44
+itamar-franco-1992,1994,MT,Mato Grosso,Centro-Oeste,Educação,119125110.31,3658813,32.56
+itamar-franco-1992,1994,MT,Mato Grosso,Centro-Oeste,Infraestrutura,57757629.24,3658813,15.79
+itamar-franco-1992,1994,MT,Mato Grosso,Centro-Oeste,Segurança Pública,32488666.45,3658813,8.88
+itamar-franco-1992,1994,MS,Mato Grosso do Sul,Centro-Oeste,Saúde,104140810.59,2756700,37.78
+itamar-franco-1992,1994,MS,Mato Grosso do Sul,Centro-Oeste,Educação,81824922.61,2756700,29.68
+itamar-franco-1992,1994,MS,Mato Grosso do Sul,Centro-Oeste,Infraestrutura,39672689.75,2756700,14.39
+itamar-franco-1992,1994,MS,Mato Grosso do Sul,Centro-Oeste,Segurança Pública,22315887.98,2756700,8.1
+itamar-franco-1992,1994,MG,Minas Gerais,Sudeste,Saúde,655021589.6,20538718,31.89
+itamar-franco-1992,1994,MG,Minas Gerais,Sudeste,Educação,514659820.4,20538718,25.06
+itamar-franco-1992,1994,MG,Minas Gerais,Sudeste,Infraestrutura,249532034.13,20538718,12.15
+itamar-franco-1992,1994,MG,Minas Gerais,Sudeste,Segurança Pública,140361769.2,20538718,6.83
+itamar-franco-1992,1994,PA,Pará,Norte,Saúde,359580421.18,8116132,44.3
+itamar-franco-1992,1994,PA,Pará,Norte,Educação,282527473.79,8116132,34.81
+itamar-franco-1992,1994,PA,Pará,Norte,Infraestrutura,136983017.59,8116132,16.88
+itamar-franco-1992,1994,PA,Pará,Norte,Segurança Pública,77052947.4,8116132,9.49
+itamar-franco-1992,1994,PB,Paraíba,Nordeste,Saúde,218344273.45,3974495,54.94
+itamar-franco-1992,1994,PB,Paraíba,Nordeste,Educação,171556214.85,3974495,43.16
+itamar-franco-1992,1994,PB,Paraíba,Nordeste,Infraestrutura,83178770.84,3974495,20.93
+itamar-franco-1992,1994,PB,Paraíba,Nordeste,Segurança Pública,46788058.6,3974495,11.77
+itamar-franco-1992,1994,PR,Paraná,Sul,Saúde,374103670.4,11443208,32.69
+itamar-franco-1992,1994,PR,Paraná,Sul,Educação,293938598.17,11443208,25.69
+itamar-franco-1992,1994,PR,Paraná,Sul,Infraestrutura,142515683.96,11443208,12.45
+itamar-franco-1992,1994,PR,Paraná,Sul,Segurança Pública,80165072.23,11443208,7.01
+itamar-franco-1992,1994,PE,Pernambuco,Nordeste,Saúde,394136370.93,9058155,43.51
+itamar-franco-1992,1994,PE,Pernambuco,Nordeste,Educação,309678577.16,9058155,34.19
+itamar-franco-1992,1994,PE,Pernambuco,Nordeste,Infraestrutura,150147188.92,9058155,16.58
+itamar-franco-1992,1994,PE,Pernambuco,Nordeste,Segurança Pública,84457793.77,9058155,9.32
+itamar-franco-1992,1994,PI,Piauí,Nordeste,Saúde,187798048.93,3269200,57.44
+itamar-franco-1992,1994,PI,Piauí,Nordeste,Educação,147555609.88,3269200,45.14
+itamar-franco-1992,1994,PI,Piauí,Nordeste,Infraestrutura,71542113.88,3269200,21.88
+itamar-franco-1992,1994,PI,Piauí,Nordeste,Segurança Pública,40242439.06,3269200,12.31
+itamar-franco-1992,1994,RJ,Rio de Janeiro,Sudeste,Saúde,464983102.19,16054524,28.96
+itamar-franco-1992,1994,RJ,Rio de Janeiro,Sudeste,Educação,365343866.01,16054524,22.76
+itamar-franco-1992,1994,RJ,Rio de Janeiro,Sudeste,Infraestrutura,177136419.88,16054524,11.03
+itamar-franco-1992,1994,RJ,Rio de Janeiro,Sudeste,Segurança Pública,99639236.18,16054524,6.21
+itamar-franco-1992,1994,RN,Rio Grande do Norte,Nordeste,Saúde,186356466.84,3302406,56.43
+itamar-franco-1992,1994,RN,Rio Grande do Norte,Nordeste,Educação,146422938.23,3302406,44.34
+itamar-franco-1992,1994,RN,Rio Grande do Norte,Nordeste,Infraestrutura,70992939.75,3302406,21.5
+itamar-franco-1992,1994,RN,Rio Grande do Norte,Nordeste,Segurança Pública,39933528.61,3302406,12.09
+itamar-franco-1992,1994,RS,Rio Grande do Sul,Sul,Saúde,345045778.76,10880506,31.71
+itamar-franco-1992,1994,RS,Rio Grande do Sul,Sul,Educação,271107397.6,10880506,24.92
+itamar-franco-1992,1994,RS,Rio Grande do Sul,Sul,Infraestrutura,131446010.96,10880506,12.08
+itamar-franco-1992,1994,RS,Rio Grande do Sul,Sul,Segurança Pública,73938381.16,10880506,6.8
+itamar-franco-1992,1994,RO,Rondônia,Norte,Saúde,107615284.78,1581016,68.07
+itamar-franco-1992,1994,RO,Rondônia,Norte,Educação,84554866.61,1581016,53.48
+itamar-franco-1992,1994,RO,Rondônia,Norte,Infraestrutura,40996298.96,1581016,25.93
+itamar-franco-1992,1994,RO,Rondônia,Norte,Segurança Pública,23060418.17,1581016,14.59
+itamar-franco-1992,1994,RR,Roraima,Norte,Saúde,75318283.78,636303,118.37
+itamar-franco-1992,1994,RR,Roraima,Norte,Educação,59178651.54,636303,93.0
+itamar-franco-1992,1994,RR,Roraima,Norte,Infraestrutura,28692679.54,636303,45.09
+itamar-franco-1992,1994,RR,Roraima,Norte,Segurança Pública,16139632.24,636303,25.36
+itamar-franco-1992,1994,SC,Santa Catarina,Sul,Saúde,234125061.65,7609601,30.77
+itamar-franco-1992,1994,SC,Santa Catarina,Sul,Educação,183955405.58,7609601,24.17
+itamar-franco-1992,1994,SC,Santa Catarina,Sul,Infraestrutura,89190499.67,7609601,11.72
+itamar-franco-1992,1994,SC,Santa Catarina,Sul,Segurança Pública,50169656.07,7609601,6.59
+itamar-franco-1992,1994,SP,São Paulo,Sudeste,Saúde,1213105566.51,44420459,27.31
+itamar-franco-1992,1994,SP,São Paulo,Sudeste,Educação,953154373.68,44420459,21.46
+itamar-franco-1992,1994,SP,São Paulo,Sudeste,Infraestrutura,462135453.91,44420459,10.4
+itamar-franco-1992,1994,SP,São Paulo,Sudeste,Segurança Pública,259951192.82,44420459,5.85
+itamar-franco-1992,1994,SE,Sergipe,Nordeste,Saúde,157084691.3,2209558,71.09
+itamar-franco-1992,1994,SE,Sergipe,Nordeste,Educação,123423686.02,2209558,55.86
+itamar-franco-1992,1994,SE,Sergipe,Nordeste,Infraestrutura,59841787.16,2209558,27.08
+itamar-franco-1992,1994,SE,Sergipe,Nordeste,Segurança Pública,33661005.28,2209558,15.23
+itamar-franco-1992,1994,TO,Tocantins,Norte,Saúde,140717210.6,1511459,93.1
+itamar-franco-1992,1994,TO,Tocantins,Norte,Educação,110563522.62,1511459,73.15
+itamar-franco-1992,1994,TO,Tocantins,Norte,Infraestrutura,53606556.42,1511459,35.47
+itamar-franco-1992,1994,TO,Tocantins,Norte,Segurança Pública,30153687.99,1511459,19.95
+fhc-1995,1997,AC,Acre,Norte,Saúde,283320935.39,830026,341.34
+fhc-1995,1997,AC,Acre,Norte,Educação,222609306.38,830026,268.2
+fhc-1995,1997,AC,Acre,Norte,Infraestrutura,107931784.91,830026,130.03
+fhc-1995,1997,AC,Acre,Norte,Segurança Pública,60711629.01,830026,73.14
+fhc-1995,1997,AL,Alagoas,Nordeste,Saúde,407152380.65,3127511,130.18
+fhc-1995,1997,AL,Alagoas,Nordeste,Educação,319905441.94,3127511,102.29
+fhc-1995,1997,AL,Alagoas,Nordeste,Infraestrutura,155105668.82,3127511,49.59
+fhc-1995,1997,AL,Alagoas,Nordeste,Segurança Pública,87246938.71,3127511,27.9
+fhc-1995,1997,AP,Amapá,Norte,Saúde,224531785.77,733508,306.11
+fhc-1995,1997,AP,Amapá,Norte,Educação,176417831.68,733508,240.51
+fhc-1995,1997,AP,Amapá,Norte,Infraestrutura,85535918.39,733508,116.61
+fhc-1995,1997,AP,Amapá,Norte,Segurança Pública,48113954.09,733508,65.59
+fhc-1995,1997,AM,Amazonas,Norte,Saúde,387834361.46,3941175,98.41
+fhc-1995,1997,AM,Amazonas,Norte,Educação,304726998.29,3941175,77.32
+fhc-1995,1997,AM,Amazonas,Norte,Infraestrutura,147746423.41,3941175,37.49
+fhc-1995,1997,AM,Amazonas,Norte,Segurança Pública,83107363.17,3941175,21.09
+fhc-1995,1997,BA,Bahia,Nordeste,Saúde,1351775411.76,14136417,95.62
+fhc-1995,1997,BA,Bahia,Nordeste,Educação,1062109252.1,14136417,75.13
+fhc-1995,1997,BA,Bahia,Nordeste,Infraestrutura,514962061.62,14136417,36.43
+fhc-1995,1997,BA,Bahia,Nordeste,Segurança Pública,289666159.66,14136417,20.49
+fhc-1995,1997,CE,Ceará,Nordeste,Saúde,920928530.67,8791688,104.75
+fhc-1995,1997,CE,Ceará,Nordeste,Educação,723586702.67,8791688,82.3
+fhc-1995,1997,CE,Ceará,Nordeste,Infraestrutura,350829916.44,8791688,39.9
+fhc-1995,1997,CE,Ceará,Nordeste,Segurança Pública,197341828.0,8791688,22.45
+fhc-1995,1997,DF,Distrito Federal,Centro-Oeste,Saúde,208346695.52,2817068,73.96
+fhc-1995,1997,DF,Distrito Federal,Centro-Oeste,Educação,163700975.05,2817068,58.11
+fhc-1995,1997,DF,Distrito Federal,Centro-Oeste,Infraestrutura,79370169.72,2817068,28.17
+fhc-1995,1997,DF,Distrito Federal,Centro-Oeste,Segurança Pública,44645720.47,2817068,15.85
+fhc-1995,1997,ES,Espírito Santo,Sudeste,Saúde,312489916.06,3833486,81.52
+fhc-1995,1997,ES,Espírito Santo,Sudeste,Educação,245527791.19,3833486,64.05
+fhc-1995,1997,ES,Espírito Santo,Sudeste,Infraestrutura,119043777.55,3833486,31.05
+fhc-1995,1997,ES,Espírito Santo,Sudeste,Segurança Pública,66962124.87,3833486,17.47
+fhc-1995,1997,GO,Goiás,Centro-Oeste,Saúde,577196376.46,7055228,81.81
+fhc-1995,1997,GO,Goiás,Centro-Oeste,Educação,453511438.65,7055228,64.28
+fhc-1995,1997,GO,Goiás,Centro-Oeste,Infraestrutura,219884333.89,7055228,31.17
+fhc-1995,1997,GO,Goiás,Centro-Oeste,Segurança Pública,123684937.81,7055228,17.53
+fhc-1995,1997,MA,Maranhão,Nordeste,Saúde,793013274.0,6775152,117.05
+fhc-1995,1997,MA,Maranhão,Nordeste,Educação,623081858.14,6775152,91.97
+fhc-1995,1997,MA,Maranhão,Nordeste,Infraestrutura,302100294.86,6775152,44.59
+fhc-1995,1997,MA,Maranhão,Nordeste,Segurança Pública,169931415.86,6775152,25.08
+fhc-1995,1997,MT,Mato Grosso,Centro-Oeste,Saúde,344204249.94,3658813,94.08
+fhc-1995,1997,MT,Mato Grosso,Centro-Oeste,Educação,270446196.38,3658813,73.92
+fhc-1995,1997,MT,Mato Grosso,Centro-Oeste,Infraestrutura,131125428.55,3658813,35.84
+fhc-1995,1997,MT,Mato Grosso,Centro-Oeste,Segurança Pública,73758053.56,3658813,20.16
+fhc-1995,1997,MS,Mato Grosso do Sul,Centro-Oeste,Saúde,236427786.22,2756700,85.76
+fhc-1995,1997,MS,Mato Grosso do Sul,Centro-Oeste,Educação,185764689.17,2756700,67.39
+fhc-1995,1997,MS,Mato Grosso do Sul,Centro-Oeste,Infraestrutura,90067728.08,2756700,32.67
+fhc-1995,1997,MS,Mato Grosso do Sul,Centro-Oeste,Segurança Pública,50663097.05,2756700,18.38
+fhc-1995,1997,MG,Minas Gerais,Sudeste,Saúde,1487076041.25,20538718,72.4
+fhc-1995,1997,MG,Minas Gerais,Sudeste,Educação,1168416889.56,20538718,56.89
+fhc-1995,1997,MG,Minas Gerais,Sudeste,Infraestrutura,566505158.57,20538718,27.58
+fhc-1995,1997,MG,Minas Gerais,Sudeste,Segurança Pública,318659151.7,20538718,15.52
+fhc-1995,1997,PA,Pará,Norte,Saúde,816344739.99,8116132,100.58
+fhc-1995,1997,PA,Pará,Norte,Educação,641413724.28,8116132,79.03
+fhc-1995,1997,PA,Pará,Norte,Infraestrutura,310988472.38,8116132,38.32
+fhc-1995,1997,PA,Pará,Norte,Segurança Pública,174931015.71,8116132,21.55
+fhc-1995,1997,PB,Paraíba,Nordeste,Saúde,495700512.7,3974495,124.72
+fhc-1995,1997,PB,Paraíba,Nordeste,Educação,389478974.26,3974495,97.99
+fhc-1995,1997,PB,Paraíba,Nordeste,Infraestrutura,188838290.55,3974495,47.51
+fhc-1995,1997,PB,Paraíba,Nordeste,Segurança Pública,106221538.44,3974495,26.73
+fhc-1995,1997,PR,Paraná,Sul,Saúde,849316440.92,11443208,74.22
+fhc-1995,1997,PR,Paraná,Sul,Educação,667320060.72,11443208,58.32
+fhc-1995,1997,PR,Paraná,Sul,Infraestrutura,323549120.35,11443208,28.27
+fhc-1995,1997,PR,Paraná,Sul,Segurança Pública,181996380.2,11443208,15.9
+fhc-1995,1997,PE,Pernambuco,Nordeste,Saúde,894796085.34,9058155,98.78
+fhc-1995,1997,PE,Pernambuco,Nordeste,Educação,703054067.06,9058155,77.62
+fhc-1995,1997,PE,Pernambuco,Nordeste,Infraestrutura,340874699.18,9058155,37.63
+fhc-1995,1997,PE,Pernambuco,Nordeste,Segurança Pública,191742018.29,9058155,21.17
+fhc-1995,1997,PI,Piauí,Nordeste,Saúde,426352327.31,3269200,130.41
+fhc-1995,1997,PI,Piauí,Nordeste,Educação,334991114.32,3269200,102.47
+fhc-1995,1997,PI,Piauí,Nordeste,Infraestrutura,162419934.21,3269200,49.68
+fhc-1995,1997,PI,Piauí,Nordeste,Segurança Pública,91361213.0,3269200,27.95
+fhc-1995,1997,RJ,Rio de Janeiro,Sudeste,Saúde,1055637313.08,16054524,65.75
+fhc-1995,1997,RJ,Rio de Janeiro,Sudeste,Educação,829429317.42,16054524,51.66
+fhc-1995,1997,RJ,Rio de Janeiro,Sudeste,Infraestrutura,402147547.84,16054524,25.05
+fhc-1995,1997,RJ,Rio de Janeiro,Sudeste,Segurança Pública,226207995.66,16054524,14.09
+fhc-1995,1997,RN,Rio Grande do Norte,Nordeste,Saúde,423079546.34,3302406,128.11
+fhc-1995,1997,RN,Rio Grande do Norte,Nordeste,Educação,332419643.55,3302406,100.66
+fhc-1995,1997,RN,Rio Grande do Norte,Nordeste,Infraestrutura,161173160.51,3302406,48.8
+fhc-1995,1997,RN,Rio Grande do Norte,Nordeste,Segurança Pública,90659902.79,3302406,27.45
+fhc-1995,1997,RS,Rio Grande do Sul,Sul,Saúde,783347173.4,10880506,72.0
+fhc-1995,1997,RS,Rio Grande do Sul,Sul,Educação,615487064.81,10880506,56.57
+fhc-1995,1997,RS,Rio Grande do Sul,Sul,Infraestrutura,298417970.82,10880506,27.43
+fhc-1995,1997,RS,Rio Grande do Sul,Sul,Segurança Pública,167860108.59,10880506,15.43
+fhc-1995,1997,RO,Rondônia,Norte,Saúde,244315781.66,1581016,154.53
+fhc-1995,1997,RO,Rondônia,Norte,Educação,191962399.88,1581016,121.42
+fhc-1995,1997,RO,Rondônia,Norte,Infraestrutura,93072678.73,1581016,58.87
+fhc-1995,1997,RO,Rondônia,Norte,Segurança Pública,52353381.79,1581016,33.11
+fhc-1995,1997,RR,Roraima,Norte,Saúde,170992860.47,636303,268.73
+fhc-1995,1997,RR,Roraima,Norte,Educação,134351533.23,636303,211.14
+fhc-1995,1997,RR,Roraima,Norte,Infraestrutura,65140137.32,636303,102.37
+fhc-1995,1997,RR,Roraima,Norte,Segurança Pública,36641327.24,636303,57.58
+fhc-1995,1997,SC,Santa Catarina,Sul,Saúde,531527166.98,7609601,69.85
+fhc-1995,1997,SC,Santa Catarina,Sul,Educação,417628488.34,7609601,54.88
+fhc-1995,1997,SC,Santa Catarina,Sul,Infraestrutura,202486539.8,7609601,26.61
+fhc-1995,1997,SC,Santa Catarina,Sul,Segurança Pública,113898678.64,7609601,14.97
+fhc-1995,1997,SP,São Paulo,Sudeste,Saúde,2754077502.34,44420459,62.0
+fhc-1995,1997,SP,São Paulo,Sudeste,Educação,2163918037.55,44420459,48.71
+fhc-1995,1997,SP,São Paulo,Sudeste,Infraestrutura,1049172381.84,44420459,23.62
+fhc-1995,1997,SP,São Paulo,Sudeste,Segurança Pública,590159464.79,44420459,13.29
+fhc-1995,1997,SE,Sergipe,Nordeste,Saúde,356624704.57,2209558,161.4
+fhc-1995,1997,SE,Sergipe,Nordeste,Educação,280205125.02,2209558,126.82
+fhc-1995,1997,SE,Sergipe,Nordeste,Infraestrutura,135857030.31,2209558,61.49
+fhc-1995,1997,SE,Sergipe,Nordeste,Segurança Pública,76419579.55,2209558,34.59
+fhc-1995,1997,TO,Tocantins,Norte,Saúde,319466099.74,1511459,211.36
+fhc-1995,1997,TO,Tocantins,Norte,Educação,251009078.37,1511459,166.07
+fhc-1995,1997,TO,Tocantins,Norte,Infraestrutura,121701371.33,1511459,80.52
+fhc-1995,1997,TO,Tocantins,Norte,Segurança Pública,68457021.37,1511459,45.29
+fhc-1999,2001,AC,Acre,Norte,Saúde,529540319.71,830026,637.98
+fhc-1999,2001,AC,Acre,Norte,Educação,416067394.06,830026,501.27
+fhc-1999,2001,AC,Acre,Norte,Infraestrutura,201729645.61,830026,243.04
+fhc-1999,2001,AC,Acre,Norte,Segurança Pública,113472925.65,830026,136.71
+fhc-1999,2001,AL,Alagoas,Nordeste,Saúde,760987187.64,3127511,243.32
+fhc-1999,2001,AL,Alagoas,Nordeste,Educação,597918504.58,3127511,191.18
+fhc-1999,2001,AL,Alagoas,Nordeste,Infraestrutura,289899881.01,3127511,92.69
+fhc-1999,2001,AL,Alagoas,Nordeste,Segurança Pública,163068683.07,3127511,52.14
+fhc-1999,2001,AP,Amapá,Norte,Saúde,419660599.6,733508,572.13
+fhc-1999,2001,AP,Amapá,Norte,Educação,329733328.26,733508,449.53
+fhc-1999,2001,AP,Amapá,Norte,Infraestrutura,159870704.61,733508,217.95
+fhc-1999,2001,AP,Amapá,Norte,Segurança Pública,89927271.34,733508,122.6
+fhc-1999,2001,AM,Amazonas,Norte,Saúde,724880889.87,3941175,183.93
+fhc-1999,2001,AM,Amazonas,Norte,Educação,569549270.61,3941175,144.51
+fhc-1999,2001,AM,Amazonas,Norte,Infraestrutura,276145100.9,3941175,70.07
+fhc-1999,2001,AM,Amazonas,Norte,Segurança Pública,155331619.26,3941175,39.41
+fhc-1999,2001,BA,Bahia,Nordeste,Saúde,2526532614.84,14136417,178.73
+fhc-1999,2001,BA,Bahia,Nordeste,Educação,1985132768.8,14136417,140.43
+fhc-1999,2001,BA,Bahia,Nordeste,Infraestrutura,962488615.18,14136417,68.09
+fhc-1999,2001,BA,Bahia,Nordeste,Segurança Pública,541399846.04,14136417,38.3
+fhc-1999,2001,CE,Ceará,Nordeste,Saúde,1721259277.56,8791688,195.78
+fhc-1999,2001,CE,Ceará,Nordeste,Educação,1352418003.79,8791688,153.83
+fhc-1999,2001,CE,Ceará,Nordeste,Infraestrutura,655717820.02,8791688,74.58
+fhc-1999,2001,CE,Ceará,Nordeste,Segurança Pública,368841273.76,8791688,41.95
+fhc-1999,2001,DF,Distrito Federal,Centro-Oeste,Saúde,389409895.19,2817068,138.23
+fhc-1999,2001,DF,Distrito Federal,Centro-Oeste,Educação,305964917.65,2817068,108.61
+fhc-1999,2001,DF,Distrito Federal,Centro-Oeste,Infraestrutura,148346626.74,2817068,52.66
+fhc-1999,2001,DF,Distrito Federal,Centro-Oeste,Segurança Pública,83444977.54,2817068,29.62
+fhc-1999,2001,ES,Espírito Santo,Sudeste,Saúde,584058533.6,3833486,152.36
+fhc-1999,2001,ES,Espírito Santo,Sudeste,Educação,458903133.54,3833486,119.71
+fhc-1999,2001,ES,Espírito Santo,Sudeste,Infraestrutura,222498488.99,3833486,58.04
+fhc-1999,2001,ES,Espírito Santo,Sudeste,Segurança Pública,125155400.06,3833486,32.65
+fhc-1999,2001,GO,Goiás,Centro-Oeste,Saúde,1078807513.15,7055228,152.91
+fhc-1999,2001,GO,Goiás,Centro-Oeste,Educação,847634474.62,7055228,120.14
+fhc-1999,2001,GO,Goiás,Centro-Oeste,Infraestrutura,410974290.73,7055228,58.25
+fhc-1999,2001,GO,Goiás,Centro-Oeste,Segurança Pública,231173038.53,7055228,32.77
+fhc-1999,2001,MA,Maranhão,Nordeste,Saúde,1482179571.65,6775152,218.77
+fhc-1999,2001,MA,Maranhão,Nordeste,Educação,1164569663.44,6775152,171.89
+fhc-1999,2001,MA,Maranhão,Nordeste,Infraestrutura,564639836.82,6775152,83.34
+fhc-1999,2001,MA,Maranhão,Nordeste,Segurança Pública,317609908.21,6775152,46.88
+fhc-1999,2001,MT,Mato Grosso,Centro-Oeste,Saúde,643334133.82,3658813,175.83
+fhc-1999,2001,MT,Mato Grosso,Centro-Oeste,Educação,505476819.43,3658813,138.15
+fhc-1999,2001,MT,Mato Grosso,Centro-Oeste,Infraestrutura,245079670.03,3658813,66.98
+fhc-1999,2001,MT,Mato Grosso,Centro-Oeste,Segurança Pública,137857314.39,3658813,37.68
+fhc-1999,2001,MS,Mato Grosso do Sul,Centro-Oeste,Saúde,441894790.9,2756700,160.3
+fhc-1999,2001,MS,Mato Grosso do Sul,Centro-Oeste,Educação,347203050.0,2756700,125.95
+fhc-1999,2001,MS,Mato Grosso do Sul,Centro-Oeste,Infraestrutura,168340872.72,2756700,61.07
+fhc-1999,2001,MS,Mato Grosso do Sul,Centro-Oeste,Segurança Pública,94691740.91,2756700,34.35
+fhc-1999,2001,MG,Minas Gerais,Sudeste,Saúde,2779415934.25,20538718,135.33
+fhc-1999,2001,MG,Minas Gerais,Sudeste,Educação,2183826805.48,20538718,106.33
+fhc-1999,2001,MG,Minas Gerais,Sudeste,Infraestrutura,1058825117.81,20538718,51.55
+fhc-1999,2001,MG,Minas Gerais,Sudeste,Segurança Pública,595589128.77,20538718,29.0
+fhc-1999,2001,PA,Pará,Norte,Saúde,1525787192.59,8116132,187.99
+fhc-1999,2001,PA,Pará,Norte,Educação,1198832794.18,8116132,147.71
+fhc-1999,2001,PA,Pará,Norte,Infraestrutura,581252263.85,8116132,71.62
+fhc-1999,2001,PA,Pará,Norte,Segurança Pública,326954398.41,8116132,40.28
+fhc-1999,2001,PB,Paraíba,Nordeste,Saúde,926487863.02,3974495,233.11
+fhc-1999,2001,PB,Paraíba,Nordeste,Educação,727954749.52,3974495,183.16
+fhc-1999,2001,PB,Paraíba,Nordeste,Infraestrutura,352947757.34,3974495,88.8
+fhc-1999,2001,PB,Paraíba,Nordeste,Segurança Pública,198533113.5,3974495,49.95
+fhc-1999,2001,PR,Paraná,Sul,Saúde,1587412871.71,11443208,138.72
+fhc-1999,2001,PR,Paraná,Sul,Educação,1247252970.63,11443208,109.0
+fhc-1999,2001,PR,Paraná,Sul,Infraestrutura,604728713.03,11443208,52.85
+fhc-1999,2001,PR,Paraná,Sul,Segurança Pública,340159901.08,11443208,29.73
+fhc-1999,2001,PE,Pernambuco,Nordeste,Saúde,1672416492.85,9058155,184.63
+fhc-1999,2001,PE,Pernambuco,Nordeste,Educação,1314041530.09,9058155,145.07
+fhc-1999,2001,PE,Pernambuco,Nordeste,Infraestrutura,637111044.89,9058155,70.34
+fhc-1999,2001,PE,Pernambuco,Nordeste,Segurança Pública,358374962.75,9058155,39.56
+fhc-1999,2001,PI,Piauí,Nordeste,Saúde,796872802.23,3269200,243.75
+fhc-1999,2001,PI,Piauí,Nordeste,Educação,626114344.61,3269200,191.52
+fhc-1999,2001,PI,Piauí,Nordeste,Infraestrutura,303570591.33,3269200,92.86
+fhc-1999,2001,PI,Piauí,Nordeste,Segurança Pública,170758457.62,3269200,52.23
+fhc-1999,2001,RJ,Rio de Janeiro,Sudeste,Saúde,1973036406.59,16054524,122.9
+fhc-1999,2001,RJ,Rio de Janeiro,Sudeste,Educação,1550242890.89,16054524,96.56
+fhc-1999,2001,RJ,Rio de Janeiro,Sudeste,Infraestrutura,751632916.79,16054524,46.82
+fhc-1999,2001,RJ,Rio de Janeiro,Sudeste,Segurança Pública,422793515.7,16054524,26.33
+fhc-1999,2001,RN,Rio Grande do Norte,Nordeste,Saúde,790755818.75,3302406,239.45
+fhc-1999,2001,RN,Rio Grande do Norte,Nordeste,Educação,621308143.3,3302406,188.14
+fhc-1999,2001,RN,Rio Grande do Norte,Nordeste,Infraestrutura,301240311.9,3302406,91.22
+fhc-1999,2001,RN,Rio Grande do Norte,Nordeste,Segurança Pública,169447675.45,3302406,51.31
+fhc-1999,2001,RS,Rio Grande do Sul,Sul,Saúde,1464113169.33,10880506,134.56
+fhc-1999,2001,RS,Rio Grande do Sul,Sul,Educação,1150374633.04,10880506,105.73
+fhc-1999,2001,RS,Rio Grande do Sul,Sul,Infraestrutura,557757397.84,10880506,51.26
+fhc-1999,2001,RS,Rio Grande do Sul,Sul,Segurança Pública,313738536.28,10880506,28.83
+fhc-1999,2001,RO,Rondônia,Norte,Saúde,456637830.02,1581016,288.83
+fhc-1999,2001,RO,Rondônia,Norte,Educação,358786866.44,1581016,226.93
+fhc-1999,2001,RO,Rondônia,Norte,Infraestrutura,173957268.58,1581016,110.03
+fhc-1999,2001,RO,Rondônia,Norte,Segurança Pública,97850963.57,1581016,61.89
+fhc-1999,2001,RR,Roraima,Norte,Saúde,319593798.74,636303,502.27
+fhc-1999,2001,RR,Roraima,Norte,Educação,251109413.3,636303,394.64
+fhc-1999,2001,RR,Roraima,Norte,Infraestrutura,121750018.57,636303,191.34
+fhc-1999,2001,RR,Roraima,Norte,Segurança Pública,68484385.44,636303,107.63
+fhc-1999,2001,SC,Santa Catarina,Sul,Saúde,993449585.91,7609601,130.55
+fhc-1999,2001,SC,Santa Catarina,Sul,Educação,780567531.78,7609601,102.58
+fhc-1999,2001,SC,Santa Catarina,Sul,Infraestrutura,378456985.11,7609601,49.73
+fhc-1999,2001,SC,Santa Catarina,Sul,Segurança Pública,212882054.12,7609601,27.98
+fhc-1999,2001,SP,São Paulo,Sudeste,Saúde,5147501998.41,44420459,115.88
+fhc-1999,2001,SP,São Paulo,Sudeste,Educação,4044465855.9,44420459,91.05
+fhc-1999,2001,SP,São Paulo,Sudeste,Infraestrutura,1960953142.25,44420459,44.15
+fhc-1999,2001,SP,São Paulo,Sudeste,Segurança Pública,1103036142.52,44420459,24.83
+fhc-1999,2001,SE,Sergipe,Nordeste,Saúde,666548554.97,2209558,301.67
+fhc-1999,2001,SE,Sergipe,Nordeste,Educação,523716721.76,2209558,237.02
+fhc-1999,2001,SE,Sergipe,Nordeste,Infraestrutura,253923259.04,2209558,114.92
+fhc-1999,2001,SE,Sergipe,Nordeste,Segurança Pública,142831833.21,2209558,64.64
+fhc-1999,2001,TO,Tocantins,Norte,Saúde,597097353.09,1511459,395.05
+fhc-1999,2001,TO,Tocantins,Norte,Educação,469147920.29,1511459,310.39
+fhc-1999,2001,TO,Tocantins,Norte,Infraestrutura,227465658.32,1511459,150.49
+fhc-1999,2001,TO,Tocantins,Norte,Segurança Pública,127949432.81,1511459,84.65
+lula-2003,2005,AC,Acre,Norte,Saúde,910674435.18,830026,1097.16
+lula-2003,2005,AC,Acre,Norte,Educação,715529913.35,830026,862.06
+lula-2003,2005,AC,Acre,Norte,Infraestrutura,346923594.35,830026,417.97
+lula-2003,2005,AC,Acre,Norte,Segurança Pública,195144521.82,830026,235.11
+lula-2003,2005,AL,Alagoas,Nordeste,Saúde,1308704080.66,3127511,418.45
+lula-2003,2005,AL,Alagoas,Nordeste,Educação,1028267491.95,3127511,328.78
+lula-2003,2005,AL,Alagoas,Nordeste,Infraestrutura,498553935.49,3127511,159.41
+lula-2003,2005,AL,Alagoas,Nordeste,Segurança Pública,280436588.71,3127511,89.67
+lula-2003,2005,AP,Amapá,Norte,Saúde,721709311.42,733508,983.91
+lula-2003,2005,AP,Amapá,Norte,Educação,567057316.11,733508,773.08
+lula-2003,2005,AP,Amapá,Norte,Infraestrutura,274936880.54,733508,374.82
+lula-2003,2005,AP,Amapá,Norte,Segurança Pública,154651995.3,733508,210.84
+lula-2003,2005,AM,Amazonas,Norte,Saúde,1246610447.55,3941175,316.3
+lula-2003,2005,AM,Amazonas,Norte,Educação,979479637.36,3941175,248.52
+lula-2003,2005,AM,Amazonas,Norte,Infraestrutura,474899218.12,3941175,120.5
+lula-2003,2005,AM,Amazonas,Norte,Segurança Pública,267130810.19,3941175,67.78
+lula-2003,2005,BA,Bahia,Nordeste,Saúde,4344992394.94,14136417,307.36
+lula-2003,2005,BA,Bahia,Nordeste,Educação,3413922596.03,14136417,241.5
+lula-2003,2005,BA,Bahia,Nordeste,Infraestrutura,1655235198.07,14136417,117.09
+lula-2003,2005,BA,Bahia,Nordeste,Segurança Pública,931069798.92,14136417,65.86
+lula-2003,2005,CE,Ceará,Nordeste,Saúde,2960127420.0,8791688,336.7
+lula-2003,2005,CE,Ceará,Nordeste,Educação,2325814401.43,8791688,264.55
+lula-2003,2005,CE,Ceará,Nordeste,Infraestrutura,1127667588.57,8791688,128.27
+lula-2003,2005,CE,Ceará,Nordeste,Segurança Pública,634313018.57,8791688,72.15
+lula-2003,2005,DF,Distrito Federal,Centro-Oeste,Saúde,669685807.02,2817068,237.72
+lula-2003,2005,DF,Distrito Federal,Centro-Oeste,Educação,526181705.51,2817068,186.78
+lula-2003,2005,DF,Distrito Federal,Centro-Oeste,Infraestrutura,255118402.67,2817068,90.56
+lula-2003,2005,DF,Distrito Federal,Centro-Oeste,Segurança Pública,143504101.5,2817068,50.94
+lula-2003,2005,ES,Espírito Santo,Sudeste,Saúde,1004431873.06,3833486,262.02
+lula-2003,2005,ES,Espírito Santo,Sudeste,Educação,789196471.69,3833486,205.87
+lula-2003,2005,ES,Espírito Santo,Sudeste,Infraestrutura,382640713.55,3833486,99.82
+lula-2003,2005,ES,Espírito Santo,Sudeste,Segurança Pública,215235401.37,3833486,56.15
+lula-2003,2005,GO,Goiás,Centro-Oeste,Saúde,1855274067.21,7055228,262.96
+lula-2003,2005,GO,Goiás,Centro-Oeste,Educação,1457715338.52,7055228,206.61
+lula-2003,2005,GO,Goiás,Centro-Oeste,Infraestrutura,706771073.22,7055228,100.18
+lula-2003,2005,GO,Goiás,Centro-Oeste,Segurança Pública,397558728.69,7055228,56.35
+lula-2003,2005,MA,Maranhão,Nordeste,Saúde,2548971237.87,6775152,376.22
+lula-2003,2005,MA,Maranhão,Nordeste,Educação,2002763115.47,6775152,295.6
+lula-2003,2005,MA,Maranhão,Nordeste,Infraestrutura,971036662.04,6775152,143.32
+lula-2003,2005,MA,Maranhão,Nordeste,Segurança Pública,546208122.4,6775152,80.62
+lula-2003,2005,MT,Mato Grosso,Centro-Oeste,Saúde,1106370803.39,3658813,302.39
+lula-2003,2005,MT,Mato Grosso,Centro-Oeste,Educação,869291345.52,3658813,237.59
+lula-2003,2005,MT,Mato Grosso,Centro-Oeste,Infraestrutura,421474591.77,3658813,115.19
+lula-2003,2005,MT,Mato Grosso,Centro-Oeste,Segurança Pública,237079457.87,3658813,64.8
+lula-2003,2005,MS,Mato Grosso do Sul,Centro-Oeste,Saúde,759946455.69,2756700,275.67
+lula-2003,2005,MS,Mato Grosso do Sul,Centro-Oeste,Educação,597100786.62,2756700,216.6
+lula-2003,2005,MS,Mato Grosso do Sul,Centro-Oeste,Infraestrutura,289503411.69,2756700,105.02
+lula-2003,2005,MS,Mato Grosso do Sul,Centro-Oeste,Segurança Pública,162845669.08,2756700,59.07
+lula-2003,2005,MG,Minas Gerais,Sudeste,Saúde,4779887275.45,20538718,232.73
+lula-2003,2005,MG,Minas Gerais,Sudeste,Educação,3755625716.43,20538718,182.86
+lula-2003,2005,MG,Minas Gerais,Sudeste,Infraestrutura,1820909438.27,20538718,88.66
+lula-2003,2005,MG,Minas Gerais,Sudeste,Segurança Pública,1024261559.03,20538718,49.87
+lula-2003,2005,PA,Pará,Norte,Saúde,2623965235.67,8116132,323.3
+lula-2003,2005,PA,Pará,Norte,Educação,2061686970.89,8116132,254.02
+lula-2003,2005,PA,Pará,Norte,Infraestrutura,999605804.07,8116132,123.16
+lula-2003,2005,PA,Pará,Norte,Segurança Pública,562278264.79,8116132,69.28
+lula-2003,2005,PB,Paraíba,Nordeste,Saúde,1593323076.53,3974495,400.89
+lula-2003,2005,PB,Paraíba,Nordeste,Educação,1251896702.99,3974495,314.98
+lula-2003,2005,PB,Paraíba,Nordeste,Infraestrutura,606980219.63,3974495,152.72
+lula-2003,2005,PB,Paraíba,Nordeste,Segurança Pública,341426373.54,3974495,85.9
+lula-2003,2005,PR,Paraná,Sul,Saúde,2729945702.95,11443208,238.56
+lula-2003,2005,PR,Paraná,Sul,Educação,2144957338.03,11443208,187.44
+lula-2003,2005,PR,Paraná,Sul,Infraestrutura,1039979315.41,11443208,90.88
+lula-2003,2005,PR,Paraná,Sul,Segurança Pública,584988364.92,11443208,51.12
+lula-2003,2005,PE,Pernambuco,Nordeste,Saúde,2876130274.32,9058155,317.52
+lula-2003,2005,PE,Pernambuco,Nordeste,Educação,2259816644.11,9058155,249.48
+lula-2003,2005,PE,Pernambuco,Nordeste,Infraestrutura,1095668675.93,9058155,120.96
+lula-2003,2005,PE,Pernambuco,Nordeste,Segurança Pública,616313630.21,9058155,68.04
+lula-2003,2005,PI,Piauí,Nordeste,Saúde,1370418194.93,3269200,419.19
+lula-2003,2005,PI,Piauí,Nordeste,Educação,1076757153.16,3269200,329.36
+lula-2003,2005,PI,Piauí,Nordeste,Infraestrutura,522064074.26,3269200,159.69
+lula-2003,2005,PI,Piauí,Nordeste,Segurança Pública,293661041.77,3269200,89.83
+lula-2003,2005,RJ,Rio de Janeiro,Sudeste,Saúde,3393119934.89,16054524,211.35
+lula-2003,2005,RJ,Rio de Janeiro,Sudeste,Educação,2666022805.99,16054524,166.06
+lula-2003,2005,RJ,Rio de Janeiro,Sudeste,Infraestrutura,1292617118.05,16054524,80.51
+lula-2003,2005,RJ,Rio de Janeiro,Sudeste,Segurança Pública,727097128.91,16054524,45.29
+lula-2003,2005,RN,Rio Grande do Norte,Nordeste,Saúde,1359898541.8,3302406,411.79
+lula-2003,2005,RN,Rio Grande do Norte,Nordeste,Educação,1068491711.41,3302406,323.55
+lula-2003,2005,RN,Rio Grande do Norte,Nordeste,Infraestrutura,518056587.35,3302406,156.87
+lula-2003,2005,RN,Rio Grande do Norte,Nordeste,Segurança Pública,291406830.39,3302406,88.24
+lula-2003,2005,RS,Rio Grande do Sul,Sul,Saúde,2517901628.78,10880506,231.41
+lula-2003,2005,RS,Rio Grande do Sul,Sul,Educação,1978351279.76,10880506,181.83
+lula-2003,2005,RS,Rio Grande do Sul,Sul,Infraestrutura,959200620.49,10880506,88.16
+lula-2003,2005,RS,Rio Grande do Sul,Sul,Segurança Pública,539550349.03,10880506,49.59
+lula-2003,2005,RO,Rondônia,Norte,Saúde,785300726.78,1581016,496.71
+lula-2003,2005,RO,Rondônia,Norte,Educação,617021999.61,1581016,390.27
+lula-2003,2005,RO,Rondônia,Norte,Infraestrutura,299162181.63,1581016,189.22
+lula-2003,2005,RO,Rondônia,Norte,Segurança Pública,168278727.17,1581016,106.44
+lula-2003,2005,RR,Roraima,Norte,Saúde,549619908.66,636303,863.77
+lula-2003,2005,RR,Roraima,Norte,Educação,431844213.95,636303,678.68
+lula-2003,2005,RR,Roraima,Norte,Infraestrutura,209379012.82,636303,329.06
+lula-2003,2005,RR,Roraima,Norte,Segurança Pública,117775694.71,636303,185.09
+lula-2003,2005,SC,Santa Catarina,Sul,Saúde,1708480179.58,7609601,224.52
+lula-2003,2005,SC,Santa Catarina,Sul,Educação,1342377283.96,7609601,176.41
+lula-2003,2005,SC,Santa Catarina,Sul,Infraestrutura,650849592.22,7609601,85.53
+lula-2003,2005,SC,Santa Catarina,Sul,Segurança Pública,366102895.63,7609601,48.11
+lula-2003,2005,SP,São Paulo,Sudeste,Saúde,8852391971.79,44420459,199.29
+lula-2003,2005,SP,São Paulo,Sudeste,Educação,6955450834.98,44420459,156.58
+lula-2003,2005,SP,São Paulo,Sudeste,Infraestrutura,3372339798.78,44420459,75.92
+lula-2003,2005,SP,São Paulo,Sudeste,Segurança Pública,1896941136.81,44420459,42.7
+lula-2003,2005,SE,Sergipe,Nordeste,Saúde,1146293693.26,2209558,518.79
+lula-2003,2005,SE,Sergipe,Nordeste,Educação,900659330.42,2209558,407.62
+lula-2003,2005,SE,Sergipe,Nordeste,Infraestrutura,436683311.72,2209558,197.63
+lula-2003,2005,SE,Sergipe,Nordeste,Segurança Pública,245634362.84,2209558,111.17
+lula-2003,2005,TO,Tocantins,Norte,Saúde,1026855320.6,1511459,679.38
+lula-2003,2005,TO,Tocantins,Norte,Educação,806814894.76,1511459,533.8
+lula-2003,2005,TO,Tocantins,Norte,Infraestrutura,391182979.28,1511459,258.81
+lula-2003,2005,TO,Tocantins,Norte,Segurança Pública,220040425.84,1511459,145.58
+lula-2007,2009,AC,Acre,Norte,Saúde,1416604676.94,830026,1706.7
+lula-2007,2009,AC,Acre,Norte,Educação,1113046531.88,830026,1340.98
+lula-2007,2009,AC,Acre,Norte,Infraestrutura,539658924.55,830026,650.17
+lula-2007,2009,AC,Acre,Norte,Segurança Pública,303558145.06,830026,365.72
+lula-2007,2009,AL,Alagoas,Nordeste,Saúde,2035761903.25,3127511,650.92
+lula-2007,2009,AL,Alagoas,Nordeste,Educação,1599527209.7,3127511,511.44
+lula-2007,2009,AL,Alagoas,Nordeste,Infraestrutura,775528344.1,3127511,247.97
+lula-2007,2009,AL,Alagoas,Nordeste,Segurança Pública,436234693.55,3127511,139.48
+lula-2007,2009,AP,Amapá,Norte,Saúde,1122658928.87,733508,1530.53
+lula-2007,2009,AP,Amapá,Norte,Educação,882089158.4,733508,1202.56
+lula-2007,2009,AP,Amapá,Norte,Infraestrutura,427679591.95,733508,583.06
+lula-2007,2009,AP,Amapá,Norte,Segurança Pública,240569770.47,733508,327.97
+lula-2007,2009,AM,Amazonas,Norte,Saúde,1939171807.3,3941175,492.03
+lula-2007,2009,AM,Amazonas,Norte,Educação,1523634991.45,3941175,386.59
+lula-2007,2009,AM,Amazonas,Norte,Infraestrutura,738732117.07,3941175,187.44
+lula-2007,2009,AM,Amazonas,Norte,Segurança Pública,415536815.85,3941175,105.43
+lula-2007,2009,BA,Bahia,Nordeste,Saúde,6758877058.8,14136417,478.12
+lula-2007,2009,BA,Bahia,Nordeste,Educação,5310546260.49,14136417,375.66
+lula-2007,2009,BA,Bahia,Nordeste,Infraestrutura,2574810308.11,14136417,182.14
+lula-2007,2009,BA,Bahia,Nordeste,Segurança Pública,1448330798.31,14136417,102.45
+lula-2007,2009,CE,Ceará,Nordeste,Saúde,4604642653.34,8791688,523.75
+lula-2007,2009,CE,Ceará,Nordeste,Educação,3617933513.34,8791688,411.52
+lula-2007,2009,CE,Ceará,Nordeste,Infraestrutura,1754149582.22,8791688,199.52
+lula-2007,2009,CE,Ceará,Nordeste,Segurança Pública,986709140.0,8791688,112.23
+lula-2007,2009,DF,Distrito Federal,Centro-Oeste,Saúde,1041733477.58,2817068,369.79
+lula-2007,2009,DF,Distrito Federal,Centro-Oeste,Educação,818504875.24,2817068,290.55
+lula-2007,2009,DF,Distrito Federal,Centro-Oeste,Infraestrutura,396850848.6,2817068,140.87
+lula-2007,2009,DF,Distrito Federal,Centro-Oeste,Segurança Pública,223228602.34,2817068,79.24
+lula-2007,2009,ES,Espírito Santo,Sudeste,Saúde,1562449580.32,3833486,407.58
+lula-2007,2009,ES,Espírito Santo,Sudeste,Educação,1227638955.96,3833486,320.24
+lula-2007,2009,ES,Espírito Santo,Sudeste,Infraestrutura,595218887.74,3833486,155.27
+lula-2007,2009,ES,Espírito Santo,Sudeste,Segurança Pública,334810624.35,3833486,87.34
+lula-2007,2009,GO,Goiás,Centro-Oeste,Saúde,2885981882.32,7055228,409.06
+lula-2007,2009,GO,Goiás,Centro-Oeste,Educação,2267557193.25,7055228,321.4
+lula-2007,2009,GO,Goiás,Centro-Oeste,Infraestrutura,1099421669.46,7055228,155.83
+lula-2007,2009,GO,Goiás,Centro-Oeste,Segurança Pública,618424689.07,7055228,87.65
+lula-2007,2009,MA,Maranhão,Nordeste,Saúde,3965066370.01,6775152,585.24
+lula-2007,2009,MA,Maranhão,Nordeste,Educação,3115409290.72,6775152,459.83
+lula-2007,2009,MA,Maranhão,Nordeste,Infraestrutura,1510501474.29,6775152,222.95
+lula-2007,2009,MA,Maranhão,Nordeste,Segurança Pública,849657079.29,6775152,125.41
+lula-2007,2009,MT,Mato Grosso,Centro-Oeste,Saúde,1721021249.72,3658813,470.38
+lula-2007,2009,MT,Mato Grosso,Centro-Oeste,Educação,1352230981.92,3658813,369.58
+lula-2007,2009,MT,Mato Grosso,Centro-Oeste,Infraestrutura,655627142.75,3658813,179.19
+lula-2007,2009,MT,Mato Grosso,Centro-Oeste,Segurança Pública,368790267.8,3658813,100.8
+lula-2007,2009,MS,Mato Grosso do Sul,Centro-Oeste,Saúde,1182138931.08,2756700,428.82
+lula-2007,2009,MS,Mato Grosso do Sul,Centro-Oeste,Educação,928823445.85,2756700,336.93
+lula-2007,2009,MS,Mato Grosso do Sul,Centro-Oeste,Infraestrutura,450338640.41,2756700,163.36
+lula-2007,2009,MS,Mato Grosso do Sul,Centro-Oeste,Segurança Pública,253315485.23,2756700,91.89
+lula-2007,2009,MG,Minas Gerais,Sudeste,Saúde,7435380206.26,20538718,362.02
+lula-2007,2009,MG,Minas Gerais,Sudeste,Educação,5842084447.78,20538718,284.44
+lula-2007,2009,MG,Minas Gerais,Sudeste,Infraestrutura,2832525792.86,20538718,137.91
+lula-2007,2009,MG,Minas Gerais,Sudeste,Segurança Pública,1593295758.48,20538718,77.58
+lula-2007,2009,PA,Pará,Norte,Saúde,4081723699.93,8116132,502.91
+lula-2007,2009,PA,Pará,Norte,Educação,3207068621.38,8116132,395.15
+lula-2007,2009,PA,Pará,Norte,Infraestrutura,1554942361.88,8116132,191.59
+lula-2007,2009,PA,Pará,Norte,Segurança Pública,874655078.56,8116132,107.77
+lula-2007,2009,PB,Paraíba,Nordeste,Saúde,2478502563.49,3974495,623.6
+lula-2007,2009,PB,Paraíba,Nordeste,Educação,1947394871.31,3974495,489.97
+lula-2007,2009,PB,Paraíba,Nordeste,Infraestrutura,944191452.76,3974495,237.56
+lula-2007,2009,PB,Paraíba,Nordeste,Segurança Pública,531107692.18,3974495,133.63
+lula-2007,2009,PR,Paraná,Sul,Saúde,4246582204.59,11443208,371.1
+lula-2007,2009,PR,Paraná,Sul,Educação,3336600303.6,11443208,291.58
+lula-2007,2009,PR,Paraná,Sul,Infraestrutura,1617745601.75,11443208,141.37
+lula-2007,2009,PR,Paraná,Sul,Segurança Pública,909981900.98,11443208,79.52
+lula-2007,2009,PE,Pernambuco,Nordeste,Saúde,4473980426.72,9058155,493.92
+lula-2007,2009,PE,Pernambuco,Nordeste,Educação,3515270335.28,9058155,388.08
+lula-2007,2009,PE,Pernambuco,Nordeste,Infraestrutura,1704373495.89,9058155,188.16
+lula-2007,2009,PE,Pernambuco,Nordeste,Segurança Pública,958710091.44,9058155,105.84
+lula-2007,2009,PI,Piauí,Nordeste,Saúde,2131761636.55,3269200,652.07
+lula-2007,2009,PI,Piauí,Nordeste,Educação,1674955571.58,3269200,512.34
+lula-2007,2009,PI,Piauí,Nordeste,Infraestrutura,812099671.07,3269200,248.41
+lula-2007,2009,PI,Piauí,Nordeste,Segurança Pública,456806064.98,3269200,139.73
+lula-2007,2009,RJ,Rio de Janeiro,Sudeste,Saúde,5278186565.39,16054524,328.77
+lula-2007,2009,RJ,Rio de Janeiro,Sudeste,Educação,4147146587.09,16054524,258.32
+lula-2007,2009,RJ,Rio de Janeiro,Sudeste,Infraestrutura,2010737739.2,16054524,125.24
+lula-2007,2009,RJ,Rio de Janeiro,Sudeste,Segurança Pública,1131039978.3,16054524,70.45
+lula-2007,2009,RN,Rio Grande do Norte,Nordeste,Saúde,2115397731.69,3302406,640.56
+lula-2007,2009,RN,Rio Grande do Norte,Nordeste,Educação,1662098217.76,3302406,503.3
+lula-2007,2009,RN,Rio Grande do Norte,Nordeste,Infraestrutura,805865802.55,3302406,244.02
+lula-2007,2009,RN,Rio Grande do Norte,Nordeste,Segurança Pública,453299513.93,3302406,137.26
+lula-2007,2009,RS,Rio Grande do Sul,Sul,Saúde,3916735867.0,10880506,359.98
+lula-2007,2009,RS,Rio Grande do Sul,Sul,Educação,3077435324.07,10880506,282.84
+lula-2007,2009,RS,Rio Grande do Sul,Sul,Infraestrutura,1492089854.09,10880506,137.13
+lula-2007,2009,RS,Rio Grande do Sul,Sul,Segurança Pública,839300542.93,10880506,77.14
+lula-2007,2009,RO,Rondônia,Norte,Saúde,1221578908.32,1581016,772.65
+lula-2007,2009,RO,Rondônia,Norte,Educação,959811999.4,1581016,607.09
+lula-2007,2009,RO,Rondônia,Norte,Infraestrutura,465363393.65,1581016,294.34
+lula-2007,2009,RO,Rondônia,Norte,Segurança Pública,261766908.93,1581016,165.57
+lula-2007,2009,RR,Roraima,Norte,Saúde,854964302.36,636303,1343.64
+lula-2007,2009,RR,Roraima,Norte,Educação,671757666.14,636303,1055.72
+lula-2007,2009,RR,Roraima,Norte,Infraestrutura,325700686.61,636303,511.86
+lula-2007,2009,RR,Roraima,Norte,Segurança Pública,183206636.22,636303,287.92
+lula-2007,2009,SC,Santa Catarina,Sul,Saúde,2657635834.91,7609601,349.25
+lula-2007,2009,SC,Santa Catarina,Sul,Educação,2088142441.71,7609601,274.41
+lula-2007,2009,SC,Santa Catarina,Sul,Infraestrutura,1012432699.01,7609601,133.05
+lula-2007,2009,SC,Santa Catarina,Sul,Segurança Pública,569493393.19,7609601,74.84
+lula-2007,2009,SP,São Paulo,Sudeste,Saúde,13770387511.68,44420459,310.0
+lula-2007,2009,SP,São Paulo,Sudeste,Educação,10819590187.75,44420459,243.57
+lula-2007,2009,SP,São Paulo,Sudeste,Infraestrutura,5245861909.21,44420459,118.1
+lula-2007,2009,SP,São Paulo,Sudeste,Segurança Pública,2950797323.93,44420459,66.43
+lula-2007,2009,SE,Sergipe,Nordeste,Saúde,1783123522.85,2209558,807.0
+lula-2007,2009,SE,Sergipe,Nordeste,Educação,1401025625.09,2209558,634.08
+lula-2007,2009,SE,Sergipe,Nordeste,Infraestrutura,679285151.56,2209558,307.43
+lula-2007,2009,SE,Sergipe,Nordeste,Segurança Pública,382097897.75,2209558,172.93
+lula-2007,2009,TO,Tocantins,Norte,Saúde,1597330498.72,1511459,1056.81
+lula-2007,2009,TO,Tocantins,Norte,Educação,1255045391.85,1511459,830.35
+lula-2007,2009,TO,Tocantins,Norte,Infraestrutura,608506856.65,1511459,402.6
+lula-2007,2009,TO,Tocantins,Norte,Segurança Pública,342285106.87,1511459,226.46
+dilma-2011,2013,AC,Acre,Norte,Saúde,1989992284.28,830026,2397.51
+dilma-2011,2013,AC,Acre,Norte,Educação,1563565366.22,830026,1883.75
+dilma-2011,2013,AC,Acre,Norte,Infraestrutura,758092298.77,830026,913.34
+dilma-2011,2013,AC,Acre,Norte,Segurança Pública,426426918.06,830026,513.75
+dilma-2011,2013,AL,Alagoas,Nordeste,Saúde,2859760768.85,3127511,914.39
+dilma-2011,2013,AL,Alagoas,Nordeste,Educação,2246954889.81,3127511,718.45
+dilma-2011,2013,AL,Alagoas,Nordeste,Infraestrutura,1089432673.85,3127511,348.34
+dilma-2011,2013,AL,Alagoas,Nordeste,Segurança Pública,612805879.04,3127511,195.94
+dilma-2011,2013,AP,Amapá,Norte,Saúde,1577068495.32,733508,2150.04
+dilma-2011,2013,AP,Amapá,Norte,Educação,1239125246.32,733508,1689.31
+dilma-2011,2013,AP,Amapá,Norte,Infraestrutura,600787998.22,733508,819.06
+dilma-2011,2013,AP,Amapá,Norte,Segurança Pública,337943249.0,733508,460.72
+dilma-2011,2013,AM,Amazonas,Norte,Saúde,2724074681.69,3941175,691.18
+dilma-2011,2013,AM,Amazonas,Norte,Educação,2140344392.75,3941175,543.07
+dilma-2011,2013,AM,Amazonas,Norte,Infraestrutura,1037742735.88,3941175,263.31
+dilma-2011,2013,AM,Amazonas,Norte,Segurança Pública,583730288.93,3941175,148.11
+dilma-2011,2013,BA,Bahia,Nordeste,Saúde,9494613011.17,14136417,671.64
+dilma-2011,2013,BA,Bahia,Nordeste,Educação,7460053080.21,14136417,527.72
+dilma-2011,2013,BA,Bahia,Nordeste,Infraestrutura,3616995432.83,14136417,255.86
+dilma-2011,2013,BA,Bahia,Nordeste,Segurança Pública,2034559930.97,14136417,143.92
+dilma-2011,2013,CE,Ceará,Nordeste,Saúde,6468426584.45,8791688,735.74
+dilma-2011,2013,CE,Ceará,Nordeste,Educação,5082335173.5,8791688,578.08
+dilma-2011,2013,CE,Ceará,Nordeste,Infraestrutura,2464162508.36,8791688,280.28
+dilma-2011,2013,CE,Ceará,Nordeste,Segurança Pública,1386091410.95,8791688,157.66
+dilma-2011,2013,DF,Distrito Federal,Centro-Oeste,Saúde,1463387504.22,2817068,519.47
+dilma-2011,2013,DF,Distrito Federal,Centro-Oeste,Educação,1149804467.61,2817068,408.16
+dilma-2011,2013,DF,Distrito Federal,Centro-Oeste,Infraestrutura,557480953.99,2817068,197.89
+dilma-2011,2013,DF,Distrito Federal,Centro-Oeste,Segurança Pública,313583036.62,2817068,111.32
+dilma-2011,2013,ES,Espírito Santo,Sudeste,Saúde,2194869648.54,3833486,572.55
+dilma-2011,2013,ES,Espírito Santo,Sudeste,Educação,1724540438.14,3833486,449.86
+dilma-2011,2013,ES,Espírito Santo,Sudeste,Infraestrutura,836140818.49,3833486,218.12
+dilma-2011,2013,ES,Espírito Santo,Sudeste,Segurança Pública,470329210.4,3833486,122.69
+dilma-2011,2013,GO,Goiás,Centro-Oeste,Saúde,4054117406.12,7055228,574.63
+dilma-2011,2013,GO,Goiás,Centro-Oeste,Educação,3185377961.95,7055228,451.49
+dilma-2011,2013,GO,Goiás,Centro-Oeste,Infraestrutura,1544425678.52,7055228,218.91
+dilma-2011,2013,GO,Goiás,Centro-Oeste,Segurança Pública,868739444.17,7055228,123.13
+dilma-2011,2013,MA,Maranhão,Nordeste,Saúde,5569974186.45,6775152,822.12
+dilma-2011,2013,MA,Maranhão,Nordeste,Educação,4376408289.35,6775152,645.95
+dilma-2011,2013,MA,Maranhão,Nordeste,Infraestrutura,2121894928.17,6775152,313.19
+dilma-2011,2013,MA,Maranhão,Nordeste,Segurança Pública,1193565897.1,6775152,176.17
+dilma-2011,2013,MT,Mato Grosso,Centro-Oeste,Saúde,2417625088.89,3658813,660.77
+dilma-2011,2013,MT,Mato Grosso,Centro-Oeste,Educação,1899562569.84,3658813,519.17
+dilma-2011,2013,MT,Mato Grosso,Centro-Oeste,Infraestrutura,921000033.86,3658813,251.72
+dilma-2011,2013,MT,Mato Grosso,Centro-Oeste,Segurança Pública,518062519.05,3658813,141.59
+dilma-2011,2013,MS,Mato Grosso do Sul,Centro-Oeste,Saúde,1660623736.51,2756700,602.4
+dilma-2011,2013,MS,Mato Grosso do Sul,Centro-Oeste,Educação,1304775792.98,2756700,473.31
+dilma-2011,2013,MS,Mato Grosso do Sul,Centro-Oeste,Infraestrutura,632618566.29,2756700,229.48
+dilma-2011,2013,MS,Mato Grosso do Sul,Centro-Oeste,Segurança Pública,355847943.54,2756700,129.08
+dilma-2011,2013,MG,Minas Gerais,Sudeste,Saúde,10444938861.18,20538718,508.55
+dilma-2011,2013,MG,Minas Gerais,Sudeste,Educação,8206737676.64,20538718,399.57
+dilma-2011,2013,MG,Minas Gerais,Sudeste,Infraestrutura,3979024328.07,20538718,193.73
+dilma-2011,2013,MG,Minas Gerais,Sudeste,Segurança Pública,2238201184.54,20538718,108.97
+dilma-2011,2013,PA,Pará,Norte,Saúde,5733849959.43,8116132,706.48
+dilma-2011,2013,PA,Pará,Norte,Educação,4505167825.27,8116132,555.09
+dilma-2011,2013,PA,Pará,Norte,Infraestrutura,2184323794.07,8116132,269.13
+dilma-2011,2013,PA,Pará,Norte,Segurança Pública,1228682134.16,8116132,151.39
+dilma-2011,2013,PB,Paraíba,Nordeste,Saúde,3481705982.05,3974495,876.01
+dilma-2011,2013,PB,Paraíba,Nordeste,Educação,2735626128.75,3974495,688.3
+dilma-2011,2013,PB,Paraíba,Nordeste,Infraestrutura,1326364183.64,3974495,333.72
+dilma-2011,2013,PB,Paraíba,Nordeste,Segurança Pública,746079853.3,3974495,187.72
+dilma-2011,2013,PR,Paraná,Sul,Saúde,5965436906.44,11443208,521.31
+dilma-2011,2013,PR,Paraná,Sul,Educação,4687128997.92,11443208,409.6
+dilma-2011,2013,PR,Paraná,Sul,Infraestrutura,2272547392.93,11443208,198.59
+dilma-2011,2013,PR,Paraná,Sul,Segurança Pública,1278307908.52,11443208,111.71
+dilma-2011,2013,PE,Pernambuco,Nordeste,Saúde,6284877266.11,9058155,693.84
+dilma-2011,2013,PE,Pernambuco,Nordeste,Educação,4938117851.94,9058155,545.16
+dilma-2011,2013,PE,Pernambuco,Nordeste,Infraestrutura,2394238958.52,9058155,264.32
+dilma-2011,2013,PE,Pernambuco,Nordeste,Segurança Pública,1346759414.17,9058155,148.68
+dilma-2011,2013,PI,Piauí,Nordeste,Saúde,2994617537.06,3269200,916.01
+dilma-2011,2013,PI,Piauí,Nordeste,Educação,2352913779.12,3269200,719.72
+dilma-2011,2013,PI,Piauí,Nordeste,Infraestrutura,1140806680.78,3269200,348.96
+dilma-2011,2013,PI,Piauí,Nordeste,Segurança Pública,641703757.94,3269200,196.29
+dilma-2011,2013,RJ,Rio de Janeiro,Sudeste,Saúde,7414595413.29,16054524,461.84
+dilma-2011,2013,RJ,Rio de Janeiro,Sudeste,Educação,5825753539.01,16054524,362.87
+dilma-2011,2013,RJ,Rio de Janeiro,Sudeste,Infraestrutura,2824607776.49,16054524,175.94
+dilma-2011,2013,RJ,Rio de Janeiro,Sudeste,Segurança Pública,1588841874.28,16054524,98.97
+dilma-2011,2013,RN,Rio Grande do Norte,Nordeste,Saúde,2971630146.9,3302406,899.84
+dilma-2011,2013,RN,Rio Grande do Norte,Nordeste,Educação,2334852258.28,3302406,707.02
+dilma-2011,2013,RN,Rio Grande do Norte,Nordeste,Infraestrutura,1132049579.77,3302406,342.8
+dilma-2011,2013,RN,Rio Grande do Norte,Nordeste,Segurança Pública,636777888.62,3302406,192.82
+dilma-2011,2013,RS,Rio Grande do Sul,Sul,Saúde,5502081336.97,10880506,505.68
+dilma-2011,2013,RS,Rio Grande do Sul,Sul,Educação,4323063907.62,10880506,397.32
+dilma-2011,2013,RS,Rio Grande do Sul,Sul,Infraestrutura,2096030985.51,10880506,192.64
+dilma-2011,2013,RS,Rio Grande do Sul,Sul,Segurança Pública,1179017429.35,10880506,108.36
+dilma-2011,2013,RO,Rondônia,Norte,Saúde,1716027514.07,1581016,1085.4
+dilma-2011,2013,RO,Rondônia,Norte,Educação,1348307332.49,1581016,852.81
+dilma-2011,2013,RO,Rondônia,Norte,Infraestrutura,653724767.27,1581016,413.48
+dilma-2011,2013,RO,Rondônia,Norte,Segurança Pública,367720181.59,1581016,232.58
+dilma-2011,2013,RR,Roraima,Norte,Saúde,1201021281.89,636303,1887.5
+dilma-2011,2013,RR,Roraima,Norte,Educação,943659578.63,636303,1483.03
+dilma-2011,2013,RR,Roraima,Norte,Infraestrutura,457531916.91,636303,719.05
+dilma-2011,2013,RR,Roraima,Norte,Segurança Pública,257361703.26,636303,404.46
+dilma-2011,2013,SC,Santa Catarina,Sul,Saúde,3733345577.61,7609601,490.61
+dilma-2011,2013,SC,Santa Catarina,Sul,Educação,2933342953.84,7609601,385.48
+dilma-2011,2013,SC,Santa Catarina,Sul,Infraestrutura,1422226886.71,7609601,186.9
+dilma-2011,2013,SC,Santa Catarina,Sul,Segurança Pública,800002623.77,7609601,105.13
+dilma-2011,2013,SP,São Paulo,Sudeste,Saúde,19344115790.22,44420459,435.48
+dilma-2011,2013,SP,São Paulo,Sudeste,Educação,15198948120.89,44420459,342.16
+dilma-2011,2013,SP,São Paulo,Sudeste,Infraestrutura,7369186967.7,44420459,165.9
+dilma-2011,2013,SP,São Paulo,Sudeste,Segurança Pública,4145167669.33,44420459,93.32
+dilma-2011,2013,SE,Sergipe,Nordeste,Saúde,2504863996.38,2209558,1133.65
+dilma-2011,2013,SE,Sergipe,Nordeste,Educação,1968107425.73,2209558,890.72
+dilma-2011,2013,SE,Sergipe,Nordeste,Infraestrutura,954233903.38,2209558,431.87
+dilma-2011,2013,SE,Sergipe,Nordeste,Segurança Pública,536756570.65,2209558,242.92
+dilma-2011,2013,TO,Tocantins,Norte,Saúde,2243869033.91,1511459,1484.57
+dilma-2011,2013,TO,Tocantins,Norte,Educação,1763039955.21,1511459,1166.45
+dilma-2011,2013,TO,Tocantins,Norte,Infraestrutura,854807251.01,1511459,565.55
+dilma-2011,2013,TO,Tocantins,Norte,Segurança Pública,480829078.69,1511459,318.12
+dilma-2015,2015,AC,Acre,Norte,Saúde,2293550429.34,830026,2763.23
+dilma-2015,2015,AC,Acre,Norte,Educação,1802075337.33,830026,2171.11
+dilma-2015,2015,AC,Acre,Norte,Infraestrutura,873733496.89,830026,1052.66
+dilma-2015,2015,AC,Acre,Norte,Segurança Pública,491475092.0,830026,592.12
+dilma-2015,2015,AL,Alagoas,Nordeste,Saúde,3295995462.41,3127511,1053.87
+dilma-2015,2015,AL,Alagoas,Nordeste,Educação,2589710720.46,3127511,828.04
+dilma-2015,2015,AL,Alagoas,Nordeste,Infraestrutura,1255617319.01,3127511,401.47
+dilma-2015,2015,AL,Alagoas,Nordeste,Segurança Pública,706284741.94,3127511,225.83
+dilma-2015,2015,AP,Amapá,Norte,Saúde,1817638265.79,733508,2478.01
+dilma-2015,2015,AP,Amapá,Norte,Educação,1428144351.69,733508,1947.01
+dilma-2015,2015,AP,Amapá,Norte,Infraestrutura,692433625.06,733508,944.0
+dilma-2015,2015,AP,Amapá,Norte,Segurança Pública,389493914.1,733508,531.0
+dilma-2015,2015,AM,Amazonas,Norte,Saúde,3139611497.54,3941175,796.62
+dilma-2015,2015,AM,Amazonas,Norte,Educação,2466837605.21,3941175,625.91
+dilma-2015,2015,AM,Amazonas,Norte,Infraestrutura,1196042475.25,3941175,303.47
+dilma-2015,2015,AM,Amazonas,Norte,Segurança Pública,672773892.33,3941175,170.7
+dilma-2015,2015,BA,Bahia,Nordeste,Saúde,10942943809.49,14136417,774.1
+dilma-2015,2015,BA,Bahia,Nordeste,Educação,8598027278.88,14136417,608.22
+dilma-2015,2015,BA,Bahia,Nordeste,Infraestrutura,4168740498.85,14136417,294.89
+dilma-2015,2015,BA,Bahia,Nordeste,Segurança Pública,2344916530.6,14136417,165.88
+dilma-2015,2015,CE,Ceará,Nordeste,Saúde,7455135724.45,8791688,847.98
+dilma-2015,2015,CE,Ceará,Nordeste,Educação,5857606640.64,8791688,666.27
+dilma-2015,2015,CE,Ceará,Nordeste,Infraestrutura,2840051704.55,8791688,323.04
+dilma-2015,2015,CE,Ceará,Nordeste,Segurança Pública,1597529083.81,8791688,181.71
+dilma-2015,2015,DF,Distrito Federal,Centro-Oeste,Saúde,1686616106.56,2817068,598.71
+dilma-2015,2015,DF,Distrito Federal,Centro-Oeste,Educação,1325198369.44,2817068,470.42
+dilma-2015,2015,DF,Distrito Federal,Centro-Oeste,Infraestrutura,642520421.55,2817068,228.08
+dilma-2015,2015,DF,Distrito Federal,Centro-Oeste,Segurança Pública,361417737.12,2817068,128.3
+dilma-2015,2015,ES,Espírito Santo,Sudeste,Saúde,2529680272.9,3833486,659.89
+dilma-2015,2015,ES,Espírito Santo,Sudeste,Educação,1987605928.7,3833486,518.49
+dilma-2015,2015,ES,Espírito Santo,Sudeste,Infraestrutura,963687723.01,3833486,251.39
+dilma-2015,2015,ES,Espírito Santo,Sudeste,Segurança Pública,542074344.19,3833486,141.41
+dilma-2015,2015,GO,Goiás,Centro-Oeste,Saúde,4672542095.19,7055228,662.28
+dilma-2015,2015,GO,Goiás,Centro-Oeste,Educação,3671283074.79,7055228,520.36
+dilma-2015,2015,GO,Goiás,Centro-Oeste,Infraestrutura,1780016036.26,7055228,252.3
+dilma-2015,2015,GO,Goiás,Centro-Oeste,Segurança Pública,1001259020.4,7055228,141.92
+dilma-2015,2015,MA,Maranhão,Nordeste,Saúde,6419631265.73,6775152,947.53
+dilma-2015,2015,MA,Maranhão,Nordeste,Educação,5043995994.51,6775152,744.48
+dilma-2015,2015,MA,Maranhão,Nordeste,Infraestrutura,2445573815.52,6775152,360.96
+dilma-2015,2015,MA,Maranhão,Nordeste,Segurança Pública,1375635271.23,6775152,203.04
+dilma-2015,2015,MT,Mato Grosso,Centro-Oeste,Saúde,2786415356.69,3658813,761.56
+dilma-2015,2015,MT,Mato Grosso,Centro-Oeste,Educação,2189326351.68,3658813,598.37
+dilma-2015,2015,MT,Mato Grosso,Centro-Oeste,Infraestrutura,1061491564.45,3658813,290.12
+dilma-2015,2015,MT,Mato Grosso,Centro-Oeste,Segurança Pública,597089005.0,3658813,163.19
+dilma-2015,2015,MS,Mato Grosso do Sul,Centro-Oeste,Saúde,1913939221.75,2756700,694.29
+dilma-2015,2015,MS,Mato Grosso do Sul,Centro-Oeste,Educação,1503809388.51,2756700,545.51
+dilma-2015,2015,MS,Mato Grosso do Sul,Centro-Oeste,Infraestrutura,729119703.52,2756700,264.49
+dilma-2015,2015,MS,Mato Grosso do Sul,Centro-Oeste,Segurança Pública,410129833.23,2756700,148.78
+dilma-2015,2015,MG,Minas Gerais,Sudeste,Saúde,12038234619.66,20538718,586.12
+dilma-2015,2015,MG,Minas Gerais,Sudeste,Educação,9458612915.45,20538718,460.53
+dilma-2015,2015,MG,Minas Gerais,Sudeste,Infraestrutura,4585994140.82,20538718,223.29
+dilma-2015,2015,MG,Minas Gerais,Sudeste,Segurança Pública,2579621704.21,20538718,125.6
+dilma-2015,2015,PA,Pará,Norte,Saúde,6608505037.99,8116132,814.24
+dilma-2015,2015,PA,Pará,Norte,Educação,5192396815.56,8116132,639.76
+dilma-2015,2015,PA,Pará,Norte,Infraestrutura,2517525728.76,8116132,310.19
+dilma-2015,2015,PA,Pará,Norte,Segurança Pública,1416108222.43,8116132,174.48
+dilma-2015,2015,PB,Paraíba,Nordeste,Saúde,4012813674.22,3974495,1009.64
+dilma-2015,2015,PB,Paraíba,Nordeste,Educação,3152925029.75,3974495,793.29
+dilma-2015,2015,PB,Paraíba,Nordeste,Infraestrutura,1528690923.51,3974495,384.63
+dilma-2015,2015,PB,Paraíba,Nordeste,Segurança Pública,859888644.48,3974495,216.35
+dilma-2015,2015,PR,Paraná,Sul,Saúde,6875418807.43,11443208,600.83
+dilma-2015,2015,PR,Paraná,Sul,Educação,5402114777.26,11443208,472.08
+dilma-2015,2015,PR,Paraná,Sul,Infraestrutura,2619207164.73,11443208,228.89
+dilma-2015,2015,PR,Paraná,Sul,Segurança Pública,1473304030.16,11443208,128.75
+dilma-2015,2015,PE,Pernambuco,Nordeste,Saúde,7243587357.55,9058155,799.68
+dilma-2015,2015,PE,Pernambuco,Nordeste,Educação,5691390066.65,9058155,628.32
+dilma-2015,2015,PE,Pernambuco,Nordeste,Infraestrutura,2759461850.49,9058155,304.64
+dilma-2015,2015,PE,Pernambuco,Nordeste,Segurança Pública,1552197290.9,9058155,171.36
+dilma-2015,2015,PI,Piauí,Nordeste,Saúde,3451423602.04,3269200,1055.74
+dilma-2015,2015,PI,Piauí,Nordeste,Educação,2711832830.17,3269200,829.51
+dilma-2015,2015,PI,Piauí,Nordeste,Infraestrutura,1314828038.87,3269200,402.19
+dilma-2015,2015,PI,Piauí,Nordeste,Segurança Pública,739590771.86,3269200,226.23
+dilma-2015,2015,RJ,Rio de Janeiro,Sudeste,Saúde,8545635391.58,16054524,532.29
+dilma-2015,2015,RJ,Rio de Janeiro,Sudeste,Educação,6714427807.67,16054524,418.23
+dilma-2015,2015,RJ,Rio de Janeiro,Sudeste,Infraestrutura,3255480149.17,16054524,202.78
+dilma-2015,2015,RJ,Rio de Janeiro,Sudeste,Segurança Pública,1831207583.91,16054524,114.06
+dilma-2015,2015,RN,Rio Grande do Norte,Nordeste,Saúde,3424929660.83,3302406,1037.1
+dilma-2015,2015,RN,Rio Grande do Norte,Nordeste,Educação,2691016162.08,3302406,814.87
+dilma-2015,2015,RN,Rio Grande do Norte,Nordeste,Infraestrutura,1304735108.89,3302406,395.09
+dilma-2015,2015,RN,Rio Grande do Norte,Nordeste,Segurança Pública,733913498.75,3302406,222.24
+dilma-2015,2015,RS,Rio Grande do Sul,Sul,Saúde,6341381879.9,10880506,582.82
+dilma-2015,2015,RS,Rio Grande do Sul,Sul,Educação,4982514334.21,10880506,457.93
+dilma-2015,2015,RS,Rio Grande do Sul,Sul,Infraestrutura,2415764525.68,10880506,222.03
+dilma-2015,2015,RS,Rio Grande do Sul,Sul,Segurança Pública,1358867545.69,10880506,124.89
+dilma-2015,2015,RO,Rondônia,Norte,Saúde,1977794423.0,1581016,1250.96
+dilma-2015,2015,RO,Rondônia,Norte,Educação,1553981332.36,1581016,982.9
+dilma-2015,2015,RO,Rondônia,Norte,Infraestrutura,753445494.48,1581016,476.56
+dilma-2015,2015,RO,Rondônia,Norte,Segurança Pública,423813090.64,1581016,268.06
+dilma-2015,2015,RR,Roraima,Norte,Saúde,1384227918.11,636303,2175.42
+dilma-2015,2015,RR,Roraima,Norte,Educação,1087607649.94,636303,1709.26
+dilma-2015,2015,RR,Roraima,Norte,Infraestrutura,527324921.18,636303,828.73
+dilma-2015,2015,RR,Roraima,Norte,Segurança Pública,296620268.17,636303,466.16
+dilma-2015,2015,SC,Santa Catarina,Sul,Saúde,4302838970.8,7609601,565.45
+dilma-2015,2015,SC,Santa Catarina,Sul,Educação,3380802048.49,7609601,444.28
+dilma-2015,2015,SC,Santa Catarina,Sul,Infraestrutura,1639176750.78,7609601,215.41
+dilma-2015,2015,SC,Santa Catarina,Sul,Segurança Pública,922036922.32,7609601,121.17
+dilma-2015,2015,SP,São Paulo,Sudeste,Saúde,22294913114.15,44420459,501.91
+dilma-2015,2015,SP,São Paulo,Sudeste,Educação,17517431732.55,44420459,394.36
+dilma-2015,2015,SP,São Paulo,Sudeste,Infraestrutura,8493300233.96,44420459,191.2
+dilma-2015,2015,SP,São Paulo,Sudeste,Segurança Pública,4777481381.6,44420459,107.55
+dilma-2015,2015,SE,Sergipe,Nordeste,Saúde,2886961894.14,2209558,1306.58
+dilma-2015,2015,SE,Sergipe,Nordeste,Educação,2268327202.53,2209558,1026.6
+dilma-2015,2015,SE,Sergipe,Nordeste,Infraestrutura,1099795007.29,2209558,497.74
+dilma-2015,2015,SE,Sergipe,Nordeste,Segurança Pública,618634691.6,2209558,279.98
+dilma-2015,2015,TO,Tocantins,Norte,Saúde,2586154140.78,1511459,1711.03
+dilma-2015,2015,TO,Tocantins,Norte,Educação,2031978253.47,1511459,1344.38
+dilma-2015,2015,TO,Tocantins,Norte,Infraestrutura,985201577.44,1511459,651.82
+dilma-2015,2015,TO,Tocantins,Norte,Segurança Pública,554175887.31,1511459,366.65
+temer-2016,2017,AC,Acre,Norte,Saúde,2462193843.26,830026,2966.41
+temer-2016,2017,AC,Acre,Norte,Educação,1934580876.84,830026,2330.75
+temer-2016,2017,AC,Acre,Norte,Infraestrutura,937978606.96,830026,1130.06
+temer-2016,2017,AC,Acre,Norte,Segurança Pública,527612966.41,830026,635.66
+temer-2016,2017,AL,Alagoas,Nordeste,Saúde,3538348069.94,3127511,1131.36
+temer-2016,2017,AL,Alagoas,Nordeste,Educação,2780130626.38,3127511,888.93
+temer-2016,2017,AL,Alagoas,Nordeste,Infraestrutura,1347942121.88,3127511,431.0
+temer-2016,2017,AL,Alagoas,Nordeste,Segurança Pública,758217443.56,3127511,242.43
+temer-2016,2017,AP,Amapá,Norte,Saúde,1951288138.27,733508,2660.21
+temer-2016,2017,AP,Amapá,Norte,Educação,1533154965.79,733508,2090.17
+temer-2016,2017,AP,Amapá,Norte,Infraestrutura,743347862.2,733508,1013.41
+temer-2016,2017,AP,Amapá,Norte,Segurança Pública,418133172.49,733508,570.05
+temer-2016,2017,AM,Amazonas,Norte,Saúde,3370465284.12,3941175,855.19
+temer-2016,2017,AM,Amazonas,Norte,Educação,2648222723.24,3941175,671.94
+temer-2016,2017,AM,Amazonas,Norte,Infraestrutura,1283986774.9,3941175,325.79
+temer-2016,2017,AM,Amazonas,Norte,Segurança Pública,722242560.88,3941175,183.26
+temer-2016,2017,BA,Bahia,Nordeste,Saúde,11747572030.77,14136417,831.01
+temer-2016,2017,BA,Bahia,Nordeste,Educação,9230235167.04,14136417,652.94
+temer-2016,2017,BA,Bahia,Nordeste,Infraestrutura,4475265535.53,14136417,316.58
+temer-2016,2017,BA,Bahia,Nordeste,Segurança Pública,2517336863.74,14136417,178.07
+temer-2016,2017,CE,Ceará,Nordeste,Saúde,8003307468.9,8791688,910.33
+temer-2016,2017,CE,Ceará,Nordeste,Educação,6288313011.27,8791688,715.26
+temer-2016,2017,CE,Ceará,Nordeste,Infraestrutura,3048879035.77,8791688,346.79
+temer-2016,2017,CE,Ceará,Nordeste,Segurança Pública,1714994457.62,8791688,195.07
+temer-2016,2017,DF,Distrito Federal,Centro-Oeste,Saúde,1810631996.75,2817068,642.74
+temer-2016,2017,DF,Distrito Federal,Centro-Oeste,Educação,1422639426.02,2817068,505.01
+temer-2016,2017,DF,Distrito Federal,Centro-Oeste,Infraestrutura,689764570.19,2817068,244.85
+temer-2016,2017,DF,Distrito Federal,Centro-Oeste,Segurança Pública,387992570.73,2817068,137.73
+temer-2016,2017,ES,Espírito Santo,Sudeste,Saúde,2715686175.32,3833486,708.41
+temer-2016,2017,ES,Espírito Santo,Sudeste,Educação,2133753423.46,3833486,556.61
+temer-2016,2017,ES,Espírito Santo,Sudeste,Infraestrutura,1034547114.41,3833486,269.87
+temer-2016,2017,ES,Espírito Santo,Sudeste,Segurança Pública,581932751.85,3833486,151.8
+temer-2016,2017,GO,Goiás,Centro-Oeste,Saúde,5016111366.89,7055228,710.98
+temer-2016,2017,GO,Goiás,Centro-Oeste,Educação,3941230359.7,7055228,558.63
+temer-2016,2017,GO,Goiás,Centro-Oeste,Infraestrutura,1910899568.34,7055228,270.85
+temer-2016,2017,GO,Goiás,Centro-Oeste,Segurança Pública,1074881007.19,7055228,152.35
+temer-2016,2017,MA,Maranhão,Nordeste,Saúde,6891662976.45,6775152,1017.2
+temer-2016,2017,MA,Maranhão,Nordeste,Educação,5414878052.93,6775152,799.23
+temer-2016,2017,MA,Maranhão,Nordeste,Infraestrutura,2625395419.6,6775152,387.5
+temer-2016,2017,MA,Maranhão,Nordeste,Segurança Pública,1476784923.53,6775152,217.97
+temer-2016,2017,MT,Mato Grosso,Centro-Oeste,Saúde,2991298838.79,3658813,817.56
+temer-2016,2017,MT,Mato Grosso,Centro-Oeste,Educação,2350306230.48,3658813,642.37
+temer-2016,2017,MT,Mato Grosso,Centro-Oeste,Infraestrutura,1139542414.78,3658813,311.45
+temer-2016,2017,MT,Mato Grosso,Centro-Oeste,Segurança Pública,640992608.31,3658813,175.19
+temer-2016,2017,MS,Mato Grosso do Sul,Centro-Oeste,Saúde,2054670046.87,2756700,745.34
+temer-2016,2017,MS,Mato Grosso do Sul,Centro-Oeste,Educação,1614383608.26,2756700,585.62
+temer-2016,2017,MS,Mato Grosso do Sul,Centro-Oeste,Infraestrutura,782731446.43,2756700,283.94
+temer-2016,2017,MS,Mato Grosso do Sul,Centro-Oeste,Segurança Pública,440286438.62,2756700,159.72
+temer-2016,2017,MG,Minas Gerais,Sudeste,Saúde,12923398929.93,20538718,629.22
+temer-2016,2017,MG,Minas Gerais,Sudeste,Educação,10154099159.23,20538718,494.39
+temer-2016,2017,MG,Minas Gerais,Sudeste,Infraestrutura,4923199592.35,20538718,239.7
+temer-2016,2017,MG,Minas Gerais,Sudeste,Segurança Pública,2769299770.7,20538718,134.83
+temer-2016,2017,PA,Pará,Norte,Saúde,7094424526.08,8116132,874.11
+temer-2016,2017,PA,Pará,Norte,Educação,5574190699.06,8116132,686.8
+temer-2016,2017,PA,Pará,Norte,Infraestrutura,2702637914.7,8116132,333.0
+temer-2016,2017,PA,Pará,Norte,Segurança Pública,1520233827.02,8116132,187.31
+temer-2016,2017,PB,Paraíba,Nordeste,Saúde,4307873503.21,3974495,1083.88
+temer-2016,2017,PB,Paraíba,Nordeste,Educação,3384757752.52,3974495,851.62
+temer-2016,2017,PB,Paraíba,Nordeste,Infraestrutura,1641094667.89,3974495,412.91
+temer-2016,2017,PB,Paraíba,Nordeste,Segurança Pública,923115750.69,3974495,232.26
+temer-2016,2017,PR,Paraná,Sul,Saúde,7380964307.97,11443208,645.01
+temer-2016,2017,PR,Paraná,Sul,Educação,5799329099.12,11443208,506.79
+temer-2016,2017,PR,Paraná,Sul,Infraestrutura,2811795926.85,11443208,245.72
+temer-2016,2017,PR,Paraná,Sul,Segurança Pública,1581635208.85,11443208,138.22
+temer-2016,2017,PE,Pernambuco,Nordeste,Saúde,7776204075.02,9058155,858.48
+temer-2016,2017,PE,Pernambuco,Nordeste,Educação,6109874630.37,9058155,674.52
+temer-2016,2017,PE,Pernambuco,Nordeste,Infraestrutura,2962363457.15,9058155,327.04
+temer-2016,2017,PE,Pernambuco,Nordeste,Segurança Pública,1666329444.65,9058155,183.96
+temer-2016,2017,PI,Piauí,Nordeste,Saúde,3705204749.24,3269200,1133.37
+temer-2016,2017,PI,Piauí,Nordeste,Educação,2911232302.98,3269200,890.5
+temer-2016,2017,PI,Piauí,Nordeste,Infraestrutura,1411506571.14,3269200,431.76
+temer-2016,2017,PI,Piauí,Nordeste,Segurança Pública,793972446.27,3269200,242.86
+temer-2016,2017,RJ,Rio de Janeiro,Sudeste,Saúde,9173990935.08,16054524,571.43
+temer-2016,2017,RJ,Rio de Janeiro,Sudeste,Educação,7208135734.71,16054524,448.98
+temer-2016,2017,RJ,Rio de Janeiro,Sudeste,Infraestrutura,3494853689.56,16054524,217.69
+temer-2016,2017,RJ,Rio de Janeiro,Sudeste,Segurança Pública,1965855200.37,16054524,122.45
+temer-2016,2017,RN,Rio Grande do Norte,Nordeste,Saúde,3676762724.13,3302406,1113.36
+temer-2016,2017,RN,Rio Grande do Norte,Nordeste,Educação,2888884997.53,3302406,874.78
+temer-2016,2017,RN,Rio Grande do Norte,Nordeste,Infraestrutura,1400671513.95,3302406,424.14
+temer-2016,2017,RN,Rio Grande do Norte,Nordeste,Segurança Pública,787877726.6,3302406,238.58
+temer-2016,2017,RS,Rio Grande do Sul,Sul,Saúde,6807659959.3,10880506,625.67
+temer-2016,2017,RS,Rio Grande do Sul,Sul,Educação,5348875682.31,10880506,491.6
+temer-2016,2017,RS,Rio Grande do Sul,Sul,Infraestrutura,2593394270.21,10880506,238.35
+temer-2016,2017,RS,Rio Grande do Sul,Sul,Segurança Pública,1458784276.99,10880506,134.07
+temer-2016,2017,RO,Rondônia,Norte,Saúde,2123220483.52,1581016,1342.95
+temer-2016,2017,RO,Rondônia,Norte,Educação,1668244665.62,1581016,1055.17
+temer-2016,2017,RO,Rondônia,Norte,Infraestrutura,808845898.48,1581016,511.6
+temer-2016,2017,RO,Rondônia,Norte,Segurança Pública,454975817.9,1581016,287.77
+temer-2016,2017,RR,Roraima,Norte,Saúde,1486009382.68,636303,2335.38
+temer-2016,2017,RR,Roraima,Norte,Educação,1167578800.67,636303,1834.94
+temer-2016,2017,RR,Roraima,Norte,Infraestrutura,566098812.45,636303,889.67
+temer-2016,2017,RR,Roraima,Norte,Segurança Pública,318430582.0,636303,500.44
+temer-2016,2017,SC,Santa Catarina,Sul,Saúde,4619224189.25,7609601,607.03
+temer-2016,2017,SC,Santa Catarina,Sul,Educação,3629390434.41,7609601,476.95
+temer-2016,2017,SC,Santa Catarina,Sul,Infraestrutura,1759704453.05,7609601,231.25
+temer-2016,2017,SC,Santa Catarina,Sul,Segurança Pública,989833754.84,7609601,130.08
+temer-2016,2017,SP,São Paulo,Sudeste,Saúde,23934244960.78,44420459,538.81
+temer-2016,2017,SP,São Paulo,Sudeste,Educação,18805478183.47,44420459,423.35
+temer-2016,2017,SP,São Paulo,Sudeste,Infraestrutura,9117807604.11,44420459,205.26
+temer-2016,2017,SP,São Paulo,Sudeste,Segurança Pública,5128766777.31,44420459,115.46
+temer-2016,2017,SE,Sergipe,Nordeste,Saúde,3099238504.0,2209558,1402.65
+temer-2016,2017,SE,Sergipe,Nordeste,Educação,2435115967.43,2209558,1102.08
+temer-2016,2017,SE,Sergipe,Nordeste,Infraestrutura,1180662287.24,2209558,534.34
+temer-2016,2017,SE,Sergipe,Nordeste,Segurança Pública,664122536.57,2209558,300.57
+temer-2016,2017,TO,Tocantins,Norte,Saúde,2776312533.48,1511459,1836.84
+temer-2016,2017,TO,Tocantins,Norte,Educação,2181388419.16,1511459,1443.23
+temer-2016,2017,TO,Tocantins,Norte,Infraestrutura,1057642869.9,1511459,699.75
+temer-2016,2017,TO,Tocantins,Norte,Segurança Pública,594924114.32,1511459,393.61
+bolsonaro-2019,2021,AC,Acre,Norte,Saúde,3237953547.3,830026,3901.03
+bolsonaro-2019,2021,AC,Acre,Norte,Educação,2544106358.59,830026,3065.09
+bolsonaro-2019,2021,AC,Acre,Norte,Infraestrutura,1233506113.26,830026,1486.11
+bolsonaro-2019,2021,AC,Acre,Norte,Segurança Pública,693847188.71,830026,835.93
+bolsonaro-2019,2021,AL,Alagoas,Nordeste,Saúde,4653170064.58,3127511,1487.82
+bolsonaro-2019,2021,AL,Alagoas,Nordeste,Educação,3656062193.6,3127511,1169.0
+bolsonaro-2019,2021,AL,Alagoas,Nordeste,Infraestrutura,1772636215.08,3127511,566.79
+bolsonaro-2019,2021,AL,Alagoas,Nordeste,Segurança Pública,997107870.98,3127511,318.82
+bolsonaro-2019,2021,AP,Amapá,Norte,Saúde,2566077551.7,733508,3498.36
+bolsonaro-2019,2021,AP,Amapá,Norte,Educação,2016203790.62,733508,2748.71
+bolsonaro-2019,2021,AP,Amapá,Norte,Infraestrutura,977553353.03,733508,1332.71
+bolsonaro-2019,2021,AP,Amapá,Norte,Segurança Pública,549873761.08,733508,749.65
+bolsonaro-2019,2021,AM,Amazonas,Norte,Saúde,4432392702.41,3941175,1124.64
+bolsonaro-2019,2021,AM,Amazonas,Norte,Educação,3482594266.18,3941175,883.64
+bolsonaro-2019,2021,AM,Amazonas,Norte,Infraestrutura,1688530553.3,3941175,428.43
+bolsonaro-2019,2021,AM,Amazonas,Norte,Segurança Pública,949798436.23,3941175,240.99
+bolsonaro-2019,2021,BA,Bahia,Nordeste,Saúde,15448861848.69,14136417,1092.84
+bolsonaro-2019,2021,BA,Bahia,Nordeste,Educação,12138391452.54,14136417,858.66
+bolsonaro-2019,2021,BA,Bahia,Nordeste,Infraestrutura,5885280704.26,14136417,416.32
+bolsonaro-2019,2021,BA,Bahia,Nordeste,Segurança Pública,3310470396.15,14136417,234.18
+bolsonaro-2019,2021,CE,Ceará,Nordeste,Saúde,10524897493.34,8791688,1197.14
+bolsonaro-2019,2021,CE,Ceará,Nordeste,Educação,8269562316.2,8791688,940.61
+bolsonaro-2019,2021,CE,Ceará,Nordeste,Infraestrutura,4009484759.37,8791688,456.05
+bolsonaro-2019,2021,CE,Ceará,Nordeste,Segurança Pública,2255335177.14,8791688,256.53
+bolsonaro-2019,2021,DF,Distrito Federal,Centro-Oeste,Saúde,2381105091.62,2817068,845.24
+bolsonaro-2019,2021,DF,Distrito Federal,Centro-Oeste,Educação,1870868286.27,2817068,664.12
+bolsonaro-2019,2021,DF,Distrito Federal,Centro-Oeste,Infraestrutura,907087653.95,2817068,322.0
+bolsonaro-2019,2021,DF,Distrito Federal,Centro-Oeste,Segurança Pública,510236805.35,2817068,181.12
+bolsonaro-2019,2021,ES,Espírito Santo,Sudeste,Saúde,3571313326.44,3833486,931.61
+bolsonaro-2019,2021,ES,Espírito Santo,Sudeste,Educação,2806031899.35,3833486,731.98
+bolsonaro-2019,2021,ES,Espírito Santo,Sudeste,Infraestrutura,1360500314.84,3833486,354.9
+bolsonaro-2019,2021,ES,Espírito Santo,Sudeste,Segurança Pública,765281427.09,3833486,199.63
+bolsonaro-2019,2021,GO,Goiás,Centro-Oeste,Saúde,6596530016.73,7055228,934.98
+bolsonaro-2019,2021,GO,Goiás,Centro-Oeste,Educação,5182987870.29,7055228,734.63
+bolsonaro-2019,2021,GO,Goiás,Centro-Oeste,Infraestrutura,2512963815.9,7055228,356.18
+bolsonaro-2019,2021,GO,Goiás,Centro-Oeste,Segurança Pública,1413542146.44,7055228,200.35
+bolsonaro-2019,2021,MA,Maranhão,Nordeste,Saúde,9063008845.74,6775152,1337.68
+bolsonaro-2019,2021,MA,Maranhão,Nordeste,Educação,7120935521.65,6775152,1051.04
+bolsonaro-2019,2021,MA,Maranhão,Nordeste,Infraestrutura,3452574798.38,6775152,509.59
+bolsonaro-2019,2021,MA,Maranhão,Nordeste,Segurança Pública,1942073324.09,6775152,286.65
+bolsonaro-2019,2021,MT,Mato Grosso,Centro-Oeste,Saúde,3933762856.5,3658813,1075.15
+bolsonaro-2019,2021,MT,Mato Grosso,Centro-Oeste,Educação,3090813672.96,3658813,844.76
+bolsonaro-2019,2021,MT,Mato Grosso,Centro-Oeste,Infraestrutura,1498576326.28,3658813,409.58
+bolsonaro-2019,2021,MT,Mato Grosso,Centro-Oeste,Segurança Pública,842949183.53,3658813,230.39
+bolsonaro-2019,2021,MS,Mato Grosso do Sul,Centro-Oeste,Saúde,2702031842.46,2756700,980.17
+bolsonaro-2019,2021,MS,Mato Grosso do Sul,Centro-Oeste,Educação,2123025019.08,2756700,770.13
+bolsonaro-2019,2021,MS,Mato Grosso do Sul,Centro-Oeste,Infraestrutura,1029345463.8,2756700,373.4
+bolsonaro-2019,2021,MS,Mato Grosso do Sul,Centro-Oeste,Segurança Pública,579006823.39,2756700,210.04
+bolsonaro-2019,2021,MG,Minas Gerais,Sudeste,Saúde,16995154757.17,20538718,827.47
+bolsonaro-2019,2021,MG,Minas Gerais,Sudeste,Educação,13353335880.63,20538718,650.15
+bolsonaro-2019,2021,MG,Minas Gerais,Sudeste,Infraestrutura,6474344669.4,20538718,315.23
+bolsonaro-2019,2021,MG,Minas Gerais,Sudeste,Segurança Pública,3641818876.54,20538718,177.31
+bolsonaro-2019,2021,PA,Pará,Norte,Saúde,9329654171.28,8116132,1149.52
+bolsonaro-2019,2021,PA,Pará,Norte,Educação,7330442563.15,8116132,903.19
+bolsonaro-2019,2021,PA,Pará,Norte,Infraestrutura,3554153970.01,8116132,437.91
+bolsonaro-2019,2021,PA,Pará,Norte,Segurança Pública,1999211608.13,8116132,246.33
+bolsonaro-2019,2021,PB,Paraíba,Nordeste,Saúde,5665148716.55,3974495,1425.38
+bolsonaro-2019,2021,PB,Paraíba,Nordeste,Educação,4451188277.29,3974495,1119.94
+bolsonaro-2019,2021,PB,Paraíba,Nordeste,Infraestrutura,2158151892.02,3974495,543.0
+bolsonaro-2019,2021,PB,Paraíba,Nordeste,Segurança Pública,1213960439.26,3974495,305.44
+bolsonaro-2019,2021,PR,Paraná,Sul,Saúde,9706473610.49,11443208,848.23
+bolsonaro-2019,2021,PR,Paraná,Sul,Educação,7626514979.67,11443208,666.47
+bolsonaro-2019,2021,PR,Paraná,Sul,Infraestrutura,3697704232.57,11443208,323.14
+bolsonaro-2019,2021,PR,Paraná,Sul,Segurança Pública,2079958630.82,11443208,181.76
+bolsonaro-2019,2021,PE,Pernambuco,Nordeste,Saúde,10226240975.36,9058155,1128.95
+bolsonaro-2019,2021,PE,Pernambuco,Nordeste,Educação,8034903623.5,9058155,887.04
+bolsonaro-2019,2021,PE,Pernambuco,Nordeste,Infraestrutura,3895710847.76,9058155,430.08
+bolsonaro-2019,2021,PE,Pernambuco,Nordeste,Segurança Pública,2191337351.86,9058155,241.92
+bolsonaro-2019,2021,PI,Piauí,Nordeste,Saúde,4872598026.4,3269200,1490.46
+bolsonaro-2019,2021,PI,Piauí,Nordeste,Educação,3828469877.89,3269200,1171.07
+bolsonaro-2019,2021,PI,Piauí,Nordeste,Infraestrutura,1856227819.58,3269200,567.79
+bolsonaro-2019,2021,PI,Piauí,Nordeste,Segurança Pública,1044128148.51,3269200,319.38
+bolsonaro-2019,2021,RJ,Rio de Janeiro,Sudeste,Saúde,12064426435.18,16054524,751.47
+bolsonaro-2019,2021,RJ,Rio de Janeiro,Sudeste,Educação,9479192199.07,16054524,590.44
+bolsonaro-2019,2021,RJ,Rio de Janeiro,Sudeste,Infraestrutura,4595971975.31,16054524,286.27
+bolsonaro-2019,2021,RJ,Rio de Janeiro,Sudeste,Segurança Pública,2585234236.11,16054524,161.03
+bolsonaro-2019,2021,RN,Rio Grande do Norte,Nordeste,Saúde,4835194815.29,3302406,1464.14
+bolsonaro-2019,2021,RN,Rio Grande do Norte,Nordeste,Educação,3799081640.58,3302406,1150.4
+bolsonaro-2019,2021,RN,Rio Grande do Norte,Nordeste,Infraestrutura,1841978977.25,3302406,557.77
+bolsonaro-2019,2021,RN,Rio Grande do Norte,Nordeste,Segurança Pública,1036113174.7,3302406,313.74
+bolsonaro-2019,2021,RS,Rio Grande do Sul,Sul,Saúde,8952539124.57,10880506,822.81
+bolsonaro-2019,2021,RS,Rio Grande do Sul,Sul,Educação,7034137883.59,10880506,646.49
+bolsonaro-2019,2021,RS,Rio Grande do Sul,Sul,Infraestrutura,3410491095.07,10880506,313.45
+bolsonaro-2019,2021,RS,Rio Grande do Sul,Sul,Segurança Pública,1918401240.98,10880506,176.32
+bolsonaro-2019,2021,RO,Rondônia,Norte,Saúde,2792180361.88,1581016,1766.07
+bolsonaro-2019,2021,RO,Rondônia,Norte,Educação,2193855998.62,1581016,1387.62
+bolsonaro-2019,2021,RO,Rondônia,Norte,Infraestrutura,1063687756.91,1581016,672.79
+bolsonaro-2019,2021,RO,Rondônia,Norte,Segurança Pública,598324363.26,1581016,378.44
+bolsonaro-2019,2021,RR,Roraima,Norte,Saúde,1954204119.69,636303,3071.18
+bolsonaro-2019,2021,RR,Roraima,Norte,Educação,1535446094.04,636303,2413.07
+bolsonaro-2019,2021,RR,Roraima,Norte,Infraestrutura,744458712.26,636303,1169.98
+bolsonaro-2019,2021,RR,Roraima,Norte,Segurança Pública,418758025.65,636303,658.11
+bolsonaro-2019,2021,SC,Santa Catarina,Sul,Saúde,6074596194.08,7609601,798.28
+bolsonaro-2019,2021,SC,Santa Catarina,Sul,Educação,4772897009.63,7609601,627.22
+bolsonaro-2019,2021,SC,Santa Catarina,Sul,Infraestrutura,2314131883.46,7609601,304.11
+bolsonaro-2019,2021,SC,Santa Catarina,Sul,Segurança Pública,1301699184.45,7609601,171.06
+bolsonaro-2019,2021,SP,São Paulo,Sudeste,Saúde,31475171455.27,44420459,708.57
+bolsonaro-2019,2021,SP,São Paulo,Sudeste,Educação,24730491857.71,44420459,556.74
+bolsonaro-2019,2021,SP,São Paulo,Sudeste,Infraestrutura,11990541506.77,44420459,269.93
+bolsonaro-2019,2021,SP,São Paulo,Sudeste,Segurança Pública,6744679597.56,44420459,151.84
+bolsonaro-2019,2021,SE,Sergipe,Nordeste,Saúde,4075710909.37,2209558,1844.58
+bolsonaro-2019,2021,SE,Sergipe,Nordeste,Educação,3202344285.93,2209558,1449.31
+bolsonaro-2019,2021,SE,Sergipe,Nordeste,Infraestrutura,1552651775.0,2209558,702.7
+bolsonaro-2019,2021,SE,Sergipe,Nordeste,Segurança Pública,873366623.44,2209558,395.27
+bolsonaro-2019,2021,TO,Tocantins,Norte,Saúde,3651041139.92,1511459,2415.57
+bolsonaro-2019,2021,TO,Tocantins,Norte,Educação,2868675181.37,1511459,1897.95
+bolsonaro-2019,2021,TO,Tocantins,Norte,Infraestrutura,1390872815.21,1511459,920.22
+bolsonaro-2019,2021,TO,Tocantins,Norte,Segurança Pública,782365958.55,1511459,517.62
+lula-2023,2023,AC,Acre,Norte,Saúde,3777612471.85,830026,4551.2
+lula-2023,2023,AC,Acre,Norte,Educação,2968124085.02,830026,3575.94
+lula-2023,2023,AC,Acre,Norte,Infraestrutura,1439090465.47,830026,1733.79
+lula-2023,2023,AC,Acre,Norte,Segurança Pública,809488386.82,830026,975.26
+lula-2023,2023,AL,Alagoas,Nordeste,Saúde,5428698408.67,3127511,1735.79
+lula-2023,2023,AL,Alagoas,Nordeste,Educação,4265405892.53,3127511,1363.83
+lula-2023,2023,AL,Alagoas,Nordeste,Infraestrutura,2068075584.26,3127511,661.25
+lula-2023,2023,AL,Alagoas,Nordeste,Segurança Pública,1163292516.14,3127511,371.95
+lula-2023,2023,AP,Amapá,Norte,Saúde,2993757143.65,733508,4081.42
+lula-2023,2023,AP,Amapá,Norte,Educação,2352237755.73,733508,3206.83
+lula-2023,2023,AP,Amapá,Norte,Infraestrutura,1140478911.87,733508,1554.83
+lula-2023,2023,AP,Amapá,Norte,Segurança Pública,641519387.93,733508,874.59
+lula-2023,2023,AM,Amazonas,Norte,Saúde,5171124819.48,3941175,1312.08
+lula-2023,2023,AM,Amazonas,Norte,Educação,4063026643.87,3941175,1030.92
+lula-2023,2023,AM,Amazonas,Norte,Infraestrutura,1969952312.18,3941175,499.84
+lula-2023,2023,AM,Amazonas,Norte,Segurança Pública,1108098175.6,3941175,281.16
+lula-2023,2023,BA,Bahia,Nordeste,Saúde,18023672156.8,14136417,1274.98
+lula-2023,2023,BA,Bahia,Nordeste,Educação,14161456694.63,14136417,1001.77
+lula-2023,2023,BA,Bahia,Nordeste,Infraestrutura,6866160821.64,14136417,485.71
+lula-2023,2023,BA,Bahia,Nordeste,Segurança Pública,3862215462.17,14136417,273.21
+lula-2023,2023,CE,Ceará,Nordeste,Saúde,12279047075.57,8791688,1396.67
+lula-2023,2023,CE,Ceará,Nordeste,Educação,9647822702.23,8791688,1097.38
+lula-2023,2023,CE,Ceará,Nordeste,Infraestrutura,4677732219.26,8791688,532.06
+lula-2023,2023,CE,Ceará,Nordeste,Segurança Pública,2631224373.34,8791688,299.29
+lula-2023,2023,DF,Distrito Federal,Centro-Oeste,Saúde,2777955940.22,2817068,986.12
+lula-2023,2023,DF,Distrito Federal,Centro-Oeste,Educação,2182679667.32,2817068,774.81
+lula-2023,2023,DF,Distrito Federal,Centro-Oeste,Infraestrutura,1058268929.61,2817068,375.66
+lula-2023,2023,DF,Distrito Federal,Centro-Oeste,Segurança Pública,595276272.9,2817068,211.31
+lula-2023,2023,ES,Espírito Santo,Sudeste,Saúde,4166532214.18,3833486,1086.88
+lula-2023,2023,ES,Espírito Santo,Sudeste,Educação,3273703882.57,3833486,853.98
+lula-2023,2023,ES,Espírito Santo,Sudeste,Infraestrutura,1587250367.31,3833486,414.05
+lula-2023,2023,ES,Espírito Santo,Sudeste,Segurança Pública,892828331.61,3833486,232.9
+lula-2023,2023,GO,Goiás,Centro-Oeste,Saúde,7695951686.19,7055228,1090.82
+lula-2023,2023,GO,Goiás,Centro-Oeste,Educação,6046819182.01,7055228,857.07
+lula-2023,2023,GO,Goiás,Centro-Oeste,Infraestrutura,2931791118.55,7055228,415.55
+lula-2023,2023,GO,Goiás,Centro-Oeste,Segurança Pública,1649132504.18,7055228,233.75
+lula-2023,2023,MA,Maranhão,Nordeste,Saúde,10573510320.03,6775152,1560.63
+lula-2023,2023,MA,Maranhão,Nordeste,Educação,8307758108.6,6775152,1226.21
+lula-2023,2023,MA,Maranhão,Nordeste,Infraestrutura,4028003931.44,6775152,594.53
+lula-2023,2023,MA,Maranhão,Nordeste,Segurança Pública,2265752211.44,6775152,334.42
+lula-2023,2023,MT,Mato Grosso,Centro-Oeste,Saúde,4589389999.25,3658813,1254.34
+lula-2023,2023,MT,Mato Grosso,Centro-Oeste,Educação,3605949285.12,3658813,985.55
+lula-2023,2023,MT,Mato Grosso,Centro-Oeste,Infraestrutura,1748339047.33,3658813,477.84
+lula-2023,2023,MT,Mato Grosso,Centro-Oeste,Segurança Pública,983440714.12,3658813,268.79
+lula-2023,2023,MS,Mato Grosso do Sul,Centro-Oeste,Saúde,3152370482.88,2756700,1143.53
+lula-2023,2023,MS,Mato Grosso do Sul,Centro-Oeste,Educação,2476862522.26,2756700,898.49
+lula-2023,2023,MS,Mato Grosso do Sul,Centro-Oeste,Infraestrutura,1200903041.1,2756700,435.63
+lula-2023,2023,MS,Mato Grosso do Sul,Centro-Oeste,Segurança Pública,675507960.62,2756700,245.04
+lula-2023,2023,MG,Minas Gerais,Sudeste,Saúde,19827680550.03,20538718,965.38
+lula-2023,2023,MG,Minas Gerais,Sudeste,Educação,15578891860.74,20538718,758.51
+lula-2023,2023,MG,Minas Gerais,Sudeste,Infraestrutura,7553402114.3,20538718,367.76
+lula-2023,2023,MG,Minas Gerais,Sudeste,Segurança Pública,4248788689.29,20538718,206.87
+lula-2023,2023,PA,Pará,Norte,Saúde,10884596533.16,8116132,1341.11
+lula-2023,2023,PA,Pará,Norte,Educação,8552182990.34,8116132,1053.73
+lula-2023,2023,PA,Pará,Norte,Infraestrutura,4146512965.01,8116132,510.9
+lula-2023,2023,PA,Pará,Norte,Segurança Pública,2332413542.82,8116132,287.38
+lula-2023,2023,PB,Paraíba,Nordeste,Saúde,6609340169.31,3974495,1662.94
+lula-2023,2023,PB,Paraíba,Nordeste,Educação,5193052990.17,3974495,1306.59
+lula-2023,2023,PB,Paraíba,Nordeste,Infraestrutura,2517843874.02,3974495,633.5
+lula-2023,2023,PB,Paraíba,Nordeste,Segurança Pública,1416287179.14,3974495,356.34
+lula-2023,2023,PR,Paraná,Sul,Saúde,11324219212.23,11443208,989.6
+lula-2023,2023,PR,Paraná,Sul,Educação,8897600809.61,11443208,777.54
+lula-2023,2023,PR,Paraná,Sul,Infraestrutura,4313988271.33,11443208,376.99
+lula-2023,2023,PR,Paraná,Sul,Segurança Pública,2426618402.62,11443208,212.06
+lula-2023,2023,PE,Pernambuco,Nordeste,Saúde,11930614471.26,9058155,1317.11
+lula-2023,2023,PE,Pernambuco,Nordeste,Educação,9374054227.42,9058155,1034.87
+lula-2023,2023,PE,Pernambuco,Nordeste,Infraestrutura,4544995989.05,9058155,501.76
+lula-2023,2023,PE,Pernambuco,Nordeste,Segurança Pública,2556560243.84,9058155,282.24
+lula-2023,2023,PI,Piauí,Nordeste,Saúde,5684697697.47,3269200,1738.87
+lula-2023,2023,PI,Piauí,Nordeste,Educação,4466548190.87,3269200,1366.25
+lula-2023,2023,PI,Piauí,Nordeste,Infraestrutura,2165599122.85,3269200,662.42
+lula-2023,2023,PI,Piauí,Nordeste,Segurança Pública,1218149506.6,3269200,372.61
+lula-2023,2023,RJ,Rio de Janeiro,Sudeste,Saúde,14075164174.37,16054524,876.71
+lula-2023,2023,RJ,Rio de Janeiro,Sudeste,Educação,11059057565.58,16054524,688.84
+lula-2023,2023,RJ,Rio de Janeiro,Sudeste,Infraestrutura,5361967304.52,16054524,333.98
+lula-2023,2023,RJ,Rio de Janeiro,Sudeste,Segurança Pública,3016106608.79,16054524,187.87
+lula-2023,2023,RN,Rio Grande do Norte,Nordeste,Saúde,5641060617.84,3302406,1708.17
+lula-2023,2023,RN,Rio Grande do Norte,Nordeste,Educação,4432261914.01,3302406,1342.13
+lula-2023,2023,RN,Rio Grande do Norte,Nordeste,Infraestrutura,2148975473.46,3302406,650.73
+lula-2023,2023,RN,Rio Grande do Norte,Nordeste,Segurança Pública,1208798703.82,3302406,366.04
+lula-2023,2023,RS,Rio Grande do Sul,Sul,Saúde,10444628978.66,10880506,959.94
+lula-2023,2023,RS,Rio Grande do Sul,Sul,Educação,8206494197.52,10880506,754.24
+lula-2023,2023,RS,Rio Grande do Sul,Sul,Infraestrutura,3978906277.58,10880506,365.69
+lula-2023,2023,RS,Rio Grande do Sul,Sul,Segurança Pública,2238134781.14,10880506,205.7
+lula-2023,2023,RO,Rondônia,Norte,Saúde,3257543755.53,1581016,2060.41
+lula-2023,2023,RO,Rondônia,Norte,Educação,2559498665.06,1581016,1618.89
+lula-2023,2023,RO,Rondônia,Norte,Infraestrutura,1240969049.73,1581016,784.92
+lula-2023,2023,RO,Rondônia,Norte,Segurança Pública,698045090.47,1581016,441.52
+lula-2023,2023,RR,Roraima,Norte,Saúde,2279904806.3,636303,3583.05
+lula-2023,2023,RR,Roraima,Norte,Educação,1791353776.38,636303,2815.25
+lula-2023,2023,RR,Roraima,Norte,Infraestrutura,868535164.3,636303,1364.97
+lula-2023,2023,RR,Roraima,Norte,Segurança Pública,488551029.92,636303,767.8
+lula-2023,2023,SC,Santa Catarina,Sul,Saúde,7087028893.09,7609601,931.33
+lula-2023,2023,SC,Santa Catarina,Sul,Educação,5568379844.57,7609601,731.76
+lula-2023,2023,SC,Santa Catarina,Sul,Infraestrutura,2699820530.7,7609601,354.79
+lula-2023,2023,SC,Santa Catarina,Sul,Segurança Pública,1518649048.52,7609601,199.57
+lula-2023,2023,SP,São Paulo,Sudeste,Saúde,36721033364.48,44420459,826.67
+lula-2023,2023,SP,São Paulo,Sudeste,Educação,28852240500.66,44420459,649.53
+lula-2023,2023,SP,São Paulo,Sudeste,Infraestrutura,13988965091.23,44420459,314.92
+lula-2023,2023,SP,São Paulo,Sudeste,Segurança Pública,7868792863.82,44420459,177.14
+lula-2023,2023,SE,Sergipe,Nordeste,Saúde,4754996060.93,2209558,2152.01
+lula-2023,2023,SE,Sergipe,Nordeste,Educação,3736068333.59,2209558,1690.87
+lula-2023,2023,SE,Sergipe,Nordeste,Infraestrutura,1811427070.83,2209558,819.81
+lula-2023,2023,SE,Sergipe,Nordeste,Segurança Pública,1018927727.34,2209558,461.15
+lula-2023,2023,TO,Tocantins,Norte,Saúde,4259547996.57,1511459,2818.17
+lula-2023,2023,TO,Tocantins,Norte,Educação,3346787711.59,1511459,2214.28
+lula-2023,2023,TO,Tocantins,Norte,Infraestrutura,1622684951.08,1511459,1073.59
+lula-2023,2023,TO,Tocantins,Norte,Segurança Pública,912760284.98,1511459,603.89

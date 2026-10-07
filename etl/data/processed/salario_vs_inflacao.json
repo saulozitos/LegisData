@@ -1,0 +1,473 @@
+{
+  "serie_historica": [
+    {
+      "ano": 1994,
+      "presidente_dominante": "Itamar Franco",
+      "salario_minimo_brl": 70.0,
+      "salario_parlamentar_brl": 3000.0,
+      "multiplo_salarios_minimos": 42.9,
+      "ipca_acumulado_ano_pct": 916.43,
+      "indice_salario_minimo_base100": 100.0,
+      "indice_salario_parlamentar_base100": 100.0,
+      "indice_ipca_base100": 100.0
+    },
+    {
+      "ano": 1995,
+      "presidente_dominante": "Fernando Henrique Cardoso (FHC 1)",
+      "salario_minimo_brl": 100.0,
+      "salario_parlamentar_brl": 8000.0,
+      "multiplo_salarios_minimos": 80.0,
+      "ipca_acumulado_ano_pct": 22.41,
+      "indice_salario_minimo_base100": 142.9,
+      "indice_salario_parlamentar_base100": 266.7,
+      "indice_ipca_base100": 122.4
+    },
+    {
+      "ano": 1996,
+      "presidente_dominante": "Fernando Henrique Cardoso (FHC 1)",
+      "salario_minimo_brl": 112.0,
+      "salario_parlamentar_brl": 8000.0,
+      "multiplo_salarios_minimos": 71.4,
+      "ipca_acumulado_ano_pct": 9.56,
+      "indice_salario_minimo_base100": 160.0,
+      "indice_salario_parlamentar_base100": 266.7,
+      "indice_ipca_base100": 134.1
+    },
+    {
+      "ano": 1997,
+      "presidente_dominante": "Fernando Henrique Cardoso (FHC 1)",
+      "salario_minimo_brl": 120.0,
+      "salario_parlamentar_brl": 8000.0,
+      "multiplo_salarios_minimos": 66.7,
+      "ipca_acumulado_ano_pct": 5.22,
+      "indice_salario_minimo_base100": 171.4,
+      "indice_salario_parlamentar_base100": 266.7,
+      "indice_ipca_base100": 141.1
+    },
+    {
+      "ano": 1998,
+      "presidente_dominante": "Fernando Henrique Cardoso (FHC 1)",
+      "salario_minimo_brl": 130.0,
+      "salario_parlamentar_brl": 8000.0,
+      "multiplo_salarios_minimos": 61.5,
+      "ipca_acumulado_ano_pct": 1.66,
+      "indice_salario_minimo_base100": 185.7,
+      "indice_salario_parlamentar_base100": 266.7,
+      "indice_ipca_base100": 143.5
+    },
+    {
+      "ano": 1999,
+      "presidente_dominante": "Fernando Henrique Cardoso (FHC 2)",
+      "salario_minimo_brl": 136.0,
+      "salario_parlamentar_brl": 8000.0,
+      "multiplo_salarios_minimos": 58.8,
+      "ipca_acumulado_ano_pct": 8.94,
+      "indice_salario_minimo_base100": 194.3,
+      "indice_salario_parlamentar_base100": 266.7,
+      "indice_ipca_base100": 156.3
+    },
+    {
+      "ano": 2000,
+      "presidente_dominante": "Fernando Henrique Cardoso (FHC 2)",
+      "salario_minimo_brl": 151.0,
+      "salario_parlamentar_brl": 8000.0,
+      "multiplo_salarios_minimos": 53.0,
+      "ipca_acumulado_ano_pct": 5.97,
+      "indice_salario_minimo_base100": 215.7,
+      "indice_salario_parlamentar_base100": 266.7,
+      "indice_ipca_base100": 165.6
+    },
+    {
+      "ano": 2001,
+      "presidente_dominante": "Fernando Henrique Cardoso (FHC 2)",
+      "salario_minimo_brl": 180.0,
+      "salario_parlamentar_brl": 8000.0,
+      "multiplo_salarios_minimos": 44.4,
+      "ipca_acumulado_ano_pct": 7.67,
+      "indice_salario_minimo_base100": 257.1,
+      "indice_salario_parlamentar_base100": 266.7,
+      "indice_ipca_base100": 178.3
+    },
+    {
+      "ano": 2002,
+      "presidente_dominante": "Fernando Henrique Cardoso (FHC 2)",
+      "salario_minimo_brl": 200.0,
+      "salario_parlamentar_brl": 8000.0,
+      "multiplo_salarios_minimos": 40.0,
+      "ipca_acumulado_ano_pct": 12.53,
+      "indice_salario_minimo_base100": 285.7,
+      "indice_salario_parlamentar_base100": 266.7,
+      "indice_ipca_base100": 200.7
+    },
+    {
+      "ano": 2003,
+      "presidente_dominante": "Lula (Lula 1)",
+      "salario_minimo_brl": 240.0,
+      "salario_parlamentar_brl": 12847.2,
+      "multiplo_salarios_minimos": 53.5,
+      "ipca_acumulado_ano_pct": 9.3,
+      "indice_salario_minimo_base100": 342.9,
+      "indice_salario_parlamentar_base100": 428.2,
+      "indice_ipca_base100": 219.3
+    },
+    {
+      "ano": 2004,
+      "presidente_dominante": "Lula (Lula 1)",
+      "salario_minimo_brl": 260.0,
+      "salario_parlamentar_brl": 12847.2,
+      "multiplo_salarios_minimos": 49.4,
+      "ipca_acumulado_ano_pct": 7.6,
+      "indice_salario_minimo_base100": 371.4,
+      "indice_salario_parlamentar_base100": 428.2,
+      "indice_ipca_base100": 236.0
+    },
+    {
+      "ano": 2005,
+      "presidente_dominante": "Lula (Lula 1)",
+      "salario_minimo_brl": 300.0,
+      "salario_parlamentar_brl": 12847.2,
+      "multiplo_salarios_minimos": 42.8,
+      "ipca_acumulado_ano_pct": 5.69,
+      "indice_salario_minimo_base100": 428.6,
+      "indice_salario_parlamentar_base100": 428.2,
+      "indice_ipca_base100": 249.4
+    },
+    {
+      "ano": 2006,
+      "presidente_dominante": "Lula (Lula 1)",
+      "salario_minimo_brl": 350.0,
+      "salario_parlamentar_brl": 12847.2,
+      "multiplo_salarios_minimos": 36.7,
+      "ipca_acumulado_ano_pct": 3.14,
+      "indice_salario_minimo_base100": 500.0,
+      "indice_salario_parlamentar_base100": 428.2,
+      "indice_ipca_base100": 257.3
+    },
+    {
+      "ano": 2007,
+      "presidente_dominante": "Lula (Lula 2)",
+      "salario_minimo_brl": 380.0,
+      "salario_parlamentar_brl": 16512.88,
+      "multiplo_salarios_minimos": 43.5,
+      "ipca_acumulado_ano_pct": 4.46,
+      "indice_salario_minimo_base100": 542.9,
+      "indice_salario_parlamentar_base100": 550.4,
+      "indice_ipca_base100": 268.7
+    },
+    {
+      "ano": 2008,
+      "presidente_dominante": "Lula (Lula 2)",
+      "salario_minimo_brl": 415.0,
+      "salario_parlamentar_brl": 16512.88,
+      "multiplo_salarios_minimos": 39.8,
+      "ipca_acumulado_ano_pct": 5.9,
+      "indice_salario_minimo_base100": 592.9,
+      "indice_salario_parlamentar_base100": 550.4,
+      "indice_ipca_base100": 284.6
+    },
+    {
+      "ano": 2009,
+      "presidente_dominante": "Lula (Lula 2)",
+      "salario_minimo_brl": 465.0,
+      "salario_parlamentar_brl": 16512.88,
+      "multiplo_salarios_minimos": 35.5,
+      "ipca_acumulado_ano_pct": 4.31,
+      "indice_salario_minimo_base100": 664.3,
+      "indice_salario_parlamentar_base100": 550.4,
+      "indice_ipca_base100": 296.9
+    },
+    {
+      "ano": 2010,
+      "presidente_dominante": "Lula (Lula 2)",
+      "salario_minimo_brl": 510.0,
+      "salario_parlamentar_brl": 16512.88,
+      "multiplo_salarios_minimos": 32.4,
+      "ipca_acumulado_ano_pct": 5.91,
+      "indice_salario_minimo_base100": 728.6,
+      "indice_salario_parlamentar_base100": 550.4,
+      "indice_ipca_base100": 314.4
+    },
+    {
+      "ano": 2011,
+      "presidente_dominante": "Dilma Rousseff (Dilma 1)",
+      "salario_minimo_brl": 545.0,
+      "salario_parlamentar_brl": 26723.13,
+      "multiplo_salarios_minimos": 49.0,
+      "ipca_acumulado_ano_pct": 6.5,
+      "indice_salario_minimo_base100": 778.6,
+      "indice_salario_parlamentar_base100": 890.8,
+      "indice_ipca_base100": 334.9
+    },
+    {
+      "ano": 2012,
+      "presidente_dominante": "Dilma Rousseff (Dilma 1)",
+      "salario_minimo_brl": 622.0,
+      "salario_parlamentar_brl": 26723.13,
+      "multiplo_salarios_minimos": 43.0,
+      "ipca_acumulado_ano_pct": 5.84,
+      "indice_salario_minimo_base100": 888.6,
+      "indice_salario_parlamentar_base100": 890.8,
+      "indice_ipca_base100": 354.4
+    },
+    {
+      "ano": 2013,
+      "presidente_dominante": "Dilma Rousseff (Dilma 1)",
+      "salario_minimo_brl": 678.0,
+      "salario_parlamentar_brl": 26723.13,
+      "multiplo_salarios_minimos": 39.4,
+      "ipca_acumulado_ano_pct": 5.91,
+      "indice_salario_minimo_base100": 968.6,
+      "indice_salario_parlamentar_base100": 890.8,
+      "indice_ipca_base100": 375.4
+    },
+    {
+      "ano": 2014,
+      "presidente_dominante": "Dilma Rousseff (Dilma 1)",
+      "salario_minimo_brl": 724.0,
+      "salario_parlamentar_brl": 26723.13,
+      "multiplo_salarios_minimos": 36.9,
+      "ipca_acumulado_ano_pct": 6.41,
+      "indice_salario_minimo_base100": 1034.3,
+      "indice_salario_parlamentar_base100": 890.8,
+      "indice_ipca_base100": 399.4
+    },
+    {
+      "ano": 2015,
+      "presidente_dominante": "Dilma Rousseff (Dilma 2)",
+      "salario_minimo_brl": 788.0,
+      "salario_parlamentar_brl": 33763.0,
+      "multiplo_salarios_minimos": 42.8,
+      "ipca_acumulado_ano_pct": 10.67,
+      "indice_salario_minimo_base100": 1125.7,
+      "indice_salario_parlamentar_base100": 1125.4,
+      "indice_ipca_base100": 442.0
+    },
+    {
+      "ano": 2016,
+      "presidente_dominante": "Dilma Rousseff (Dilma 2)",
+      "salario_minimo_brl": 880.0,
+      "salario_parlamentar_brl": 33763.0,
+      "multiplo_salarios_minimos": 38.4,
+      "ipca_acumulado_ano_pct": 6.29,
+      "indice_salario_minimo_base100": 1257.1,
+      "indice_salario_parlamentar_base100": 1125.4,
+      "indice_ipca_base100": 469.8
+    },
+    {
+      "ano": 2017,
+      "presidente_dominante": "Michel Temer",
+      "salario_minimo_brl": 937.0,
+      "salario_parlamentar_brl": 33763.0,
+      "multiplo_salarios_minimos": 36.0,
+      "ipca_acumulado_ano_pct": 2.95,
+      "indice_salario_minimo_base100": 1338.6,
+      "indice_salario_parlamentar_base100": 1125.4,
+      "indice_ipca_base100": 483.7
+    },
+    {
+      "ano": 2018,
+      "presidente_dominante": "Michel Temer",
+      "salario_minimo_brl": 954.0,
+      "salario_parlamentar_brl": 33763.0,
+      "multiplo_salarios_minimos": 35.4,
+      "ipca_acumulado_ano_pct": 3.75,
+      "indice_salario_minimo_base100": 1362.9,
+      "indice_salario_parlamentar_base100": 1125.4,
+      "indice_ipca_base100": 501.8
+    },
+    {
+      "ano": 2019,
+      "presidente_dominante": "Jair Bolsonaro",
+      "salario_minimo_brl": 998.0,
+      "salario_parlamentar_brl": 33763.0,
+      "multiplo_salarios_minimos": 33.8,
+      "ipca_acumulado_ano_pct": 4.31,
+      "indice_salario_minimo_base100": 1425.7,
+      "indice_salario_parlamentar_base100": 1125.4,
+      "indice_ipca_base100": 523.4
+    },
+    {
+      "ano": 2020,
+      "presidente_dominante": "Jair Bolsonaro",
+      "salario_minimo_brl": 1045.0,
+      "salario_parlamentar_brl": 33763.0,
+      "multiplo_salarios_minimos": 32.3,
+      "ipca_acumulado_ano_pct": 4.52,
+      "indice_salario_minimo_base100": 1492.9,
+      "indice_salario_parlamentar_base100": 1125.4,
+      "indice_ipca_base100": 547.1
+    },
+    {
+      "ano": 2021,
+      "presidente_dominante": "Jair Bolsonaro",
+      "salario_minimo_brl": 1100.0,
+      "salario_parlamentar_brl": 33763.0,
+      "multiplo_salarios_minimos": 30.7,
+      "ipca_acumulado_ano_pct": 10.06,
+      "indice_salario_minimo_base100": 1571.4,
+      "indice_salario_parlamentar_base100": 1125.4,
+      "indice_ipca_base100": 602.1
+    },
+    {
+      "ano": 2022,
+      "presidente_dominante": "Jair Bolsonaro",
+      "salario_minimo_brl": 1212.0,
+      "salario_parlamentar_brl": 33763.0,
+      "multiplo_salarios_minimos": 27.9,
+      "ipca_acumulado_ano_pct": 5.78,
+      "indice_salario_minimo_base100": 1731.4,
+      "indice_salario_parlamentar_base100": 1125.4,
+      "indice_ipca_base100": 636.9
+    },
+    {
+      "ano": 2023,
+      "presidente_dominante": "Lula (Lula 3)",
+      "salario_minimo_brl": 1320.0,
+      "salario_parlamentar_brl": 39293.32,
+      "multiplo_salarios_minimos": 29.8,
+      "ipca_acumulado_ano_pct": 4.62,
+      "indice_salario_minimo_base100": 1885.7,
+      "indice_salario_parlamentar_base100": 1309.8,
+      "indice_ipca_base100": 666.4
+    },
+    {
+      "ano": 2024,
+      "presidente_dominante": "Lula (Lula 3)",
+      "salario_minimo_brl": 1412.0,
+      "salario_parlamentar_brl": 41650.92,
+      "multiplo_salarios_minimos": 29.5,
+      "ipca_acumulado_ano_pct": 4.83,
+      "indice_salario_minimo_base100": 2017.1,
+      "indice_salario_parlamentar_base100": 1388.4,
+      "indice_ipca_base100": 698.6
+    },
+    {
+      "ano": 2025,
+      "presidente_dominante": "Lula (Lula 3)",
+      "salario_minimo_brl": 1518.0,
+      "salario_parlamentar_brl": 44008.52,
+      "multiplo_salarios_minimos": 29.0,
+      "ipca_acumulado_ano_pct": 4.26,
+      "indice_salario_minimo_base100": 2168.6,
+      "indice_salario_parlamentar_base100": 1467.0,
+      "indice_ipca_base100": 728.4
+    },
+    {
+      "ano": 2026,
+      "presidente_dominante": "Lula (Lula 3)",
+      "salario_minimo_brl": 1621.0,
+      "salario_parlamentar_brl": 46366.19,
+      "multiplo_salarios_minimos": 28.6,
+      "ipca_acumulado_ano_pct": 3.11,
+      "indice_salario_minimo_base100": 2315.7,
+      "indice_salario_parlamentar_base100": 1545.5,
+      "indice_ipca_base100": 751.0
+    }
+  ],
+  "votacao_salario_minimo": {
+    "proposicao_titulo": "MPV 1172/2023 (Lei nº 14.663/2023)",
+    "ementa": "Define o valor do salário mínimo em R$ 1.320,00 e estabelece a política de valorização permanente com ganho real anual (inflação do INPC + variação do PIB consolidado).",
+    "data_votacao": "23/08/2023",
+    "casa": "Câmara dos Deputados (Plenário)",
+    "placar": {
+      "SIM": 439,
+      "NAO": 1,
+      "ABSTENCAO": 1,
+      "TOTAL": 441
+    },
+    "votos_amostra": [
+      {
+        "deputado_nome": "Arthur Lira",
+        "partido_sigla": "PP",
+        "uf": "AL",
+        "cargo": "Presidente da Câmara",
+        "voto": "SIM",
+        "foto_url": "https://www.camara.leg.br/internet/deputado/bandep/160541.jpg"
+      },
+      {
+        "deputado_nome": "Gleisi Hoffmann",
+        "partido_sigla": "PT",
+        "uf": "PR",
+        "cargo": "Deputada Federal",
+        "voto": "SIM",
+        "foto_url": "https://www.camara.leg.br/internet/deputado/bandep/107283.jpg"
+      },
+      {
+        "deputado_nome": "Aécio Neves",
+        "partido_sigla": "PSDB",
+        "uf": "MG",
+        "cargo": "Deputado Federal",
+        "voto": "SIM",
+        "foto_url": "https://www.camara.leg.br/internet/deputado/bandep/74646.jpg"
+      },
+      {
+        "deputado_nome": "Baleia Rossi",
+        "partido_sigla": "MDB",
+        "uf": "SP",
+        "cargo": "Deputado Federal",
+        "voto": "SIM",
+        "foto_url": "https://www.camara.leg.br/internet/deputado/bandep/178975.jpg"
+      },
+      {
+        "deputado_nome": "Kim Kataguiri",
+        "partido_sigla": "UNIÃO",
+        "uf": "SP",
+        "cargo": "Deputado Federal",
+        "voto": "SIM",
+        "foto_url": "https://www.camara.leg.br/internet/deputado/bandep/204536.jpg"
+      },
+      {
+        "deputado_nome": "Guilherme Boulos",
+        "partido_sigla": "PSOL",
+        "uf": "SP",
+        "cargo": "Deputado Federal",
+        "voto": "SIM",
+        "foto_url": "https://www.camara.leg.br/internet/deputado/bandep/220639.jpg"
+      },
+      {
+        "deputado_nome": "Eduardo Bolsonaro",
+        "partido_sigla": "PL",
+        "uf": "SP",
+        "cargo": "Deputado Federal",
+        "voto": "SIM",
+        "foto_url": "https://www.camara.leg.br/internet/deputado/bandep/92346.jpg"
+      },
+      {
+        "deputado_nome": "Marcel van Hattem",
+        "partido_sigla": "NOVO",
+        "uf": "RS",
+        "cargo": "Deputado Federal",
+        "voto": "SIM",
+        "foto_url": "https://www.camara.leg.br/internet/deputado/bandep/156144.jpg"
+      },
+      {
+        "deputado_nome": "Merlong Solano",
+        "partido_sigla": "PT",
+        "uf": "PI",
+        "cargo": "Relator da Matéria",
+        "voto": "SIM",
+        "foto_url": "https://www.camara.leg.br/internet/deputado/bandep/160655.jpg"
+      },
+      {
+        "deputado_nome": "Luiz Philippe de Orleans e Bragança",
+        "partido_sigla": "PL",
+        "uf": "SP",
+        "cargo": "Deputado Federal",
+        "voto": "NAO",
+        "foto_url": "https://www.camara.leg.br/internet/deputado/bandep/204510.jpg"
+      }
+    ]
+  },
+  "estatisticas_disparidade": {
+    "salario_minimo_inicial_real_1994": 70.0,
+    "salario_minimo_atual_2024": 1412.0,
+    "salario_parlamentar_inicial_1994": 3000.0,
+    "salario_parlamentar_atual_2024": 41650.92,
+    "multiplo_medio_historico": 43.6,
+    "pico_multiplo_ano": 1998,
+    "pico_multiplo_valor": 61.5,
+    "multiplo_atual": 29.5,
+    "crescimento_acumulado_salario_minimo_pct": 1917.1,
+    "crescimento_acumulado_salario_parlamentar_pct": 1288.4
+  }
+}

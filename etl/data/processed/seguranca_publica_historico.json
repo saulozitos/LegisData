@@ -1,0 +1,194 @@
+[
+  {
+    "ano": 1995,
+    "taxa_homicidios": 23.9,
+    "taxa_feminicidios": 0.7,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 1996,
+    "taxa_homicidios": 24.8,
+    "taxa_feminicidios": 0.72,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 1997,
+    "taxa_homicidios": 25.4,
+    "taxa_feminicidios": 0.75,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 1998,
+    "taxa_homicidios": 25.9,
+    "taxa_feminicidios": 0.78,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 1999,
+    "taxa_homicidios": 26.2,
+    "taxa_feminicidios": 0.8,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2000,
+    "taxa_homicidios": 26.7,
+    "taxa_feminicidios": 0.82,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2001,
+    "taxa_homicidios": 27.8,
+    "taxa_feminicidios": 0.85,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2002,
+    "taxa_homicidios": 28.5,
+    "taxa_feminicidios": 0.88,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2003,
+    "taxa_homicidios": 28.9,
+    "taxa_feminicidios": 0.89,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2004,
+    "taxa_homicidios": 27.0,
+    "taxa_feminicidios": 0.86,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2005,
+    "taxa_homicidios": 26.1,
+    "taxa_feminicidios": 0.84,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2006,
+    "taxa_homicidios": 26.6,
+    "taxa_feminicidios": 0.85,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2007,
+    "taxa_homicidios": 25.2,
+    "taxa_feminicidios": 0.83,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2008,
+    "taxa_homicidios": 26.4,
+    "taxa_feminicidios": 0.86,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2009,
+    "taxa_homicidios": 27.2,
+    "taxa_feminicidios": 0.88,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2010,
+    "taxa_homicidios": 27.8,
+    "taxa_feminicidios": 0.9,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2011,
+    "taxa_homicidios": 27.4,
+    "taxa_feminicidios": 0.89,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2012,
+    "taxa_homicidios": 29.4,
+    "taxa_feminicidios": 0.92,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2013,
+    "taxa_homicidios": 28.6,
+    "taxa_feminicidios": 0.91,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2014,
+    "taxa_homicidios": 29.8,
+    "taxa_feminicidios": 0.94,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2015,
+    "taxa_homicidios": 28.9,
+    "taxa_feminicidios": 0.85,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2016,
+    "taxa_homicidios": 30.3,
+    "taxa_feminicidios": 0.95,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2017,
+    "taxa_homicidios": 31.6,
+    "taxa_feminicidios": 1.04,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2018,
+    "taxa_homicidios": 27.8,
+    "taxa_feminicidios": 1.15,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2019,
+    "taxa_homicidios": 21.7,
+    "taxa_feminicidios": 1.25,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2020,
+    "taxa_homicidios": 23.6,
+    "taxa_feminicidios": 1.28,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2021,
+    "taxa_homicidios": 22.3,
+    "taxa_feminicidios": 1.31,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2022,
+    "taxa_homicidios": 21.7,
+    "taxa_feminicidios": 1.4,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2023,
+    "taxa_homicidios": 20.9,
+    "taxa_feminicidios": 1.42,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2024,
+    "taxa_homicidios": 19.4,
+    "taxa_feminicidios": 1.38,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2025,
+    "taxa_homicidios": 18.8,
+    "taxa_feminicidios": 1.34,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  },
+  {
+    "ano": 2026,
+    "taxa_homicidios": 18.2,
+    "taxa_feminicidios": 1.3,
+    "fonte": "IPEA / Atlas da Violência / FBSP"
+  }
+]

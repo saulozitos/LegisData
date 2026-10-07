@@ -1,0 +1,163 @@
+ano,uf,estado_nome,regiao,taxa_analfabetismo_pct,extrema_pobreza_pct,inseguranca_alimentar_pct,indice_gini
+2002,AC,Acre,Norte,20.23,17.92,13.72,0.591
+2002,AL,Alagoas,Nordeste,31.54,23.68,17.15,0.603
+2002,AP,Amapá,Norte,12.5,17.28,14.21,0.569
+2002,AM,Amazonas,Norte,13.09,19.2,16.17,0.603
+2002,BA,Bahia,Nordeste,24.99,19.84,14.7,0.603
+2002,CE,Ceará,Nordeste,24.39,19.2,14.21,0.58
+2002,DF,Distrito Federal,Centro-Oeste,4.17,7.04,7.35,0.648
+2002,ES,Espírito Santo,Sudeste,10.12,9.6,8.33,0.557
+2002,GO,Goiás,Centro-Oeste,10.12,8.96,8.33,0.534
+2002,MA,Maranhão,Nordeste,29.75,24.96,16.66,0.614
+2002,MT,Mato Grosso,Centro-Oeste,11.3,8.96,8.33,0.534
+2002,MS,Mato Grosso do Sul,Centro-Oeste,10.71,9.6,8.82,0.546
+2002,MG,Minas Gerais,Sudeste,10.71,10.24,8.82,0.546
+2002,PA,Pará,Norte,17.85,18.56,15.19,0.58
+2002,PB,Paraíba,Nordeste,27.37,19.46,15.19,0.591
+2002,PR,Paraná,Sul,7.74,7.68,6.37,0.534
+2002,PE,Pernambuco,Nordeste,25.59,18.94,15.68,0.603
+2002,PI,Piauí,Nordeste,28.56,21.12,15.68,0.591
+2002,RJ,Rio de Janeiro,Sudeste,5.95,11.52,10.78,0.603
+2002,RN,Rio Grande do Norte,Nordeste,23.21,17.92,13.72,0.58
+2002,RS,Rio Grande do Sul,Sul,5.36,7.04,6.37,0.523
+2002,RO,Rondônia,Norte,13.09,12.16,10.78,0.546
+2002,RR,Roraima,Norte,11.9,16.64,14.21,0.58
+2002,SC,Santa Catarina,Sul,4.76,5.12,4.9,0.489
+2002,SP,São Paulo,Sudeste,5.36,7.68,6.86,0.58
+2002,SE,Sergipe,Nordeste,23.8,18.56,14.7,0.591
+2002,TO,Tocantins,Norte,19.04,14.08,11.76,0.557
+2006,AC,Acre,Norte,17.68,11.62,8.12,0.561
+2006,AL,Alagoas,Nordeste,27.56,15.36,10.15,0.572
+2006,AP,Amapá,Norte,10.92,11.21,8.41,0.54
+2006,AM,Amazonas,Norte,11.44,12.45,9.57,0.572
+2006,BA,Bahia,Nordeste,21.84,12.87,8.7,0.572
+2006,CE,Ceará,Nordeste,21.32,12.45,8.41,0.55
+2006,DF,Distrito Federal,Centro-Oeste,3.64,4.57,4.35,0.615
+2006,ES,Espírito Santo,Sudeste,8.84,6.23,4.93,0.529
+2006,GO,Goiás,Centro-Oeste,8.84,5.81,4.93,0.507
+2006,MA,Maranhão,Nordeste,26.0,16.19,9.86,0.583
+2006,MT,Mato Grosso,Centro-Oeste,9.88,5.81,4.93,0.507
+2006,MS,Mato Grosso do Sul,Centro-Oeste,9.36,6.23,5.22,0.518
+2006,MG,Minas Gerais,Sudeste,9.36,6.64,5.22,0.518
+2006,PA,Pará,Norte,15.6,12.04,8.99,0.55
+2006,PB,Paraíba,Nordeste,23.92,12.62,8.99,0.561
+2006,PR,Paraná,Sul,6.76,4.98,3.77,0.507
+2006,PE,Pernambuco,Nordeste,22.36,12.28,9.28,0.572
+2006,PI,Piauí,Nordeste,24.96,13.7,9.28,0.561
+2006,RJ,Rio de Janeiro,Sudeste,5.2,7.47,6.38,0.572
+2006,RN,Rio Grande do Norte,Nordeste,20.28,11.62,8.12,0.55
+2006,RS,Rio Grande do Sul,Sul,4.68,4.57,3.77,0.496
+2006,RO,Rondônia,Norte,11.44,7.89,6.38,0.518
+2006,RR,Roraima,Norte,10.4,10.79,8.41,0.55
+2006,SC,Santa Catarina,Sul,4.16,3.32,2.9,0.464
+2006,SP,São Paulo,Sudeste,4.68,4.98,4.06,0.55
+2006,SE,Sergipe,Nordeste,20.8,12.04,8.7,0.561
+2006,TO,Tocantins,Norte,16.64,9.13,6.96,0.529
+2010,AC,Acre,Norte,16.32,8.12,6.44,0.532
+2010,AL,Alagoas,Nordeste,25.44,10.73,8.05,0.542
+2010,AP,Amapá,Norte,10.08,7.83,6.67,0.512
+2010,AM,Amazonas,Norte,10.56,8.7,7.59,0.542
+2010,BA,Bahia,Nordeste,20.16,8.99,6.9,0.542
+2010,CE,Ceará,Nordeste,19.68,8.7,6.67,0.522
+2010,DF,Distrito Federal,Centro-Oeste,3.36,3.19,3.45,0.583
+2010,ES,Espírito Santo,Sudeste,8.16,4.35,3.91,0.501
+2010,GO,Goiás,Centro-Oeste,8.16,4.06,3.91,0.481
+2010,MA,Maranhão,Nordeste,24.0,11.31,7.82,0.553
+2010,MT,Mato Grosso,Centro-Oeste,9.12,4.06,3.91,0.481
+2010,MS,Mato Grosso do Sul,Centro-Oeste,8.64,4.35,4.14,0.491
+2010,MG,Minas Gerais,Sudeste,8.64,4.64,4.14,0.491
+2010,PA,Pará,Norte,14.4,8.41,7.13,0.522
+2010,PB,Paraíba,Nordeste,22.08,8.82,7.13,0.532
+2010,PR,Paraná,Sul,6.24,3.48,2.99,0.481
+2010,PE,Pernambuco,Nordeste,20.64,8.58,7.36,0.542
+2010,PI,Piauí,Nordeste,23.04,9.57,7.36,0.532
+2010,RJ,Rio de Janeiro,Sudeste,4.8,5.22,5.06,0.542
+2010,RN,Rio Grande do Norte,Nordeste,18.72,8.12,6.44,0.522
+2010,RS,Rio Grande do Sul,Sul,4.32,3.19,2.99,0.471
+2010,RO,Rondônia,Norte,10.56,5.51,5.06,0.491
+2010,RR,Roraima,Norte,9.6,7.54,6.67,0.522
+2010,SC,Santa Catarina,Sul,3.84,2.32,2.3,0.44
+2010,SP,São Paulo,Sudeste,4.32,3.48,3.22,0.522
+2010,SE,Sergipe,Nordeste,19.2,8.41,6.9,0.532
+2010,TO,Tocantins,Norte,15.36,6.38,5.52,0.501
+2014,AC,Acre,Norte,13.6,3.92,4.2,0.492
+2014,AL,Alagoas,Nordeste,21.2,5.18,5.25,0.501
+2014,AP,Amapá,Norte,8.4,3.78,4.35,0.473
+2014,AM,Amazonas,Norte,8.8,4.2,4.95,0.501
+2014,BA,Bahia,Nordeste,16.8,4.34,4.5,0.501
+2014,CE,Ceará,Nordeste,16.4,4.2,4.35,0.482
+2014,DF,Distrito Federal,Centro-Oeste,2.8,1.54,2.25,0.539
+2014,ES,Espírito Santo,Sudeste,6.8,2.1,2.55,0.464
+2014,GO,Goiás,Centro-Oeste,6.8,1.96,2.55,0.445
+2014,MA,Maranhão,Nordeste,20.0,5.46,5.1,0.511
+2014,MT,Mato Grosso,Centro-Oeste,7.6,1.96,2.55,0.445
+2014,MS,Mato Grosso do Sul,Centro-Oeste,7.2,2.1,2.7,0.454
+2014,MG,Minas Gerais,Sudeste,7.2,2.24,2.7,0.454
+2014,PA,Pará,Norte,12.0,4.06,4.65,0.482
+2014,PB,Paraíba,Nordeste,18.4,4.26,4.65,0.492
+2014,PR,Paraná,Sul,5.2,1.68,1.95,0.445
+2014,PE,Pernambuco,Nordeste,17.2,4.14,4.8,0.501
+2014,PI,Piauí,Nordeste,19.2,4.62,4.8,0.492
+2014,RJ,Rio de Janeiro,Sudeste,4.0,2.52,3.3,0.501
+2014,RN,Rio Grande do Norte,Nordeste,15.6,3.92,4.2,0.482
+2014,RS,Rio Grande do Sul,Sul,3.6,1.54,1.95,0.435
+2014,RO,Rondônia,Norte,8.8,2.66,3.3,0.454
+2014,RR,Roraima,Norte,8.0,3.64,4.35,0.482
+2014,SC,Santa Catarina,Sul,3.2,1.12,1.5,0.407
+2014,SP,São Paulo,Sudeste,3.6,1.68,2.1,0.482
+2014,SE,Sergipe,Nordeste,16.0,4.06,4.5,0.492
+2014,TO,Tocantins,Norte,12.8,3.08,3.6,0.464
+2018,AC,Acre,Norte,11.56,7.14,8.12,0.541
+2018,AL,Alagoas,Nordeste,18.02,9.44,10.15,0.551
+2018,AP,Amapá,Norte,7.14,6.88,8.41,0.52
+2018,AM,Amazonas,Norte,7.48,7.65,9.57,0.551
+2018,BA,Bahia,Nordeste,14.28,7.9,8.7,0.551
+2018,CE,Ceará,Nordeste,13.94,7.65,8.41,0.531
+2018,DF,Distrito Federal,Centro-Oeste,2.38,2.81,4.35,0.593
+2018,ES,Espírito Santo,Sudeste,5.78,3.82,4.93,0.51
+2018,GO,Goiás,Centro-Oeste,5.78,3.57,4.93,0.489
+2018,MA,Maranhão,Nordeste,17.0,9.94,9.86,0.562
+2018,MT,Mato Grosso,Centro-Oeste,6.46,3.57,4.93,0.489
+2018,MS,Mato Grosso do Sul,Centro-Oeste,6.12,3.82,5.22,0.499
+2018,MG,Minas Gerais,Sudeste,6.12,4.08,5.22,0.499
+2018,PA,Pará,Norte,10.2,7.39,8.99,0.531
+2018,PB,Paraíba,Nordeste,15.64,7.75,8.99,0.541
+2018,PR,Paraná,Sul,4.42,3.06,3.77,0.489
+2018,PE,Pernambuco,Nordeste,14.62,7.55,9.28,0.551
+2018,PI,Piauí,Nordeste,16.32,8.41,9.28,0.541
+2018,RJ,Rio de Janeiro,Sudeste,3.4,4.59,6.38,0.551
+2018,RN,Rio Grande do Norte,Nordeste,13.26,7.14,8.12,0.531
+2018,RS,Rio Grande do Sul,Sul,3.06,2.81,3.77,0.479
+2018,RO,Rondônia,Norte,7.48,4.84,6.38,0.499
+2018,RR,Roraima,Norte,6.8,6.63,8.41,0.531
+2018,SC,Santa Catarina,Sul,2.72,2.04,2.9,0.447
+2018,SP,São Paulo,Sudeste,3.06,3.06,4.06,0.531
+2018,SE,Sergipe,Nordeste,13.6,7.39,8.7,0.541
+2018,TO,Tocantins,Norte,10.88,5.61,6.96,0.51
+2022,AC,Acre,Norte,9.52,6.44,21.7,0.52
+2022,AL,Alagoas,Nordeste,14.84,8.51,27.12,0.53
+2022,AP,Amapá,Norte,5.88,6.21,22.47,0.5
+2022,AM,Amazonas,Norte,6.16,6.9,25.57,0.53
+2022,BA,Bahia,Nordeste,11.76,7.13,23.25,0.53
+2022,CE,Ceará,Nordeste,11.48,6.9,22.47,0.51
+2022,DF,Distrito Federal,Centro-Oeste,1.96,2.53,11.62,0.57
+2022,ES,Espírito Santo,Sudeste,4.76,3.45,13.17,0.49
+2022,GO,Goiás,Centro-Oeste,4.76,3.22,13.17,0.47
+2022,MA,Maranhão,Nordeste,14.0,8.97,26.35,0.54
+2022,MT,Mato Grosso,Centro-Oeste,5.32,3.22,13.17,0.47
+2022,MS,Mato Grosso do Sul,Centro-Oeste,5.04,3.45,13.95,0.48
+2022,MG,Minas Gerais,Sudeste,5.04,3.68,13.95,0.48
+2022,PA,Pará,Norte,8.4,6.67,24.03,0.51
+2022,PB,Paraíba,Nordeste,12.88,6.99,24.03,0.52
+2022,PR,Paraná,Sul,3.64,2.76,10.08,0.47
+2022,PE,Pernambuco,Nordeste,12.04,6.81,24.8,0.53
+2022,PI,Piauí,Nordeste,13.44,7.59,24.8,0.52
+2022,RJ,Rio de Janeiro,Sudeste,2.8,4.14,17.05,0.53
+2022,RN,Rio Grande do Norte,Nordeste,10.92,6.44,21.7,0.51
+2022,RS,Rio Grande do Sul,Sul,2.52,2.53,10.08,0.46
+2022,RO,Rondônia,Norte,6.16,4.37,17.05,0.48
+2022,RR,Roraima,Norte,5.6,5.98,22.47,0.51
+2022,SC,Santa Catarina,Sul,2.24,1.84,7.75,0.43
+2022,SP,São Paulo,Sudeste,2.52,2.76,10.85,0.51
+2022,SE,Sergipe,Nordeste,11.2,6.67,23.25,0.52
+2022,TO,Tocantins,Norte,8.96,5.06,18.6,0.49

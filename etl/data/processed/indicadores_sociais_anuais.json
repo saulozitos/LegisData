@@ -1,0 +1,290 @@
+[
+  {
+    "ano": 1993,
+    "analfabetismo": 16.0,
+    "extrema_pobreza_pct": 17.5,
+    "extrema_pobreza_milhoes": 27.2,
+    "inseguranca_alimentar_pct": 12.0,
+    "inseguranca_alimentar_milhoes": 18.6,
+    "gini": 0.601
+  },
+  {
+    "ano": 1994,
+    "analfabetismo": 15.6,
+    "extrema_pobreza_pct": 16.2,
+    "extrema_pobreza_milhoes": 25.5,
+    "inseguranca_alimentar_pct": 11.5,
+    "inseguranca_alimentar_milhoes": 18.0,
+    "gini": 0.6
+  },
+  {
+    "ano": 1995,
+    "analfabetismo": 15.5,
+    "extrema_pobreza_pct": 14.8,
+    "extrema_pobreza_milhoes": 23.6,
+    "inseguranca_alimentar_pct": 11.0,
+    "inseguranca_alimentar_milhoes": 17.5,
+    "gini": 0.596
+  },
+  {
+    "ano": 1996,
+    "analfabetismo": 14.7,
+    "extrema_pobreza_pct": 14.2,
+    "extrema_pobreza_milhoes": 23.0,
+    "inseguranca_alimentar_pct": 10.8,
+    "inseguranca_alimentar_milhoes": 17.4,
+    "gini": 0.598
+  },
+  {
+    "ano": 1997,
+    "analfabetismo": 14.7,
+    "extrema_pobreza_pct": 13.9,
+    "extrema_pobreza_milhoes": 22.9,
+    "inseguranca_alimentar_pct": 10.5,
+    "inseguranca_alimentar_milhoes": 17.2,
+    "gini": 0.597
+  },
+  {
+    "ano": 1998,
+    "analfabetismo": 13.8,
+    "extrema_pobreza_pct": 13.8,
+    "extrema_pobreza_milhoes": 23.1,
+    "inseguranca_alimentar_pct": 10.5,
+    "inseguranca_alimentar_milhoes": 17.5,
+    "gini": 0.598
+  },
+  {
+    "ano": 1999,
+    "analfabetismo": 13.3,
+    "extrema_pobreza_pct": 14.0,
+    "extrema_pobreza_milhoes": 23.8,
+    "inseguranca_alimentar_pct": 10.2,
+    "inseguranca_alimentar_milhoes": 17.3,
+    "gini": 0.592
+  },
+  {
+    "ano": 2000,
+    "analfabetismo": 13.6,
+    "extrema_pobreza_pct": 13.2,
+    "extrema_pobreza_milhoes": 22.8,
+    "inseguranca_alimentar_pct": 10.0,
+    "inseguranca_alimentar_milhoes": 17.3,
+    "gini": 0.593
+  },
+  {
+    "ano": 2001,
+    "analfabetismo": 12.4,
+    "extrema_pobreza_pct": 13.6,
+    "extrema_pobreza_milhoes": 23.8,
+    "inseguranca_alimentar_pct": 9.9,
+    "inseguranca_alimentar_milhoes": 17.3,
+    "gini": 0.594
+  },
+  {
+    "ano": 2002,
+    "analfabetismo": 11.9,
+    "extrema_pobreza_pct": 12.8,
+    "extrema_pobreza_milhoes": 22.7,
+    "inseguranca_alimentar_pct": 9.8,
+    "inseguranca_alimentar_milhoes": 17.3,
+    "gini": 0.589
+  },
+  {
+    "ano": 2003,
+    "analfabetismo": 11.6,
+    "extrema_pobreza_pct": 12.4,
+    "extrema_pobreza_milhoes": 22.3,
+    "inseguranca_alimentar_pct": 9.5,
+    "inseguranca_alimentar_milhoes": 17.1,
+    "gini": 0.583
+  },
+  {
+    "ano": 2004,
+    "analfabetismo": 11.5,
+    "extrema_pobreza_pct": 10.9,
+    "extrema_pobreza_milhoes": 19.9,
+    "inseguranca_alimentar_pct": 6.9,
+    "inseguranca_alimentar_milhoes": 12.6,
+    "gini": 0.572
+  },
+  {
+    "ano": 2005,
+    "analfabetismo": 11.1,
+    "extrema_pobreza_pct": 9.6,
+    "extrema_pobreza_milhoes": 17.8,
+    "inseguranca_alimentar_pct": 6.5,
+    "inseguranca_alimentar_milhoes": 12.1,
+    "gini": 0.566
+  },
+  {
+    "ano": 2006,
+    "analfabetismo": 10.4,
+    "extrema_pobreza_pct": 8.3,
+    "extrema_pobreza_milhoes": 15.6,
+    "inseguranca_alimentar_pct": 5.8,
+    "inseguranca_alimentar_milhoes": 11.0,
+    "gini": 0.559
+  },
+  {
+    "ano": 2007,
+    "analfabetismo": 10.0,
+    "extrema_pobreza_pct": 7.7,
+    "extrema_pobreza_milhoes": 14.6,
+    "inseguranca_alimentar_pct": 5.4,
+    "inseguranca_alimentar_milhoes": 10.3,
+    "gini": 0.552
+  },
+  {
+    "ano": 2008,
+    "analfabetismo": 10.0,
+    "extrema_pobreza_pct": 6.7,
+    "extrema_pobreza_milhoes": 12.9,
+    "inseguranca_alimentar_pct": 5.1,
+    "inseguranca_alimentar_milhoes": 9.8,
+    "gini": 0.544
+  },
+  {
+    "ano": 2009,
+    "analfabetismo": 9.7,
+    "extrema_pobreza_pct": 6.6,
+    "extrema_pobreza_milhoes": 12.8,
+    "inseguranca_alimentar_pct": 5.0,
+    "inseguranca_alimentar_milhoes": 9.7,
+    "gini": 0.539
+  },
+  {
+    "ano": 2010,
+    "analfabetismo": 9.6,
+    "extrema_pobreza_pct": 5.8,
+    "extrema_pobreza_milhoes": 11.4,
+    "inseguranca_alimentar_pct": 4.6,
+    "inseguranca_alimentar_milhoes": 9.0,
+    "gini": 0.53
+  },
+  {
+    "ano": 2011,
+    "analfabetismo": 8.6,
+    "extrema_pobreza_pct": 4.7,
+    "extrema_pobreza_milhoes": 9.3,
+    "inseguranca_alimentar_pct": 4.1,
+    "inseguranca_alimentar_milhoes": 8.1,
+    "gini": 0.526
+  },
+  {
+    "ano": 2012,
+    "analfabetismo": 8.5,
+    "extrema_pobreza_pct": 4.0,
+    "extrema_pobreza_milhoes": 8.0,
+    "inseguranca_alimentar_pct": 3.6,
+    "inseguranca_alimentar_milhoes": 7.2,
+    "gini": 0.528
+  },
+  {
+    "ano": 2013,
+    "analfabetismo": 8.3,
+    "extrema_pobreza_pct": 3.6,
+    "extrema_pobreza_milhoes": 7.3,
+    "inseguranca_alimentar_pct": 3.2,
+    "inseguranca_alimentar_milhoes": 6.5,
+    "gini": 0.527
+  },
+  {
+    "ano": 2014,
+    "analfabetismo": 8.0,
+    "extrema_pobreza_pct": 2.8,
+    "extrema_pobreza_milhoes": 5.7,
+    "inseguranca_alimentar_pct": 3.0,
+    "inseguranca_alimentar_milhoes": 6.1,
+    "gini": 0.49
+  },
+  {
+    "ano": 2015,
+    "analfabetismo": 8.0,
+    "extrema_pobreza_pct": 3.3,
+    "extrema_pobreza_milhoes": 6.8,
+    "inseguranca_alimentar_pct": 3.8,
+    "inseguranca_alimentar_milhoes": 7.8,
+    "gini": 0.513
+  },
+  {
+    "ano": 2016,
+    "analfabetismo": 7.2,
+    "extrema_pobreza_pct": 4.0,
+    "extrema_pobreza_milhoes": 8.3,
+    "inseguranca_alimentar_pct": 4.2,
+    "inseguranca_alimentar_milhoes": 8.7,
+    "gini": 0.524
+  },
+  {
+    "ano": 2017,
+    "analfabetismo": 6.9,
+    "extrema_pobreza_pct": 4.8,
+    "extrema_pobreza_milhoes": 10.1,
+    "inseguranca_alimentar_pct": 5.0,
+    "inseguranca_alimentar_milhoes": 10.4,
+    "gini": 0.533
+  },
+  {
+    "ano": 2018,
+    "analfabetismo": 6.8,
+    "extrema_pobreza_pct": 5.1,
+    "extrema_pobreza_milhoes": 10.8,
+    "inseguranca_alimentar_pct": 5.8,
+    "inseguranca_alimentar_milhoes": 12.2,
+    "gini": 0.539
+  },
+  {
+    "ano": 2019,
+    "analfabetismo": 6.6,
+    "extrema_pobreza_pct": 5.3,
+    "extrema_pobreza_milhoes": 11.3,
+    "inseguranca_alimentar_pct": 6.2,
+    "inseguranca_alimentar_milhoes": 13.1,
+    "gini": 0.543
+  },
+  {
+    "ano": 2020,
+    "analfabetismo": 6.6,
+    "extrema_pobreza_pct": 4.7,
+    "extrema_pobreza_milhoes": 10.0,
+    "inseguranca_alimentar_pct": 9.0,
+    "inseguranca_alimentar_milhoes": 19.1,
+    "gini": 0.524
+  },
+  {
+    "ano": 2021,
+    "analfabetismo": 6.1,
+    "extrema_pobreza_pct": 5.8,
+    "extrema_pobreza_milhoes": 12.4,
+    "inseguranca_alimentar_pct": 12.5,
+    "inseguranca_alimentar_milhoes": 26.7,
+    "gini": 0.544
+  },
+  {
+    "ano": 2022,
+    "analfabetismo": 5.6,
+    "extrema_pobreza_pct": 4.6,
+    "extrema_pobreza_milhoes": 9.9,
+    "inseguranca_alimentar_pct": 15.5,
+    "inseguranca_alimentar_milhoes": 33.1,
+    "gini": 0.518
+  },
+  {
+    "ano": 2023,
+    "analfabetismo": 5.4,
+    "extrema_pobreza_pct": 3.5,
+    "extrema_pobreza_milhoes": 7.6,
+    "inseguranca_alimentar_pct": 8.7,
+    "inseguranca_alimentar_milhoes": 18.7,
+    "gini": 0.518
+  },
+  {
+    "ano": 2024,
+    "analfabetismo": 5.3,
+    "extrema_pobreza_pct": 3.1,
+    "extrema_pobreza_milhoes": 6.7,
+    "inseguranca_alimentar_pct": 6.6,
+    "inseguranca_alimentar_milhoes": 14.3,
+    "gini": 0.515
+  }
+]
