@@ -1,4 +1,4 @@
-# 🇧🇷 LegisData 2.0 - Arsenal Antidesinformação, Transparência & Inteligência Política
+# 🇧🇷 LegisData - Arsenal Antidesinformação, Transparência & Inteligência Política
 
 > **Plataforma cívica e de auditoria pública que cruza macroeconomia, indicadores socioambientais, votações nominais, financiadores de campanha (TSE), custos de gabinete (CEAP), emendas orçamentárias, o Basômetro governista e a relevância real das leis propostas.**
 
@@ -21,7 +21,7 @@
 
 ## 🎯 1. Propósito e Arsenal Antidesinformação
 
-O **LegisData 2.0** foi concebido como uma resposta técnica, visual e independente à polarização vazia e à desinformação que contaminam o debate cívico brasileiro. Em vez de recortes descontextualizados de redes sociais, a plataforma centraliza **dados abertos oficiais** de múltiplos órgãos de Estado para responder com rigor empírico às principais perguntas do eleitor:
+O **LegisData** foi concebido como uma resposta técnica, visual e independente à polarização vazia e à desinformação que contaminam o debate cívico brasileiro. Em vez de recortes descontextualizados de redes sociais, a plataforma centraliza **dados abertos oficiais** de múltiplos órgãos de Estado para responder com rigor empírico às principais perguntas do eleitor:
 
 1. **Quem Paga a Conta? (Financiamento Eleitoral):** De onde veio o dinheiro que elegeu o parlamentar? Quais foram seus maiores doadores (partidos, fundos públicos e pessoas físicas)?
 2. **O Basômetro (Adesão ao Governo):** O parlamentar vota alinhado com a base governista ou faz oposição sistemática nas matérias de interesse do Palácio do Planalto?
