@@ -1,5 +1,6 @@
 import json
 import uuid
+import unicodedata
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import date
@@ -21,6 +22,69 @@ from app.core.config import PROCESSED_DATA_DIR
 
 router = APIRouter()
 DATA_DIR = PROCESSED_DATA_DIR
+
+_ceap_cache: Optional[Dict[str, Any]] = None
+_emendas_cache: Optional[List[Dict[str, Any]]] = None
+
+
+def _normalize_name(text: Optional[str]) -> str:
+    if not text:
+        return ""
+    return "".join(c for c in unicodedata.normalize("NFD", text.upper()) if unicodedata.category(c) != "Mn").strip()
+
+
+def _get_processed_ceap(electoral_name: str, civil_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    global _ceap_cache
+    if _ceap_cache is None:
+        file_path = DATA_DIR / "despesas_ceap_2019_2026.json"
+        if file_path.exists():
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+                    _ceap_cache = {_normalize_name(k): v for k, v in raw.items()}
+            except Exception:
+                _ceap_cache = {}
+        else:
+            _ceap_cache = {}
+
+    norm_elec = _normalize_name(electoral_name)
+    norm_civ = _normalize_name(civil_name) if civil_name else ""
+
+    if norm_elec in _ceap_cache:
+        return _ceap_cache[norm_elec]
+    if norm_civ and norm_civ in _ceap_cache:
+        return _ceap_cache[norm_civ]
+
+    for k, v in _ceap_cache.items():
+        if (norm_elec and (norm_elec in k or k in norm_elec)) or (norm_civ and (norm_civ in k or k in norm_civ)):
+            return v
+    return None
+
+
+def _get_processed_emendas(electoral_name: str, civil_name: Optional[str] = None) -> List[Dict[str, Any]]:
+    global _emendas_cache
+    if _emendas_cache is None:
+        file_path = DATA_DIR / "emendas_parlamentares_2019_2026.json"
+        if file_path.exists():
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    _emendas_cache = json.load(f)
+            except Exception:
+                _emendas_cache = []
+        else:
+            _emendas_cache = []
+
+    norm_elec = _normalize_name(electoral_name)
+    norm_civ = _normalize_name(civil_name) if civil_name else ""
+
+    res = []
+    for item in _emendas_cache:
+        item_norm = _normalize_name(item.get("politician_name", ""))
+        if (norm_elec and (norm_elec == item_norm or norm_elec in item_norm or item_norm in norm_elec)) or \
+           (norm_civ and (norm_civ == item_norm or norm_civ in item_norm or item_norm in norm_civ)):
+            res.append(item)
+    return res
+
 
 SIMBOLICO_KEYWORDS = [
     "homenagem", "dia nacional", "dia municipal", "dia estadual", "semana nacional",
@@ -647,63 +711,122 @@ def get_politician_dossier(
         .order_by(desc(DespesaCota.year), desc(DespesaCota.month))
         .all()
     )
-    total_ceap_geral = float(sum([d.net_value for d in ceap_db]))
-    gastos_por_tipo_map = {}
-    for d in ceap_db:
-        t = d.expense_type
-        gastos_por_tipo_map[t] = gastos_por_tipo_map.get(t, 0.0) + float(d.net_value)
+    if ceap_db:
+        total_ceap_geral = float(sum([d.net_value for d in ceap_db]))
+        gastos_por_tipo_map = {}
+        for d in ceap_db:
+            t = d.expense_type
+            gastos_por_tipo_map[t] = gastos_por_tipo_map.get(t, 0.0) + float(d.net_value)
 
-    gastos_por_tipo = [
-        {
-            "tipo_despesa": t,
-            "total_gasto": round(v, 2),
-            "percentual": round((v / total_ceap_geral * 100), 1) if total_ceap_geral > 0 else 0.0
-        }
-        for t, v in gastos_por_tipo_map.items()
-    ]
-    gastos_por_tipo.sort(key=lambda x: x["total_gasto"], reverse=True)
+        gastos_por_tipo = [
+            {
+                "tipo_despesa": t,
+                "total_gasto": round(v, 2),
+                "percentual": round((v / total_ceap_geral * 100), 1) if total_ceap_geral > 0 else 0.0
+            }
+            for t, v in gastos_por_tipo_map.items()
+        ]
+        gastos_por_tipo.sort(key=lambda x: x["total_gasto"], reverse=True)
 
-    fornecedores_map = {}
-    for d in ceap_db:
-        f_key = d.supplier_name
-        if f_key not in fornecedores_map:
-            fornecedores_map[f_key] = {
+        fornecedores_map = {}
+        for d in ceap_db:
+            f_key = d.supplier_name
+            if f_key not in fornecedores_map:
+                fornecedores_map[f_key] = {
+                    "nome_fornecedor": d.supplier_name,
+                    "cnpj_cpf": d.supplier_cnpj_cpf,
+                    "total_recebido": 0.0,
+                    "num_notas": 0
+                }
+            fornecedores_map[f_key]["total_recebido"] += float(d.net_value)
+            fornecedores_map[f_key]["num_notas"] += 1
+
+        maiores_fornecedores = list(fornecedores_map.values())
+        maiores_fornecedores.sort(key=lambda x: x["total_recebido"], reverse=True)
+        maiores_fornecedores = maiores_fornecedores[:10]
+        for mf in maiores_fornecedores:
+            mf["total_recebido"] = round(mf["total_recebido"], 2)
+
+        despesas_recentes = [
+            {
+                "ano": d.year,
+                "mes": d.month,
+                "tipo_despesa": d.expense_type,
+                "valor_liquido": float(d.net_value),
                 "nome_fornecedor": d.supplier_name,
                 "cnpj_cpf": d.supplier_cnpj_cpf,
-                "total_recebido": 0.0,
-                "num_notas": 0
+                "data_emissao": d.issue_date.isoformat() if d.issue_date else None,
+                "documento_url": d.document_url
             }
-        fornecedores_map[f_key]["total_recebido"] += float(d.net_value)
-        fornecedores_map[f_key]["num_notas"] += 1
+            for d in ceap_db[:15]
+        ]
 
-    maiores_fornecedores = list(fornecedores_map.values())
-    maiores_fornecedores.sort(key=lambda x: x["total_recebido"], reverse=True)
-    maiores_fornecedores = maiores_fornecedores[:10]
-    for mf in maiores_fornecedores:
-        mf["total_recebido"] = round(mf["total_recebido"], 2)
-
-    despesas_recentes = [
-        {
-            "ano": d.year,
-            "mes": d.month,
-            "tipo_despesa": d.expense_type,
-            "valor_liquido": float(d.net_value),
-            "nome_fornecedor": d.supplier_name,
-            "cnpj_cpf": d.supplier_cnpj_cpf,
-            "data_emissao": d.issue_date.isoformat() if d.issue_date else None,
-            "documento_url": d.document_url
+        custos_ceap = {
+            "possui_dados": True,
+            "gasto_total_recente": round(total_ceap_geral, 2),
+            "total_notas": len(ceap_db),
+            "gastos_por_tipo": gastos_por_tipo,
+            "maiores_fornecedores": maiores_fornecedores,
+            "despesas_recentes": despesas_recentes
         }
-        for d in ceap_db[:15]
-    ]
+    else:
+        proc_ceap = _get_processed_ceap(pol.electoral_name, pol.civil_name)
+        if proc_ceap:
+            total_ceap_geral = float(proc_ceap.get("total_gasto", 0.0))
+            gastos_por_tipo = [
+                {
+                    "tipo_despesa": t,
+                    "total_gasto": round(float(v), 2),
+                    "percentual": round((float(v) / total_ceap_geral * 100), 1) if total_ceap_geral > 0 else 0.0
+                }
+                for t, v in proc_ceap.get("por_tipo", {}).items()
+            ]
+            gastos_por_tipo.sort(key=lambda x: x["total_gasto"], reverse=True)
 
-    custos_ceap = {
-        "possui_dados": len(ceap_db) > 0,
-        "gasto_total_recente": round(total_ceap_geral, 2),
-        "total_notas": len(ceap_db),
-        "gastos_por_tipo": gastos_por_tipo,
-        "maiores_fornecedores": maiores_fornecedores,
-        "despesas_recentes": despesas_recentes
-    }
+            maiores_fornecedores = [
+                {
+                    "nome_fornecedor": f.get("nome", "Fornecedor"),
+                    "cnpj_cpf": f.get("cnpj_cpf"),
+                    "total_recebido": round(float(f.get("total", 0.0)), 2),
+                    "num_notas": int(f.get("notas", 1))
+                }
+                for f in proc_ceap.get("fornecedores", {}).values()
+            ]
+            maiores_fornecedores.sort(key=lambda x: x["total_recebido"], reverse=True)
+            maiores_fornecedores = maiores_fornecedores[:10]
+
+            despesas_recentes = [
+                {
+                    "ano": int(ano),
+                    "mes": None,
+                    "tipo_despesa": "Consolidado Anual CEAP (Prestação de Contas)",
+                    "valor_liquido": round(float(val), 2),
+                    "nome_fornecedor": "Congresso Nacional (Câmara / Senado)",
+                    "cnpj_cpf": None,
+                    "data_emissao": f"{ano}-12-31",
+                    "documento_url": None
+                }
+                for ano, val in sorted(proc_ceap.get("por_ano", {}).items(), reverse=True)
+            ]
+
+            custos_ceap = {
+                "possui_dados": True,
+                "gasto_total_recente": round(total_ceap_geral, 2),
+                "total_notas": int(proc_ceap.get("total_notas", len(despesas_recentes))),
+                "gastos_por_tipo": gastos_por_tipo,
+                "maiores_fornecedores": maiores_fornecedores,
+                "despesas_recentes": despesas_recentes,
+                "por_ano": proc_ceap.get("por_ano", {})
+            }
+        else:
+            custos_ceap = {
+                "possui_dados": False,
+                "gasto_total_recente": 0.0,
+                "total_notas": 0,
+                "gastos_por_tipo": [],
+                "maiores_fornecedores": [],
+                "despesas_recentes": []
+            }
 
     # I. Trilha do Dinheiro (Emendas Parlamentares)
     emendas_db = (
@@ -712,77 +835,163 @@ def get_politician_dossier(
         .order_by(desc(EmendaParlamentar.year), desc(EmendaParlamentar.paid_value))
         .all()
     )
-    total_empenhado_emendas = float(sum([e.committed_value for e in emendas_db]))
-    total_pago_emendas = float(sum([e.paid_value for e in emendas_db]))
+    if emendas_db:
+        total_empenhado_emendas = float(sum([e.committed_value for e in emendas_db]))
+        total_pago_emendas = float(sum([e.paid_value for e in emendas_db]))
 
-    destinos_map = {}
-    tipos_map = {}
-    areas_map = {}
-    for e in emendas_db:
-        loc = e.destination_locality
-        v_pago = float(e.paid_value)
-        destinos_map[loc] = destinos_map.get(loc, 0.0) + v_pago
+        destinos_map = {}
+        tipos_map = {}
+        areas_map = {}
+        for e in emendas_db:
+            loc = e.destination_locality
+            v_pago = float(e.paid_value)
+            destinos_map[loc] = destinos_map.get(loc, 0.0) + v_pago
 
-        t = e.amendment_type
-        tipos_map[t] = tipos_map.get(t, 0.0) + v_pago
+            t = e.amendment_type
+            tipos_map[t] = tipos_map.get(t, 0.0) + v_pago
 
-        area = e.function_area or "Outras Funções"
-        areas_map[area] = areas_map.get(area, 0.0) + v_pago
+            area = e.function_area or "Outras Funções"
+            areas_map[area] = areas_map.get(area, 0.0) + v_pago
 
-    destinos_principais = [
-        {
-            "localidade": loc,
-            "valor_pago": round(v, 2),
-            "percentual": round((v / total_pago_emendas * 100), 1) if total_pago_emendas > 0 else 0.0
+        destinos_principais = [
+            {
+                "localidade": loc,
+                "valor_pago": round(v, 2),
+                "percentual": round((v / total_pago_emendas * 100), 1) if total_pago_emendas > 0 else 0.0
+            }
+            for loc, v in destinos_map.items()
+        ]
+        destinos_principais.sort(key=lambda x: x["valor_pago"], reverse=True)
+
+        distribuicao_por_tipo = [
+            {
+                "tipo": t,
+                "valor_pago": round(v, 2),
+                "percentual": round((v / total_pago_emendas * 100), 1) if total_pago_emendas > 0 else 0.0
+            }
+            for t, v in tipos_map.items()
+        ]
+        distribuicao_por_tipo.sort(key=lambda x: x["valor_pago"], reverse=True)
+
+        distribuicao_por_area = [
+            {
+                "area": a,
+                "valor_pago": round(v, 2),
+                "percentual": round((v / total_pago_emendas * 100), 1) if total_pago_emendas > 0 else 0.0
+            }
+            for a, v in areas_map.items()
+        ]
+        distribuicao_por_area.sort(key=lambda x: x["valor_pago"], reverse=True)
+
+        lista_emendas = [
+            {
+                "id": str(e.id),
+                "ano": e.year,
+                "codigo_emenda": e.amendment_code,
+                "tipo_emenda": e.amendment_type,
+                "valor_empenhado": float(e.committed_value),
+                "valor_pago": float(e.paid_value),
+                "localidade_destino": e.destination_locality,
+                "funcao": e.function_area
+            }
+            for e in emendas_db
+        ]
+
+        emendas_parlamentares = {
+            "possui_dados": True,
+            "total_empenhado": round(total_empenhado_emendas, 2),
+            "total_pago": round(total_pago_emendas, 2),
+            "percentual_execucao": round((total_pago_emendas / total_empenhado_emendas * 100), 1) if total_empenhado_emendas > 0 else 0.0,
+            "destinos_principais": destinos_principais,
+            "distribuicao_por_tipo": distribuicao_por_tipo,
+            "distribuicao_por_area": distribuicao_por_area,
+            "lista_emendas": lista_emendas
         }
-        for loc, v in destinos_map.items()
-    ]
-    destinos_principais.sort(key=lambda x: x["valor_pago"], reverse=True)
+    else:
+        proc_emendas = _get_processed_emendas(pol.electoral_name, pol.civil_name)
+        if proc_emendas:
+            total_empenhado_emendas = float(sum(e.get("valor_empenhado", 0.0) for e in proc_emendas))
+            total_pago_emendas = float(sum(e.get("valor_pago", 0.0) for e in proc_emendas))
 
-    distribuicao_por_tipo = [
-        {
-            "tipo": t,
-            "valor_pago": round(v, 2),
-            "percentual": round((v / total_pago_emendas * 100), 1) if total_pago_emendas > 0 else 0.0
-        }
-        for t, v in tipos_map.items()
-    ]
-    distribuicao_por_tipo.sort(key=lambda x: x["valor_pago"], reverse=True)
+            destinos_map = {}
+            tipos_map = {}
+            areas_map = {}
+            for e in proc_emendas:
+                loc = e.get("localidade_destino", "Não Informado")
+                v_pago = float(e.get("valor_pago", 0.0))
+                destinos_map[loc] = destinos_map.get(loc, 0.0) + v_pago
 
-    distribuicao_por_area = [
-        {
-            "area": a,
-            "valor_pago": round(v, 2),
-            "percentual": round((v / total_pago_emendas * 100), 1) if total_pago_emendas > 0 else 0.0
-        }
-        for a, v in areas_map.items()
-    ]
-    distribuicao_por_area.sort(key=lambda x: x["valor_pago"], reverse=True)
+                t = e.get("tipo_emenda", "INDIVIDUAL")
+                tipos_map[t] = tipos_map.get(t, 0.0) + v_pago
 
-    lista_emendas = [
-        {
-            "id": str(e.id),
-            "ano": e.year,
-            "codigo_emenda": e.amendment_code,
-            "tipo_emenda": e.amendment_type,
-            "valor_empenhado": float(e.committed_value),
-            "valor_pago": float(e.paid_value),
-            "localidade_destino": e.destination_locality,
-            "funcao": e.function_area
-        }
-        for e in emendas_db
-    ]
+                area = e.get("funcao") or "Outras Funções"
+                areas_map[area] = areas_map.get(area, 0.0) + v_pago
 
-    emendas_parlamentares = {
-        "possui_dados": len(emendas_db) > 0,
-        "total_empenhado": round(total_empenhado_emendas, 2),
-        "total_pago": round(total_pago_emendas, 2),
-        "percentual_execucao": round((total_pago_emendas / total_empenhado_emendas * 100), 1) if total_empenhado_emendas > 0 else 0.0,
-        "destinos_principais": destinos_principais,
-        "distribuicao_por_tipo": distribuicao_por_tipo,
-        "distribuicao_por_area": distribuicao_por_area,
-        "lista_emendas": lista_emendas
-    }
+            destinos_principais = [
+                {
+                    "localidade": loc,
+                    "valor_pago": round(v, 2),
+                    "percentual": round((v / total_pago_emendas * 100), 1) if total_pago_emendas > 0 else 0.0
+                }
+                for loc, v in destinos_map.items()
+            ]
+            destinos_principais.sort(key=lambda x: x["valor_pago"], reverse=True)
+
+            distribuicao_por_tipo = [
+                {
+                    "tipo": t,
+                    "valor_pago": round(v, 2),
+                    "percentual": round((v / total_pago_emendas * 100), 1) if total_pago_emendas > 0 else 0.0
+                }
+                for t, v in tipos_map.items()
+            ]
+            distribuicao_por_tipo.sort(key=lambda x: x["valor_pago"], reverse=True)
+
+            distribuicao_por_area = [
+                {
+                    "area": a,
+                    "valor_pago": round(v, 2),
+                    "percentual": round((v / total_pago_emendas * 100), 1) if total_pago_emendas > 0 else 0.0
+                }
+                for a, v in areas_map.items()
+            ]
+            distribuicao_por_area.sort(key=lambda x: x["valor_pago"], reverse=True)
+
+            lista_emendas = [
+                {
+                    "id": str(e.get("codigo_emenda") or idx),
+                    "ano": int(e.get("ano", 2024)),
+                    "codigo_emenda": e.get("codigo_emenda"),
+                    "tipo_emenda": e.get("tipo_emenda"),
+                    "valor_empenhado": float(e.get("valor_empenhado", 0.0)),
+                    "valor_pago": float(e.get("valor_pago", 0.0)),
+                    "localidade_destino": e.get("localidade_destino"),
+                    "funcao": e.get("funcao")
+                }
+                for idx, e in enumerate(proc_emendas)
+            ]
+
+            emendas_parlamentares = {
+                "possui_dados": True,
+                "total_empenhado": round(total_empenhado_emendas, 2),
+                "total_pago": round(total_pago_emendas, 2),
+                "percentual_execucao": round((total_pago_emendas / total_empenhado_emendas * 100), 1) if total_empenhado_emendas > 0 else 0.0,
+                "destinos_principais": destinos_principais,
+                "distribuicao_por_tipo": distribuicao_por_tipo,
+                "distribuicao_por_area": distribuicao_por_area,
+                "lista_emendas": lista_emendas
+            }
+        else:
+            emendas_parlamentares = {
+                "possui_dados": False,
+                "total_empenhado": 0.0,
+                "total_pago": 0.0,
+                "percentual_execucao": 0.0,
+                "destinos_principais": [],
+                "distribuicao_por_tipo": [],
+                "distribuicao_por_area": [],
+                "lista_emendas": []
+            }
 
     # J. Raio-X Judicial e Ficha Limpa
     certidoes_db = (
@@ -933,25 +1142,57 @@ def get_politician_ceap(politician_id: str, db: Session = Depends(get_db)):
         .order_by(desc(DespesaCota.year), desc(DespesaCota.month))
         .all()
     )
-    total = sum([d.net_value for d in despesas])
+    if despesas:
+        total = sum([d.net_value for d in despesas])
+        return {
+            "politico_id": str(pol.id),
+            "nome": pol.electoral_name,
+            "total_gasto": float(total),
+            "total_notas": len(despesas),
+            "despesas": [
+                {
+                    "ano": d.year,
+                    "mes": d.month,
+                    "tipo": d.expense_type,
+                    "valor": float(d.net_value),
+                    "fornecedor": d.supplier_name,
+                    "cnpj_cpf": d.supplier_cnpj_cpf,
+                    "data": d.issue_date.isoformat() if d.issue_date else None,
+                    "url": d.document_url
+                }
+                for d in despesas
+            ]
+        }
+
+    proc_ceap = _get_processed_ceap(pol.electoral_name, pol.civil_name)
+    if proc_ceap:
+        despesas_list = [
+            {
+                "ano": int(ano),
+                "mes": None,
+                "tipo": "Consolidado Anual CEAP (Prestação de Contas)",
+                "valor": float(val),
+                "fornecedor": "Senado Federal / Câmara dos Deputados",
+                "cnpj_cpf": None,
+                "data": f"{ano}-12-31",
+                "url": None
+            }
+            for ano, val in sorted(proc_ceap.get("por_ano", {}).items(), reverse=True)
+        ]
+        return {
+            "politico_id": str(pol.id),
+            "nome": pol.electoral_name,
+            "total_gasto": float(proc_ceap.get("total_gasto", 0.0)),
+            "total_notas": int(proc_ceap.get("total_notas", len(despesas_list))),
+            "despesas": despesas_list
+        }
+
     return {
         "politico_id": str(pol.id),
         "nome": pol.electoral_name,
-        "total_gasto": float(total),
-        "total_notas": len(despesas),
-        "despesas": [
-            {
-                "ano": d.year,
-                "mes": d.month,
-                "tipo": d.expense_type,
-                "valor": float(d.net_value),
-                "fornecedor": d.supplier_name,
-                "cnpj_cpf": d.supplier_cnpj_cpf,
-                "data": d.issue_date.isoformat() if d.issue_date else None,
-                "url": d.document_url
-            }
-            for d in despesas
-        ]
+        "total_gasto": 0.0,
+        "total_notas": 0,
+        "despesas": []
     }
 
 
@@ -976,26 +1217,58 @@ def get_politician_emendas(politician_id: str, db: Session = Depends(get_db)):
         .order_by(desc(EmendaParlamentar.year), desc(EmendaParlamentar.paid_value))
         .all()
     )
-    total_emp = sum([e.committed_value for e in emendas])
-    total_pago = sum([e.paid_value for e in emendas])
+    if emendas:
+        total_emp = sum([e.committed_value for e in emendas])
+        total_pago = sum([e.paid_value for e in emendas])
+
+        return {
+            "politico_id": str(pol.id),
+            "nome": pol.electoral_name,
+            "total_empenhado": float(total_emp),
+            "total_pago": float(total_pago),
+            "emendas": [
+                {
+                    "ano": e.year,
+                    "codigo": e.amendment_code,
+                    "tipo": e.amendment_type,
+                    "valor_empenhado": float(e.committed_value),
+                    "valor_pago": float(e.paid_value),
+                    "destino": e.destination_locality,
+                    "area": e.function_area
+                }
+                for e in emendas
+            ]
+        }
+
+    proc_emendas = _get_processed_emendas(pol.electoral_name, pol.civil_name)
+    if proc_emendas:
+        total_emp = sum(e.get("valor_empenhado", 0.0) for e in proc_emendas)
+        total_pago = sum(e.get("valor_pago", 0.0) for e in proc_emendas)
+        return {
+            "politico_id": str(pol.id),
+            "nome": pol.electoral_name,
+            "total_empenhado": float(total_emp),
+            "total_pago": float(total_pago),
+            "emendas": [
+                {
+                    "ano": e.get("ano"),
+                    "codigo": e.get("codigo_emenda"),
+                    "tipo": e.get("tipo_emenda"),
+                    "valor_empenhado": float(e.get("valor_empenhado", 0.0)),
+                    "valor_pago": float(e.get("valor_pago", 0.0)),
+                    "destino": e.get("localidade_destino"),
+                    "area": e.get("funcao")
+                }
+                for e in proc_emendas
+            ]
+        }
 
     return {
         "politico_id": str(pol.id),
         "nome": pol.electoral_name,
-        "total_empenhado": float(total_emp),
-        "total_pago": float(total_pago),
-        "emendas": [
-            {
-                "ano": e.year,
-                "codigo": e.amendment_code,
-                "tipo": e.amendment_type,
-                "valor_empenhado": float(e.committed_value),
-                "valor_pago": float(e.paid_value),
-                "destino": e.destination_locality,
-                "area": e.function_area
-            }
-            for e in emendas
-        ]
+        "total_empenhado": 0.0,
+        "total_pago": 0.0,
+        "emendas": []
     }
 
 

@@ -1549,14 +1549,52 @@ class DatabaseLoader:
     def _load_ceap_expenses(self, session: Session, deputy_map: Dict[int, Any]):
         """Carrega dados da Cota para Exercício da Atividade Parlamentar (CEAP)."""
         logger.info("Carregando Despesas da Cota Parlamentar (CEAP)...")
-        ceap_ext = CeapExtractor()
-        
-        deputados = session.query(Politician).filter(Politician.camara_id.isnot(None)).all()
         existing_count = session.query(DespesaCota).count()
         if existing_count > 100:
             logger.info(f"-> Tabela de despesas CEAP já possui {existing_count} registros. Mantendo registros existentes.")
             return
 
+        ceap_file = PROCESSED_DATA_DIR / "despesas_ceap_2019_2026.json"
+        if ceap_file.exists():
+            with open(ceap_file, "r", encoding="utf-8") as f:
+                ceap_dict = json.load(f)
+            pol_map = {}
+            for p in session.query(Politician).all():
+                if p.electoral_name:
+                    pol_map[_normalize_name_tokens(p.electoral_name)] = p.id
+                if p.civil_name:
+                    pol_map[_normalize_name_tokens(p.civil_name)] = p.id
+
+            total_inseridos = 0
+            for name_key, data in ceap_dict.items():
+                norm_key = _normalize_name_tokens(name_key)
+                pol_id = pol_map.get(norm_key)
+                if not pol_id:
+                    for k, pid in pol_map.items():
+                        if norm_key in k or k in norm_key:
+                            pol_id = pid
+                            break
+                if pol_id:
+                    for forn in list(data.get("fornecedores", {}).values())[:10]:
+                        desp_obj = DespesaCota(
+                            politician_id=pol_id,
+                            year=2024,
+                            month=None,
+                            expense_type=data.get("cargo", "PARLAMENTAR") + " - Prestação de Contas CEAP",
+                            net_value=Decimal(str(forn.get("total", 0.0))),
+                            supplier_name=forn.get("nome", "Fornecedor"),
+                            supplier_cnpj_cpf=forn.get("cnpj_cpf"),
+                            issue_date=None,
+                            document_url=None
+                        )
+                        session.add(desp_obj)
+                        total_inseridos += 1
+            session.flush()
+            logger.info(f"-> {total_inseridos} registros de despesas da CEAP inseridos no PostgreSQL a partir de despesas_ceap_2019_2026.json.")
+            return
+
+        ceap_ext = CeapExtractor()
+        deputados = session.query(Politician).filter(Politician.camara_id.isnot(None)).all()
         total_inseridos = 0
         for dep in deputados[:35]:
             despesas = []
@@ -1597,12 +1635,51 @@ class DatabaseLoader:
     def _load_emendas_parlamentares(self, session: Session, deputy_map: Dict[int, Any], senator_map: Dict[int, Any]):
         """Carrega dados da Trilha do Dinheiro (Emendas Parlamentares)."""
         logger.info("Carregando Emendas Parlamentares (Trilha do Dinheiro)...")
-        emendas_ext = EmendasExtractor()
         existing_count = session.query(EmendaParlamentar).count()
         if existing_count > 100:
             logger.info(f"-> Tabela de emendas já possui {existing_count} registros. Mantendo registros existentes.")
             return
 
+        emendas_file = PROCESSED_DATA_DIR / "emendas_parlamentares_2019_2026.json"
+        if emendas_file.exists():
+            with open(emendas_file, "r", encoding="utf-8") as f:
+                emendas_list = json.load(f)
+            pol_map = {}
+            for p in session.query(Politician).all():
+                if p.electoral_name:
+                    pol_map[_normalize_name_tokens(p.electoral_name)] = p.id
+                if p.civil_name:
+                    pol_map[_normalize_name_tokens(p.civil_name)] = p.id
+
+            total_inseridos = 0
+            for em in emendas_list:
+                pol_norm = _normalize_name_tokens(em.get("politician_name", ""))
+                pol_id = pol_map.get(pol_norm)
+                if not pol_id:
+                    for k, pid in pol_map.items():
+                        if pol_norm in k or k in pol_norm:
+                            pol_id = pid
+                            break
+                if pol_id:
+                    em_obj = EmendaParlamentar(
+                        politician_id=pol_id,
+                        year=int(em["ano"]),
+                        amendment_code=em.get("codigo_emenda"),
+                        amendment_type=em["tipo_emenda"],
+                        committed_value=Decimal(str(em["valor_empenhado"])),
+                        paid_value=Decimal(str(em["valor_pago"])),
+                        destination_locality=em["localidade_destino"],
+                        function_area=em.get("funcao")
+                    )
+                    session.add(em_obj)
+                    total_inseridos += 1
+                    if total_inseridos % 2000 == 0:
+                        session.flush()
+            session.flush()
+            logger.info(f"-> {total_inseridos} registros de emendas parlamentares inseridos no PostgreSQL a partir de emendas_parlamentares_2019_2026.json.")
+            return
+
+        emendas_ext = EmendasExtractor()
         parlamentares = session.query(Politician).filter(
             (Politician.camara_id.isnot(None)) | (Politician.senado_id.isnot(None))
         ).all()
