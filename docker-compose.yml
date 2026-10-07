@@ -27,13 +27,28 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-politica_user}:${POSTGRES_PASSWORD:-politica_secret_123}@postgres:5432/${POSTGRES_DB:-politica_db}
-      ENVIRONMENT: development
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-politica_user}:${POSTGRES_PASSWORD:-politica_secret_123}@postgres:5432/${POSTGRES_DB:-politica_db}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
       - ./etl/data:/etl_data
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: politica_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+      - PORT=3000
+    ports:
+      - "3000:3000"
+
 volumes:
   postgres_data:
+

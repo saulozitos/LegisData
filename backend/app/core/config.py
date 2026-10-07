@@ -30,9 +30,11 @@ class Settings(BaseSettings):
         """
         url = self.DATABASE_URL.strip()
 
-        # Correção do dialeto legado postgres:// fornecido por provedores como Heroku/Render
+        # Correção do dialeto para garantir driver psycopg2 explícito no SQLAlchemy 2.0
         if url.startswith("postgres://"):
-            url = url.replace("postgres://", "postgresql://", 1)
+            url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+        elif url.startswith("postgresql://") and not url.startswith("postgresql+"):
+            url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
         # Em produção (Supabase, Neon, Render), exigir conexões seguras com sslmode=require
         is_cloud_db = any(host in url for host in ["supabase.co", "neon.tech", "aws", "rds", "railway.app", "render.com"])
