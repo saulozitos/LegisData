@@ -47,6 +47,30 @@ import {
 
 type TabType = "macro" | "renda" | "sociedade" | "composicao" | "partidos" | "orcamento" | "fidelidade" | "legislativo" | "produtividade" | "calendario" | "raiox";
 
+function findCurrentPresidentId(presList: PresidenteHistorico[], perfList: MandatoPerformance[]): string {
+  const activePres = presList.find(
+    (p) =>
+      p.status_mandato === "TITULAR_ATIVO" ||
+      p.status_mandato === "EM_EXERCICIO" ||
+      p.status_mandato === "ATIVO" ||
+      !p.data_fim
+  );
+  if (activePres) return activePres.id_referencia;
+
+  const activePerf = perfList.find(
+    (m) =>
+      m.status_mandato === "TITULAR_ATIVO" ||
+      m.status_mandato === "EM_EXERCICIO" ||
+      m.status_mandato === "ATIVO"
+  );
+  if (activePerf) return activePerf.id_mandato;
+
+  if (presList.length > 0) return presList[presList.length - 1].id_referencia;
+  if (perfList.length > 0) return perfList[perfList.length - 1].id_mandato;
+
+  return "lula-2023";
+}
+
 export default function DashboardPage() {
   const [presidents, setPresidents] = useState<PresidenteHistorico[]>([]);
   const [performances, setPerformances] = useState<MandatoPerformance[]>([]);
@@ -77,10 +101,8 @@ export default function DashboardPage() {
         setPropositions(propData);
         setPartyFidelity(fidelityData);
 
-        if (perfData.length > 0) {
-          const defaultMandate = perfData[perfData.length - 1].id_mandato;
-          setGlobalMandate(defaultMandate);
-        }
+        const currentPresidentId = findCurrentPresidentId(presData, perfData);
+        setGlobalMandate(currentPresidentId);
       } catch (err) {
         console.error("Erro ao carregar dados do dashboard:", err);
       } finally {
