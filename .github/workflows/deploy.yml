@@ -1,0 +1,45 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Server
+    runs-on: [self-hosted]
+
+    steps:
+      - name: Update and Deploy
+        run: |
+          set -e
+
+          # O diretório da aplicação é definido de forma privada no servidor
+          TARGET_DIR="${DEPLOY_DIR:?Variavel DEPLOY_DIR nao configurada no servidor}"
+          cd "$TARGET_DIR"
+
+          echo "===> Atualizando aplicacao..."
+          git fetch origin main
+
+          CHANGED_FILES=$(git diff --name-only HEAD origin/main || true)
+          git reset --hard origin/main
+
+          # Rebuild do backend apenas quando dependencias mudarem
+          if echo "$CHANGED_FILES" | grep -E -q "^backend/(Dockerfile|requirements.txt)"; then
+            echo "===> Reconstruindo imagem do backend..."
+            docker compose up -d --build backend
+          else
+            echo "===> Reiniciando backend..."
+            docker compose restart backend
+          fi
+
+          # Rebuild do frontend quando houver alteracoes no frontend
+          if echo "$CHANGED_FILES" | grep -q "^frontend/"; then
+            echo "===> Reconstruindo imagem do frontend..."
+            docker compose up -d --build frontend
+          fi
+
+          echo "===> Deploy finalizado com sucesso."
+          docker compose ps
