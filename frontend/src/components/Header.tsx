@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   ArrowLeftRight,
   Sparkles,
+  Vote,
 } from "lucide-react";
 
 export default function Header() {
@@ -65,6 +66,21 @@ export default function Header() {
             <span>Comparador</span>
             <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300">
               Novo
+            </span>
+          </Link>
+
+          <Link
+            href="/cidadania"
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              pathname === "/cidadania"
+                ? "bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-sm shadow-amber-500/10"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+            }`}
+          >
+            <Vote className="w-3.5 h-3.5 text-amber-400" />
+            <span>Participe (Votações)</span>
+            <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300">
+              Ao Vivo
             </span>
           </Link>
         </nav>

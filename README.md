@@ -1,8 +1,8 @@
 # LegisData
 
-> **Plataforma Open-Source de Transparência e Inteligência Política**
+> **Plataforma Open-Source de Transparência, Inteligência Política e Cidadania Ativa**
 >
-> Arsenal cívico e de auditoria pública que cruza macroeconomia, indicadores socioambientais, votações nominais, financiadores de campanha (TSE), custos de gabinete (CEAP), emendas orçamentárias, o Basômetro governista e a relevância real das proposições legislativas.
+> Arsenal cívico e de auditoria pública que cruza macroeconomia, indicadores socioambientais, votações nominais, financiadores de campanha (TSE), custos de gabinete (CEAP), emendas orçamentárias, o Basômetro governista e a relevância real das proposições legislativas — **com participação popular direta em consultas públicas ao vivo do Congresso Nacional**.
 
 [![Frontend](https://img.shields.io/badge/Frontend-Next.js%2016%20%7C%20TypeScript%20%7C%20Tailwind-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.11-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
@@ -46,6 +46,8 @@ O **LegisData** foi concebido como uma resposta técnica, visual e independente 
 5. **A Trilha do Dinheiro (Emendas Orçamentárias):** Para onde vão as emendas individuais, de bancada e Emendas PIX do parlamentar?
 6. **Raio-X Judicial & Ficha Limpa:** Auditoria de certidões cíveis e criminais do TSE, STF e tribunais estaduais à luz da Lei Complementar nº 135/2010.
 7. **Macropolítica e Indicadores Reais:** Cruzamento histórico da atuação política com PIB real, inflação (IPCA), taxa Selic, câmbio USD, salário mínimo, desigualdade (Gini), fome, desmatamento (INPE) e taxas de violência (IPEA/FBSP).
+8. **Cidadania Ativa & Votação Direta:** O cidadão não apenas fiscaliza o passado, mas intervém no presente. A plataforma lista consultas públicas e enquetes oficiais em tramitação em tempo real no Congresso Nacional (e-Cidadania e e-Democracia), permitindo votar e registrar sua posição oficial diretamente nas instâncias legislativas.
+
 
 ---
 
@@ -100,6 +102,12 @@ Todos os dados são coletados de forma rastreável por extratores dedicados (`Us
 
 ### ⚖️ 6. Raio-X Judicial e Ficha Limpa
 - Badges de alerta de certidões judiciais com separação entre parlamentares com **Ficha Limpa (Nada Consta)** e parlamentares com processos em andamento.
+
+### 🗳️ 7. Cidadania Ativa (Integração e-Cidadania e e-Democracia)
+- **Integração Legislativa em Tempo Real:** Conexão direta com as APIs públicas do **Senado Federal** e da **Câmara dos Deputados**, listando proposições (PLs e PECs) com consultas públicas e enquetes ativas em tramitação hoje.
+- **Placar Popular Consolidado:** Apuração do termômetro da sociedade com total de votos, proporção SIM vs NÃO e barras dinâmicas de adesão popular.
+- **Participação Direta e Segura:** Botão de *Call to Action* direcionando o cidadão para registrar seu voto oficial com autenticação Gov.br nos portais do governo.
+- **Cache Resiliente:** Cache em memória com TTL de 1 hora para assegurar navegação instantânea e proteger a infraestrutura governamental contra sobrecarga.
 
 ---
 
@@ -201,6 +209,7 @@ npm run build
 | `GET` | `/api/v1/analytics/mandates-performance` | Desempenho consolidado por mandato presidencial |
 | `GET` | `/api/v1/analytics/compare-mandates` | Comparação normalizada de mandatos ($T_0 \dots T_n$) |
 | `GET` | `/api/v1/analytics/party-fidelity` | Saldo líquido de bancadas e migrações partidárias |
+| `GET` | `/api/v1/cidadania/consultas` | Consultas públicas e enquetes ao vivo (Senado e-Cidadania e Câmara e-Democracia) |
 
 ---
 

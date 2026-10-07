@@ -1138,6 +1138,37 @@ export async function getVotingCalendar(year?: number): Promise<CalendarioVotaco
   return fetchJson<CalendarioVotacoesResponse | null>(`/legislative/calendar${query}`, null);
 }
 
+// ==========================================
+// CIDADANIA ATIVA: CONSULTAS PÚBLICAS & VOTAÇÕES
+// ==========================================
+
+export interface ConsultaPublicaItem {
+  id_externo: string;
+  casa: string;
+  sigla_projeto: string;
+  ementa: string;
+  link_oficial_votacao: string;
+  votos_sim: number | null;
+  votos_nao: number | null;
+  total_votos?: number | null;
+  percentual_sim?: number | null;
+  percentual_nao?: number | null;
+  tema?: string | null;
+  status?: string | null;
+  autor?: string | null;
+  data_apresentacao?: string | null;
+  destaque?: boolean;
+}
+
+export async function getConsultasPublicas(casa?: string, forceRefresh?: boolean): Promise<ConsultaPublicaItem[]> {
+  const params = new URLSearchParams();
+  if (casa) params.set("casa", casa);
+  if (forceRefresh) params.set("force_refresh", "true");
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return fetchJson<ConsultaPublicaItem[]>(`/cidadania/consultas${query}`, []);
+}
+
+
 
 
 
