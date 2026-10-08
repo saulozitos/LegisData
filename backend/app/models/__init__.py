@@ -1,4 +1,5 @@
 from .base import Base, TimeStampedModel
+from .executivo import PresidentialMandate, MandateIndicator
 from .politician import (
     Politician, PoliticalParty, PartyAffiliation, Mandate,
     CabinetMember, PoliticianRemuneration, PoliticianAssetDeclaration,

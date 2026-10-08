@@ -1354,3 +1354,29 @@ export async function getConsultasPublicas(casa?: string, forceRefresh?: boolean
 
 
 
+export interface PresidentialMandate {
+  id: string;
+  nome: string;
+  inicio: string;
+  fim: string | null;
+  partido: string;
+  foto_url: string | null;
+}
+
+export interface MandateIndicatorData {
+  data: string;
+  inflacao_ipca?: number;
+  desemprego_pnad?: number;
+  aprovacao_popular?: number;
+  taxa_sucesso_congresso?: number;
+  volume_emendas?: number;
+  [key: string]: string | number | undefined;
+}
+
+export async function getPresidentialMandates(): Promise<PresidentialMandate[]> {
+  return fetchJson<PresidentialMandate[]>("/executivo/mandates");
+}
+
+export async function getMandateIndicators(mandateId: string): Promise<MandateIndicatorData[]> {
+  return fetchJson<MandateIndicatorData[]>(`/executivo/mandates/${mandateId}/indicators`);
+}
