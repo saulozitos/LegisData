@@ -93,6 +93,7 @@ class Politician(TimeStampedModel):
     emendas: Mapped[List["EmendaParlamentar"]] = relationship("EmendaParlamentar", back_populates="politician", cascade="all, delete-orphan")
     certidoes_judiciais: Mapped[List["CertidaoJudicial"]] = relationship("CertidaoJudicial", back_populates="politician", cascade="all, delete-orphan")
     doacoes_campanha: Mapped[List["DoacaoCampanha"]] = relationship("DoacaoCampanha", back_populates="politician", cascade="all, delete-orphan")
+    processos_judiciais: Mapped[List["ProcessoJudicial"]] = relationship("ProcessoJudicial", back_populates="politician", cascade="all, delete-orphan")
 
 
 class PoliticalParty(TimeStampedModel):
@@ -329,5 +330,29 @@ class DoacaoCampanha(TimeStampedModel):
         Index("idx_doacao_ano", "anoEleicao"),
         Index("idx_doacao_politico_ano", "politicoId", "anoEleicao"),
     )
+
+
+class ProcessoJudicial(TimeStampedModel):
+    __tablename__ = "processos_judiciais"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    politician_id: Mapped[uuid.UUID] = mapped_column("politicoId", UUID(as_uuid=True), ForeignKey("politicos.id", ondelete="CASCADE"), nullable=False, index=True)
+    process_number: Mapped[str] = mapped_column("numeroProcesso", String(100), nullable=False)
+    court_agency: Mapped[str] = mapped_column("tribunal", String(100), nullable=False)
+    process_date: Mapped[str] = mapped_column("dataProcesso", String(50), nullable=False)
+    case_class: Mapped[str] = mapped_column("classeAssunto", String(255), nullable=False)
+    description: Mapped[str] = mapped_column("descricao", Text, nullable=False)
+    legal_status: Mapped[str] = mapped_column("situacaoJuridica", Text, nullable=False)
+    proof_url: Mapped[str] = mapped_column("linkComprovacao", String(500), nullable=False)
+    status_summary: Mapped[str] = mapped_column("statusResumo", String(50), nullable=False)
+    is_declared_tse: Mapped[bool] = mapped_column("declaradoTse", Boolean, default=True, nullable=False)
+
+    politician: Mapped["Politician"] = relationship("Politician", back_populates="processos_judiciais")
+
+    __table_args__ = (
+        Index("idx_processo_politico", "politicoId"),
+        Index("idx_processo_numero", "numeroProcesso"),
+    )
+
 
 

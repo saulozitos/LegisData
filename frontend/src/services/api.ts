@@ -1321,6 +1321,8 @@ export interface ConsultaPublicaItem {
   sigla_projeto: string;
   ementa: string;
   link_oficial_votacao: string;
+  link_tramitacao_oficial?: string | null;
+  em_votacao_aberta?: boolean;
   votos_sim: number | null;
   votos_nao: number | null;
   total_votos?: number | null;

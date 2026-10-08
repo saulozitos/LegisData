@@ -33,10 +33,29 @@ def startup_db_migrations():
             db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "dataEmissao" VARCHAR(50);'))
             db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "linkComprovacao" VARCHAR(500);'))
             db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "codigoAutenticidade" VARCHAR(100);'))
+            db.execute(text('''
+                CREATE TABLE IF NOT EXISTS processos_judiciais (
+                    id UUID PRIMARY KEY,
+                    "politicoId" UUID NOT NULL REFERENCES politicos(id) ON DELETE CASCADE,
+                    "numeroProcesso" VARCHAR(100) NOT NULL,
+                    "tribunal" VARCHAR(100) NOT NULL,
+                    "dataProcesso" VARCHAR(50) NOT NULL,
+                    "classeAssunto" VARCHAR(255) NOT NULL,
+                    "descricao" TEXT NOT NULL,
+                    "situacaoJuridica" TEXT NOT NULL,
+                    "linkComprovacao" VARCHAR(500) NOT NULL,
+                    "statusResumo" VARCHAR(50) NOT NULL,
+                    "declaradoTse" BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_processo_politico ON processos_judiciais ("politicoId");
+                CREATE INDEX IF NOT EXISTS idx_processo_numero ON processos_judiciais ("numeroProcesso");
+            '''))
             db.commit()
     except Exception as e:
         import logging
-        logging.getLogger("uvicorn").warning(f"DB certidoes columns auto-migration warning: {e}")
+        logging.getLogger("uvicorn").warning(f"DB auto-migration warning: {e}")
 
 
 @app.get("/", tags=["Health Check"])

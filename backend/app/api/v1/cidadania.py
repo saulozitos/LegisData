@@ -12,6 +12,8 @@ class ConsultaPublicaItem(BaseModel):
     sigla_projeto: str = Field(..., description="Identificação oficial do projeto (ex.: PL 2630/2020)")
     ementa: str = Field(..., description="Resumo explicativo do projeto de lei ou PEC")
     link_oficial_votacao: str = Field(..., description="URL oficial nos portais e-Cidadania ou e-Democracia")
+    link_tramitacao_oficial: Optional[str] = Field(None, description="URL da ficha de tramitação legislativa oficial permanente")
+    em_votacao_aberta: bool = Field(True, description="Indica se a consulta/votação está aberta atualmente para participação popular")
     votos_sim: Optional[int] = Field(None, description="Total de votos favoráveis registrados na consulta popular")
     votos_nao: Optional[int] = Field(None, description="Total de votos contrários registrados na consulta popular")
     total_votos: Optional[int] = Field(None, description="Soma de votos sim e não")

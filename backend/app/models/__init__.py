@@ -3,6 +3,7 @@ from .politician import (
     Politician, PoliticalParty, PartyAffiliation, Mandate,
     CabinetMember, PoliticianRemuneration, PoliticianAssetDeclaration,
     DespesaCota, EmendaParlamentar, CertidaoJudicial, DoacaoCampanha,
+    ProcessoJudicial,
     CargoPoliticoEnum, TipoEsferaEnum, StatusMandatoEnum, MotivoDesfiliacaoEnum,
     EspectroPoliticoEnum
 )
@@ -34,6 +35,7 @@ __all__ = [
     "EmendaParlamentar",
     "CertidaoJudicial",
     "DoacaoCampanha",
+    "ProcessoJudicial",
     "CargoPoliticoEnum",
     "TipoEsferaEnum",
     "StatusMandatoEnum",
