@@ -28,6 +28,14 @@ _ceap_cache: Optional[Dict[str, Any]] = None
 _emendas_cache: Optional[List[Dict[str, Any]]] = None
 
 
+def _escape_like(value: str) -> str:
+    """
+    Escapa os curingas de LIKE/ILIKE (\\, % e _) para que a entrada do usuário seja tratada
+    como texto literal. Usar sempre com `.ilike(pattern, escape="\\")`.
+    """
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def _normalize_name(text: Optional[str]) -> str:
     if not text:
         return ""
@@ -182,11 +190,11 @@ def search_politicians(
     query = db.query(Politician)
 
     if search:
-        search_pattern = f"%{search.strip()}%"
+        search_pattern = f"%{_escape_like(search.strip())}%"
         query = query.filter(
             or_(
-                Politician.electoral_name.ilike(search_pattern),
-                Politician.civil_name.ilike(search_pattern)
+                Politician.electoral_name.ilike(search_pattern, escape="\\"),
+                Politician.civil_name.ilike(search_pattern, escape="\\")
             )
         )
 
@@ -201,8 +209,8 @@ def search_politicians(
             party_ids_subq = db.query(PoliticalParty.id).filter(
                 or_(
                     func.upper(PoliticalParty.acronym) == clean_party,
-                    PoliticalParty.acronym.ilike(f"%{clean_party}%"),
-                    PoliticalParty.full_name.ilike(f"%{clean_party}%")
+                    PoliticalParty.acronym.ilike(f"%{_escape_like(clean_party)}%", escape="\\"),
+                    PoliticalParty.full_name.ilike(f"%{_escape_like(clean_party)}%", escape="\\")
                 )
             ).subquery()
 
@@ -251,7 +259,7 @@ def search_politicians(
             except KeyError:
                 pass
         if target_party:
-            latest_mandate_q = latest_mandate_q.filter(PoliticalParty.acronym.ilike(target_party))
+            latest_mandate_q = latest_mandate_q.filter(PoliticalParty.acronym.ilike(_escape_like(target_party), escape="\\"))
 
         latest_mandate = latest_mandate_q.order_by(desc(Mandate.start_date)).first()
         if not latest_mandate:
@@ -441,8 +449,8 @@ def get_politician_dossier(
         clean_slug = politician_id.replace("-", " ")
         pol = db.query(Politician).filter(
             or_(
-                Politician.electoral_name.ilike(f"%{clean_slug}%"),
-                Politician.civil_name.ilike(f"%{clean_slug}%")
+                Politician.electoral_name.ilike(f"%{_escape_like(clean_slug)}%", escape="\\"),
+                Politician.civil_name.ilike(f"%{_escape_like(clean_slug)}%", escape="\\")
             )
         ).first()
 
@@ -1389,8 +1397,8 @@ def get_politician_ceap(politician_id: str, db: Session = Depends(get_db)):
         pol = db.query(Politician).filter(Politician.id == val_uuid).first()
     except ValueError:
         pol = db.query(Politician).filter(
-            (Politician.electoral_name.ilike(f"%{politician_id}%")) |
-            (Politician.civil_name.ilike(f"%{politician_id}%"))
+            (Politician.electoral_name.ilike(f"%{_escape_like(politician_id)}%", escape="\\")) |
+            (Politician.civil_name.ilike(f"%{_escape_like(politician_id)}%", escape="\\"))
         ).first()
 
     if not pol:
@@ -1464,8 +1472,8 @@ def get_politician_emendas(politician_id: str, db: Session = Depends(get_db)):
         pol = db.query(Politician).filter(Politician.id == val_uuid).first()
     except ValueError:
         pol = db.query(Politician).filter(
-            (Politician.electoral_name.ilike(f"%{politician_id}%")) |
-            (Politician.civil_name.ilike(f"%{politician_id}%"))
+            (Politician.electoral_name.ilike(f"%{_escape_like(politician_id)}%", escape="\\")) |
+            (Politician.civil_name.ilike(f"%{_escape_like(politician_id)}%", escape="\\"))
         ).first()
 
     if not pol:
@@ -1540,8 +1548,8 @@ def get_politician_certidoes(politician_id: str, db: Session = Depends(get_db)):
         pol = db.query(Politician).filter(Politician.id == val_uuid).first()
     except ValueError:
         pol = db.query(Politician).filter(
-            (Politician.electoral_name.ilike(f"%{politician_id}%")) |
-            (Politician.civil_name.ilike(f"%{politician_id}%"))
+            (Politician.electoral_name.ilike(f"%{_escape_like(politician_id)}%", escape="\\")) |
+            (Politician.civil_name.ilike(f"%{_escape_like(politician_id)}%", escape="\\"))
         ).first()
 
     if not pol:
@@ -1569,8 +1577,8 @@ def get_politician_doacoes(politician_id: str, db: Session = Depends(get_db)):
         pol = db.query(Politician).filter(Politician.id == val_uuid).first()
     except ValueError:
         pol = db.query(Politician).filter(
-            (Politician.electoral_name.ilike(f"%{politician_id}%")) |
-            (Politician.civil_name.ilike(f"%{politician_id}%"))
+            (Politician.electoral_name.ilike(f"%{_escape_like(politician_id)}%", escape="\\")) |
+            (Politician.civil_name.ilike(f"%{_escape_like(politician_id)}%", escape="\\"))
         ).first()
 
     if not pol:
