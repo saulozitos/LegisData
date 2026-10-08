@@ -44,3 +44,7 @@ Thumbs.db
 
 .dev*
 .gemini*
+
+# Downloads brutos do TSE/Câmara (arquivos grandes; regenerados pelo ETL)
+etl/data/raw/tse/
+etl/data/raw/camara/
