@@ -27,9 +27,16 @@ ENV HOSTNAME="0.0.0.0"
 
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/.next ./.next
+# .next pertence ao usuário "node" para permitir a escrita do cache de runtime do Next
+COPY --from=builder --chown=node:node /app/.next ./.next
 COPY --from=builder /app/public ./public
 
+# Executa com o usuário sem privilégios já existente na imagem oficial do Node
+USER node
+
 EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD wget -q --spider http://127.0.0.1:3000/ || exit 1
 
 CMD ["npx", "next", "start", "-p", "3000", "-H", "0.0.0.0"]

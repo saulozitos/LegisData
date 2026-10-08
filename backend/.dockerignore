@@ -1,0 +1,15 @@
+# Arquivos fora do contexto de build da imagem do backend
+.env
+.env.*
+.git
+.gitignore
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.mypy_cache
+.venv
+venv
+tests
+*.md
+Dockerfile
+.dockerignore
