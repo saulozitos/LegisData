@@ -5,10 +5,12 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-politica_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-politica_secret_123}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
       POSTGRES_DB: ${POSTGRES_DB:-politica_db}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+    # O Postgres NÃO é publicado na rede do host: backend e demais contêineres o acessam
+    # pela rede interna do Compose (host "postgres"). Para desenvolvimento local
+    # (ex.: `make run-load-db` fora do Docker), copie docker-compose.override.example.yml
+    # para docker-compose.override.yml, que mapeia "127.0.0.1:5432:5432" (apenas loopback).
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -27,14 +29,19 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-politica_user}:${POSTGRES_PASSWORD:-politica_secret_123}@postgres:5432/${POSTGRES_DB:-politica_db}
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-politica_user}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-politica_db}
       ENVIRONMENT: ${ENVIRONMENT:-production}
+    # Porta publicada em todas as interfaces do host. Se houver proxy reverso
+    # (nginx, Caddy, Traefik) na mesma máquina, prefira "127.0.0.1:8000:8000"
+    # ou remova o mapeamento e exponha a API apenas pelo proxy.
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app
-      - ./etl/data:/etl_data
-      - ./etl/data:/etl/data
+      # O código da aplicação vem da imagem (sem bind mount de ./backend).
+      # Para hot-reload em desenvolvimento, veja docker-compose.override.example.yml.
+      # Dados processados do ETL montados somente leitura.
+      - ./etl/data:/etl_data:ro
+      - ./etl/data:/etl/data:ro
 
   frontend:
     build:
@@ -48,9 +55,9 @@ services:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
       - INTERNAL_BACKEND_URL=http://backend:8000
       - PORT=3000
+    # Mesmo critério do backend: atrás de proxy reverso, prefira "127.0.0.1:3000:3000".
     ports:
       - "3000:3000"
 
 volumes:
   postgres_data:
-

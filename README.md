@@ -152,6 +152,10 @@ make up-db
 ```
 *(Ou diretamente via Docker: `docker compose up -d postgres`)*
 
+> **Importante:** defina `POSTGRES_PASSWORD` no `.env` (veja `.env.example`); o Compose não sobe sem ela.
+> Por padrão o Postgres não é publicado no host. Para acessá-lo localmente (ETL, psql), copie
+> `docker-compose.override.example.yml` para `docker-compose.override.yml` — ele publica a porta apenas em `127.0.0.1`.
+
 ### Passo 3: Configurar o Ambiente Virtual Python
 ```bash
 python3 -m venv .venv

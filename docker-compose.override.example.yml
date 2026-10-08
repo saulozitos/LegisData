@@ -1,0 +1,25 @@
+# Exemplo de override para DESENVOLVIMENTO LOCAL.
+#
+# Uso:
+#   cp docker-compose.override.example.yml docker-compose.override.yml
+#   docker compose up -d
+#
+# O Docker Compose carrega docker-compose.override.yml automaticamente junto com
+# docker-compose.yml. O arquivo override real está no .gitignore e não deve ser
+# usado em servidores de produção.
+services:
+  postgres:
+    # Publica o Postgres apenas no loopback, para ferramentas locais
+    # (ETL via `make run-load-db`, psql, DBeaver etc.).
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+
+  backend:
+    environment:
+      ENVIRONMENT: development
+    # Bind mount do código para desenvolvimento com hot-reload.
+    volumes:
+      - ./backend:/app
+      - ./etl/data:/etl_data:ro
+      - ./etl/data:/etl/data:ro
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
