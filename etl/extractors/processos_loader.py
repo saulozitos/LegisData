@@ -9,7 +9,10 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from backend.app.models.politician import Politician, ProcessoJudicial
+try:
+    from backend.app.models.politician import Politician, ProcessoJudicial
+except ModuleNotFoundError:
+    from app.models.politician import Politician, ProcessoJudicial
 
 logger = logging.getLogger("processos_loader")
 
