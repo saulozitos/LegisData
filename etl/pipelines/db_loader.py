@@ -11,7 +11,7 @@ import unicodedata
 from pathlib import Path
 from datetime import datetime, date
 from decimal import Decimal
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 import pandas as pd
 from sqlalchemy import select, func, text
