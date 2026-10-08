@@ -30,7 +30,7 @@ from app.core.database import SessionLocal, engine
 from app.models import (
     Base,
     Politician, PoliticalParty, PartyAffiliation, Mandate,
-    CabinetMember, PoliticianRemuneration, PoliticianAssetDeclaration,
+    CabinetMember, PoliticianRemuneration, PoliticianAssetDeclaration, AttendanceRecord,
     DespesaCota, EmendaParlamentar, CertidaoJudicial, DoacaoCampanha,
     Proposition, VotingSession, ParliamentaryVote,
     EconomicIndicatorSeries, EconomicIndicatorValue, AnnualMacroeconomicSummary,
@@ -43,9 +43,6 @@ from app.models import (
 )
 from etl.config import PROCESSED_DATA_DIR, RAW_DATA_DIR, BCB_SERIES
 from etl.extractors.ceap_extractor import CeapExtractor
-from etl.extractors.emendas_extractor import EmendasExtractor
-from etl.extractors.justica_extractor import JusticaExtractor
-from etl.extractors.tse_doacoes_extractor import TseDoacoesExtractor
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("DBLoader")
@@ -189,6 +186,9 @@ class DatabaseLoader:
             logger.info("INICIANDO CARGA DE DADOS NO POSTGRESQL")
             logger.info("=" * 70)
 
+            # 0. Remove registros sintéticos gravados por versões anteriores da carga
+            self._purge_synthetic_data(session)
+
             # 1. Partidos Políticos
             party_map = self._load_political_parties(session)
 
@@ -244,6 +244,35 @@ class DatabaseLoader:
             raise
         finally:
             session.close()
+
+    def _purge_synthetic_data(self, session: Session):
+        """Apaga dados gerados por versões anteriores que não vinham de fonte oficial.
+
+        As cargas antigas pulavam a inserção quando a tabela já tinha registros
+        ("existing_count > 100"), então bancos já populados continuariam exibindo os
+        dados sintéticos mesmo depois de removidos os geradores. Esta limpeza é
+        idempotente: só remove tabelas/linhas cuja ÚNICA origem era sintética.
+        """
+        removidos = {
+            # Todas as linhas destas tabelas vinham de geradores (random/hash/fórmula)
+            "doacoes_campanha": session.query(DoacaoCampanha).delete(synchronize_session=False),
+            "emendas_parlamentares": session.query(EmendaParlamentar).delete(synchronize_session=False),
+            "certidoes_judiciais": session.query(CertidaoJudicial).delete(synchronize_session=False),
+            "registros_presenca": session.query(AttendanceRecord).delete(synchronize_session=False),
+            "remuneracoes_politicos": session.query(PoliticianRemuneration).delete(synchronize_session=False),
+            "declaracoes_patrimonio": session.query(PoliticianAssetDeclaration).delete(synchronize_session=False),
+            # CEAP: só as linhas do gerador (URL de documento inventada) e do resumo
+            # agregado inserido com ano fixo; despesas reais da API são mantidas.
+            "despesas_cota_parlamentar": session.query(DespesaCota).filter(
+                (DespesaCota.document_url.like("https://www.camara.leg.br/cota-parlamentar/documento/%"))
+                | (DespesaCota.expense_type.like("% - Prestação de Contas CEAP"))
+            ).delete(synchronize_session=False),
+        }
+        session.query(Politician).filter(Politician.possui_processos_declarados.is_(True)).update(
+            {Politician.possui_processos_declarados: False}, synchronize_session=False
+        )
+        session.flush()
+        logger.info(f"Limpeza de dados sintéticos anteriores: {removidos}")
 
     def _load_political_parties(self, session: Session) -> Dict[str, Any]:
         """Carrega partidos políticos a partir dos dados de presidentes e deputados."""
@@ -1485,7 +1514,11 @@ class DatabaseLoader:
         deputy_map: Dict[int, Any],
         senator_map: Dict[int, Any]
     ):
-        """Carrega dados históricos de evolução patrimonial declarada ao TSE (DivulgaCand)."""
+        """Carrega declarações de bens a partir de declaracoes_patrimonio.json.
+
+        O arquivo anterior (gerado por hash do nome) foi removido; enquanto o
+        extrator oficial do TSE (bem_candidato_AAAA.zip) não gerar o arquivo, a carga é pulada.
+        """
         logger.info("Carregando Declarações de Patrimônio Eleitoral (TSE DivulgaCand)...")
         asset_file = self.data_dir / "declaracoes_patrimonio.json"
         if not asset_file.exists():
@@ -1556,68 +1589,35 @@ class DatabaseLoader:
         logger.info(f"-> {total_inseridos} novas declarações de patrimônio inseridas ({len(seen_keys)} total processadas).")
 
     def _load_ceap_expenses(self, session: Session, deputy_map: Dict[int, Any]):
-        """Carrega dados da Cota para Exercício da Atividade Parlamentar (CEAP)."""
+        """Carrega despesas reais da CEAP a partir da API de Dados Abertos da Câmara.
+
+        Sem dado oficial, a tabela fica vazia e a API/UI exibem "dados indisponíveis".
+        Não há mais fallback sintético (antes: generate_representative_ceap) nem a
+        inserção do JSON agregado com ano fixo (2024), que misturava 2019-2026.
+        O resumo agregado de despesas_ceap_2019_2026.json continua sendo servido
+        diretamente pela API como consolidado anual.
+        """
         logger.info("Carregando Despesas da Cota Parlamentar (CEAP)...")
         existing_count = session.query(DespesaCota).count()
         if existing_count > 100:
             logger.info(f"-> Tabela de despesas CEAP já possui {existing_count} registros. Mantendo registros existentes.")
             return
 
-        ceap_file = PROCESSED_DATA_DIR / "despesas_ceap_historico.json"
-        if not ceap_file.exists():
-            ceap_file = PROCESSED_DATA_DIR / "despesas_ceap_2019_2026.json"
-        if ceap_file.exists():
-            with open(ceap_file, "r", encoding="utf-8") as f:
-                ceap_dict = json.load(f)
-            pol_map = {}
-            for p in session.query(Politician).all():
-                if p.electoral_name:
-                    pol_map[_normalize_name_tokens(p.electoral_name)] = p.id
-                if p.civil_name:
-                    pol_map[_normalize_name_tokens(p.civil_name)] = p.id
-
-            total_inseridos = 0
-            for name_key, data in ceap_dict.items():
-                norm_key = _normalize_name_tokens(name_key)
-                pol_id = pol_map.get(norm_key)
-                if not pol_id:
-                    for k, pid in pol_map.items():
-                        if norm_key in k or k in norm_key:
-                            pol_id = pid
-                            break
-                if pol_id:
-                    for forn in list(data.get("fornecedores", {}).values())[:10]:
-                        desp_obj = DespesaCota(
-                            politician_id=pol_id,
-                            year=2024,
-                            month=None,
-                            expense_type=data.get("cargo", "PARLAMENTAR") + " - Prestação de Contas CEAP",
-                            net_value=Decimal(str(forn.get("total", 0.0))),
-                            supplier_name=forn.get("nome", "Fornecedor"),
-                            supplier_cnpj_cpf=forn.get("cnpj_cpf"),
-                            issue_date=None,
-                            document_url=None
-                        )
-                        session.add(desp_obj)
-                        total_inseridos += 1
-            session.flush()
-            logger.info(f"-> {total_inseridos} registros de despesas da CEAP inseridos no PostgreSQL a partir de {ceap_file.name}.")
-            return
-
         ceap_ext = CeapExtractor()
         deputados = session.query(Politician).filter(Politician.camara_id.isnot(None)).all()
         total_inseridos = 0
+        sem_dados = 0
         for dep in deputados[:35]:
-            despesas = []
-            if dep.camara_id:
-                try:
-                    despesas = ceap_ext.fetch_deputado_despesas(dep.camara_id, [2023, 2024])
-                except Exception as e:
-                    logger.warning(f"Erro ao buscar CEAP da API da Câmara para {dep.electoral_name}: {e}")
-            
+            try:
+                despesas = ceap_ext.fetch_deputado_despesas(dep.camara_id, [2023, 2024])
+            except Exception as e:
+                logger.warning(f"Erro ao buscar CEAP da API da Câmara para {dep.electoral_name}: {e}")
+                despesas = []
+
             if not despesas:
-                despesas = ceap_ext.generate_representative_ceap(dep.electoral_name, dep.birthplace_state or "DF")
-            
+                sem_dados += 1
+                continue
+
             for d in despesas:
                 dt_emissao = None
                 if d.get("data_emissao"):
@@ -1625,7 +1625,7 @@ class DatabaseLoader:
                         dt_emissao = datetime.strptime(str(d["data_emissao"])[:10], "%Y-%m-%d").date()
                     except Exception:
                         pass
-                
+
                 desp_obj = DespesaCota(
                     politician_id=dep.id,
                     year=int(d["ano"]),
@@ -1639,149 +1639,38 @@ class DatabaseLoader:
                 )
                 session.add(desp_obj)
                 total_inseridos += 1
-                
+
         session.flush()
-        logger.info(f"-> {total_inseridos} registros de despesas da CEAP inseridos no PostgreSQL.")
+        logger.info(f"-> {total_inseridos} registros de despesas da CEAP inseridos ({sem_dados} deputados sem dados oficiais retornados).")
 
     def _load_emendas_parlamentares(self, session: Session, deputy_map: Dict[int, Any], senator_map: Dict[int, Any]):
-        """Carrega dados da Trilha do Dinheiro (Emendas Parlamentares)."""
-        logger.info("Carregando Emendas Parlamentares (Trilha do Dinheiro)...")
-        existing_count = session.query(EmendaParlamentar).count()
-        if existing_count > 100:
-            logger.info(f"-> Tabela de emendas já possui {existing_count} registros. Mantendo registros existentes.")
-            return
+        """Emendas parlamentares: sem carga até existir fonte oficial integrada.
 
-        emendas_file = PROCESSED_DATA_DIR / "emendas_parlamentares_historico.json"
-        if not emendas_file.exists():
-            emendas_file = PROCESSED_DATA_DIR / "emendas_parlamentares_2019_2026.json"
-        if emendas_file.exists():
-            with open(emendas_file, "r", encoding="utf-8") as f:
-                emendas_list = json.load(f)
-            pol_map = {}
-            for p in session.query(Politician).all():
-                if p.electoral_name:
-                    pol_map[_normalize_name_tokens(p.electoral_name)] = p.id
-                if p.civil_name:
-                    pol_map[_normalize_name_tokens(p.civil_name)] = p.id
-
-            total_inseridos = 0
-            for em in emendas_list:
-                pol_norm = _normalize_name_tokens(em.get("politician_name", ""))
-                pol_id = pol_map.get(pol_norm)
-                if not pol_id:
-                    for k, pid in pol_map.items():
-                        if pol_norm in k or k in pol_norm:
-                            pol_id = pid
-                            break
-                if pol_id:
-                    em_obj = EmendaParlamentar(
-                        politician_id=pol_id,
-                        year=int(em["ano"]),
-                        amendment_code=em.get("codigo_emenda"),
-                        amendment_type=em["tipo_emenda"],
-                        committed_value=Decimal(str(em["valor_empenhado"])),
-                        paid_value=Decimal(str(em["valor_pago"])),
-                        destination_locality=em["localidade_destino"],
-                        function_area=em.get("funcao")
-                    )
-                    session.add(em_obj)
-                    total_inseridos += 1
-                    if total_inseridos % 2000 == 0:
-                        session.flush()
-            session.flush()
-            logger.info(f"-> {total_inseridos} registros de emendas parlamentares inseridos no PostgreSQL a partir de emendas_parlamentares_2019_2026.json.")
-            return
-
-        emendas_ext = EmendasExtractor()
-        parlamentares = session.query(Politician).filter(
-            (Politician.camara_id.isnot(None)) | (Politician.senado_id.isnot(None))
-        ).all()
-
-        total_inseridos = 0
-        for pol in parlamentares[:50]:
-            emendas = emendas_ext.generate_emendas_for_politician(pol.electoral_name, pol.birthplace_state or "DF", pol.camara_id)
-            for em in emendas:
-                em_obj = EmendaParlamentar(
-                    politician_id=pol.id,
-                    year=int(em["ano"]),
-                    amendment_code=em.get("codigo_emenda"),
-                    amendment_type=em["tipo_emenda"],
-                    committed_value=Decimal(str(em["valor_empenhado"])),
-                    paid_value=Decimal(str(em["valor_pago"])),
-                    destination_locality=em["localidade_destino"],
-                    function_area=em.get("funcao")
-                )
-                session.add(em_obj)
-                total_inseridos += 1
-
-        session.flush()
-        logger.info(f"-> {total_inseridos} registros de emendas parlamentares inseridos no PostgreSQL.")
+        Os dados anteriores (emendas_parlamentares_2019_2026.json e EmendasExtractor)
+        eram gerados por fórmula (teto x peso x taxa de execução, cidades e códigos
+        inventados) e foram removidos. A integração com o arquivo oficial do Portal da
+        Transparência (download-de-dados/emendas-parlamentares) é feita em PR próprio.
+        """
+        logger.info("Emendas parlamentares: nenhuma fonte oficial integrada ainda; carga ignorada.")
 
     def _load_certidoes_judiciais(self, session: Session):
-        """Carrega certidões judiciais e conformidade com a Lei da Ficha Limpa."""
-        logger.info("Carregando Certidões Judiciais e Status de Ficha Limpa...")
-        justica_ext = JusticaExtractor()
-        politicos = session.query(Politician).all()
+        """Certidões judiciais: não são mais geradas.
 
-        session.query(CertidaoJudicial).delete()
-        total_certidoes = 0
-        for pol in politicos:
-            possui_processos, certs = justica_ext.get_certidoes_for_politician(pol.electoral_name, pol.birthplace_state or "DF")
-            pol.possui_processos_declarados = possui_processos
-            for c in certs:
-                cert_obj = CertidaoJudicial(
-                    politician_id=pol.id,
-                    court_agency=c["orgao"],
-                    certificate_type=c["tipo_certidao"],
-                    status=c["status_ficha"],
-                    details=c.get("detalhes")
-                )
-                session.add(cert_obj)
-                total_certidoes += 1
-
-        session.flush()
-        logger.info(f"-> {total_certidoes} certidões judiciais cadastradas e status de Ficha Limpa atualizado para {len(politicos)} políticos.")
+        O JusticaExtractor produzia "Nada Consta"/"Positiva" a partir de uma lista de
+        nomes e inventava números e códigos de autenticidade. Isso foi removido: o
+        status de certidão só pode vir de documento oficial (ex.: certidões juntadas ao
+        registro de candidatura no TSE), integrado em PR próprio.
+        """
+        logger.info("Certidões judiciais: nenhuma fonte oficial integrada ainda; carga ignorada.")
 
     def _load_doacoes_campanha(self, session: Session):
-        """Carrega dados de financiamento de campanha e maiores doadores do TSE."""
-        logger.info("Carregando Financiamento de Campanha (TSE Doações)...")
-        tse_ext = TseDoacoesExtractor()
-        politicos = session.query(Politician).all()
+        """Doações de campanha: sem carga até existir fonte oficial integrada.
 
-        existing_count = session.query(DoacaoCampanha).count()
-        if existing_count > 100:
-            logger.info(f"-> Tabela de doações de campanha já possui {existing_count} registros. Mantendo registros.")
-            return
-
-        total_doacoes = 0
-        for pol in politicos[:60]:
-            partido_sigla = "UNIÃO"
-            cargo = "DEPUTADO_FEDERAL"
-            if pol.mandates:
-                partido_sigla = pol.mandates[0].party.acronym if pol.mandates[0].party else "UNIÃO"
-                cargo = pol.mandates[0].office.value if hasattr(pol.mandates[0].office, "value") else str(pol.mandates[0].office)
-
-            doacoes = tse_ext.generate_realistic_donations(
-                pol_id=str(pol.id),
-                nome=pol.electoral_name,
-                partido_sigla=partido_sigla,
-                cargo=cargo,
-                ano=2022
-            )
-            for d in doacoes:
-                doacao_obj = DoacaoCampanha(
-                    politician_id=pol.id,
-                    election_year=d["ano_eleicao"],
-                    donor_name=d["nome_doador"],
-                    donor_cpf_cnpj=d.get("cpf_cnpj_doador"),
-                    amount_donated=Decimal(str(d["valor_doado"])),
-                    donation_type=d.get("tipo_receita")
-                )
-                session.add(doacao_obj)
-                total_doacoes += 1
-
-        session.flush()
-        logger.info(f"-> {total_doacoes} doações de campanha eleitoral inseridas no PostgreSQL.")
+        O TseDoacoesExtractor gerava doadores e valores aleatórios (incluindo nomes de
+        pessoas físicas e CNPJs fictícios). Foi removido. A carga real a partir dos
+        arquivos de prestação de contas do TSE é feita em PR próprio.
+        """
+        logger.info("Doações de campanha: nenhuma fonte oficial integrada ainda; carga ignorada.")
 
     def _get_table_counts(self, session: Session) -> Dict[str, int]:
         """Consulta e retorna a quantidade de linhas em cada tabela do PostgreSQL."""
