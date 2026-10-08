@@ -321,9 +321,14 @@ def get_consultas_publicas(force_refresh: bool = False) -> List[Dict[str, Any]]:
     """
     global _cache_data, _cache_timestamp
     now = time.time()
+    min_cooldown = 300  # 5 minutos de intervalo mínimo contra DoS em APIs governamentais
 
-    if not force_refresh and _cache_data is not None and (now - _cache_timestamp) < CACHE_TTL_SECONDS:
-        return _cache_data
+    if _cache_data is not None:
+        elapsed = now - _cache_timestamp
+        if not force_refresh and elapsed < CACHE_TTL_SECONDS:
+            return _cache_data
+        if force_refresh and elapsed < min_cooldown:
+            return _cache_data
 
     # 1. Carrega destaques com consultas populares estruturadas
     destaques = [_calcular_totais_e_percentuais(dict(d)) for d in DESTAQUES_CONSULTAS]

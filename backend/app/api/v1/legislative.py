@@ -395,7 +395,7 @@ def get_proposition_nominal_votes(
 
 @router.get("/ranking/authors")
 def get_authors_productivity_ranking(
-    limit: int = 20,
+    limit: int = Query(20, ge=1, le=100, description="Quantidade de registros no ranking"),
     partido: Optional[str] = None,
     setor: Optional[str] = None,
     criterio: str = Query(
@@ -643,8 +643,8 @@ def get_legislative_explorer(
     tipo: Optional[str] = None,
     status: Optional[str] = None,
     apenas_votadas: bool = False,
-    page: int = 1,
-    limit: int = 25,
+    page: int = Query(1, ge=1, description="Número da página"),
+    limit: int = Query(25, ge=1, le=100, description="Quantidade de proposições por página"),
     db: Session = Depends(get_db),
 ):
     """
@@ -784,7 +784,7 @@ def get_legislative_explorer(
         "total": total_items,
         "page": page,
         "limit": limit,
-        "total_pages": math.ceil(total_items / limit) if total_items > 0 else 1,
+        "total_pages": math.ceil(total_items / max(1, limit)) if total_items > 0 else 1,
         "setores_disponiveis": todos_setores,
         "items": items,
     }
