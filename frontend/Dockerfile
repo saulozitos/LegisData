@@ -29,12 +29,10 @@ ENV HOSTNAME="0.0.0.0"
 RUN addgroup -g 1001 -S appuser && \
     adduser -u 1001 -S appuser -G appuser
 
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-
-RUN chown -R appuser:appuser /app
+COPY --chown=appuser:appuser --from=builder /app/package*.json ./
+COPY --chown=appuser:appuser --from=builder /app/node_modules ./node_modules
+COPY --chown=appuser:appuser --from=builder /app/.next ./.next
+COPY --chown=appuser:appuser --from=builder /app/public ./public
 
 USER appuser
 
