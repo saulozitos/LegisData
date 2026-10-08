@@ -277,6 +277,12 @@ export default function PoliticianProfile({
   const perfil = dossier?.perfil;
   const assiduidade = dossier?.assiduidade;
   const remuneracao = dossier?.remuneracao;
+  const subsidioRef = remuneracao?.subsidio_referencia ?? null;
+  // Senado: participação em votações nominais (não é presença em sessão).
+  const ehSenado = assiduidade?.metodologia === "PARTICIPACAO_VOTACOES_NOMINAIS_SENADO";
+  const rotuloTaxa = ehSenado ? "Participação em votações nominais" : "Presença";
+  const rotuloPositivo = ehSenado ? "sessões com voto registrado" : "presenças registradas";
+  const brl = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
   const indices = dossier?.indices_inteligencia;
 
   return (
@@ -1066,10 +1072,18 @@ export default function PoliticianProfile({
                       Salário Bruto
                     </span>
                     <span className="text-base sm:text-lg font-black font-mono text-cyan-400 block leading-tight">
-                      {remuneracao?.resumo?.salario_bruto_atual != null ? `R$ ${remuneracao.resumo.salario_bruto_atual.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "Sem dados"}
+                      {remuneracao?.resumo?.salario_bruto_atual != null
+                        ? `R$ ${brl(remuneracao.resumo.salario_bruto_atual)}`
+                        : subsidioRef
+                          ? `R$ ${brl(subsidioRef.valor_mensal)}`
+                          : "Sem dados"}
                     </span>
-                    <span className="text-[10px] text-slate-500 mt-1 block">
-                      Subsídio mensal
+                    <span className="text-[10px] text-slate-500 mt-1 block" title={subsidioRef?.ato_normativo}>
+                      {remuneracao?.resumo?.salario_bruto_atual != null
+                        ? "Folha oficial (último mês)"
+                        : subsidioRef
+                          ? "Subsídio constitucional de referência"
+                          : "Subsídio mensal"}
                     </span>
                   </div>
 
@@ -1090,10 +1104,10 @@ export default function PoliticianProfile({
                       Cota CEAP (Média)
                     </span>
                     <span className="text-base sm:text-lg font-black font-mono text-amber-400 block leading-tight">
-                      R$ {remuneracao?.resumo?.media_ceap_mensal?.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {remuneracao?.resumo?.media_ceap_mensal != null ? `R$ ${brl(remuneracao.resumo.media_ceap_mensal)}` : "Sem dados"}
                     </span>
                     <span className="text-[10px] text-slate-500 mt-1 block">
-                      Gasto atividade / mês
+                      Reembolso de despesas / mês (não é salário)
                     </span>
                   </div>
                 </div>
@@ -1106,7 +1120,7 @@ export default function PoliticianProfile({
                     <span className="p-1.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400">
                       <AlertTriangle className="w-4 h-4" />
                     </span>
-                    Assiduidade & Faltas no Plenário
+                    {ehSenado ? "Participação em Votações Nominais" : "Assiduidade & Faltas no Plenário"}
                   </span>
                   <div className="flex items-center gap-2">
                     <button
@@ -1138,7 +1152,7 @@ export default function PoliticianProfile({
                         ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/20"
                         : "bg-amber-500/10 text-amber-300 border-amber-500/20"
                     }`}>
-                      {assiduidade?.taxa_presenca_pct != null ? `${assiduidade.taxa_presenca_pct}% de Presença` : "Presença: sem dados"}
+                      {assiduidade?.taxa_presenca_pct != null ? `${assiduidade.taxa_presenca_pct}% · ${rotuloTaxa}` : `${rotuloTaxa}: sem dados`}
                     </span>
                   </div>
                 </div>
@@ -1153,7 +1167,7 @@ export default function PoliticianProfile({
                       {((assiduidade?.faltas_justificadas || 0) + (assiduidade?.faltas_nao_justificadas || 0))}
                     </span>
                     <span className="text-[10px] text-slate-500 mt-1 block">
-                      Em {assiduidade?.total_sessoes} sessões
+                      Em {assiduidade?.total_sessoes} sessões{ehSenado ? " com votação nominal" : ""}
                     </span>
                   </div>
 
@@ -1197,7 +1211,7 @@ export default function PoliticianProfile({
                 <span>•</span>
                 <span><strong>{dossier?.materias_propostas?.length}</strong> proposição(ões) de autoria</span>
                 <span>•</span>
-                <span><strong>{assiduidade?.total_presencas}</strong> presenças registradas</span>
+                <span><strong>{assiduidade?.total_presencas}</strong> {rotuloPositivo}</span>
               </div>
             </div>
           </div>
@@ -1329,7 +1343,7 @@ export default function PoliticianProfile({
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              <CheckCircle className="w-3.5 h-3.5" /> Presenças ({assiduidade?.taxa_presenca_pct != null ? `${assiduidade.taxa_presenca_pct}%` : "sem dados"})
+              <CheckCircle className="w-3.5 h-3.5" /> {ehSenado ? "Participação" : "Presenças"} ({assiduidade?.taxa_presenca_pct != null ? `${assiduidade.taxa_presenca_pct}%` : "sem dados"})
             </button>
 
             <button
@@ -3260,7 +3274,7 @@ export default function PoliticianProfile({
                       Média de Gasto Mensal
                     </span>
                     <span className="text-lg sm:text-xl font-black font-mono text-cyan-400 block leading-tight">
-                      R$ {remuneracao?.resumo?.media_ceap_mensal?.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) || "0,00"}
+                      {remuneracao?.resumo?.media_ceap_mensal != null ? `R$ ${brl(remuneracao.resumo.media_ceap_mensal)}` : "Sem dados"}
                     </span>
                     <span className="text-[10px] text-slate-500 mt-1 block">
                       Média calculada por mês ativo
@@ -4034,27 +4048,46 @@ export default function PoliticianProfile({
                 <div>
                   <h3 className="text-sm sm:text-base font-bold text-slate-100 flex items-center gap-2">
                     <CheckCircle className="w-4 h-4 text-emerald-400" />
-                    Balanço Oficial de Assiduidade em Plenário
+                    {ehSenado ? "Participação em Votações Nominais (Senado)" : "Presença em Plenário (Câmara)"}
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Contabilização de sessões deliberativas ordinárias e extraordinárias na Legislatura
+                    {ehSenado
+                      ? "Sessões com votação nominal em que o senador votou. Não é presença em sessão: o Senado não publica lista de presença por sessão."
+                      : "Registro oficial diário de presença nos dias com sessão deliberativa no plenário"}
                   </p>
                 </div>
 
                 <div className="px-3.5 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 font-mono font-bold">
-                  Taxa de Presença: {assiduidade?.taxa_presenca_pct != null ? `${assiduidade.taxa_presenca_pct}%` : "sem dados"}
+                  {rotuloTaxa}: {assiduidade?.taxa_presenca_pct != null ? `${assiduidade.taxa_presenca_pct}%` : "sem dados"}
                 </div>
               </div>
+
+              {/* Metodologia e fonte por casa */}
+              {assiduidade?.por_casa && assiduidade.por_casa.length > 0 && (
+                <div className="space-y-1.5 text-[11px] text-slate-400">
+                  {assiduidade.por_casa.map((c) => (
+                    <p key={c.casa}>
+                      <strong className="text-slate-300">{c.rotulo}</strong>
+                      {c.taxa_pct != null ? ` (${c.taxa_pct}%)` : ""}: {c.descricao}{" "}
+                      {c.periodo_inicio && c.periodo_fim ? `Período: ${c.periodo_inicio} a ${c.periodo_fim}. ` : ""}
+                      Fonte:{" "}
+                      <a href={c.fonte_url} target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-200">
+                        {c.fonte}
+                      </a>
+                    </p>
+                  ))}
+                </div>
+              )}
 
               {/* Indicadores de Presença */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-slate-950/70 border border-emerald-500/20 rounded-xl p-4 space-y-1">
-                  <span className="text-xs text-slate-400">Presenças Confirmadas</span>
+                  <span className="text-xs text-slate-400">{ehSenado ? "Sessões com Voto Registrado" : "Presenças Confirmadas"}</span>
                   <div className="text-2xl font-black text-emerald-400 font-mono">
                     {assiduidade?.total_presencas}
                   </div>
                   <span className="text-[11px] text-slate-500">
-                    Sessões deliberativas registradas
+                    {ehSenado ? "Votou em ao menos uma votação nominal" : "Sessões deliberativas registradas"}
                   </span>
                 </div>
 
@@ -4089,7 +4122,7 @@ export default function PoliticianProfile({
                   <SemDadosOficiais titulo="Presença: sem registros oficiais integrados" />
                 ) : assiduidade?.amostra_faltas?.length === 0 ? (
                   <div className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-xs text-emerald-300 text-center">
-                    Nenhuma ausência registrada neste período. O parlamentar atingiu 100% de assiduidade!
+                    Nenhuma ausência registrada no período coberto pelos dados oficiais.
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -4119,7 +4152,7 @@ export default function PoliticianProfile({
                         </div>
 
                         <span className="text-[10px] text-slate-500 font-semibold flex-shrink-0">
-                          {f.casa === "CAMARA_DOS_DEPUTADOS" ? "Câmara" : "Senado"}
+                          {f.casa === "CAMARA_DOS_DEPUTADOS" ? "Câmara (plenário)" : "Senado (votação nominal)"}
                         </span>
                       </div>
                     ))}
@@ -4141,14 +4174,33 @@ export default function PoliticianProfile({
                     Transparência Remuneratória e Benefícios Oficiais
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Dados obtidos via Portal da Transparência da Câmara dos Deputados e Senado Federal
+                    {remuneracao?.metodologia?.historico ?? "Folha de pagamento oficial publicada pela casa legislativa"}
                   </p>
                 </div>
 
-                <div className="text-xs text-slate-400">
-                  Total Bruto 2023: <strong className="text-cyan-400 font-mono">R$ {remuneracao?.resumo?.total_bruto_2023?.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
-                </div>
+                {remuneracao?.resumo?.ano_totais != null && remuneracao?.resumo?.total_bruto_ano != null && (
+                  <div className="text-xs text-slate-400">
+                    Total Bruto {remuneracao.resumo.ano_totais}: <strong className="text-cyan-400 font-mono">R$ {brl(remuneracao.resumo.total_bruto_ano)}</strong>
+                  </div>
+                )}
               </div>
+
+              {/* Subsídio de referência (valor legal do cargo, separado da folha individual) */}
+              {subsidioRef && (
+                <div className="bg-slate-950/70 border border-cyan-500/20 rounded-xl p-3.5 text-xs text-slate-300 space-y-1">
+                  <div>
+                    Subsídio constitucional de referência:{" "}
+                    <strong className="text-cyan-400 font-mono">R$ {brl(subsidioRef.valor_mensal)}</strong>{" "}
+                    <span className="text-slate-400">(vigente desde {subsidioRef.vigente_desde})</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    {subsidioRef.natureza} Fonte:{" "}
+                    <a href={subsidioRef.fonte_url} target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-200">
+                      {subsidioRef.ato_normativo}
+                    </a>
+                  </div>
+                </div>
+              )}
 
               {/* Tabela de Folha Mensal */}
               <div className="overflow-x-auto">
@@ -4158,15 +4210,14 @@ export default function PoliticianProfile({
                       <th className="py-2.5 px-3">Mês/Ano</th>
                       <th className="py-2.5 px-3">Salário Bruto</th>
                       <th className="py-2.5 px-3">Salário Líquido</th>
-                      <th className="py-2.5 px-3">Cota CEAP (Gastos)</th>
-                      <th className="py-2.5 px-3">Auxílios / Moradia</th>
+                      <th className="py-2.5 px-3">Indenizações (fora do líquido)</th>
                       <th className="py-2.5 px-3">Fonte dos Dados</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
                     {(!remuneracao?.historico || remuneracao.historico.length === 0) && (
                       <tr>
-                        <td colSpan={6} className="py-4 px-3">
+                        <td colSpan={5} className="py-4 px-3">
                           <SemDadosOficiais titulo="Remuneração: sem registros oficiais integrados" />
                         </td>
                       </tr>
@@ -4181,9 +4232,6 @@ export default function PoliticianProfile({
                         </td>
                         <td className="py-2.5 px-3 font-mono text-slate-300">
                           R$ {r.salario_liquido.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-2.5 px-3 font-mono text-amber-400">
-                          R$ {r.cota_ceap.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                         </td>
                         <td className="py-2.5 px-3 font-mono text-slate-400">
                           R$ {(r.auxilio_moradia + r.outros_beneficios).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}

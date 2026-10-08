@@ -618,10 +618,40 @@ export interface RemuneracaoItem {
   mes: number;
   salario_bruto: number;
   salario_liquido: number;
-  cota_ceap: number;
   auxilio_moradia: number;
   outros_beneficios: number;
   fonte: string;
+}
+
+export interface SubsidioVigencia {
+  vigente_desde: string;
+  valor_mensal: number;
+  ato_normativo: string;
+  fonte_url: string;
+}
+
+/** Valor legal do cargo (decreto legislativo). Não é contracheque individual. */
+export interface SubsidioReferencia extends SubsidioVigencia {
+  cargo: string;
+  natureza: string;
+  historico: SubsidioVigencia[];
+}
+
+export interface AssiduidadeCasa {
+  casa: string;
+  metodologia: "PRESENCA_PLENARIO_CAMARA" | "PARTICIPACAO_VOTACOES_NOMINAIS_SENADO" | string;
+  rotulo: string;
+  descricao: string;
+  fonte: string;
+  fonte_url: string;
+  periodo_inicio: string | null;
+  periodo_fim: string | null;
+  total_sessoes: number;
+  total_presencas: number;
+  presente_sem_voto: number;
+  faltas_justificadas: number;
+  faltas_nao_justificadas: number;
+  taxa_pct: number | null;
 }
 
 export interface ProposicaoAutorItem {
@@ -937,12 +967,15 @@ export interface PoliticoDossier {
     resumo: {
       salario_bruto_atual: number | null;
       salario_liquido_atual: number | null;
-      media_ceap_mensal: number;
-      total_bruto_2023: number;
-      total_ceap_2023: number;
-      total_beneficios_2023: number;
+      media_ceap_mensal: number | null;
+      ano_totais: number | null;
+      total_bruto_ano: number | null;
+      total_liquido_ano: number | null;
+      total_beneficios_ano: number | null;
     };
     historico: RemuneracaoItem[];
+    metodologia?: { historico: string | null; fonte_url: string | null; historico_disponivel: boolean };
+    subsidio_referencia?: SubsidioReferencia | null;
   };
   custos_ceap?: CustosCeapData;
   emendas_parlamentares?: EmendasParlamentaresData;
@@ -962,11 +995,14 @@ export interface PoliticoDossier {
     percentual_favoravel: number;
   }>;
   assiduidade: {
+    metodologia?: string | null;
+    rotulo?: string | null;
     total_sessoes: number;
     total_presencas: number;
     faltas_justificadas: number;
     faltas_nao_justificadas: number;
     taxa_presenca_pct: number | null;
+    por_casa?: AssiduidadeCasa[];
     amostra_faltas: FaltaRegistro[];
   };
   evolucao_patrimonial?: EvolucaoPatrimonial;
