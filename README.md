@@ -2,14 +2,15 @@
 
 > **Plataforma Open-Source de Transparência, Inteligência Política e Cidadania Ativa**
 >
-> Arsenal cívico e de auditoria pública que cruza macroeconomia, indicadores socioambientais, votações nominais, financiadores de campanha (TSE), custos de gabinete (CEAP), emendas orçamentárias, o Basômetro governista e a relevância real das proposições legislativas — **com participação popular direta em consultas públicas ao vivo do Congresso Nacional**.
+> Arsenal cívico e de auditoria pública que cruza macroeconomia, indicadores socioambientais, votações nominais, financiadores de campanha (TSE), custos de gabinete (CEAP), emendas orçamentárias, o Basômetro governista, linha do tempo dos mandatos presidenciais (1992 - Presente) e a relevância real das proposições legislativas — **com participação popular direta em consultas públicas ao vivo do Congresso Nacional**.
 
+[![CI Quality Gate](https://github.com/saulozitos/LegisData/actions/workflows/ci.yml/badge.svg)](https://github.com/saulozitos/LegisData/actions/workflows/ci.yml)
+[![Security Policy](https://img.shields.io/badge/Security-Policy-brightgreen?style=for-the-badge&logo=shield)](SECURITY.md)
 [![Frontend](https://img.shields.io/badge/Frontend-Next.js%2016%20%7C%20TypeScript%20%7C%20Tailwind-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.11-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
-[![Database](https://img.shields.io/badge/Database-PostgreSQL%2016%20%7C%20Prisma-336791?style=for-the-badge&logo=postgresql)](https://www.postgresql.org/)
+[![Database](https://img.shields.io/badge/Database-PostgreSQL%2016-336791?style=for-the-badge&logo=postgresql)](https://www.postgresql.org/)
 [![Data Engine](https://img.shields.io/badge/ETL-Pandas%20%7C%20NumPy-150458?style=for-the-badge&logo=pandas)](https://pandas.pydata.org/)
-[![Containers](https://img.shields.io/badge/Containers-Docker%20%7C%20Compose-2496ED?style=for-the-badge&logo=docker)](https://www.docker.com/)
-[![Versão](https://img.shields.io/badge/Versão-LegisData%20v1.0-emerald?style=for-the-badge)](https://github.com/)
+[![Containers](https://img.shields.io/badge/Containers-Docker%20Non--Root-2496ED?style=for-the-badge&logo=docker)](https://www.docker.com/)
 [![Licença](https://img.shields.io/badge/Licen%C3%A7a-GNU%20AGPLv3-blue.svg?style=for-the-badge)](LICENSE)
 
 ---
@@ -17,7 +18,7 @@
 ## 💡 Sobre o Desenvolvimento & Metodologia
 
 > ### 🤖 Nota de Desenvolvimento (Vibe Coding)
-> **Este projeto foi idealizado e arquitetado por mim, mas seu código-fonte foi integralmente desenvolvido através da metodologia de *Vibe Coding* (programação assistida por Inteligência Artificial / LLMs). A stack tecnológica utilizada (Python, FastAPI, Next.js, Prisma) não faz parte do meu domínio principal. Meu foco foi a engenharia de prompts, visão do produto de dados, regras de negócio e arquitetura da informação para criar uma plataforma robusta de transparência pública.**
+> **Este projeto foi idealizado e arquitetado por mim, mas seu código-fonte foi integralmente desenvolvido através da metodologia de *Vibe Coding* (programação assistida por Inteligência Artificial / LLMs). A stack tecnológica utilizada (Python, FastAPI, Next.js, PostgreSQL) não faz parte do meu domínio principal. Meu foco foi a engenharia de prompts, visão do produto de dados, regras de negócio e arquitetura da informação para criar uma plataforma robusta de transparência pública.**
 >
 > *Autor: Saulo Araujo Campos • Licenciado sob GNU AGPLv3*
 
@@ -46,8 +47,8 @@ O **LegisData** foi concebido como uma resposta técnica, visual e independente 
 5. **A Trilha do Dinheiro (Emendas Orçamentárias):** Para onde vão as emendas individuais, de bancada e Emendas PIX do parlamentar?
 6. **Raio-X Judicial & Ficha Limpa:** Auditoria de certidões cíveis e criminais do TSE, STF e tribunais estaduais à luz da Lei Complementar nº 135/2010.
 7. **Macropolítica e Indicadores Reais:** Cruzamento histórico da atuação política com PIB real, inflação (IPCA), taxa Selic, câmbio USD, salário mínimo, desigualdade (Gini), fome, desmatamento (INPE) e taxas de violência (IPEA/FBSP).
-8. **Cidadania Ativa & Votação Direta:** O cidadão não apenas fiscaliza o passado, mas intervém no presente. A plataforma lista consultas públicas e enquetes oficiais em tramitação em tempo real no Congresso Nacional (e-Cidadania e e-Democracia), permitindo votar e registrar sua posição oficial diretamente nas instâncias legislativas.
-
+8. **Linha do Tempo Presidencial (1992 - Presente):** Raio-X comparativo dinâmico de todos os mandatos presidenciais com métricas fiscais, monetárias e sociais ano a ano.
+9. **Cidadania Ativa & Votação Direta:** O cidadão não apenas fiscaliza o passado, mas intervém no presente. A plataforma lista consultas públicas e enquetes oficiais em tramitação em tempo real no Congresso Nacional (e-Cidadania e e-Democracia), permitindo votar e registrar sua posição oficial diretamente nas instâncias legislativas.
 
 ---
 
@@ -67,47 +68,20 @@ Todos os dados são coletados de forma rastreável por extratores dedicados (`Us
 
 ---
 
-## 🛡️ 3. Funcionalidades e Pilares do LegisData
+## 🔒 3. Segurança, Infraestrutura e Conformidade
 
-### 💰 1. Quem Paga a Conta? (Financiadores de Campanha)
-- **Modelagem Relacional:** Tabela `doacoes_campanha` (`DoacaoCampanha` no SQLAlchemy / Prisma) com `politico_id`, `ano_eleicao`, `nome_doador`, `cpf_cnpj_doador`, `valor_doado` e `tipo_receita`.
-- **Pipeline de Ingestão:** `etl/extractors/tse_doacoes_extractor.py` integrado à esteira do `db_loader.py`.
-- **Interface no Dossiê (Raio-X):**
-  - Card executivo exibindo a receita total de campanha e a quantidade de doadores.
-  - Ranking e visualização gráfica dos **Top 5 Maiores Doadores** com percentual de concentração e tipo de receita (Fundo Eleitoral - FEFC, doações PF, recursos próprios).
-  - Aba analítica dedicada com busca em tempo real e relação completa de todas as doações auditadas.
+A infraestrutura e o pipeline de CI/CD do LegisData foram endurecidos contra ameaças cibernéticas e auditorias de conformidade:
 
-### 🧭 2. O Basômetro (Taxa de Alinhamento com o Governo)
-- **Motor de Análise:** Algoritmo no backend que correlaciona o histórico de votos nominais (Sim/Não) com a orientação da liderança do governo e o baseline partidário governista na sessão.
-- **Interface no Dossiê (Raio-X):**
-  - Widget em destaque no cabeçalho: **"Taxa de Governismo: X% de alinhamento nas votações"**.
-  - Barra de progresso horizontal graduada com gradiente térmico (Oposição Sistemática ↔ Independente ↔ Base Governista Fiel).
-  - Indicadores quantitativos de votos alinhados vs votos divergentes em relação ao governo federal.
-
-### 🔍 3. Detector de Leis Inúteis (Taxa de Relevância Legislativa)
-- **Classificação Semântica:** O motor de análise textual examina as ementas das proposições de autoria do parlamentar:
-  - **Simbólico:** Identifica homenagens, concessões de títulos honorários, dias comemorativos e denominações de rodovias e edifícios públicos.
-  - **Impacto / Substancial:** Leis voltadas a reformas tributárias, macroeconomia, saúde, segurança pública, código penal e educação.
-- **Interface no Dossiê (Raio-X):**
-  - Painel analítico com **Gráfico de Pizza (Recharts Donut)**: **Projetos de Impacto (X%) vs Projetos Simbólicos (Y%)**.
-  - Diagnóstico sintético da atuação parlamentar.
-  - Filtros rápidos por relevância e campo de busca textual em ementas.
-
-### 💳 4. Custo do Mandato (Cota Parlamentar - CEAP)
-- Auditoria das notas fiscais da Cota para Exercício da Atividade Parlamentar (CEAP).
-- Visualização por rubrica e identificação dos **Maiores Fornecedores** contratados pelo gabinete.
-
-### 🗺️ 5. Trilha do Dinheiro (Emendas Orçamentárias)
-- Mapeamento geográfico e orçamentário das emendas individuais, de comissão, de bancada e Emendas PIX enviadas para municípios e estados.
-
-### ⚖️ 6. Raio-X Judicial e Ficha Limpa
-- Badges de alerta de certidões judiciais com separação entre parlamentares com **Ficha Limpa (Nada Consta)** e parlamentares com processos em andamento.
-
-### 🗳️ 7. Cidadania Ativa (Integração e-Cidadania e e-Democracia)
-- **Integração Legislativa em Tempo Real:** Conexão direta com as APIs públicas do **Senado Federal** e da **Câmara dos Deputados**, listando proposições (PLs e PECs) com consultas públicas e enquetes ativas em tramitação hoje.
-- **Placar Popular Consolidado:** Apuração do termômetro da sociedade com total de votos, proporção SIM vs NÃO e barras dinâmicas de adesão popular.
-- **Participação Direta e Segura:** Botão de *Call to Action* direcionando o cidadão para registrar seu voto oficial com autenticação Gov.br nos portais do governo.
-- **Cache Resiliente:** Cache em memória com TTL de 1 hora para assegurar navegação instantânea e proteger a infraestrutura governamental contra sobrecarga.
+- **Isolamento de Banco e API:** O serviço PostgreSQL (`5432`) e o backend FastAPI (`8000`) são restritos estritamente ao loopback local (`127.0.0.1`), impedindo conexões diretas via rede externa ou LAN.
+- **Fail-Fast de Credenciais:** A aplicação recusa iniciar sem uma senha de banco explícita configurada no ambiente. Não existem senhas padrão ou fallbacks no código.
+- **Contêineres Não-Root:** As imagens Docker executam sob usuário não-privilegiado (`appuser`), mitigando riscos de escalonamento de privilégios.
+- **Proteção contra Vazamento:** Arquivos `.dockerignore` na raiz e nos subprojetos garantem que segredos (`.env`), chaves e arquivos temporários não entrem nas camadas das imagens.
+- **CI/CD Endurecido (GitHub Actions):**
+  - Runner em nuvem isolado (`ubuntu-latest`) substituindo runners `self-hosted` para blindagem contra Remote Code Execution (RCE) via Pull Requests de forks.
+  - Princípio de privilégio mínimo: `permissions: { contents: read }`.
+  - Fixação de todas as actions por hash imutável (SHA).
+- **Proteção contra DoS em APIs Governamentais:** O endpoint `/cidadania/consultas` possui rate-limiting em memória com cooldown mínimo de 5 minutos, protegendo os servidores do Senado e da Câmara contra bloqueios.
+- **Divulgação Responsável:** Política formal de segurança em [SECURITY.md](SECURITY.md) e recurso *Private Vulnerability Reporting* habilitado no repositório.
 
 ---
 
@@ -120,59 +94,73 @@ Todos os dados são coletados de forma rastreável por extratores dedicados (`Us
   - **Lucide React** para iconografia técnica.
 - **Backend:**
   - **Python 3.11+** com **FastAPI** assíncrono.
-  - **Pydantic v2** para validação estrita de contratos de dados.
+  - **Pydantic v2** com `pydantic-settings` para validação estrita de contratos.
   - **SQLAlchemy 2.0** com connection pooling resiliente.
-  - **CORS Middleware** com suporte local e produção Vercel.
-- **Banco de Dados & ORM:**
-  - **PostgreSQL 16** com mais de 23.000 registros e índices de concorrência.
-  - **Prisma Schema** para padronização e migrações relacionais.
-- **DevOps:**
-  - **Docker** e **Docker Compose** para orquestração de banco de dados.
-  - **Makefile** integrado para automação de tarefas.
+  - **Gunicorn & Uvicorn Workers** em produção.
+- **Banco de Dados:**
+  - **PostgreSQL 16** com mais de 23.000 registros relacionais e índices de concorrência.
+- **Qualidade & DevOps:**
+  - **Docker Compose** para orquestração segura.
+  - **Linters & Formatters:** `black`, `isort`, `flake8`, `mypy`, `eslint`.
+  - **Segurança Estática:** `bandit`.
+  - **Testes Automatizados:** `pytest` (backend) e `vitest` (frontend).
 
 ---
 
-## 🚀 5. Guia de Instalação e Execução Local
+## 🚀 5. Instalação e Execução Local
 
 ### Pré-requisitos
 - **Git**
 - **Docker** e **Docker Compose**
 - **Python 3.11+**
-- **Node.js 18+** ou **20+**
+- **Node.js 22+**
 
-### Passo 1: Clonar o Repositório
+### Passo 1: Clonar o Repositório e Configurar o `.env`
 ```bash
-git clone https://github.com/seu-usuario/legisdata.git
-cd legisdata
+git clone https://github.com/saulozitos/LegisData.git
+cd LegisData
+
+# Copie o arquivo de exemplo e defina uma senha forte
+cp .env.example .env
 ```
 
-### Passo 2: Subir o PostgreSQL via Docker
+Edite o `.env` garantindo que a variável `POSTGRES_PASSWORD` esteja preenchida:
+```env
+POSTGRES_USER=politica_user
+POSTGRES_PASSWORD=sua_senha_secreta_aqui
+POSTGRES_DB=politica_db
+POSTGRES_PORT=5432
+POSTGRES_SERVER=localhost
+ENVIRONMENT=development
+```
+
+### Passo 2: Subir o PostgreSQL Local via Docker
 ```bash
 make up-db
 ```
-*(Ou diretamente via Docker: `docker compose up -d postgres`)*
+*(Ou diretamente: `docker compose up -d postgres`)*
 
 ### Passo 3: Configurar o Ambiente Virtual Python
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install -r backend/requirements.txt -r etl/requirements.txt
+pip install -r backend/requirements.txt
 ```
 
 ### Passo 4: Executar a Carga Inicial do Banco de Dados
 ```bash
 make run-load-db
 ```
-*O pipeline executará as migrações, ingerindo séries históricas, parlamentares, cota CEAP, emendas, processos e as doações do TSE.*
+*O pipeline executará as migrações, ingerindo séries históricas, parlamentares, cota CEAP, emendas, processos e doações do TSE.*
 
 ### Passo 5: Iniciar o Backend (FastAPI)
 ```bash
 make backend-dev
 ```
 A API estará em execução em **`http://localhost:8000`**.
-- Documentação Interativa (Swagger): `http://localhost:8000/docs`
-- Documentação Alternativa (ReDoc): `http://localhost:8000/redoc`
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
 
 ### Passo 6: Iniciar o Frontend (Next.js)
 Em outro terminal:
@@ -185,13 +173,25 @@ O portal estará disponível em **`http://localhost:3000`**.
 
 ---
 
-## 🧪 6. Build de Produção
+## 🧪 6. Esteira de Validação Local (CI Quality Gate)
 
-Para testar a compilação completa do frontend:
+Para validar localmente todo o código antes de submeter commits ou Pull Requests:
+
 ```bash
-cd frontend
-npm run build
+# Executa todos os testes, linters, tipagem e build em modo fail-fast
+make ci
 ```
+
+Você também pode executar as validações de forma granular:
+
+| Comando | Descrição |
+| :--- | :--- |
+| `make format` | Autoformatação de código Python com `black` e `isort` |
+| `make lint` | Análise estática com `flake8` (Python) e `eslint` (TypeScript) |
+| `make typecheck` | Checagem de tipos com `mypy` e `tsc --noEmit` |
+| `make security` | Auditoria estática de vulnerabilidades com `bandit` |
+| `make test` | Execução das suítes de testes automatizados (`pytest` e `vitest`) |
+| `make build-frontend` | Validação de compilação de produção do Next.js |
 
 ---
 
@@ -199,17 +199,19 @@ npm run build
 
 | Método | Endpoint | Descrição |
 | :--- | :--- | :--- |
-| `GET` | `/api/v1/politicians` | Busca e listagem de políticos com filtros por cargo, partido e estado |
-| `GET` | `/api/v1/politicians/{id}` | Dossiê completo: perfil, Basômetro, relevância de leis, doações e ficha limpa |
+| `GET` | `/api/v1/politicians` | Listagem e busca de políticos com filtros por cargo, partido e estado |
+| `GET` | `/api/v1/politicians/{id}` | Dossiê completo: perfil, Basômetro, relevância de leis e doações |
 | `GET` | `/api/v1/politicians/{id}/doacoes` | Prestações de contas eleitorais e Top Doadores (TSE) |
 | `GET` | `/api/v1/politicians/{id}/ceap` | Cota parlamentar: gastos por categoria e fornecedores contratados |
 | `GET` | `/api/v1/politicians/{id}/emendas` | Emendas parlamentares pagas e municípios beneficiados |
 | `GET` | `/api/v1/politicians/{id}/certidoes` | Certidões judiciais cíveis e criminais (Ficha Limpa) |
-| `GET` | `/api/v1/economic/annual-summary` | Série histórica macroeconômica anual (PIB, IPCA, Dólar, Salário Mínimo) |
+| `GET` | `/api/v1/economic/annual-summary` | Série macroeconômica histórica (PIB, IPCA, Dólar, Salário Mínimo) |
 | `GET` | `/api/v1/analytics/mandates-performance` | Desempenho consolidado por mandato presidencial |
 | `GET` | `/api/v1/analytics/compare-mandates` | Comparação normalizada de mandatos ($T_0 \dots T_n$) |
 | `GET` | `/api/v1/analytics/party-fidelity` | Saldo líquido de bancadas e migrações partidárias |
-| `GET` | `/api/v1/cidadania/consultas` | Consultas públicas e enquetes ao vivo (Senado e-Cidadania e Câmara e-Democracia) |
+| `GET` | `/api/v1/cidadania/consultas` | Consultas públicas e enquetes ao vivo (Senado e Câmara) |
+| `GET` | `/api/v1/legislative/ranking/authors` | Ranking de produtividade parlamentar com Score IPLE |
+| `GET` | `/api/v1/legislative/calendar` | Diário do Congresso com calendário anual de votações nominais |
 
 ---
 
