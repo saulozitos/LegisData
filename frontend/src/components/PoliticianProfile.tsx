@@ -81,6 +81,16 @@ function formatMoney(val: number | null | undefined): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
 }
 
+
+function SemDadosOficiais({ titulo, detalhe }: { titulo: string; detalhe?: string }) {
+  return (
+    <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-400 space-y-1">
+      <div className="font-semibold text-slate-300">{titulo}</div>
+      <p>{detalhe || "Ainda não há dado oficial integrado para este indicador. Nada é exibido em vez de um valor estimado."}</p>
+    </div>
+  );
+}
+
 export default function PoliticianProfile({
   selectedPoliticianId: initialPoliticianId,
   onSelectParty,
@@ -878,7 +888,12 @@ export default function PoliticianProfile({
                   }`}
                   title="Clique para inspecionar as certidões judiciais no Raio-X"
                 >
-                  {dossier?.ficha_limpa?.possui_processos_declarados ? (
+                  {!dossier?.ficha_limpa?.dados_disponiveis ? (
+                    <>
+                      <Scale className="w-4 h-4 text-slate-400 shrink-0" />
+                      <span>Justiça: sem dados oficiais integrados</span>
+                    </>
+                  ) : dossier?.ficha_limpa?.possui_processos_declarados ? (
                     <>
                       <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
                       <span>Ficha/Certidões: Possui Processos Declarados</span>
@@ -891,8 +906,7 @@ export default function PoliticianProfile({
                   ) : (
                     <>
                       <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Ficha/Certidões: Nada Consta</span>
-                      <span className="text-[10px] text-emerald-400/90 font-mono">(Ficha Limpa)</span>
+                      <span>Sem processos nos registros disponíveis</span>
                     </>
                   )}
                 </button>
@@ -952,6 +966,15 @@ export default function PoliticianProfile({
                 </div>
               </div>
 
+              {dossier?.basometro?.disponivel === false && (
+                <div className="pt-3.5">
+                  <SemDadosOficiais
+                    titulo="Basômetro indisponível"
+                    detalhe="O alinhamento é calculado comparando cada voto com a orientação oficial do Governo na votação. Essa orientação ainda não foi integrada; até lá o indicador não é exibido."
+                  />
+                </div>
+              )}
+              {dossier?.basometro?.disponivel !== false && (<>
               {/* Barra de Progresso Horizontal: Taxa de Governismo */}
               <div className="pt-3.5 space-y-2">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -1018,6 +1041,7 @@ export default function PoliticianProfile({
                   </div>
                 </div>
               </div>
+              </>)}
             </div>
 
             {/* PAINÉIS DE DESTAQUE NO TOPO: SALÁRIO & REMUNERAÇÃO E ASSIDUIDADE & FALTAS */}
@@ -1042,7 +1066,7 @@ export default function PoliticianProfile({
                       Salário Bruto
                     </span>
                     <span className="text-base sm:text-lg font-black font-mono text-cyan-400 block leading-tight">
-                      R$ {remuneracao?.resumo?.salario_bruto_atual?.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {remuneracao?.resumo?.salario_bruto_atual != null ? `R$ ${remuneracao.resumo.salario_bruto_atual.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "Sem dados"}
                     </span>
                     <span className="text-[10px] text-slate-500 mt-1 block">
                       Subsídio mensal
@@ -1054,7 +1078,7 @@ export default function PoliticianProfile({
                       Salário Líquido
                     </span>
                     <span className="text-base sm:text-lg font-black font-mono text-emerald-400 block leading-tight">
-                      R$ {remuneracao?.resumo?.salario_liquido_atual?.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {remuneracao?.resumo?.salario_liquido_atual != null ? `R$ ${remuneracao.resumo.salario_liquido_atual.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "Sem dados"}
                     </span>
                     <span className="text-[10px] text-emerald-500/90 mt-1 block font-medium">
                       Após deduções oficiais
@@ -1095,7 +1119,9 @@ export default function PoliticianProfile({
                       }`}
                       title="Ver certidões judiciais do parlamentar"
                     >
-                      {dossier?.ficha_limpa?.possui_processos_declarados ? (
+                      {!dossier?.ficha_limpa?.dados_disponiveis ? (
+                        <span>Justiça: sem dados</span>
+                      ) : dossier?.ficha_limpa?.possui_processos_declarados ? (
                         <>
                           <ShieldAlert className="w-3 h-3 text-rose-400 shrink-0" />
                           <span>Processos Declarados</span>
@@ -1103,7 +1129,7 @@ export default function PoliticianProfile({
                       ) : (
                         <>
                           <ShieldCheck className="w-3 h-3 text-emerald-400 shrink-0" />
-                          <span>Ficha Limpa</span>
+                          <span>Sem processos registrados</span>
                         </>
                       )}
                     </button>
@@ -1112,7 +1138,7 @@ export default function PoliticianProfile({
                         ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/20"
                         : "bg-amber-500/10 text-amber-300 border-amber-500/20"
                     }`}>
-                      {assiduidade?.taxa_presenca_pct}% de Presença
+                      {assiduidade?.taxa_presenca_pct != null ? `${assiduidade.taxa_presenca_pct}% de Presença` : "Presença: sem dados"}
                     </span>
                   </div>
                 </div>
@@ -1291,7 +1317,7 @@ export default function PoliticianProfile({
                   ? "bg-rose-500/20 text-rose-300"
                   : "bg-emerald-500/20 text-emerald-300"
               }`}>
-                {dossier?.ficha_limpa?.possui_processos_declarados ? "Alerta" : "Limpa"}
+                {!dossier?.ficha_limpa?.dados_disponiveis ? "Sem dados" : dossier?.ficha_limpa?.possui_processos_declarados ? "Alerta" : "Sem registros"}
               </span>
             </button>
 
@@ -1303,7 +1329,7 @@ export default function PoliticianProfile({
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              <CheckCircle className="w-3.5 h-3.5" /> Presenças ({assiduidade?.taxa_presenca_pct}%)
+              <CheckCircle className="w-3.5 h-3.5" /> Presenças ({assiduidade?.taxa_presenca_pct != null ? `${assiduidade.taxa_presenca_pct}%` : "sem dados"})
             </button>
 
             <button
@@ -1366,6 +1392,7 @@ export default function PoliticianProfile({
                   {/* Grid das 5 Métricas */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                     {/* 1. ROI do Cidadão */}
+                    {indices.roi_cidadao ? (
                     <div
                       onClick={() => setActiveTab("inteligencia")}
                       className="bg-slate-950/70 border border-slate-800 hover:border-cyan-500/40 rounded-xl p-3 space-y-2 cursor-pointer transition-all group"
@@ -1389,8 +1416,12 @@ export default function PoliticianProfile({
                         {indices.roi_cidadao.diagnostico}
                       </p>
                     </div>
+                    ) : (
+                      <SemDadosOficiais titulo="ROI do Cidadão: dados insuficientes" />
+                    )}
 
                     {/* 2. Concentração CEAP */}
+                    {indices.concentracao_ceap ? (
                     <div
                       onClick={() => setActiveTab("inteligencia")}
                       className="bg-slate-950/70 border border-slate-800 hover:border-cyan-500/40 rounded-xl p-3 space-y-2 cursor-pointer transition-all group"
@@ -1414,8 +1445,12 @@ export default function PoliticianProfile({
                         {indices.concentracao_ceap.diagnostico}
                       </p>
                     </div>
+                    ) : (
+                      <SemDadosOficiais titulo="Cota CEAP (HHI): sem despesas registradas" />
+                    )}
 
                     {/* 3. Patrimônio vs Renda */}
+                    {indices.enriquecimento_patrimonial ? (
                     <div
                       onClick={() => setActiveTab("inteligencia")}
                       className="bg-slate-950/70 border border-slate-800 hover:border-cyan-500/40 rounded-xl p-3 space-y-2 cursor-pointer transition-all group"
@@ -1439,6 +1474,9 @@ export default function PoliticianProfile({
                         {indices.enriquecimento_patrimonial.diagnostico}
                       </p>
                     </div>
+                    ) : (
+                      <SemDadosOficiais titulo="Patrimônio x Renda: dados insuficientes" />
+                    )}
 
                     {/* 4. Fidelidade Partidária */}
                     <div
@@ -1455,11 +1493,12 @@ export default function PoliticianProfile({
                         {indices.estabilidade_partidaria.total_trocas} trocas • {indices.estabilidade_partidaria.anos_medio_por_partido.toFixed(1)}a/sigla
                       </div>
                       <p className="text-[10px] text-slate-400 line-clamp-2">
-                        Governismo: {indices.estabilidade_partidaria.taxa_governismo_pct.toFixed(0)}%
+                        Governismo: {indices.estabilidade_partidaria.taxa_governismo_pct != null ? `${indices.estabilidade_partidaria.taxa_governismo_pct.toFixed(0)}%` : "indisponível"}
                       </p>
                     </div>
 
                     {/* 5. Eficiência de Emendas */}
+                    {indices.eficiencia_emendas ? (
                     <div
                       onClick={() => setActiveTab("inteligencia")}
                       className="bg-slate-950/70 border border-slate-800 hover:border-cyan-500/40 rounded-xl p-3 space-y-2 cursor-pointer transition-all group"
@@ -1477,6 +1516,9 @@ export default function PoliticianProfile({
                         Foco: {indices.eficiencia_emendas.municipio_predileto || "Distribuído"}
                       </p>
                     </div>
+                    ) : (
+                      <SemDadosOficiais titulo="Emendas: nenhuma fonte oficial integrada" />
+                    )}
                   </div>
                 </div>
               )}
@@ -1505,7 +1547,7 @@ export default function PoliticianProfile({
                       <span className="font-semibold text-slate-300">E-mail Institucional</span>
                     </div>
                     <div className="text-xs font-mono text-cyan-300 break-all select-all font-semibold">
-                      {perfil?.email || `dep.${perfil?.camara_id || "contato"}@camara.leg.br`}
+                      {perfil?.email || "Não informado"}
                     </div>
                     {perfil?.email && (
                       <a
@@ -1525,7 +1567,7 @@ export default function PoliticianProfile({
                       <span className="font-semibold text-slate-300">Gabinete / Localização</span>
                     </div>
                     <div className="text-xs font-semibold text-slate-100">
-                      {perfil?.gabinete_sala || "Congresso Nacional - Edifício Principal"}
+                      {perfil?.gabinete_sala || "Não informado"}
                     </div>
                     <span className="text-[11px] text-slate-500">
                       Atendimento e protocolo presencial
@@ -1539,7 +1581,7 @@ export default function PoliticianProfile({
                       <span className="font-semibold text-slate-300">Telefone Oficial</span>
                     </div>
                     <div className="text-xs font-mono font-bold text-amber-300">
-                      {perfil?.gabinete_telefone || "(61) 3215-5000"}
+                      {perfil?.gabinete_telefone || "Não informado"}
                     </div>
                     {perfil?.gabinete_telefone && (
                       <a
@@ -2219,6 +2261,7 @@ export default function PoliticianProfile({
               </div>
 
               {/* CARD 1: RETORNO SOBRE O INVESTIMENTO PÚBLICO (ROI DO CIDADÃO) */}
+              {indices.roi_cidadao ? (
               <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 backdrop-blur-md shadow-lg space-y-5">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
                   <div className="flex items-center gap-3">
@@ -2306,8 +2349,12 @@ export default function PoliticianProfile({
                   </p>
                 </div>
               </div>
+              ) : (
+                <SemDadosOficiais titulo="ROI do Cidadão: dados insuficientes (remuneração e presença oficiais)" />
+              )}
 
               {/* CARD 2: CONCENTRAÇÃO DE FORNECEDORES DA CEAP (ÍNDICE HHI) */}
+              {indices.concentracao_ceap ? (
               <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 backdrop-blur-md shadow-lg space-y-5">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
                   <div className="flex items-center gap-3">
@@ -2383,8 +2430,12 @@ export default function PoliticianProfile({
                   </p>
                 </div>
               </div>
+              ) : (
+                <SemDadosOficiais titulo="Concentração de fornecedores: sem despesas CEAP registradas" />
+              )}
 
               {/* CARD 3: PATRIMÔNIO DECLARADO VS RENDA OFICIAL */}
+              {indices.enriquecimento_patrimonial ? (
               <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 backdrop-blur-md shadow-lg space-y-5">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
                   <div className="flex items-center gap-3">
@@ -2473,6 +2524,9 @@ export default function PoliticianProfile({
                   </p>
                 </div>
               </div>
+              ) : (
+                <SemDadosOficiais titulo="Patrimônio x Renda: requer 2+ declarações oficiais ao TSE e remuneração oficial" />
+              )}
 
               {/* CARD 4: ESTABILIDADE PARTIDÁRIA & GOVERNISMO */}
               <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 backdrop-blur-md shadow-lg space-y-5">
@@ -2497,7 +2551,7 @@ export default function PoliticianProfile({
                   <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-800 rounded-xl px-3.5 py-2">
                     <span className="text-xs text-slate-400">Taxa de Governismo:</span>
                     <span className="text-sm font-black font-mono text-purple-400">
-                      {indices.estabilidade_partidaria.taxa_governismo_pct.toFixed(0)}%
+                      {indices.estabilidade_partidaria.taxa_governismo_pct != null ? `${indices.estabilidade_partidaria.taxa_governismo_pct.toFixed(0)}%` : "—"}
                     </span>
                   </div>
                 </div>
@@ -2552,6 +2606,7 @@ export default function PoliticianProfile({
               </div>
 
               {/* CARD 5: EFICIÊNCIA DE EMENDAS & QUOTA PIX */}
+              {indices.eficiencia_emendas ? (
               <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 backdrop-blur-md shadow-lg space-y-5">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
                   <div className="flex items-center gap-3">
@@ -2629,6 +2684,9 @@ export default function PoliticianProfile({
                   </p>
                 </div>
               </div>
+              ) : (
+                <SemDadosOficiais titulo="Eficiência de emendas: nenhuma fonte oficial integrada" />
+              )}
             </div>
           )}
 
@@ -3922,13 +3980,13 @@ export default function PoliticianProfile({
                             <div className="flex items-center justify-between text-[11px] text-slate-400">
                               <span>Nº Processo / Protocolo:</span>
                               <span className="font-mono font-bold text-slate-200">
-                                {c.numero_processo || c.codigo_autenticidade || "Certidão Registrada"}
+                                {c.numero_processo || c.codigo_autenticidade || "Não informado"}
                               </span>
                             </div>
                             <div className="flex items-center justify-between text-[11px] text-slate-400">
                               <span>Data de Emissão:</span>
                               <span className="font-mono text-slate-300">
-                                {c.data_emissao || "15/08/2022"}
+                                {c.data_emissao || "Não informada"}
                               </span>
                             </div>
                           </div>
@@ -3984,7 +4042,7 @@ export default function PoliticianProfile({
                 </div>
 
                 <div className="px-3.5 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 font-mono font-bold">
-                  Taxa de Presença: {assiduidade?.taxa_presenca_pct}%
+                  Taxa de Presença: {assiduidade?.taxa_presenca_pct != null ? `${assiduidade.taxa_presenca_pct}%` : "sem dados"}
                 </div>
               </div>
 
@@ -4027,7 +4085,9 @@ export default function PoliticianProfile({
                   Histórico Detalhado de Ausências e Justificativas Regimentais
                 </h4>
 
-                {assiduidade?.amostra_faltas?.length === 0 ? (
+                {!assiduidade?.total_sessoes ? (
+                  <SemDadosOficiais titulo="Presença: sem registros oficiais integrados" />
+                ) : assiduidade?.amostra_faltas?.length === 0 ? (
                   <div className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-xs text-emerald-300 text-center">
                     Nenhuma ausência registrada neste período. O parlamentar atingiu 100% de assiduidade!
                   </div>
@@ -4104,6 +4164,13 @@ export default function PoliticianProfile({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
+                    {(!remuneracao?.historico || remuneracao.historico.length === 0) && (
+                      <tr>
+                        <td colSpan={6} className="py-4 px-3">
+                          <SemDadosOficiais titulo="Remuneração: sem registros oficiais integrados" />
+                        </td>
+                      </tr>
+                    )}
                     {remuneracao?.historico?.map((r, idx) => (
                       <tr key={idx} className="hover:bg-slate-900/80 transition-colors">
                         <td className="py-2.5 px-3 font-mono font-bold text-slate-200">

@@ -797,6 +797,8 @@ export interface ProcessoDetalhadoItem {
 }
 
 export interface FichaLimpaData {
+  /** false = nenhum dado oficial integrado (não significa "ficha limpa") */
+  dados_disponiveis?: boolean;
   possui_processos_declarados: boolean;
   status_geral: string;
   orgaos_declarados: string[];
@@ -832,10 +834,14 @@ export interface FinanciamentoCampanhaData {
 }
 
 export interface BasometroData {
-  taxa_governismo_pct: number;
+  /** false enquanto a orientação oficial do Governo por votação não estiver integrada */
+  disponivel?: boolean;
+  taxa_governismo_pct: number | null;
   total_votacoes_analisadas: number;
-  votos_alinhados: number;
-  votos_divergentes: number;
+  votos_alinhados: number | null;
+  votos_divergentes: number | null;
+  votos_sim?: number;
+  votos_nao?: number;
   classificacao: string;
   partido_sigla?: string;
 }
@@ -879,7 +885,7 @@ export interface EstabilidadePartidariaData {
   total_trocas: number;
   anos_medio_por_partido: number;
   classificacao: string;
-  taxa_governismo_pct: number;
+  taxa_governismo_pct: number | null;
   diagnostico: string;
 }
 
@@ -894,12 +900,13 @@ export interface EficienciaEmendasData {
   diagnostico: string;
 }
 
+/** Cada índice é null quando faltam dados oficiais para calculá-lo. */
 export interface IndicesInteligenciaData {
-  roi_cidadao: RoiCidadaoData;
-  concentracao_ceap: ConcentracaoCeapData;
-  enriquecimento_patrimonial: EnriquecimentoPatrimonialData;
+  roi_cidadao: RoiCidadaoData | null;
+  concentracao_ceap: ConcentracaoCeapData | null;
+  enriquecimento_patrimonial: EnriquecimentoPatrimonialData | null;
   estabilidade_partidaria: EstabilidadePartidariaData;
-  eficiencia_emendas: EficienciaEmendasData;
+  eficiencia_emendas: EficienciaEmendasData | null;
 }
 
 export interface PoliticoDossier {
@@ -928,8 +935,8 @@ export interface PoliticoDossier {
   filiacoes_partidarias: FiliacaoHistorico[];
   remuneracao: {
     resumo: {
-      salario_bruto_atual: number;
-      salario_liquido_atual: number;
+      salario_bruto_atual: number | null;
+      salario_liquido_atual: number | null;
       media_ceap_mensal: number;
       total_bruto_2023: number;
       total_ceap_2023: number;
@@ -959,7 +966,7 @@ export interface PoliticoDossier {
     total_presencas: number;
     faltas_justificadas: number;
     faltas_nao_justificadas: number;
-    taxa_presenca_pct: number;
+    taxa_presenca_pct: number | null;
     amostra_faltas: FaltaRegistro[];
   };
   evolucao_patrimonial?: EvolucaoPatrimonial;
