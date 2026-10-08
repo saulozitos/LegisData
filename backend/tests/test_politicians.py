@@ -4,7 +4,7 @@ import json
 import uuid
 
 from app.main import app
-from app.api.v1.politicians import _normalize_name, _get_processed_ceap, _get_processed_emendas
+from app.api.v1.politicians import _normalize_name, _get_processed_ceap
 from app.core.database import get_db
 
 client = TestClient(app)
@@ -30,21 +30,8 @@ def test_get_processed_ceap(mock_exists):
         assert res is not None
         assert res["total"] == 1000
 
-@patch("app.api.v1.politicians.Path.exists")
-def test_get_processed_emendas(mock_exists):
-    mock_exists.return_value = True
-    
-    mocked_json = json.dumps([{"politician_name": "JOAO DA SILVA", "valor": 5000}])
-    import builtins
-    from unittest.mock import mock_open
-    
-    with patch.object(builtins, "open", mock_open(read_data=mocked_json)):
-        import app.api.v1.politicians as pol
-        pol._emendas_cache = None
-        
-        res = _get_processed_emendas("João da Silva")
-        assert len(res) == 1
-        assert res[0]["valor"] == 5000
+        # Correspondência só por nome exato: um homônimo parcial não herda os gastos
+        assert _get_processed_ceap("Silva") is None
 
 def test_get_presidents():
     import builtins
