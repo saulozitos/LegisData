@@ -42,7 +42,7 @@ export default function CidadaniaPage() {
       setIsLoading(true);
     }
     try {
-      const data = await getConsultasPublicas(undefined, forceRefresh);
+      const data = await getConsultasPublicas();
       setConsultas(data);
     } catch (err) {
       console.error("Erro ao carregar consultas públicas:", err);

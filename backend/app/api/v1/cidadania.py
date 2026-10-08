@@ -1,9 +1,22 @@
+import os
+import secrets
 from typing import List, Optional
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Header, Query
 from pydantic import BaseModel, Field
 from app.services.cidadania_service import get_consultas_publicas
 
 router = APIRouter()
+
+
+def _admin_token_valido(token_recebido: Optional[str]) -> bool:
+    """
+    Valida o header X-Admin-Token contra a variável de ambiente ADMIN_TOKEN.
+    Se ADMIN_TOKEN não estiver definida, a renovação manual do cache fica desabilitada.
+    """
+    admin_token = os.getenv("ADMIN_TOKEN") or ""
+    if not admin_token or not token_recebido:
+        return False
+    return secrets.compare_digest(token_recebido.encode("utf-8"), admin_token.encode("utf-8"))
 
 
 class ConsultaPublicaItem(BaseModel):
@@ -45,9 +58,11 @@ class ConsultasResponse(BaseModel):
 )
 def listar_consultas(
     casa: Optional[str] = Query(None, description="Filtrar por casa legislativa: 'Senado' ou 'Câmara'"),
-    force_refresh: bool = Query(False, description="Forçar renovação imediata do cache")
+    x_admin_token: Optional[str] = Header(None, include_in_schema=False),
 ):
-    consultas = get_consultas_publicas(force_refresh=force_refresh)
+    # O cache é renovado pelo TTL. A renovação imediata só é permitida a operadores
+    # com X-Admin-Token válido (desabilitada quando ADMIN_TOKEN não está definida).
+    consultas = get_consultas_publicas(force_refresh=_admin_token_valido(x_admin_token))
 
     if casa:
         casa_filtro = casa.strip().lower()

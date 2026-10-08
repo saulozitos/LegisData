@@ -1342,10 +1342,11 @@ export interface ConsultaPublicaItem {
   destaque?: boolean;
 }
 
-export async function getConsultasPublicas(casa?: string, forceRefresh?: boolean): Promise<ConsultaPublicaItem[]> {
+// O backend renova o cache de consultas pelo TTL; a renovação forçada exige credencial
+// administrativa e não é exposta ao navegador.
+export async function getConsultasPublicas(casa?: string): Promise<ConsultaPublicaItem[]> {
   const params = new URLSearchParams();
   if (casa) params.set("casa", casa);
-  if (forceRefresh) params.set("force_refresh", "true");
   const query = params.toString() ? `?${params.toString()}` : "";
   return fetchJson<ConsultaPublicaItem[]>(`/cidadania/consultas${query}`, []);
 }
