@@ -16,7 +16,8 @@ except ModuleNotFoundError:
 
 logger = logging.getLogger("processos_loader")
 
-# Acervo oficial documentado de processos com comprovação nos tribunais
+# Lista CURADA MANUALMENTE de processos públicos. Pendente de conferência
+# registro a registro contra as páginas oficiais dos tribunais.
 REGISTROS_PROCESSUAIS_NOTORIOS: Dict[str, List[Dict[str, Any]]] = {
     "jair_bolsonaro": [
         {
@@ -217,52 +218,51 @@ REGISTROS_PROCESSUAIS_NOTORIOS: Dict[str, List[Dict[str, Any]]] = {
 }
 
 
+# Vínculo EXPLÍCITO entre o político e o conjunto de registros, pelo nome civil
+# completo normalizado (sem acentos, minúsculo). Correspondência por substring
+# ("calheiros", "moro", "lula"...) atribuía processos a homônimos, por exemplo:
+# Renildo Calheiros, Renan Filho, Rosângela Moro, Lula da Fonte.
+NOME_CIVIL_PARA_CHAVE: Dict[str, str] = {
+    "jair messias bolsonaro": "jair_bolsonaro",
+    "luiz inacio lula da silva": "lula",
+    "eduardo nantes bolsonaro": "eduardo_bolsonaro",
+    "flavio nantes bolsonaro": "flavio_bolsonaro",
+    "sergio fernando moro": "sergio_moro",
+    "jose renan vasconcelos calheiros": "renan_calheiros",
+    "michel miguel elias temer lulia": "michel_temer",
+    "dilma vana rousseff": "dilma_rousseff",
+}
+
+
+def _normalizar(nome: Optional[str]) -> str:
+    import unicodedata
+    if not nome:
+        return ""
+    sem_acento = "".join(
+        c for c in unicodedata.normalize("NFD", nome) if unicodedata.category(c) != "Mn"
+    )
+    return " ".join(sem_acento.lower().split())
+
+
 def populate_processos_judiciais(db: Session) -> int:
     """
-    Popula e sincroniza a tabela `processos_judiciais` com os autos verificados.
-    Garante que os parlamentares tenham seus registros no PostgreSQL.
+    Popula a tabela `processos_judiciais` com a lista curada acima.
+
+    ATENÇÃO: os registros de REGISTROS_PROCESSUAIS_NOTORIOS foram digitados à mão e
+    precisam de conferência humana (número, tribunal, situação e link) antes de
+    serem publicados. O vínculo é feito apenas por nome civil completo exato.
     """
     pols = db.query(Politician).all()
     total_inseridos = 0
 
     for pol in pols:
-        name_low = (pol.electoral_name or "").lower().strip()
-        civil_low = (pol.civil_name or "").lower().strip()
-
-        # Evita homônimos / falsos positivos
-        if "lula da fonte" in name_low or "lula da fonte" in civil_low:
-            continue
-        if "rosângela moro" in name_low or "rosangela moro" in civil_low:
-            continue
-        if "renan filho" in name_low:
-            continue
-
-        registros = []
-        if "bolsonaro" in name_low or "bolsonaro" in civil_low:
-            if "eduardo" in name_low or "eduardo" in civil_low:
-                registros = REGISTROS_PROCESSUAIS_NOTORIOS.get("eduardo_bolsonaro", [])
-            elif "flávio" in name_low or "flavio" in name_low or "flávio" in civil_low or "flavio" in civil_low:
-                registros = REGISTROS_PROCESSUAIS_NOTORIOS.get("flavio_bolsonaro", [])
-            elif "jair" in name_low or "jair" in civil_low:
-                registros = REGISTROS_PROCESSUAIS_NOTORIOS.get("jair_bolsonaro", [])
-        elif "lula" in name_low or "lula" in civil_low:
-            registros = REGISTROS_PROCESSUAIS_NOTORIOS.get("lula", [])
-        elif "moro" in name_low or "moro" in civil_low:
-            registros = REGISTROS_PROCESSUAIS_NOTORIOS.get("sergio_moro", [])
-        elif "calheiros" in name_low or "calheiros" in civil_low:
-            registros = REGISTROS_PROCESSUAIS_NOTORIOS.get("renan_calheiros", [])
-        elif "temer" in name_low or "temer" in civil_low:
-            registros = REGISTROS_PROCESSUAIS_NOTORIOS.get("michel_temer", [])
-        elif "dilma" in name_low or "dilma" in civil_low:
-            registros = REGISTROS_PROCESSUAIS_NOTORIOS.get("dilma_rousseff", [])
+        chave = NOME_CIVIL_PARA_CHAVE.get(_normalizar(pol.civil_name))
+        registros = REGISTROS_PROCESSUAIS_NOTORIOS.get(chave, []) if chave else []
 
         if registros:
-            # Atualiza flag do político
-            pol.possui_processos_declarados = True
-            
             # Remove processos anteriores para evitar duplicação idempotente
             db.query(ProcessoJudicial).filter(ProcessoJudicial.politician_id == pol.id).delete()
-            
+
             for reg in registros:
                 p_item = ProcessoJudicial(
                     id=uuid.uuid4(),
@@ -275,7 +275,7 @@ def populate_processos_judiciais(db: Session) -> int:
                     legal_status=reg["situacao_juridica"],
                     proof_url=reg["link_comprovacao"],
                     status_summary=reg["status_resumo"],
-                    is_declared_tse=True
+                    is_declared_tse=False
                 )
                 db.add(p_item)
                 total_inseridos += 1
