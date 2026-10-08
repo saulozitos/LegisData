@@ -61,12 +61,12 @@ class TestPrivacidade(unittest.TestCase):
 class TestVinculo(unittest.TestCase):
     def test_chaves_ambiguas_sao_descartadas(self):
         idx = indexar_unicos([
-            (("JOAO DA SILVA", "SP", "5"), "1"),
-            (("JOAO DA SILVA", "SP", "5"), "2"),   # homônimo -> descartado
+            (("PEDRO DA SILVA", "SP", "5"), "1"),
+            (("PEDRO DA SILVA", "SP", "5"), "2"),   # homônimo -> descartado
             (("MARIA SOUZA", "RJ", "5"), "3"),
             (("MARIA SOUZA", "RJ", "5"), "3"),     # repetição do mesmo valor é ok
         ])
-        self.assertNotIn(("JOAO DA SILVA", "SP", "5"), idx)
+        self.assertNotIn(("PEDRO DA SILVA", "SP", "5"), idx)
         self.assertEqual(idx[("MARIA SOUZA", "RJ", "5")], "3")
 
 
