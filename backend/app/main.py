@@ -29,6 +29,16 @@ def startup_db_migrations():
         from app.core.database import SessionLocal
         from sqlalchemy import text
         with SessionLocal() as db:
+            # Valores novos de enum em transação própria (precisam de COMMIT antes do uso)
+            # e isolados, para não impedir as demais migrações se falharem.
+            try:
+                from app.core.enum_migrations import garantir_valores_tipo_presenca
+                garantir_valores_tipo_presenca(db)
+                db.commit()
+            except Exception as enum_err:
+                db.rollback()
+                import logging
+                logging.getLogger("uvicorn").warning(f"DB enum migration warning: {enum_err}")
             db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "numeroProcesso" VARCHAR(100);'))
             db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "dataEmissao" VARCHAR(50);'))
             db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "linkComprovacao" VARCHAR(500);'))

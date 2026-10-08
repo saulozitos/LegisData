@@ -55,6 +55,10 @@ class TipoPresencaEnum(str, enum.Enum):
     AUSENCIA_NAO_JUSTIFICADA = "AUSENCIA_NAO_JUSTIFICADA"
     LICENCA_MEDICA = "LICENCA_MEDICA"
     MISSAO_OFICIAL = "MISSAO_OFICIAL"
+    # Senado: não há lista oficial de presença por sessão. Registramos a
+    # participação em votações nominais (uma linha por senador x sessão).
+    PARTICIPOU_VOTACAO = "PARTICIPOU_VOTACAO"
+    PRESENTE_SEM_VOTO = "PRESENTE_SEM_VOTO"
 
 
 class Proposition(TimeStampedModel):

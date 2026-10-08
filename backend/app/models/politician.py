@@ -211,6 +211,7 @@ class PoliticianRemuneration(Base):
     reference_month: Mapped[int] = mapped_column("mesReferencia", Integer, nullable=False)
     gross_salary: Mapped[Decimal] = mapped_column("salarioBruto", Numeric(12, 2), nullable=False)
     net_salary: Mapped[Decimal] = mapped_column("salarioLiquido", Numeric(12, 2), nullable=False)
+    # Legado: mantido em 0. CEAP é reembolso de despesa, não remuneração; tem tabela própria.
     parliamentary_quota_ceap: Mapped[Decimal] = mapped_column("cotaParlamentarCeap", Numeric(12, 2), default=0.00, nullable=False)
     housing_allowance: Mapped[Decimal] = mapped_column("auxilioMoradia", Numeric(12, 2), default=0.00, nullable=False)
     other_benefits: Mapped[Decimal] = mapped_column("outrosBeneficios", Numeric(12, 2), default=0.00, nullable=False)

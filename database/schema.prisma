@@ -107,6 +107,8 @@ enum TipoPresenca {
   AUSENCIA_NAO_JUSTIFICADA
   LICENCA_MEDICA
   MISSAO_OFICIAL
+  PARTICIPOU_VOTACAO // Senado: votou em ao menos uma votação nominal da sessão
+  PRESENTE_SEM_VOTO  // Senado: registrado presente sem voto (P-NRV, presidiu etc.)
 }
 
 enum CategoriaIndicador {
@@ -288,7 +290,7 @@ model RemuneracaoPolitico {
   mesReferencia       Int
   salarioBruto        Decimal      @db.Decimal(12, 2)
   salarioLiquido      Decimal      @db.Decimal(12, 2)
-  cotaParlamentarCeap Decimal      @default(0.00) @db.Decimal(12, 2) // CEAP (Cota de Exercício de Atividade Parlamentar)
+  cotaParlamentarCeap Decimal      @default(0.00) @db.Decimal(12, 2) // Legado: sempre 0. CEAP é reembolso de despesa, não remuneração (ver despesas_cota_parlamentar)
   auxilioMoradia      Decimal      @default(0.00) @db.Decimal(12, 2)
   outrosBeneficios    Decimal      @default(0.00) @db.Decimal(12, 2)
   fonteDados          String       @db.VarChar(100) // Ex: "Portal da Transparência", "Câmara dos Deputados"
