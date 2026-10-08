@@ -1,3 +1,4 @@
+import re
 import json
 import uuid
 import unicodedata
@@ -35,6 +36,15 @@ router = APIRouter()
 DATA_DIR = PROCESSED_DATA_DIR
 
 _ceap_cache: Optional[Dict[str, Any]] = None
+
+_CPF_EM_TEXTO = re.compile(r"(?<!\d)(\d{3})\.?(\d{3})\.?(\d{3})-?(\d{2})(?!\d)")
+
+
+def _mascarar_cpf_no_nome(nome):
+    """MEI costuma vir como 'NOME SOBRENOME 12345678901': mascara o CPF embutido no nome."""
+    if not nome:
+        return nome
+    return _CPF_EM_TEXTO.sub(lambda m: f"***.{m.group(2)}.{m.group(3)}-**", str(nome))
 
 
 def _normalize_name(text: Optional[str]) -> str:
@@ -1284,7 +1294,7 @@ def get_politician_ceap(politician_id: str, db: Session = Depends(get_db)):
                     "mes": d.month,
                     "tipo": d.expense_type,
                     "valor": float(d.net_value),
-                    "fornecedor": d.supplier_name,
+                    "fornecedor": _mascarar_cpf_no_nome(d.supplier_name),
                     "cnpj_cpf": _mascarar_cpf(d.supplier_cnpj_cpf),
                     "data": d.issue_date.isoformat() if d.issue_date else None,
                     "url": d.document_url

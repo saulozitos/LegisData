@@ -3,6 +3,7 @@ Pipeline de Extração e Consolidação Histórica de CEAP e Emendas (Lula 1 at�
 Abrange desde a instituição dos dados abertos da Cota Parlamentar (2008). Emendas não são geradas aqui.
 """
 
+import re
 import os
 import io
 import gc
@@ -35,6 +36,15 @@ def _mascarar_cpf(doc):
     if len(d) == 11:
         return f"***.{d[3:6]}.{d[6:9]}-**"
     return str(doc)
+
+_CPF_EM_TEXTO = re.compile(r"(?<!\d)(\d{3})\.?(\d{3})\.?(\d{3})-?(\d{2})(?!\d)")
+
+
+def _mascarar_cpf_no_nome(nome):
+    """MEI costuma vir como 'NOME SOBRENOME 12345678901': mascara o CPF embutido no nome."""
+    if not nome:
+        return nome
+    return _CPF_EM_TEXTO.sub(lambda m: f"***.{m.group(2)}.{m.group(3)}-**", str(nome))
 
 
 def extract_senado_ceaps_year(ano: int) -> List[Dict[str, Any]]:
@@ -139,7 +149,7 @@ def process_camara_ceap_year(ano: int, ceap_resumo: Dict[str, Any]) -> int:
             
         # Top fornecedores
         for forn, subg in group.groupby("txtFornecedor"):
-            forn_str = str(forn).strip()
+            forn_str = _mascarar_cpf_no_nome(str(forn).strip())
             tot_f = float(subg["vlrLiquido"].sum())
             cnt_f = len(subg)
             cnpj_f = str(subg["txtCNPJCPF"].iloc[0]) if "txtCNPJCPF" in subg and pd.notna(subg["txtCNPJCPF"].iloc[0]) else None
@@ -186,7 +196,7 @@ def main():
             nome = item.get("nomeSenador", "").upper().strip()
             val = float(item.get("valorReembolsado") or 0.0)
             tipo = item.get("tipoDespesa", "OUTROS")
-            forn = item.get("fornecedor", "Não Informado")
+            forn = _mascarar_cpf_no_nome(item.get("fornecedor", "Não Informado"))
             cnpj = item.get("cpfCnpj")
             
             if not nome or val <= 0:

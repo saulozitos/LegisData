@@ -1657,7 +1657,7 @@ class DatabaseLoader:
                     month=int(d["mes"]) if d.get("mes") else None,
                     expense_type=d["tipo_despesa"],
                     net_value=Decimal(str(d["valor_liquido"])),
-                    supplier_name=d["nome_fornecedor"],
+                    supplier_name=_mascarar_cpf_no_nome(d["nome_fornecedor"]),
                     supplier_cnpj_cpf=_mascarar_cpf(d.get("cnpj_cpf_fornecedor")),
                     issue_date=dt_emissao,
                     document_url=d.get("documento_url")
@@ -1745,6 +1745,15 @@ class DatabaseLoader:
         print("-" * 80)
         print(f"{'TOTAL GERAL DE REGISTROS INSERIDOS':<52} | {total_geral:>20,}".replace(",", "."))
         print("=" * 80 + "\n")
+
+_CPF_EM_TEXTO = re.compile(r"(?<!\d)(\d{3})\.?(\d{3})\.?(\d{3})-?(\d{2})(?!\d)")
+
+
+def _mascarar_cpf_no_nome(nome):
+    """MEI costuma vir como 'NOME SOBRENOME 12345678901': mascara o CPF embutido no nome."""
+    if not nome:
+        return nome
+    return _CPF_EM_TEXTO.sub(lambda m: f"***.{m.group(2)}.{m.group(3)}-**", str(nome))
 
 
 if __name__ == "__main__":

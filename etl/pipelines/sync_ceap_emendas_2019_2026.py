@@ -7,6 +7,7 @@ Fontes Oficiais:
 - Emendas Parlamentares: NÃO geradas aqui (ver comentário em main()).
 """
 
+import re
 import io
 import json
 import time
@@ -37,6 +38,15 @@ def _mascarar_cpf(doc):
     if len(d) == 11:
         return f"***.{d[3:6]}.{d[6:9]}-**"
     return str(doc)
+
+_CPF_EM_TEXTO = re.compile(r"(?<!\d)(\d{3})\.?(\d{3})\.?(\d{3})-?(\d{2})(?!\d)")
+
+
+def _mascarar_cpf_no_nome(nome):
+    """MEI costuma vir como 'NOME SOBRENOME 12345678901': mascara o CPF embutido no nome."""
+    if not nome:
+        return nome
+    return _CPF_EM_TEXTO.sub(lambda m: f"***.{m.group(2)}.{m.group(3)}-**", str(nome))
 
 
 def extract_senado_ceaps(anos: List[int]) -> List[Dict[str, Any]]:
@@ -144,7 +154,7 @@ def main():
         ano = item.get("ano")
         val = float(item.get("valorReembolsado") or 0.0)
         tipo = item.get("tipoDespesa", "OUTROS")
-        forn = item.get("fornecedor", "Não Informado")
+        forn = _mascarar_cpf_no_nome(item.get("fornecedor", "Não Informado"))
         cnpj = item.get("cpfCnpj")
         
         if not nome or val <= 0:
