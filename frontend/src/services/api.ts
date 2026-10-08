@@ -1374,9 +1374,9 @@ export interface MandateIndicatorData {
 }
 
 export async function getPresidentialMandates(): Promise<PresidentialMandate[]> {
-  return fetchJson<PresidentialMandate[]>("/executivo/mandates");
+  return fetchJson<PresidentialMandate[]>("/executivo/mandates", []);
 }
 
 export async function getMandateIndicators(mandateId: string): Promise<MandateIndicatorData[]> {
-  return fetchJson<MandateIndicatorData[]>(`/executivo/mandates/${mandateId}/indicators`);
+  return fetchJson<MandateIndicatorData[]>(`/executivo/mandates/${mandateId}/indicators`, []);
 }
