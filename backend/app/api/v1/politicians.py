@@ -1,7 +1,6 @@
 import re
 import json
 import uuid
-import unicodedata
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import date
@@ -35,8 +34,6 @@ def _mascarar_cpf(doc):
 router = APIRouter()
 DATA_DIR = PROCESSED_DATA_DIR
 
-_ceap_cache: Optional[Dict[str, Any]] = None
-
 _CPF_EM_TEXTO = re.compile(r"(?<!\d)(\d{3})\.?(\d{3})\.?(\d{3})-?(\d{2})(?!\d)")
 
 
@@ -47,38 +44,18 @@ def _mascarar_cpf_no_nome(nome):
     return _CPF_EM_TEXTO.sub(lambda m: f"***.{m.group(2)}.{m.group(3)}-**", str(nome))
 
 
-def _normalize_name(text: Optional[str]) -> str:
-    if not text:
-        return ""
-    return "".join(c for c in unicodedata.normalize("NFD", text.upper()) if unicodedata.category(c) != "Mn").strip()
-
-
-def _get_processed_ceap(electoral_name: str, civil_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    global _ceap_cache
-    if _ceap_cache is None:
-        file_path = DATA_DIR / "despesas_ceap_historico.json"
-        if not file_path.exists():
-            file_path = DATA_DIR / "despesas_ceap_2019_2026.json"
-        if file_path.exists():
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    raw = json.load(f)
-                    _ceap_cache = {_normalize_name(k): v for k, v in raw.items()}
-            except Exception:
-                _ceap_cache = {}
-        else:
-            _ceap_cache = {}
-
-    norm_elec = _normalize_name(electoral_name)
-    norm_civ = _normalize_name(civil_name) if civil_name else ""
-
-    # Apenas correspondência exata de nome. A busca por substring atribuía despesas
-    # de um parlamentar a outro com nome parecido.
-    if norm_elec and norm_elec in _ceap_cache:
-        return _ceap_cache[norm_elec]
-    if norm_civ and norm_civ in _ceap_cache:
-        return _ceap_cache[norm_civ]
-    return None
+# Procedência exibida na API (as linhas também guardam o arquivo/API de origem em fonteUrl)
+FONTE_CEAP = {
+    "camara": "https://www.camara.leg.br/cotas/ (Ano-AAAA.csv.zip)",
+    "senado": "https://adm.senado.gov.br/adm-dadosabertos/api/v1/senadores/despesas_ceaps/{ano}",
+}
+FONTE_EMENDAS = "https://portaldatransparencia.gov.br/download-de-dados/emendas-parlamentares/UNICO"
+AVISO_EMENDAS = (
+    "Somente emendas individuais. O Portal da Transparência identifica o autor pelo "
+    "código/nome SIAFI; o vínculo com o parlamentar é feito por nome exato e único "
+    "(ou revisão manual). Emendas de bancada, comissão e relator não têm autor "
+    "individual e não são atribuídas a parlamentares."
+)
 
 
 SIMBOLICO_KEYWORDS = [
@@ -815,7 +792,8 @@ def get_politician_dossier(
                 "nome_fornecedor": d.supplier_name,
                 "cnpj_cpf": _mascarar_cpf(d.supplier_cnpj_cpf),
                 "data_emissao": d.issue_date.isoformat() if d.issue_date else None,
-                "documento_url": d.document_url
+                "documento_url": d.document_url,
+                "fonte_url": d.source_url
             }
             for d in ceap_db[:15]
         ]
@@ -829,63 +807,18 @@ def get_politician_dossier(
             "despesas_recentes": despesas_recentes
         }
     else:
-        proc_ceap = _get_processed_ceap(pol.electoral_name, pol.civil_name)
-        if proc_ceap:
-            total_ceap_geral = float(proc_ceap.get("total_gasto", 0.0))
-            gastos_por_tipo = [
-                {
-                    "tipo_despesa": t,
-                    "total_gasto": round(float(v), 2),
-                    "percentual": round((float(v) / total_ceap_geral * 100), 1) if total_ceap_geral > 0 else 0.0
-                }
-                for t, v in proc_ceap.get("por_tipo", {}).items()
-            ]
-            gastos_por_tipo.sort(key=lambda x: x["total_gasto"], reverse=True)
-
-            maiores_fornecedores = [
-                {
-                    "nome_fornecedor": f.get("nome", "Fornecedor"),
-                    "cnpj_cpf": _mascarar_cpf(f.get("cnpj_cpf")),
-                    "total_recebido": round(float(f.get("total", 0.0)), 2),
-                    "num_notas": int(f.get("notas", 1))
-                }
-                for f in proc_ceap.get("fornecedores", {}).values()
-            ]
-            maiores_fornecedores.sort(key=lambda x: x["total_recebido"], reverse=True)
-            maiores_fornecedores = maiores_fornecedores[:10]
-
-            despesas_recentes = [
-                {
-                    "ano": int(ano),
-                    "mes": None,
-                    "tipo_despesa": "Consolidado Anual CEAP (Prestação de Contas)",
-                    "valor_liquido": round(float(val), 2),
-                    "nome_fornecedor": "Congresso Nacional (Câmara / Senado)",
-                    "cnpj_cpf": None,
-                    "data_emissao": f"{ano}-12-31",
-                    "documento_url": None
-                }
-                for ano, val in sorted(proc_ceap.get("por_ano", {}).items(), reverse=True)
-            ]
-
-            custos_ceap = {
-                "possui_dados": True,
-                "gasto_total_recente": round(total_ceap_geral, 2),
-                "total_notas": int(proc_ceap.get("total_notas", len(despesas_recentes))),
-                "gastos_por_tipo": gastos_por_tipo,
-                "maiores_fornecedores": maiores_fornecedores,
-                "despesas_recentes": despesas_recentes,
-                "por_ano": proc_ceap.get("por_ano", {})
-            }
-        else:
-            custos_ceap = {
-                "possui_dados": False,
-                "gasto_total_recente": 0.0,
-                "total_notas": 0,
-                "gastos_por_tipo": [],
-                "maiores_fornecedores": [],
-                "despesas_recentes": []
-            }
+        # Sem fallback para o resumo agregado por nome (despesas_ceap_2019_2026.json):
+        # o banco agora recebe as notas oficiais de todos os parlamentares cadastrados,
+        # e o casamento por nome do agregado podia misturar homônimos.
+        custos_ceap = {
+            "possui_dados": False,
+            "gasto_total_recente": 0.0,
+            "total_notas": 0,
+            "gastos_por_tipo": [],
+            "maiores_fornecedores": [],
+            "despesas_recentes": []
+        }
+    custos_ceap["fonte"] = FONTE_CEAP
 
     # I. Trilha do Dinheiro (Emendas Parlamentares)
     emendas_db = (
@@ -951,7 +884,12 @@ def get_politician_dossier(
                 "valor_empenhado": float(e.committed_value),
                 "valor_pago": float(e.paid_value),
                 "localidade_destino": e.destination_locality,
-                "funcao": e.function_area
+                "uf": e.destination_state,
+                "funcao": e.function_area,
+                "valor_liquidado": float(e.liquidated_value) if e.liquidated_value is not None else None,
+                "codigo_autor_siafi": e.author_siafi_code,
+                "nome_autor_fonte": e.author_name_source,
+                "fonte_url": e.source_url
             }
             for e in emendas_db
         ]
@@ -978,6 +916,8 @@ def get_politician_dossier(
             "distribuicao_por_area": [],
             "lista_emendas": []
         }
+    emendas_parlamentares["fonte"] = FONTE_EMENDAS
+    emendas_parlamentares["aviso"] = AVISO_EMENDAS
 
     # J. Raio-X Judicial e Ficha Limpa
     certidoes_db = (
@@ -1304,33 +1244,12 @@ def get_politician_ceap(politician_id: str, db: Session = Depends(get_db)):
                     "fornecedor": _mascarar_cpf_no_nome(d.supplier_name),
                     "cnpj_cpf": _mascarar_cpf(d.supplier_cnpj_cpf),
                     "data": d.issue_date.isoformat() if d.issue_date else None,
-                    "url": d.document_url
+                    "url": d.document_url,
+                    "fonte_url": d.source_url
                 }
                 for d in despesas
-            ]
-        }
-
-    proc_ceap = _get_processed_ceap(pol.electoral_name, pol.civil_name)
-    if proc_ceap:
-        despesas_list = [
-            {
-                "ano": int(ano),
-                "mes": None,
-                "tipo": "Consolidado Anual CEAP (Prestação de Contas)",
-                "valor": float(val),
-                "fornecedor": "Senado Federal / Câmara dos Deputados",
-                "cnpj_cpf": None,
-                "data": f"{ano}-12-31",
-                "url": None
-            }
-            for ano, val in sorted(proc_ceap.get("por_ano", {}).items(), reverse=True)
-        ]
-        return {
-            "politico_id": str(pol.id),
-            "nome": pol.electoral_name,
-            "total_gasto": float(proc_ceap.get("total_gasto", 0.0)),
-            "total_notas": int(proc_ceap.get("total_notas", len(despesas_list))),
-            "despesas": despesas_list
+            ],
+            "fonte": FONTE_CEAP
         }
 
     return {
@@ -1338,7 +1257,8 @@ def get_politician_ceap(politician_id: str, db: Session = Depends(get_db)):
         "nome": pol.electoral_name,
         "total_gasto": 0.0,
         "total_notas": 0,
-        "despesas": []
+        "despesas": [],
+        "fonte": FONTE_CEAP
     }
 
 
@@ -1380,10 +1300,17 @@ def get_politician_emendas(politician_id: str, db: Session = Depends(get_db)):
                     "valor_empenhado": float(e.committed_value),
                     "valor_pago": float(e.paid_value),
                     "destino": e.destination_locality,
-                    "area": e.function_area
+                    "uf": e.destination_state,
+                    "area": e.function_area,
+                    "valor_liquidado": float(e.liquidated_value) if e.liquidated_value is not None else None,
+                    "codigo_autor_siafi": e.author_siafi_code,
+                    "nome_autor_fonte": e.author_name_source,
+                    "fonte_url": e.source_url
                 }
                 for e in emendas
-            ]
+            ],
+            "fonte": FONTE_EMENDAS,
+            "aviso": AVISO_EMENDAS
         }
 
     return {
@@ -1391,7 +1318,9 @@ def get_politician_emendas(politician_id: str, db: Session = Depends(get_db)):
         "nome": pol.electoral_name,
         "total_empenhado": 0.0,
         "total_pago": 0.0,
-        "emendas": []
+        "emendas": [],
+        "fonte": FONTE_EMENDAS,
+        "aviso": AVISO_EMENDAS
     }
 
 
