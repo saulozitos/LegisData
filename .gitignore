@@ -43,3 +43,4 @@ postgres_data/
 Thumbs.db
 
 .dev*
+.gemini*
