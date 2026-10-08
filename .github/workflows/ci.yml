@@ -37,9 +37,9 @@ jobs:
         run: |
           python -m compileall backend/app backend/tests
 
-      - name: Executar Testes Automatizados (FastAPI / Schemas)
+      - name: Executar Testes Automatizados e Coverage (pytest)
         run: |
-          PYTHONPATH=backend python -m unittest discover -s backend/tests -p "test_*.py" -v
+          PYTHONPATH=backend pytest --cov=backend/app --cov-fail-under=50 backend/tests/
 
   frontend-checks:
     name: Frontend Build, Lint & Typecheck
@@ -77,3 +77,8 @@ jobs:
           npm run build
         env:
           NEXT_TELEMETRY_DISABLED: 1
+
+      - name: Executar Testes Automatizados e Coverage (Vitest)
+        working-directory: frontend
+        run: |
+          npm run test:coverage
