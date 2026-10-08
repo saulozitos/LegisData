@@ -1,4 +1,4 @@
-.PHONY: help run-all run-etl run-camara run-senado run-tse run-load-db up-db down-db backend-dev run-frontend build-frontend docker-up docker-down
+.PHONY: help run-presenca run-remuneracao test-etl run-all run-etl run-camara run-senado run-tse run-load-db up-db down-db backend-dev run-frontend build-frontend docker-up docker-down
 
 help:
 	@echo "=========================================================="
@@ -14,6 +14,9 @@ help:
 	@echo "  make run-composicao   - Executa curadoria da composição do Congresso"
 	@echo "  make run-renda        - Executa análise de Salário Mínimo vs Parlamentar vs Inflação"
 	@echo "  make run-load-db      - Carrega e efetua upsert relacional no PostgreSQL"
+	@echo "  make run-presenca INICIO=AAAA-MM-DD FIM=AAAA-MM-DD - Presença Câmara + votações nominais Senado"
+	@echo "  make run-remuneracao DE=AAAA-MM ATE=AAAA-MM      - Folha nominal do Senado + subsídios"
+	@echo "  make test-etl         - Testes unitários do ETL (stdlib)"
 	@echo ""
 	@echo "Ambiente Local & Infraestrutura:"
 	@echo "  make up-db            - Sobe o banco PostgreSQL local via Docker Compose"
@@ -71,3 +74,12 @@ run-frontend:
 
 build-frontend:
 	cd frontend && npm run build
+
+run-presenca:
+	PYTHONPATH=. .venv/bin/python3 etl/extractors/presenca_extractor.py --inicio $(INICIO) --fim $(FIM)
+
+run-remuneracao:
+	PYTHONPATH=. .venv/bin/python3 etl/extractors/remuneracao_extractor.py --de $(DE) --ate $(ATE)
+
+test-etl:
+	python3 -m unittest discover -s etl/tests -p "test_*.py" -v

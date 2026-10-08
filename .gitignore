@@ -54,3 +54,6 @@ etl/data/raw/*.part
 etl/data/raw/*.meta.json
 etl/data/raw/ceaps_senado_*.json
 etl/data/processed/emendas_parlamentares_cgu.json
+# Cache bruto das extrações de presença/remuneração (respostas oficiais, regeneráveis)
+etl/data/raw/presenca/
+etl/data/raw/remuneracao/
