@@ -21,6 +21,16 @@ from app.models import (
 )
 from app.core.config import PROCESSED_DATA_DIR
 
+
+def _mascarar_cpf(doc):
+    """CPF de fornecedor pessoa física sai mascarado (padrão TSE); CNPJ fica inteiro."""
+    if not doc:
+        return doc
+    d = "".join(ch for ch in str(doc) if ch.isdigit())
+    if len(d) == 11:
+        return f"***.{d[3:6]}.{d[6:9]}-**"
+    return doc
+
 router = APIRouter()
 DATA_DIR = PROCESSED_DATA_DIR
 
@@ -766,7 +776,7 @@ def get_politician_dossier(
             if f_key not in fornecedores_map:
                 fornecedores_map[f_key] = {
                     "nome_fornecedor": d.supplier_name,
-                    "cnpj_cpf": d.supplier_cnpj_cpf,
+                    "cnpj_cpf": _mascarar_cpf(d.supplier_cnpj_cpf),
                     "total_recebido": 0.0,
                     "num_notas": 0
                 }
@@ -786,7 +796,7 @@ def get_politician_dossier(
                 "tipo_despesa": d.expense_type,
                 "valor_liquido": float(d.net_value),
                 "nome_fornecedor": d.supplier_name,
-                "cnpj_cpf": d.supplier_cnpj_cpf,
+                "cnpj_cpf": _mascarar_cpf(d.supplier_cnpj_cpf),
                 "data_emissao": d.issue_date.isoformat() if d.issue_date else None,
                 "documento_url": d.document_url
             }
@@ -818,7 +828,7 @@ def get_politician_dossier(
             maiores_fornecedores = [
                 {
                     "nome_fornecedor": f.get("nome", "Fornecedor"),
-                    "cnpj_cpf": f.get("cnpj_cpf"),
+                    "cnpj_cpf": _mascarar_cpf(f.get("cnpj_cpf")),
                     "total_recebido": round(float(f.get("total", 0.0)), 2),
                     "num_notas": int(f.get("notas", 1))
                 }
@@ -1183,7 +1193,6 @@ def get_politician_dossier(
             "id": str(pol.id),
             "nome_eleitoral": pol.electoral_name,
             "nome_civil": pol.civil_name,
-            "cpf": pol.cpf,
             "genero": pol.gender,
             "data_nascimento": pol.birth_date.isoformat() if pol.birth_date else None,
             "naturalidade": f"{pol.birthplace_city}/{pol.birthplace_state}" if pol.birthplace_city else (pol.birthplace_state or "Brasil"),
@@ -1276,7 +1285,7 @@ def get_politician_ceap(politician_id: str, db: Session = Depends(get_db)):
                     "tipo": d.expense_type,
                     "valor": float(d.net_value),
                     "fornecedor": d.supplier_name,
-                    "cnpj_cpf": d.supplier_cnpj_cpf,
+                    "cnpj_cpf": _mascarar_cpf(d.supplier_cnpj_cpf),
                     "data": d.issue_date.isoformat() if d.issue_date else None,
                     "url": d.document_url
                 }

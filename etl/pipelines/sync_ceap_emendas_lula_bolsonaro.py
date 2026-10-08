@@ -23,6 +23,20 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "processed"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _mascarar_cpf(doc):
+    """Mascara CPF de pessoa física (11 dígitos) no padrão do TSE; mantém CNPJ.
+
+    Fornecedores pessoa física não são agentes públicos: republicar o CPF completo
+    não é necessário para a finalidade de transparência (LGPD, art. 6º, III).
+    """
+    if doc is None:
+        return None
+    d = "".join(ch for ch in str(doc) if ch.isdigit())
+    if len(d) == 11:
+        return f"***.{d[3:6]}.{d[6:9]}-**"
+    return str(doc)
+
+
 def extract_senado_ceaps_year(ano: int) -> List[Dict[str, Any]]:
     """Extrai despesas da CEAPS do Senado para um ano específico."""
     url = f"https://adm.senado.gov.br/adm-dadosabertos/api/v1/senadores/despesas_ceaps/{ano}"
@@ -131,7 +145,7 @@ def process_camara_ceap_year(ano: int, ceap_resumo: Dict[str, Any]) -> int:
             cnpj_f = str(subg["txtCNPJCPF"].iloc[0]) if "txtCNPJCPF" in subg and pd.notna(subg["txtCNPJCPF"].iloc[0]) else None
             
             if forn_str not in p["fornecedores"]:
-                p["fornecedores"][forn_str] = {"nome": forn_str, "cnpj_cpf": cnpj_f, "total": 0.0, "notas": 0}
+                p["fornecedores"][forn_str] = {"nome": forn_str, "cnpj_cpf": _mascarar_cpf(cnpj_f), "total": 0.0, "notas": 0}
             p["fornecedores"][forn_str]["total"] += tot_f
             p["fornecedores"][forn_str]["notas"] += cnt_f
 
@@ -196,7 +210,7 @@ def main():
             p["por_tipo"][tipo] = round(p["por_tipo"].get(tipo, 0.0) + val, 2)
             
             if forn not in p["fornecedores"]:
-                p["fornecedores"][forn] = {"nome": forn, "cnpj_cpf": cnpj, "total": 0.0, "notas": 0}
+                p["fornecedores"][forn] = {"nome": forn, "cnpj_cpf": _mascarar_cpf(cnpj), "total": 0.0, "notas": 0}
             p["fornecedores"][forn]["total"] = round(p["fornecedores"][forn]["total"] + val, 2)
             p["fornecedores"][forn]["notas"] += 1
 

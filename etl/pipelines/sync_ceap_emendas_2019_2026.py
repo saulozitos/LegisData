@@ -25,6 +25,20 @@ PROJECT_ROOT = CURRENT_DIR.parents[1]
 DATA_DIR = PROJECT_ROOT / "etl" / "data" / "processed"
 
 
+def _mascarar_cpf(doc):
+    """Mascara CPF de pessoa física (11 dígitos) no padrão do TSE; mantém CNPJ.
+
+    Fornecedores pessoa física não são agentes públicos: republicar o CPF completo
+    não é necessário para a finalidade de transparência (LGPD, art. 6º, III).
+    """
+    if doc is None:
+        return None
+    d = "".join(ch for ch in str(doc) if ch.isdigit())
+    if len(d) == 11:
+        return f"***.{d[3:6]}.{d[6:9]}-**"
+    return str(doc)
+
+
 def extract_senado_ceaps(anos: List[int]) -> List[Dict[str, Any]]:
     """Extrai despesas da CEAPS diretamente da API do Senado Federal para todos os anos com retry."""
     logger.info(f"-> Extraindo CEAPS do Senado Federal para os anos: {anos}...")
@@ -154,7 +168,7 @@ def main():
         p["por_tipo"][tipo] = p["por_tipo"].get(tipo, 0.0) + val
         
         if forn not in p["fornecedores"]:
-            p["fornecedores"][forn] = {"nome": forn, "cnpj_cpf": cnpj, "total": 0.0, "notas": 0}
+            p["fornecedores"][forn] = {"nome": forn, "cnpj_cpf": _mascarar_cpf(cnpj), "total": 0.0, "notas": 0}
         p["fornecedores"][forn]["total"] += val
         p["fornecedores"][forn]["notas"] += 1
 
@@ -181,7 +195,7 @@ def main():
             for _, r in top_forn.iterrows():
                 fornecedores_dict[str(r["txtFornecedor"])] = {
                     "nome": str(r["txtFornecedor"]),
-                    "cnpj_cpf": str(r["txtCNPJCPF"]) if pd.notna(r["txtCNPJCPF"]) else None,
+                    "cnpj_cpf": _mascarar_cpf(r["txtCNPJCPF"]) if pd.notna(r["txtCNPJCPF"]) else None,
                     "total": round(float(r["sum"]), 2),
                     "notas": int(r["count"])
                 }

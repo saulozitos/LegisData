@@ -165,6 +165,16 @@ def classify_proposition_impact(tipo: str, numero: int, ano: int, titulo: str, e
     return categorias[idx]
 
 
+
+def _mascarar_cpf(doc):
+    """Não grava CPF completo de fornecedor pessoa física (LGPD); CNPJ fica inteiro."""
+    if not doc:
+        return doc
+    d = "".join(ch for ch in str(doc) if ch.isdigit())
+    if len(d) == 11:
+        return f"***.{d[3:6]}.{d[6:9]}-**"
+    return doc
+
 class DatabaseLoader:
     """Gerencia a carga e sincronização de dados no PostgreSQL."""
 
@@ -1648,7 +1658,7 @@ class DatabaseLoader:
                     expense_type=d["tipo_despesa"],
                     net_value=Decimal(str(d["valor_liquido"])),
                     supplier_name=d["nome_fornecedor"],
-                    supplier_cnpj_cpf=d.get("cnpj_cpf_fornecedor"),
+                    supplier_cnpj_cpf=_mascarar_cpf(d.get("cnpj_cpf_fornecedor")),
                     issue_date=dt_emissao,
                     document_url=d.get("documento_url")
                 )
