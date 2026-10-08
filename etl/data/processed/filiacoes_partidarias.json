@@ -425,18 +425,6 @@
     "senado_id": 3830.0,
     "cargo": "SENADOR",
     "uf": "AP",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Davi Alcolumbre",
-    "camara_id": NaN,
-    "senado_id": 3830.0,
-    "cargo": "SENADOR",
-    "uf": "AP",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -773,18 +761,6 @@
     "senado_id": 4531.0,
     "cargo": "SENADOR",
     "uf": "MT",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Jayme Campos",
-    "camara_id": NaN,
-    "senado_id": 4531.0,
-    "cargo": "SENADOR",
-    "uf": "MT",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -1090,18 +1066,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Professora Dorinha Seabra",
-    "camara_id": NaN,
-    "senado_id": 5386.0,
-    "cargo": "SENADOR",
-    "uf": "TO",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Professora Dorinha Seabra",
@@ -1481,18 +1445,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MT",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Abilio Brunini",
-    "camara_id": 220593.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MT",
     "partido_sigla": "PL",
     "data_filiacao": "2022-03-21",
     "data_desfiliacao": NaN,
@@ -1534,18 +1486,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Adilson Barroso",
-    "camara_id": 221328.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Adilson Barroso",
@@ -1805,18 +1745,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "SP",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Alexandre Leite",
-    "camara_id": 160545.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -1858,18 +1786,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Alfredo Gaspar",
-    "camara_id": 220576.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "AL",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Alfredo Gaspar",
@@ -1930,18 +1846,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Aline Gurgel",
-    "camara_id": 204353.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "AP",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Aline Gurgel",
@@ -2129,18 +2033,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "CE",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "André Fernandes",
-    "camara_id": 220657.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "CE",
     "partido_sigla": "PL",
     "data_filiacao": "2022-03-21",
     "data_desfiliacao": NaN,
@@ -2285,18 +2177,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "BA",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Antonio Brito",
-    "camara_id": 160553.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "BA",
     "partido_sigla": "PSD",
     "data_filiacao": "2022-03-26",
     "data_desfiliacao": NaN,
@@ -2429,35 +2309,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "BA",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Arthur Oliveira Maia",
-    "camara_id": 160600.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "BA",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Átila Lins",
-    "camara_id": 74090.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "AM",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Átila Lins",
@@ -2518,18 +2374,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Aureo Ribeiro",
-    "camara_id": 160512.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RJ",
-    "partido_sigla": "PROS",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2023-02-14",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Aureo Ribeiro",
@@ -2638,18 +2482,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Benes Leocádio",
-    "camara_id": 109429.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RN",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Benes Leocádio",
@@ -2885,18 +2717,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "SP",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Capitão Augusto",
-    "camara_id": 178829.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
     "partido_sigla": "PL",
     "data_filiacao": "2022-03-21",
     "data_desfiliacao": NaN,
@@ -2933,35 +2753,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "RN",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Carla Dickson",
-    "camara_id": 213762.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RN",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Carla Dickson",
-    "camara_id": 213762.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RN",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Carla Dickson",
@@ -3022,18 +2818,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Carlos Henrique Gaguim",
-    "camara_id": 178993.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "TO",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Carlos Henrique Gaguim",
@@ -3137,18 +2921,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "SC",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Caroline de Toni",
-    "camara_id": 204369.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SC",
     "partido_sigla": "PL",
     "data_filiacao": "2022-03-21",
     "data_desfiliacao": NaN,
@@ -3226,18 +2998,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Celso Sabino",
-    "camara_id": 204496.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PA",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Celso Sabino",
@@ -3329,18 +3089,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "RJ",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Chiquinho Brazão",
-    "camara_id": 204476.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RJ",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -3358,18 +3106,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Chris Tonietto",
-    "camara_id": 204462.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RJ",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Chris Tonietto",
@@ -3485,18 +3221,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MT",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Coronel Assis",
-    "camara_id": 220594.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MT",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -3526,18 +3250,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Coronel Fernanda",
-    "camara_id": 220595.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MT",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Coronel Fernanda",
@@ -3593,18 +3305,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "AC",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Coronel Ulysses",
-    "camara_id": 220590.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "AC",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -3622,18 +3322,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Cristiane Lopes",
-    "camara_id": 220608.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RO",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Cristiane Lopes",
@@ -3725,35 +3413,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "BA",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Dal Barreto",
-    "camara_id": 220692.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "BA",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Damião Feliciano",
-    "camara_id": 74467.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PB",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Damião Feliciano",
@@ -3778,18 +3442,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Dani Cunha",
-    "camara_id": 220603.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RJ",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Dani Cunha",
@@ -3917,18 +3569,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "RJ",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Daniela do Waguinho",
-    "camara_id": 204459.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RJ",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -3953,35 +3593,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "SC",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Daniela Reinehr",
-    "camara_id": 220557.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SC",
     "partido_sigla": "PL",
     "data_filiacao": "2022-03-21",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Danilo Forte",
-    "camara_id": 62881.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "CE",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Danilo Forte",
@@ -4013,18 +3629,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "RS",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Danrlei de Deus Hinterholz",
-    "camara_id": 160552.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RS",
     "partido_sigla": "PSD",
     "data_filiacao": "2022-03-26",
     "data_desfiliacao": NaN,
@@ -4042,18 +3646,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "David Soares",
-    "camara_id": 204511.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "David Soares",
@@ -4085,35 +3677,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "CE",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Dayany Bittencourt",
-    "camara_id": 220659.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "CE",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Dayany do Capitão",
-    "camara_id": 220659.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "CE",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Dayany do Capitão",
@@ -4138,18 +3706,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Defensor Stélio Dener",
-    "camara_id": 220539.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RR",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Defensor Stélio Dener",
@@ -4265,35 +3821,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "SP",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Delegado da Cunha",
-    "camara_id": 220649.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Delegado Éder Mauro",
-    "camara_id": 178908.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PA",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Delegado Éder Mauro",
@@ -4325,35 +3857,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MG",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Delegado Marcelo Freitas",
-    "camara_id": 204512.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MG",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Delegado Matheus Laiola",
-    "camara_id": 220701.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PR",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Delegado Matheus Laiola",
@@ -4481,18 +3989,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "BA",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Diego Coronel",
-    "camara_id": 220691.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "BA",
     "partido_sigla": "PSD",
     "data_filiacao": "2022-03-26",
     "data_desfiliacao": NaN,
@@ -4522,18 +4018,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Diego Garcia",
-    "camara_id": 178929.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PR",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Diego Garcia",
@@ -4637,18 +4121,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "SP",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Douglas Viegas",
-    "camara_id": 227433.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -4673,18 +4145,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MA",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Dr Benjamim",
-    "camara_id": 221339.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MA",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -4697,35 +4157,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "AC",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Dr Fabio Rueda",
-    "camara_id": 227401.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "AC",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Dr Flávio",
-    "camara_id": 227991.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RJ",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Dr Flávio",
@@ -4757,18 +4193,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MA",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Dr. Benjamim",
-    "camara_id": 221339.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MA",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -4786,18 +4210,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Dr. Fernando Máximo",
-    "camara_id": 220610.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RO",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Dr. Fernando Máximo",
@@ -4853,18 +4265,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MG",
-    "partido_sigla": "PTB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2023-11-09",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Dr. Frederico",
-    "camara_id": 204518.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MG",
     "partido_sigla": "PRD",
     "data_filiacao": "2023-11-10",
     "data_desfiliacao": NaN,
@@ -4906,18 +4306,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Dr. Jaziel",
-    "camara_id": 204481.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "CE",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Dr. Jaziel",
@@ -4978,18 +4366,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Dr. Zacharias Calil",
-    "camara_id": 204412.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "GO",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Dr. Zacharias Calil",
@@ -5273,18 +4649,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "AC",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Eduardo Velloso",
-    "camara_id": 220589.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "AC",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -5446,18 +4810,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Emanuel Pinheiro Neto",
-    "camara_id": 198783.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MT",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Emanuel Pinheiro Neto",
@@ -5657,18 +5009,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MG",
-    "partido_sigla": "PTB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2023-11-09",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Fabiano Cazeca",
-    "camara_id": 234388.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MG",
     "partido_sigla": "PRD",
     "data_filiacao": "2023-11-10",
     "data_desfiliacao": NaN,
@@ -5681,35 +5021,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MT",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Fabio Garcia",
-    "camara_id": 178905.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MT",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Fábio Henrique",
-    "camara_id": 68720.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SE",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Fábio Henrique",
@@ -5741,35 +5057,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "SE",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Fabio Reis",
-    "camara_id": 171623.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SE",
     "partido_sigla": "PSD",
     "data_filiacao": "2022-03-26",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Fabio Schiochet",
-    "camara_id": 204368.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SC",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Fabio Schiochet",
@@ -5813,18 +5105,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "AM",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Fausto Jr.",
-    "camara_id": 220712.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "AM",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -5849,18 +5129,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "SP",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Fausto Pinato",
-    "camara_id": 66828.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -5873,35 +5141,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "AM",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Fausto Santos Jr.",
-    "camara_id": 220712.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "AM",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Felipe Becari",
-    "camara_id": 220646.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Felipe Becari",
@@ -5945,18 +5189,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "PR",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Felipe Francischini",
-    "camara_id": 204398.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PR",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -5986,18 +5218,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Felipe Saliba",
-    "camara_id": 227370.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MG",
-    "partido_sigla": "PTB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2023-11-09",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Felipe Saliba",
@@ -6041,18 +5261,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "CE",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Fernanda Pessoa",
-    "camara_id": 220656.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "CE",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -6070,18 +5278,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Fernando Coelho Filho",
-    "camara_id": 141431.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PE",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Fernando Coelho Filho",
@@ -6154,18 +5350,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Fernando Rodolfo",
-    "camara_id": 204427.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PE",
-    "partido_sigla": "PATRIOTA",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2023-11-09",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Fernando Rodolfo",
@@ -6305,18 +5489,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MG",
-    "partido_sigla": "PATRIOTA",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2023-11-09",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Fred Costa",
-    "camara_id": 204494.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MG",
     "partido_sigla": "PRD",
     "data_filiacao": "2023-11-10",
     "data_desfiliacao": NaN,
@@ -6346,18 +5518,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Gabriel Mota",
-    "camara_id": 224117.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RR",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Gabriel Mota",
@@ -6437,18 +5597,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "PR",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Geraldo Mendes",
-    "camara_id": 220702.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PR",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -6466,18 +5614,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Geraldo Resende",
-    "camara_id": 74374.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MS",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Geraldo Resende",
@@ -6526,18 +5662,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Giacobo",
-    "camara_id": 74383.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PR",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Giacobo",
@@ -6689,18 +5813,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MT",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Gisela Simona",
-    "camara_id": 226179.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MT",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -6790,18 +5902,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Gorete Pereira",
-    "camara_id": 129618.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "CE",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Gorete Pereira",
@@ -7025,18 +6125,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "PA",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Hélio Leite",
-    "camara_id": 178909.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PA",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -7078,18 +6166,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Henderson Pinto",
-    "camara_id": 220672.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PA",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Henderson Pinto",
@@ -7253,18 +6329,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MG",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Igor Timo",
-    "camara_id": 204508.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MG",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -7325,18 +6389,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "SC",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Ismael",
-    "camara_id": 98615.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SC",
     "partido_sigla": "PSD",
     "data_filiacao": "2022-03-26",
     "data_desfiliacao": NaN,
@@ -7385,35 +6437,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "PR",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Itamar Paim",
-    "camara_id": 225846.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PR",
     "partido_sigla": "PL",
     "data_filiacao": "2022-03-21",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Ivan Junior",
-    "camara_id": 230764.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MA",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Ivan Junior",
@@ -7829,18 +6857,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "GO",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "José Nelto",
-    "camara_id": 204391.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "GO",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -7858,18 +6874,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "José Rocha",
-    "camara_id": 74554.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "BA",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "José Rocha",
@@ -7942,18 +6946,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Josivaldo JP",
-    "camara_id": 215043.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MA",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Josivaldo JP",
@@ -8093,18 +7085,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "RJ",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Juninho do Pneu",
-    "camara_id": 204457.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RJ",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -8122,18 +7102,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Junio Amaral",
-    "camara_id": 204520.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MG",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Junio Amaral",
@@ -8189,18 +7157,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "CE",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Júnior Mano",
-    "camara_id": 204550.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "CE",
     "partido_sigla": "PL",
     "data_filiacao": "2022-03-21",
     "data_desfiliacao": NaN,
@@ -8218,18 +7174,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Juscelino Filho",
-    "camara_id": 178886.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MA",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Juscelino Filho",
@@ -8381,18 +7325,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MG",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Lafayette de Andrada",
-    "camara_id": 98057.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MG",
     "partido_sigla": "PL",
     "data_filiacao": "2022-03-21",
     "data_desfiliacao": NaN,
@@ -8434,18 +7366,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Lebrão",
-    "camara_id": 220600.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RO",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Lebrão",
@@ -8573,18 +7493,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "BA",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Leur Lomanto Júnior",
-    "camara_id": 92102.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "BA",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -8602,18 +7510,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Lincoln Portela",
-    "camara_id": 74585.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MG",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Lincoln Portela",
@@ -8921,35 +7817,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "PR",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Luisa Canziani",
-    "camara_id": 204410.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PR",
     "partido_sigla": "PSD",
     "data_filiacao": "2022-03-26",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Luisa Canziani",
-    "camara_id": 204410.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PR",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Luisa Canziani",
@@ -8981,18 +7853,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "RS",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Luiz Carlos Busato",
-    "camara_id": 141485.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RS",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -9010,18 +7870,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Luiz Carlos Motta",
-    "camara_id": 204485.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Luiz Carlos Motta",
@@ -9065,18 +7913,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MG",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Luiz Fernando Faria",
-    "camara_id": 141487.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MG",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -9094,18 +7930,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Luiz Gastão",
-    "camara_id": 220658.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "CE",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Luiz Gastão",
@@ -9257,18 +8081,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "GO",
-    "partido_sigla": "PATRIOTA",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2023-11-09",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Magda Mofatto",
-    "camara_id": 166402.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "GO",
     "partido_sigla": "PRD",
     "data_filiacao": "2023-11-10",
     "data_desfiliacao": NaN,
@@ -9286,18 +8098,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Marangoni",
-    "camara_id": 220648.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Marangoni",
@@ -9413,18 +8213,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "RS",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Marcelo Moraes",
-    "camara_id": 133810.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RS",
     "partido_sigla": "PL",
     "data_filiacao": "2022-03-21",
     "data_desfiliacao": NaN,
@@ -9466,18 +8254,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Marcio Alvino",
-    "camara_id": 178983.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Marcio Alvino",
@@ -9581,18 +8357,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "SP",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Marco Bertaiolli",
-    "camara_id": 204522.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
     "partido_sigla": "PSD",
     "data_filiacao": "2022-03-26",
     "data_desfiliacao": NaN,
@@ -9689,35 +8453,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MS",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Marcos Pollon",
-    "camara_id": 220547.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MS",
     "partido_sigla": "PL",
     "data_filiacao": "2022-03-21",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Marcos Soares",
-    "camara_id": 178943.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RJ",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Marcos Soares",
@@ -9857,18 +8597,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "SP",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Mario Frias",
-    "camara_id": 220655.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
     "partido_sigla": "PL",
     "data_filiacao": "2022-03-21",
     "data_desfiliacao": NaN,
@@ -9929,18 +8657,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MA",
-    "partido_sigla": "PATRIOTA",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2023-11-09",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Marreca Filho",
-    "camara_id": 204566.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MA",
     "partido_sigla": "PRD",
     "data_filiacao": "2023-11-10",
     "data_desfiliacao": NaN,
@@ -9989,18 +8705,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "AL",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Marx Beltrão",
-    "camara_id": 178843.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "AL",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -10025,35 +8729,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "RO",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Maurício Carvalho",
-    "camara_id": 220609.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RO",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Mauricio do Vôlei",
-    "camara_id": 220628.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MG",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Mauricio do Vôlei",
@@ -10121,18 +8801,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "CE",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Mauro Benevides Filho",
-    "camara_id": 204486.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "CE",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -10181,18 +8849,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "RJ",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Max Lemos",
-    "camara_id": 220607.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RJ",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -10205,18 +8861,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "AC",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Meire Serafim",
-    "camara_id": 220591.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "AC",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -10229,35 +8873,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "PE",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Mendonça Filho",
-    "camara_id": 74428.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PE",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Mendonça Filho",
-    "camara_id": 74428.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PE",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Mendonça Filho",
@@ -10318,18 +8938,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Messias Donato",
-    "camara_id": 220530.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "ES",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Messias Donato",
@@ -10421,35 +9029,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "CE",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Moses Rodrigues",
-    "camara_id": 178997.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "CE",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Murillo Gouvea",
-    "camara_id": 220617.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RJ",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Murillo Gouvea",
@@ -10541,18 +9125,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MT",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Nelson Barbudo",
-    "camara_id": 204449.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MT",
     "partido_sigla": "PL",
     "data_filiacao": "2022-03-21",
     "data_desfiliacao": NaN,
@@ -10613,18 +9185,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "PR",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Newton Bonin",
-    "camara_id": 229939.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PR",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -10649,35 +9209,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "RR",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Nicoletti",
-    "camara_id": 204479.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RR",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Nicoletti",
-    "camara_id": 204479.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RR",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Nicoletti",
@@ -10733,18 +9269,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "SE",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Nitinho",
-    "camara_id": 227660.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SE",
     "partido_sigla": "PSD",
     "data_filiacao": "2022-03-26",
     "data_desfiliacao": NaN,
@@ -10762,18 +9286,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Nivaldo Albuquerque",
-    "camara_id": 194260.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "AL",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Nivaldo Albuquerque",
@@ -10913,18 +9425,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "PR",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Padovani",
-    "camara_id": 220706.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PR",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -10985,35 +9485,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "PA",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Pastor Claudio Mariano",
-    "camara_id": 230762.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PA",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Pastor Diniz",
-    "camara_id": 180214.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RR",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Pastor Diniz",
@@ -11105,18 +9581,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "AM",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Pauderney Avelino",
-    "camara_id": 74095.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "AM",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -11141,35 +9605,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "SP",
-    "partido_sigla": "PROS",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2023-02-14",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Paulinho da Força",
-    "camara_id": 141518.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
     "partido_sigla": "SOLIDARIEDADE",
     "data_filiacao": "2023-02-15",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Paulinho Freire",
-    "camara_id": 220627.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RN",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Paulinho Freire",
@@ -11218,18 +9658,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Paulo Azi",
-    "camara_id": 178860.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "BA",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Paulo Azi",
@@ -11321,35 +9749,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "PR",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Paulo Litro",
-    "camara_id": 220685.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PR",
     "partido_sigla": "PSD",
     "data_filiacao": "2022-03-26",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Paulo Litro",
-    "camara_id": 220685.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PR",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Paulo Litro",
@@ -11453,18 +9857,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MG",
-    "partido_sigla": "PTB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2023-11-09",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Pedro Aihara",
-    "camara_id": 220630.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MG",
     "partido_sigla": "PRD",
     "data_filiacao": "2023-11-10",
     "data_desfiliacao": NaN,
@@ -11506,18 +9898,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Pedro Lucas Fernandes",
-    "camara_id": 122974.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MA",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Pedro Lucas Fernandes",
@@ -11801,18 +10181,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MG",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Rafael Simoes",
-    "camara_id": 220626.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MG",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -11921,18 +10289,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "PR",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Reinhold Stephanes",
-    "camara_id": 205865.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PR",
     "partido_sigla": "PL",
     "data_filiacao": "2022-03-21",
     "data_desfiliacao": NaN,
@@ -11993,18 +10349,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "SP",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Ribamar Silva",
-    "camara_id": 175765.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
     "partido_sigla": "PSD",
     "data_filiacao": "2022-03-26",
     "data_desfiliacao": NaN,
@@ -12041,18 +10385,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MA",
-    "partido_sigla": "PTB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2023-11-09",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Ribeiro Neto",
-    "camara_id": 235088.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MA",
     "partido_sigla": "PRD",
     "data_filiacao": "2023-11-10",
     "data_desfiliacao": NaN,
@@ -12065,35 +10397,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MA",
-    "partido_sigla": "PROS",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2023-02-14",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Ribeiro Neto",
-    "camara_id": 235088.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MA",
     "partido_sigla": "SOLIDARIEDADE",
     "data_filiacao": "2023-02-15",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Ricardo Abrão",
-    "camara_id": 221329.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RJ",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Ricardo Abrão",
@@ -12161,35 +10469,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "SC",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Ricardo Guidi",
-    "camara_id": 204362.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SC",
     "partido_sigla": "PSD",
     "data_filiacao": "2022-03-26",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Ricardo Guidi",
-    "camara_id": 204362.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SC",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Ricardo Guidi",
@@ -12262,18 +10546,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Ricardo Silva",
-    "camara_id": 213274.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Ricardo Silva",
@@ -12413,18 +10685,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MG",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Rodrigo de Castro",
-    "camara_id": 141531.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MG",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -12473,35 +10733,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "SE",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Rodrigo Valadares",
-    "camara_id": 165470.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SE",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Rodrigo Valadares",
-    "camara_id": 165470.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SE",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Rodrigo Valadares",
@@ -12598,18 +10834,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Rosângela Moro",
-    "camara_id": 220644.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Rosângela Moro",
@@ -12809,18 +11033,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MG",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Samuel Viana",
-    "camara_id": 220631.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MG",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -12850,18 +11062,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Santin Roveda",
-    "camara_id": 236518.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PR",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Santin Roveda",
@@ -12929,18 +11129,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "AM",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Saullo Vianna",
-    "camara_id": 220713.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "AM",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -12958,18 +11146,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Saulo Pedroso",
-    "camara_id": 226837.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Saulo Pedroso",
@@ -13037,18 +11213,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "AM",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Sidney Leite",
-    "camara_id": 204557.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "AM",
     "partido_sigla": "PSD",
     "data_filiacao": "2022-03-26",
     "data_desfiliacao": NaN,
@@ -13109,18 +11273,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MA",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Silvio Antonio",
-    "camara_id": 227310.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MA",
     "partido_sigla": "PL",
     "data_filiacao": "2022-03-21",
     "data_desfiliacao": NaN,
@@ -13138,18 +11290,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Silvye Alves",
-    "camara_id": 220569.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "GO",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Silvye Alves",
@@ -13205,18 +11345,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "CE",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Soldado Noelio",
-    "camara_id": 222565.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "CE",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -13234,18 +11362,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Sonize Barbosa",
-    "camara_id": 220575.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "AP",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Sonize Barbosa",
@@ -13445,18 +11561,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "RO",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Thiago Flores",
-    "camara_id": 220597.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RO",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -13613,18 +11717,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "CE",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Vanderlan Alves",
-    "camara_id": 234673.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "CE",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -13666,18 +11758,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Vermelho",
-    "camara_id": 204396.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "PR",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Vermelho",
@@ -13781,18 +11861,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "AP",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Vinicius Gurgel",
-    "camara_id": 160591.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "AP",
     "partido_sigla": "PL",
     "data_filiacao": "2022-03-21",
     "data_desfiliacao": NaN,
@@ -13810,18 +11878,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Vitor Lippi",
-    "camara_id": 178992.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SP",
-    "partido_sigla": "PSDB",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-25",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Vitor Lippi",
@@ -13882,18 +11938,6 @@
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Weliton Prado",
-    "camara_id": 160518.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MG",
-    "partido_sigla": "PROS",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2023-02-14",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
   },
   {
     "politico_nome": "Weliton Prado",
@@ -13997,35 +12041,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "SE",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Yandra Moura",
-    "camara_id": 220564.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SE",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Yury Bruno",
-    "camara_id": 220660.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "CE",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Yury Bruno",
@@ -14129,18 +12149,6 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "RR",
-    "partido_sigla": "DEM",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Zé Haroldo Cathedral",
-    "camara_id": 220536.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "RR",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
@@ -14177,35 +12185,11 @@
     "senado_id": NaN,
     "cargo": "DEPUTADO_FEDERAL",
     "uf": "MG",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-02-07",
-    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-    "is_atual": false
-  },
-  {
-    "politico_nome": "Zé Silva",
-    "camara_id": 160632.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "MG",
     "partido_sigla": "UNIÃO",
     "data_filiacao": "2022-02-08",
     "data_desfiliacao": NaN,
     "motivo_desfiliacao": NaN,
     "is_atual": true
-  },
-  {
-    "politico_nome": "Zé Trovão",
-    "camara_id": 220558.0,
-    "senado_id": NaN,
-    "cargo": "DEPUTADO_FEDERAL",
-    "uf": "SC",
-    "partido_sigla": "PSL",
-    "data_filiacao": "2018-04-05",
-    "data_desfiliacao": "2022-03-20",
-    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-    "is_atual": false
   },
   {
     "politico_nome": "Zé Trovão",

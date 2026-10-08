@@ -17,8 +17,11 @@ from etl.config import PROCESSED_DATA_DIR
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("TSEExtractor")
 
-# Casos notáveis e documentados de parlamentares com múltiplas legendas
-# (Nômades partidários com trajetória oficial no TSE/Congresso)
+# Casos de parlamentares com múltiplas legendas, curados manualmente.
+# ATENÇÃO: lista digitada à mão, sem link de fonte por registro; precisa de
+# conferência contra as listas oficiais de filiados do TSE antes de ser exibida
+# como histórico. Para os demais parlamentares registramos apenas a legenda atual
+# (dado da Câmara/Senado); históricos inferidos por regra foram removidos.
 NOMADES_HISTORICO = {
     # Senadores
     "Alessandro Vieira": [
@@ -228,71 +231,21 @@ class TSEExtractor:
                         "is_atual": item["fim"] is None,
                     })
             else:
-                # Se o senador está no UNIÃO, adicionar histórico da fusão (DEM ou PSL)
-                if partido_atual == "UNIÃO":
-                    records.append({
-                        "politico_nome": nome,
-                        "camara_id": None,
-                        "senado_id": sid,
-                        "cargo": "SENADOR",
-                        "uf": uf,
-                        "partido_sigla": "DEM",
-                        "data_filiacao": "2018-04-05",
-                        "data_desfiliacao": "2022-02-07",
-                        "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-                        "is_atual": False,
-                    })
-                    records.append({
-                        "politico_nome": nome,
-                        "camara_id": None,
-                        "senado_id": sid,
-                        "cargo": "SENADOR",
-                        "uf": uf,
-                        "partido_sigla": "UNIÃO",
-                        "data_filiacao": "2022-02-08",
-                        "data_desfiliacao": None,
-                        "motivo_desfiliacao": None,
-                        "is_atual": True,
-                    })
-                elif partido_atual == "PODE" and sid in (6337, 5990):  # PSC incorporado
-                    records.append({
-                        "politico_nome": nome,
-                        "camara_id": None,
-                        "senado_id": sid,
-                        "cargo": "SENADOR",
-                        "uf": uf,
-                        "partido_sigla": "PSC",
-                        "data_filiacao": "2018-04-05",
-                        "data_desfiliacao": "2022-12-10",
-                        "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-                        "is_atual": False,
-                    })
-                    records.append({
-                        "politico_nome": nome,
-                        "camara_id": None,
-                        "senado_id": sid,
-                        "cargo": "SENADOR",
-                        "uf": uf,
-                        "partido_sigla": partido_atual,
-                        "data_filiacao": "2022-12-11",
-                        "data_desfiliacao": None,
-                        "motivo_desfiliacao": None,
-                        "is_atual": True,
-                    })
-                else:
-                    # Filiação estável padrão
-                    records.append({
-                        "politico_nome": nome,
-                        "camara_id": None,
-                        "senado_id": sid,
-                        "cargo": "SENADOR",
-                        "uf": uf,
-                        "partido_sigla": partido_atual,
-                        "data_filiacao": "2018-04-05",
-                        "data_desfiliacao": None,
-                        "motivo_desfiliacao": None,
-                        "is_atual": True,
-                    })
+                # Apenas a legenda atual informada pelo Senado.
+                # TODO: data_filiacao é um marcador (a coluna é NOT NULL); a data real
+                # deve vir da lista oficial de filiados do TSE.
+                records.append({
+                    "politico_nome": nome,
+                    "camara_id": None,
+                    "senado_id": sid,
+                    "cargo": "SENADOR",
+                    "uf": uf,
+                    "partido_sigla": partido_atual,
+                    "data_filiacao": "2018-04-05",
+                    "data_desfiliacao": None,
+                    "motivo_desfiliacao": None,
+                    "is_atual": True,
+                })
 
         # 2. Processar Deputados Federais
         for idx, d in enumerate(deputados):
@@ -316,140 +269,10 @@ class TSEExtractor:
                         "motivo_desfiliacao": item["motivo"],
                         "is_atual": item["fim"] is None,
                     })
-            elif partido_atual == "UNIÃO":
-                # Fusão DEM + PSL
-                partido_origem = "DEM" if (idx % 2 == 0) else "PSL"
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": partido_origem,
-                    "data_filiacao": "2018-04-05",
-                    "data_desfiliacao": "2022-02-07",
-                    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-                    "is_atual": False,
-                })
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": "UNIÃO",
-                    "data_filiacao": "2022-02-08",
-                    "data_desfiliacao": None,
-                    "motivo_desfiliacao": None,
-                    "is_atual": True,
-                })
-            elif partido_atual == "PRD":
-                # Fusão PTB + PATRIOTA
-                partido_origem = "PTB" if (idx % 2 == 0) else "PATRIOTA"
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": partido_origem,
-                    "data_filiacao": "2018-04-05",
-                    "data_desfiliacao": "2023-11-09",
-                    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-                    "is_atual": False,
-                })
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": "PRD",
-                    "data_filiacao": "2023-11-10",
-                    "data_desfiliacao": None,
-                    "motivo_desfiliacao": None,
-                    "is_atual": True,
-                })
-            elif partido_atual == "SOLIDARIEDADE" and (idx % 3 == 0):
-                # Incorporação PROS
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": "PROS",
-                    "data_filiacao": "2018-04-05",
-                    "data_desfiliacao": "2023-02-14",
-                    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-                    "is_atual": False,
-                })
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": "SOLIDARIEDADE",
-                    "data_filiacao": "2023-02-15",
-                    "data_desfiliacao": None,
-                    "motivo_desfiliacao": None,
-                    "is_atual": True,
-                })
-            elif partido_atual == "PL" and (idx % 4 == 0):
-                # Migração em massa na janela partidária (ex: vindos de PSL ou PTB)
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": "PSL",
-                    "data_filiacao": "2018-04-05",
-                    "data_desfiliacao": "2022-03-20",
-                    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-                    "is_atual": False,
-                })
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": "PL",
-                    "data_filiacao": "2022-03-21",
-                    "data_desfiliacao": None,
-                    "motivo_desfiliacao": None,
-                    "is_atual": True,
-                })
-            elif partido_atual == "PSD" and (idx % 5 == 0):
-                # Migração em janela partidária (ex: vindos do PSDB ou MDB)
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": "PSDB",
-                    "data_filiacao": "2018-04-05",
-                    "data_desfiliacao": "2022-03-25",
-                    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-                    "is_atual": False,
-                })
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": "PSD",
-                    "data_filiacao": "2022-03-26",
-                    "data_desfiliacao": None,
-                    "motivo_desfiliacao": None,
-                    "is_atual": True,
-                })
             else:
-                # Filiação parlamentar estável
+                # Apenas a legenda atual informada pela Câmara.
+                # TODO: data_filiacao é um marcador (a coluna é NOT NULL); a data real
+                # deve vir da lista oficial de filiados do TSE.
                 records.append({
                     "politico_nome": nome,
                     "camara_id": cid,
