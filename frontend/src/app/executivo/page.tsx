@@ -21,6 +21,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Award, Briefcase, TrendingUp, Users } from "lucide-react";
+import { getPresidentPhotoUrl } from "@/components/PresidentTimeline";
 
 export default function ExecutivoDashboard() {
   const [mandates, setMandates] = useState<PresidentialMandate[]>([]);
@@ -102,7 +103,7 @@ export default function ExecutivoDashboard() {
                 }`}
               >
                 {m.foto_url && (
-                  <img src={m.foto_url} alt={m.nome} className="w-8 h-8 rounded-full object-cover" />
+                  <img src={getPresidentPhotoUrl(m.nome.toLowerCase(), m.foto_url)} alt={m.nome} className="w-8 h-8 rounded-full object-cover" />
                 )}
                 <div className="text-left">
                   <p className="font-bold text-sm">{m.nome}</p>
