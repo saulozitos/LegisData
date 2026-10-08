@@ -5,12 +5,13 @@ Documentação oficial: https://servicodados.ibge.gov.br/api/docs/agregados
 
 import json
 import logging
-from typing import Dict, Any, List, Optional
-import urllib.request
-import urllib.error
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
 
 from etl.config import IBGE_SIDRA_API_URL, RAW_DATA_DIR
+from etl.utils.http_client import HttpClient, HttpError
+from etl.utils.io_utils import atomic_write_json
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("IBGEExtractor")
@@ -19,12 +20,9 @@ logger = logging.getLogger("IBGEExtractor")
 class IBGEExtractor:
     """Extrai séries e agregados econômicos da API oficial de agregados do IBGE (SIDRA)."""
 
-    def __init__(self, raw_cache_dir=RAW_DATA_DIR):
+    def __init__(self, raw_cache_dir=RAW_DATA_DIR, http: Optional[HttpClient] = None):
         self.cache_dir = raw_cache_dir
-        self.headers = {
-            "User-Agent": "LegisDataBot/1.0 (Transparência Pública; contato@legisdata.org)",
-            "Accept": "application/json"
-        }
+        self.http = http or HttpClient(timeout=30.0, max_retries=3)
 
     def fetch_agregado(
         self,
@@ -32,7 +30,7 @@ class IBGEExtractor:
         variaveis: str,
         periodos: str = "all",
         localidade: str = "N1[all]",
-        use_cache: bool = True
+        use_cache: bool = True,
     ) -> List[Dict[str, Any]]:
         """
         Consulta um agregado do IBGE.
@@ -51,22 +49,18 @@ class IBGEExtractor:
         url = f"{IBGE_SIDRA_API_URL}/{agregado_id}/periodos/{periodos}/variaveis/{variaveis}?localidades={localidade}"
         logger.info(f"Consultando API IBGE: {url}")
 
-        req = urllib.request.Request(url, headers=self.headers)
         try:
-            with urllib.request.urlopen(req, timeout=30) as response:
-                if response.status != 200:
-                    logger.error(f"Erro IBGE: status {response.status}")
-                    return []
-                data = json.loads(response.read().decode("utf-8"))
-
-                with open(cache_filename, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
-
-                logger.info(f"Dados do Agregado {agregado_id} obtidos com sucesso: {len(data)} blocos.")
-                return data
-        except Exception as ex:
+            data = self.http.get_json(url)
+        except HttpError as ex:
             logger.error(f"Erro ao requisitar Agregado {agregado_id} do IBGE: {ex}")
             return []
+        if not isinstance(data, list) or not data:
+            logger.error(f"Resposta inesperada do IBGE para o agregado {agregado_id}.")
+            return []
+
+        atomic_write_json(cache_filename, data)
+        logger.info(f"Dados do Agregado {agregado_id} obtidos com sucesso: {len(data)} blocos.")
+        return data
 
     def fetch_ipca_historico(self, use_cache: bool = True) -> pd.DataFrame:
         """
@@ -89,14 +83,16 @@ class IBGEExtractor:
                         if valor_str in ("...", "-", ""):
                             continue
                         valor = float(valor_str)
-                        records.append({
-                            "data": f"{ano:04d}-{mes:02d}-01",
-                            "ano": ano,
-                            "mes": mes,
-                            "valor": valor,
-                            "fonte": "IBGE - SIDRA Tabela 1737",
-                            "indicador": "IPCA_MENSAL"
-                        })
+                        records.append(
+                            {
+                                "data": f"{ano:04d}-{mes:02d}-01",
+                                "ano": ano,
+                                "mes": mes,
+                                "valor": valor,
+                                "fonte": "IBGE - SIDRA Tabela 1737",
+                                "indicador": "IPCA_MENSAL",
+                            }
+                        )
                     except (ValueError, IndexError):
                         continue
         except (KeyError, IndexError) as err:

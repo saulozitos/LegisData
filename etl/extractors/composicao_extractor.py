@@ -7,10 +7,10 @@ Mapeia: Presidentes das Casas, Tamanho das Bancadas e Governabilidade por Mandat
 
 import json
 import logging
-from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Callable, Dict, List, Optional
 
 from etl.config import PROCESSED_DATA_DIR
+from etl.utils.io_utils import atomic_write_json
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("ComposicaoExtractor")
@@ -347,7 +347,8 @@ COMPOSICAO_CONGRESSO_HISTORICO: Dict[str, Any] = {
         "senado": {
             "total_cadeiras": 81,
             "presidentes": [
-                {"nome": "Rodrigo Pacheco", "partido": "PSD", "uf": "MG", "periodo": "2023 - Presente", "foto_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Rodrigo_Pacheco_foto_oficial.jpg/440px-Rodrigo_Pacheco_foto_oficial.jpg"}
+                {"nome": "Rodrigo Pacheco", "partido": "PSD", "uf": "MG", "periodo": "2023 - 2025", "foto_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Rodrigo_Pacheco_foto_oficial.jpg/440px-Rodrigo_Pacheco_foto_oficial.jpg"},
+                {"nome": "Davi Alcolumbre", "partido": "UNIÃO", "uf": "AP", "periodo": "2025 - Presente", "foto_url": None}
             ],
             "bancadas": [
                 {"partido": "PSD", "cadeiras": 15, "percentual": 18.5, "alinhamento": "BASE_GOVERNO", "cor_hex": "#f59e0b"},
@@ -375,7 +376,21 @@ COMPOSICAO_CONGRESSO_HISTORICO: Dict[str, Any] = {
     }
 }
 
-# Preenchimento padrão para mandatos intermediários (FHC 2, Lula 2, Dilma 1, Temer)
+# Mandatos intermediários (FHC 2, Lula 2, Dilma 1, Temer): só os presidentes das Casas foram curados.
+# A composição das bancadas e a governabilidade NÃO foram levantadas para estes mandatos e NÃO são mais
+# copiadas de outro mandato (antes, FHC 2 herdava as bancadas de FHC 1, Lula 2 as de Lula 1 etc.).
+COMPOSICAO_NAO_CURADA = "Composição partidária não curada para este mandato."
+GOVERNABILIDADE_INDISPONIVEL = {
+    "base_aliada_cadeiras": None,
+    "base_aliada_pct": None,
+    "centro_cadeiras": None,
+    "centro_pct": None,
+    "oposicao_cadeiras": None,
+    "oposicao_pct": None,
+    "maioria_simples_atingida": None,
+    "maioria_pec_atingida": None,
+}
+
 for m_id, template_id in [
     ("fhc-1999", "fhc-1995"),
     ("lula-2007", "lula-2003"),
@@ -385,6 +400,11 @@ for m_id, template_id in [
     if m_id not in COMPOSICAO_CONGRESSO_HISTORICO and template_id in COMPOSICAO_CONGRESSO_HISTORICO:
         copy_data = json.loads(json.dumps(COMPOSICAO_CONGRESSO_HISTORICO[template_id]))
         copy_data["mandato_id"] = m_id
+        for casa in ("camara", "senado"):
+            copy_data[casa]["bancadas"] = []
+            copy_data[casa]["governabilidade"] = dict(GOVERNABILIDADE_INDISPONIVEL)
+        copy_data["dados_incompletos"] = True
+        copy_data["observacao"] = COMPOSICAO_NAO_CURADA
         if m_id == "fhc-1999":
             copy_data["presidente_republica"] = "Fernando Henrique Cardoso (FHC 2)"
             copy_data["periodo"] = "1999 - 2003"
@@ -433,11 +453,139 @@ for m_id, template_id in [
         COMPOSICAO_CONGRESSO_HISTORICO[m_id] = copy_data
 
 
-def save_composicao_congresso():
+# Legislatura (ano de início) de cada mandato presidencial: a composição "da posse" é a eleita no ano anterior.
+# Itamar (1992) assumiu no meio de uma legislatura e Temer (2016) também: para ele vale a eleição de 2014.
+LEGISLATURA_POR_MANDATO: Dict[str, Optional[int]] = {
+    "itamar-franco-1992": None,
+    "fhc-1995": 1995,
+    "fhc-1999": 1999,
+    "lula-2003": 2003,
+    "lula-2007": 2007,
+    "dilma-2011": 2011,
+    "dilma-2015": 2015,
+    "temer-2016": 2015,
+    "bolsonaro-2019": 2019,
+    "lula-2023": 2023,
+}
+FONTE_CURADORIA = (
+    "Curadoria manual LegisData (Arquivo Histórico da Câmara e do Senado; fotos Wikimedia/camara.leg.br): "
+    "presidentes das Casas, classificação base/oposição e, onde houver, bancadas na posse"
+)
+ALINHAMENTO_NAO_CLASSIFICADO = "NAO_CLASSIFICADO"
+COR_NEUTRA = "#64748b"
+TOTAL_CADEIRAS = {"camara": 513, "senado": 81}
+NOTA_VERIFICACAO = (
+    "O TSE conta o partido no dia da eleição. Trocas partidárias até a posse (e, no Senado, desde a eleição de "
+    "4 anos antes) e vagas preenchidas por suplentes explicam as diferenças em relação à bancada curada."
+)
+
+
+def _norm(partido: str) -> str:
+    return str(partido).strip().upper()
+
+
+def _bancada_ordenada(contagem: Dict[str, int]) -> List[Dict[str, Any]]:
+    total = sum(contagem.values()) or 1
+    return [
+        {"partido": partido, "cadeiras": n, "percentual": round(n / total * 100, 1)}
+        for partido, n in sorted(contagem.items(), key=lambda kv: (-kv[1], kv[0]))
+    ]
+
+
+def comparar_bancadas(curadas: List[Dict[str, Any]], tse: Dict[str, int]) -> Dict[str, Any]:
+    """Compara a bancada curada (cadeiras na posse) com os eleitos do TSE; devolve as divergências por partido."""
+    tse_norm = {_norm(p): n for p, n in tse.items()}
+    total_tse = sum(tse_norm.values())
+    divergencias = []
+    listados_tse = 0
+    for item in curadas:
+        if _norm(item["partido"]) == "OUTROS":
+            continue
+        no_tse = tse_norm.get(_norm(item["partido"]), 0)
+        listados_tse += no_tse
+        if item["cadeiras"] != no_tse:
+            divergencias.append({"partido": item["partido"], "curado": item["cadeiras"], "tse": no_tse})
+    for item in curadas:
+        if _norm(item["partido"]) == "OUTROS" and item["cadeiras"] != total_tse - listados_tse:
+            divergencias.append({"partido": "Outros", "curado": item["cadeiras"], "tse": total_tse - listados_tse})
+    return {"total_eleitos_tse": total_tse, "conferido": not divergencias, "divergencias": divergencias}
+
+
+def enriquecer_com_tse(
+    historico: Dict[str, Any],
+    bancada_camara: Callable[[int], Optional[Dict[str, int]]],
+    bancada_senado: Callable[[int], Optional[Dict[str, int]]],
+) -> Dict[str, Any]:
+    """
+    Anexa a cada mandato as bancadas ELEITAS (TSE) e a conferência com a curadoria. Mandatos sem bancadas curadas
+    passam a exibir os eleitos do TSE (sem classificação base/oposição; a governabilidade segue indisponível).
+    """
+    resultado = json.loads(json.dumps(historico))
+    for mandato_id, dados in resultado.items():
+        dados["fonte_curadoria"] = FONTE_CURADORIA
+        legislatura = LEGISLATURA_POR_MANDATO.get(mandato_id)
+        for casa, buscar in (("camara", bancada_camara), ("senado", bancada_senado)):
+            bloco = dados[casa]
+            if legislatura is None:
+                bloco["verificacao_tse"] = {"status": "nao_aplicavel", "motivo": "Mandato iniciado no meio da legislatura"}
+                continue
+            try:
+                eleitos = buscar(legislatura)
+            except Exception as exc:  # noqa: BLE001 — falha de rede/arquivo não pode derrubar a curadoria
+                logger.warning("TSE indisponível para %s/%s: %s", mandato_id, casa, exc)
+                eleitos = None
+            if not eleitos:
+                motivo = (
+                    "Eleição de 1990 não consta nos dados abertos do TSE"
+                    if casa == "senado" and legislatura == 1995
+                    else "Dados do TSE indisponíveis"
+                )
+                bloco["verificacao_tse"] = {"status": "indisponivel", "motivo": motivo}
+                continue
+            esperado = TOTAL_CADEIRAS[casa]
+            total = sum(eleitos.values())
+            bloco["bancadas_eleitas_tse"] = _bancada_ordenada(eleitos)
+            if total != esperado:
+                # Total diferente do número de cadeiras: o recorte do TSE não fecha (ex.: anos com 503/513 ou vagas).
+                bloco["verificacao_tse"] = {
+                    "status": "total_inesperado",
+                    "total_eleitos_tse": total,
+                    "total_esperado": esperado,
+                    "ano_legislatura": legislatura,
+                    "nota": "O recorte de candidatos eleitos do TSE não soma o número de cadeiras (rótulos de situação "
+                    "e vagas); a bancada eleita é exibida só para consulta e não substitui a curadoria.",
+                }
+                continue
+            if bloco.get("bancadas"):
+                bloco["verificacao_tse"] = {
+                    "status": "conferido" if comparar_bancadas(bloco["bancadas"], eleitos)["conferido"] else "divergente",
+                    "ano_legislatura": legislatura,
+                    **comparar_bancadas(bloco["bancadas"], eleitos),
+                    "nota": NOTA_VERIFICACAO,
+                }
+            else:
+                bloco["bancadas"] = [
+                    {**item, "alinhamento": ALINHAMENTO_NAO_CLASSIFICADO, "cor_hex": COR_NEUTRA}
+                    for item in bloco["bancadas_eleitas_tse"]
+                ]
+                bloco["bancadas_origem"] = "TSE — candidatos eleitos (sem classificação base/oposição)"
+                bloco["verificacao_tse"] = {"status": "preenchido_pelo_tse", "ano_legislatura": legislatura}
+    return resultado
+
+
+def save_composicao_congresso(offline: bool = False):
+    """Grava a composição histórica, conferida com os eleitos do TSE (`offline=True` pula a conferência)."""
     out_file = PROCESSED_DATA_DIR / "composicao_congresso.json"
-    with open(out_file, "w", encoding="utf-8") as f:
-        json.dump(COMPOSICAO_CONGRESSO_HISTORICO, f, ensure_ascii=False, indent=2)
-    logger.info(f"Composição histórica salva em {out_file} com {len(COMPOSICAO_CONGRESSO_HISTORICO)} mandatos.")
+    historico = COMPOSICAO_CONGRESSO_HISTORICO
+    if offline:
+        resultado = enriquecer_com_tse(historico, lambda _y: None, lambda _y: None)
+    else:
+        from etl.extractors.composicao_tse import bancada_camara, bancada_senado
+
+        resultado = enriquecer_com_tse(historico, bancada_camara, bancada_senado)
+    atomic_write_json(out_file, resultado)
+    logger.info(f"Composição histórica salva em {out_file} com {len(resultado)} mandatos.")
+    return resultado
 
 
 if __name__ == "__main__":

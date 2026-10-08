@@ -26,6 +26,14 @@ class PresidentialMandateBase(BaseModel):
     foto_url: Optional[str] = None
 
 
+class PresidentialMandateListItem(PresidentialMandateBase):
+    """Item de listagem: sem as séries mensais (use /mandates/{id}/indicators para os dados do gráfico)."""
+
+    id: UUID
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class PresidentialMandateResponse(PresidentialMandateBase):
     id: UUID
     indicadores: List[MandateIndicatorResponse] = []

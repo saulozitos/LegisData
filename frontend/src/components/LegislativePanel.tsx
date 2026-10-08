@@ -1,13 +1,17 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import {
   ProposicaoLegislativa,
   PlacarVotos,
-  VotoNominalItem,
-  PropositionVotesResponse,
   getPropositionVotes,
 } from "@/services/api";
+import { useApi } from "@/hooks/useApi";
+import { safeExternalUrl } from "@/lib/safeUrl";
+import { voteLabel } from "@/lib/votes";
+import { EmptyState, ErrorState } from "@/components/StateViews";
+import PartyLink from "@/components/PartyLink";
+import Modal from "@/components/Modal";
 import {
   FileText,
   CheckCircle2,
@@ -24,7 +28,6 @@ import {
   ExternalLink,
   ChevronRight,
   ShieldCheck,
-  Building2,
 } from "lucide-react";
 
 interface LegislativePanelProps {
@@ -46,8 +49,6 @@ export default function LegislativePanel({
 
   // Estado do Modal de Votos Nominais
   const [modalProp, setModalProp] = useState<ProposicaoLegislativa | null>(null);
-  const [loadingVotes, setLoadingVotes] = useState(false);
-  const [votesData, setVotesData] = useState<PropositionVotesResponse | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [modalSearch, setModalSearch] = useState("");
   const [modalVoteFilter, setModalVoteFilter] = useState<string>("TODOS");
@@ -101,34 +102,14 @@ export default function LegislativePanel({
     });
   }, [propositions, activeHouse, filterTheme, filterYear, filterOnlyReforms]);
 
-  // Carregar votos nominais ao abrir o modal ou mudar de sessão
-  useEffect(() => {
-    if (!modalProp) {
-      setVotesData(null);
-      setSelectedSessionId(null);
-      setModalSearch("");
-      setModalVoteFilter("TODOS");
-      return;
-    }
-
-    async function loadVotes() {
-      setLoadingVotes(true);
-      try {
-        const res = await getPropositionVotes(
-          modalProp!.id,
-          activeHouse,
-          selectedSessionId || undefined
-        );
-        setVotesData(res);
-      } catch (err) {
-        console.error("Erro ao carregar votos nominais:", err);
-      } finally {
-        setLoadingVotes(false);
-      }
-    }
-
-    loadVotes();
-  }, [modalProp, activeHouse, selectedSessionId]);
+  // Votos nominais: a resposta só vale para a proposição/casa/sessão atuais (sem sobrescrita por resposta antiga).
+  const votes = useApi(
+    `proposition-votes:${modalProp?.id}:${activeHouse}:${selectedSessionId ?? "default"}`,
+    (signal) => getPropositionVotes(modalProp!.id, activeHouse, selectedSessionId || undefined, undefined, undefined, signal),
+    Boolean(modalProp)
+  );
+  const votesData = votes.data ?? null;
+  const loadingVotes = votes.loading;
 
   // Filtrar votos nominais no Modal
   const modalFilteredVotes = useMemo(() => {
@@ -154,6 +135,9 @@ export default function LegislativePanel({
   }, [votesData, modalVoteFilter, modalSearch]);
 
   const handleOpenModal = (prop: ProposicaoLegislativa) => {
+    setSelectedSessionId(null);
+    setModalSearch("");
+    setModalVoteFilter("TODOS");
     setModalProp(prop);
   };
 
@@ -167,7 +151,7 @@ export default function LegislativePanel({
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-4 border-b border-slate-800">
         <div>
           <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-cyan-400" />
+            <FileText className="w-5 h-5 text-cyan-400" aria-hidden="true" />
             <h2 className="text-base sm:text-lg font-bold text-slate-100">
               Congresso Nacional: Votações Nominais e Transparência
             </h2>
@@ -180,26 +164,30 @@ export default function LegislativePanel({
         {/* Seletor de Casa Legislativa */}
         <div className="flex items-center bg-slate-950 border border-slate-800 p-1 rounded-xl">
           <button
+            type="button"
+            aria-pressed={activeHouse === "CAMARA"}
             onClick={() => setActiveHouse("CAMARA")}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
               activeHouse === "CAMARA"
                 ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-500/10"
-                : "text-slate-400 hover:text-slate-200"
+                : "text-slate-300 hover:text-slate-100"
             }`}
           >
-            <Users className="w-3.5 h-3.5 text-emerald-400" />
+            <Users className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
             <span>Câmara dos Deputados</span>
           </button>
 
           <button
+            type="button"
+            aria-pressed={activeHouse === "SENADO"}
             onClick={() => setActiveHouse("SENADO")}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
               activeHouse === "SENADO"
                 ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm shadow-cyan-500/10"
-                : "text-slate-400 hover:text-slate-200"
+                : "text-slate-300 hover:text-slate-100"
             }`}
           >
-            <Landmark className="w-3.5 h-3.5 text-cyan-400" />
+            <Landmark className="w-3.5 h-3.5 text-cyan-400" aria-hidden="true" />
             <span>Senado Federal</span>
           </button>
         </div>
@@ -209,12 +197,13 @@ export default function LegislativePanel({
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800/80">
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium">
-            <Filter className="w-3.5 h-3.5 text-cyan-400" />
+            <Filter className="w-3.5 h-3.5 text-cyan-400" aria-hidden="true" />
             <span>Filtrar por:</span>
           </div>
 
           {/* Combobox Tema */}
           <select
+            aria-label="Filtrar por tema"
             value={filterTheme}
             onChange={(e) => setFilterTheme(e.target.value)}
             className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
@@ -229,6 +218,7 @@ export default function LegislativePanel({
 
           {/* Combobox Ano */}
           <select
+            aria-label="Filtrar por ano"
             value={filterYear}
             onChange={(e) => setFilterYear(e.target.value)}
             className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
@@ -243,14 +233,16 @@ export default function LegislativePanel({
 
           {/* Botão Apenas Reformas */}
           <button
+            type="button"
+            aria-pressed={filterOnlyReforms}
             onClick={() => setFilterOnlyReforms(!filterOnlyReforms)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
               filterOnlyReforms
                 ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                : "bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200"
+                : "bg-slate-900 text-slate-300 border-slate-800 hover:text-slate-100"
             }`}
           >
-            <Sparkles className="w-3 h-3 text-amber-400" />
+            <Sparkles className="w-3 h-3 text-amber-400" aria-hidden="true" />
             <span>Apenas Reformas</span>
           </button>
         </div>
@@ -261,13 +253,18 @@ export default function LegislativePanel({
       </div>
 
       {/* Grid de Cards de Proposição (Clicáveis) */}
-      {filteredProps.length === 0 ? (
-        <div className="text-center py-12 bg-slate-950/40 border border-slate-800/60 rounded-xl space-y-2">
-          <Clock className="w-8 h-8 text-slate-600 mx-auto" />
-          <p className="text-sm font-semibold text-slate-400">
+      {propositions.length === 0 ? (
+        <EmptyState
+          title="Proposições indisponíveis"
+          message="Nenhuma proposição com votação nominal foi retornada pela API."
+        />
+      ) : filteredProps.length === 0 ? (
+        <div role="status" className="text-center py-12 bg-slate-950/40 border border-slate-800/60 rounded-xl space-y-2">
+          <Clock className="w-8 h-8 text-slate-400 mx-auto" aria-hidden="true" />
+          <p className="text-sm font-semibold text-slate-300">
             Nenhuma proposição com votação registrada encontrada para este filtro.
           </p>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-400">
             Tente redefinir os filtros de tema, ano ou alternar para a outra Casa Legislativa.
           </p>
         </div>
@@ -285,15 +282,14 @@ export default function LegislativePanel({
             const pctNao = total > 0 ? Math.round((placar.NAO / total) * 100) : 0;
             const pctAbst = total > 0 ? Math.round((placar.ABSTENCAO / total) * 100) : 0;
 
-            const isAprovado = sessao?.aprovada || placar.SIM > placar.NAO;
+            // O resultado oficial é o da sessão; sem ele, não se infere aprovação pela maioria simples
+            // (PEC, quórum qualificado e destaques tornam essa inferência incorreta).
+            const resultado: boolean | null = typeof sessao?.aprovada === "boolean" ? sessao.aprovada : null;
 
             return (
-              <div
+              <article
                 key={prop.id}
-                onClick={() => handleOpenModal(prop)}
-                role="button"
-                tabIndex={0}
-                className="group bg-slate-950/80 border border-slate-800/90 hover:border-cyan-500/60 rounded-2xl p-5 transition-all duration-200 cursor-pointer hover:shadow-lg hover:shadow-cyan-500/5 flex flex-col justify-between space-y-4"
+                className="group relative bg-slate-950/80 border border-slate-800/90 hover:border-cyan-500/60 rounded-2xl p-5 transition-all duration-200 hover:shadow-lg hover:shadow-cyan-500/5 flex flex-col justify-between space-y-4 focus-within:ring-2 focus-within:ring-cyan-400"
               >
                 <div className="space-y-2.5">
                   {/* Badges do Topo */}
@@ -311,13 +307,13 @@ export default function LegislativePanel({
 
                       {prop.is_reforma_estrutural && (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 flex items-center gap-1">
-                          <Sparkles className="w-3 h-3 text-amber-400" />
+                          <Sparkles className="w-3 h-3 text-amber-400" aria-hidden="true" />
                           Reforma Estrutural
                         </span>
                       )}
                     </div>
 
-                    <span className="text-[11px] text-slate-500 font-mono">
+                    <span className="text-[11px] text-slate-400 font-mono">
                       {prop.data_apresentacao}
                     </span>
                   </div>
@@ -325,26 +321,31 @@ export default function LegislativePanel({
                   {/* Título com Link Oficial */}
                   <div className="flex items-start justify-between gap-2">
                     <h3 className="text-sm font-bold text-slate-100 group-hover:text-cyan-300 transition-colors leading-snug">
-                      {prop.titulo}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenModal(prop)}
+                        className="text-left cursor-pointer focus:outline-none after:absolute after:inset-0 after:content-['']"
+                      >
+                        {prop.titulo}
+                      </button>
                     </h3>
-                    {prop.url_oficial && (
+                    {safeExternalUrl(prop.url_oficial) && (
                       <a
-                        href={prop.url_oficial}
+                        href={safeExternalUrl(prop.url_oficial)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 transition-colors shrink-0 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 px-2 py-0.5 rounded-lg z-10"
+                        className="relative inline-flex items-center gap-1 text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 transition-colors shrink-0 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 px-2 py-0.5 rounded-lg z-10"
                         title="Ler íntegra no site oficial"
                       >
                         <span>Íntegra</span>
-                        <ExternalLink className="w-3 h-3" />
+                        <ExternalLink className="w-3 h-3" aria-hidden="true" />
                       </a>
                     )}
                   </div>
 
                   {/* Autor / Propositor */}
                   <div className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800/80 text-slate-300">
-                    <User className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+                    <User className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" aria-hidden="true" />
                     <span className="text-slate-400">Autor:</span>
                     <strong className="text-slate-200 truncate font-semibold">
                       {prop.autor_nome || (prop.iniciativa_executivo ? "Poder Executivo Federal" : "Congresso Nacional")}
@@ -362,21 +363,25 @@ export default function LegislativePanel({
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-400 font-medium flex items-center gap-1">
                       {isCamara ? (
-                        <Users className="w-3.5 h-3.5 text-emerald-400" />
+                        <Users className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
                       ) : (
-                        <Landmark className="w-3.5 h-3.5 text-cyan-400" />
+                        <Landmark className="w-3.5 h-3.5 text-cyan-400" aria-hidden="true" />
                       )}
                       {isCamara ? "Placar na Câmara" : "Placar no Senado"} ({total} votos):
                     </span>
 
                     <span className="font-semibold text-xs">
-                      {isAprovado ? (
+                      {resultado === true ? (
                         <span className="text-emerald-400 flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Aprovada
+                          <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> Aprovada
+                        </span>
+                      ) : resultado === false ? (
+                        <span className="text-rose-400 flex items-center gap-1">
+                          <XCircle className="w-3.5 h-3.5" aria-hidden="true" /> Rejeitada
                         </span>
                       ) : (
-                        <span className="text-rose-400 flex items-center gap-1">
-                          <XCircle className="w-3.5 h-3.5" /> Rejeitada
+                        <span className="text-slate-300 flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5" aria-hidden="true" /> Resultado indisponível
                         </span>
                       )}
                     </span>
@@ -409,13 +414,13 @@ export default function LegislativePanel({
                       <span className="text-amber-400">Abst: {placar.ABSTENCAO}</span>
                     </div>
 
-                    <div className="flex items-center gap-1 text-[11px] font-bold text-cyan-400 group-hover:text-cyan-300">
+                    <div className="flex items-center gap-1 text-[11px] font-bold text-cyan-400 group-hover:text-cyan-300" aria-hidden="true">
                       <span>Ver Votos Nominais</span>
                       <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                     </div>
                   </div>
                 </div>
-              </div>
+              </article>
             );
           })}
         </div>
@@ -425,14 +430,13 @@ export default function LegislativePanel({
       {/* MODAL DETALHADO DE VOTOS NOMINAIS */}
       {/* ======================================================== */}
       {modalProp && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200"
-          onClick={handleCloseModal}
+        <Modal
+          isOpen
+          onClose={handleCloseModal}
+          titleId="legislative-modal-title"
+          overlayClassName="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/80 backdrop-blur-md"
+          className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl shadow-cyan-950/30 overflow-hidden"
         >
-          <div
-            className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl shadow-cyan-950/30 overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
             {/* Topo do Modal */}
             <div className="p-4 sm:p-5 border-b border-slate-800 flex items-start justify-between gap-4 bg-slate-950/60">
               <div className="space-y-1">
@@ -445,24 +449,24 @@ export default function LegislativePanel({
                   </span>
                 </div>
                 <div className="flex items-center gap-3 flex-wrap">
-                  <h2 className="text-base sm:text-lg font-bold text-slate-100">
+                  <h2 id="legislative-modal-title" className="text-base sm:text-lg font-bold text-slate-100">
                     {modalProp.titulo}
                   </h2>
-                  {modalProp.url_oficial && (
+                  {safeExternalUrl(modalProp.url_oficial) && (
                     <a
-                      href={modalProp.url_oficial}
+                      href={safeExternalUrl(modalProp.url_oficial)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 px-2.5 py-1 rounded-lg transition-colors shadow-sm"
                       title="Abrir página oficial do Congresso"
                     >
                       <span>Ler na Íntegra (Site Oficial)</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
+                      <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
                     </a>
                   )}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-slate-400 pt-0.5">
-                  <span className="text-slate-500">Autor:</span>
+                  <span className="text-slate-400">Autor:</span>
                   <strong className="text-slate-300 font-semibold">
                     {modalProp.autor_nome || (modalProp.iniciativa_executivo ? "Poder Executivo Federal" : "Parlamentar")}
                   </strong>
@@ -470,11 +474,13 @@ export default function LegislativePanel({
               </div>
 
               <button
+                type="button"
                 onClick={handleCloseModal}
+                aria-label="Fechar"
                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
                 title="Fechar"
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5" aria-hidden="true" />
               </button>
             </div>
 
@@ -484,7 +490,7 @@ export default function LegislativePanel({
               {votesData?.sessoes_disponiveis && votesData.sessoes_disponiveis.length > 1 && (
                 <div className="flex items-center gap-2 text-xs flex-wrap">
                   <span className="text-slate-400 font-semibold flex items-center gap-1">
-                    <Layers className="w-3.5 h-3.5 text-cyan-400" /> Sessão / Turno:
+                    <Layers className="w-3.5 h-3.5 text-cyan-400" aria-hidden="true" /> Sessão / Turno:
                   </span>
                   {votesData.sessoes_disponiveis.map((sess, idx) => {
                     const isSelected =
@@ -493,12 +499,14 @@ export default function LegislativePanel({
 
                     return (
                       <button
+                        type="button"
                         key={sess.id}
+                        aria-pressed={isSelected}
                         onClick={() => setSelectedSessionId(sess.id)}
                         className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
                           isSelected
                             ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
-                            : "bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200"
+                            : "bg-slate-900 text-slate-300 border-slate-800 hover:text-slate-100"
                         }`}
                       >
                         {sess.titulo || `Turno ${idx + 1}`}
@@ -512,54 +520,63 @@ export default function LegislativePanel({
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                 {/* Input de Busca */}
                 <div className="relative flex-1">
-                  <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
                   <input
                     type="text"
+                    aria-label="Buscar parlamentar, partido ou estado"
                     value={modalSearch}
                     onChange={(e) => setModalSearch(e.target.value)}
                     placeholder="Buscar por deputado, senador, partido ou estado..."
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-8.5 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-8.5 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-400 focus:outline-none focus:border-cyan-500 transition-colors"
                   />
                 </div>
 
                 {/* Filtros de Voto (Todos, Sim, Não, Abstenção) */}
                 <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800 flex-shrink-0">
                   <button
+                    type="button"
+                    aria-pressed={modalVoteFilter === "TODOS"}
                     onClick={() => setModalVoteFilter("TODOS")}
                     className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                       modalVoteFilter === "TODOS"
                         ? "bg-slate-800 text-slate-100"
-                        : "text-slate-400 hover:text-slate-200"
+                        : "text-slate-300 hover:text-slate-100"
                     }`}
                   >
                     Todos ({votesData?.total || 0})
                   </button>
                   <button
+                    type="button"
+                    aria-pressed={modalVoteFilter === "SIM"}
                     onClick={() => setModalVoteFilter("SIM")}
                     className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                       modalVoteFilter === "SIM"
                         ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                        : "text-slate-400 hover:text-slate-200"
+                        : "text-slate-300 hover:text-slate-100"
                     }`}
                   >
                     Sim
                   </button>
                   <button
+                    type="button"
+                    aria-pressed={modalVoteFilter === "NAO"}
                     onClick={() => setModalVoteFilter("NAO")}
                     className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                       modalVoteFilter === "NAO"
                         ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
-                        : "text-slate-400 hover:text-slate-200"
+                        : "text-slate-300 hover:text-slate-100"
                     }`}
                   >
                     Não
                   </button>
                   <button
+                    type="button"
+                    aria-pressed={modalVoteFilter === "ABSTENCAO"}
                     onClick={() => setModalVoteFilter("ABSTENCAO")}
                     className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                       modalVoteFilter === "ABSTENCAO"
                         ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                        : "text-slate-400 hover:text-slate-200"
+                        : "text-slate-300 hover:text-slate-100"
                     }`}
                   >
                     Abstenção
@@ -571,11 +588,17 @@ export default function LegislativePanel({
             {/* Lista dos Votos Nominais */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-2">
               {loadingVotes ? (
-                <div className="text-center py-12 text-slate-400 text-xs">
+                <div role="status" aria-live="polite" className="text-center py-12 text-slate-400 text-xs">
                   Carregando lista nominal de votos...
                 </div>
+              ) : votes.error ? (
+                <ErrorState
+                  title="Não foi possível carregar os votos"
+                  message="A lista nominal não pôde ser obtida. Isso não significa que a matéria não tenha sido votada."
+                  onRetry={votes.retry}
+                />
               ) : modalFilteredVotes.length === 0 ? (
-                <div className="text-center py-12 text-slate-500 text-xs">
+                <div role="status" className="text-center py-12 text-slate-400 text-xs">
                   Nenhum parlamentar encontrado para o critério pesquisado.
                 </div>
               ) : (
@@ -593,53 +616,53 @@ export default function LegislativePanel({
                         <div className="flex items-center gap-2.5 min-w-0">
                           {/* Foto do Parlamentar com fallback */}
                           <div className="relative w-9 h-9 rounded-full overflow-hidden bg-slate-800 border border-slate-700 flex-shrink-0 flex items-center justify-center">
-                            {v.foto_url ? (
+                            {safeExternalUrl(v.foto_url) ? (
                               <img
-                                src={v.foto_url}
-                                alt={v.nome_eleitoral}
+                                src={safeExternalUrl(v.foto_url)}
+                                alt=""
                                 referrerPolicy="no-referrer"
                                 className="w-full h-full object-cover"
                                 onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display = "none";
+                                  e.currentTarget.style.display = "none";
                                 }}
                               />
                             ) : null}
-                            <span className="absolute text-[10px] font-bold text-slate-400 -z-10">
+                            <span className="absolute text-[10px] font-bold text-slate-300 -z-10">
                               {v.partido_sigla.slice(0, 2)}
                             </span>
                           </div>
 
                           <div className="min-w-0">
-                            <h4
-                              onClick={() => {
-                                if (v.politico_id && onSelectPolitician) {
-                                  setModalProp(null);
-                                  onSelectPolitician(v.politico_id);
-                                }
-                              }}
-                              className={`text-xs font-bold text-slate-100 truncate ${
-                                v.politico_id && onSelectPolitician ? "cursor-pointer hover:text-cyan-300 transition-colors" : ""
-                              }`}
-                              title={v.politico_id && onSelectPolitician ? "Clique para abrir o Raio-X" : undefined}
-                            >
-                              {v.nome_eleitoral}
+                            <h4 className="text-xs font-bold text-slate-100 truncate">
+                              {v.politico_id && onSelectPolitician ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setModalProp(null);
+                                    onSelectPolitician(v.politico_id);
+                                  }}
+                                  className="cursor-pointer hover:text-cyan-300 transition-colors text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 rounded"
+                                  title="Clique para abrir o Raio-X"
+                                >
+                                  {v.nome_eleitoral}
+                                </button>
+                              ) : (
+                                v.nome_eleitoral
+                              )}
                             </h4>
                             <span className="text-[11px] text-slate-400 font-medium">
-                              <strong
-                                onClick={(e) => {
-                                  if (onSelectParty && v.partido_sigla) {
-                                    e.stopPropagation();
-                                    setModalProp(null);
-                                    onSelectParty(v.partido_sigla);
-                                  }
-                                }}
-                                className={`text-cyan-400 ${
-                                  onSelectParty ? "cursor-pointer hover:underline" : ""
-                                }`}
-                                title={onSelectParty ? `Ver bancada do ${v.partido_sigla}` : undefined}
-                              >
-                                {v.partido_sigla}
-                              </strong>{" "}
+                              <PartyLink
+                                sigla={v.partido_sigla}
+                                onSelectParty={
+                                  onSelectParty
+                                    ? (sigla) => {
+                                        setModalProp(null);
+                                        onSelectParty(sigla);
+                                      }
+                                    : undefined
+                                }
+                                className="text-cyan-400 font-bold"
+                              />{" "}
                               • {v.uf}
                             </span>
                           </div>
@@ -654,10 +677,10 @@ export default function LegislativePanel({
                               ? "bg-rose-500/15 text-rose-400 border-rose-500/30"
                               : isAbst
                               ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
-                              : "bg-slate-800 text-slate-400 border-slate-700"
+                              : "bg-slate-800 text-slate-300 border-slate-700"
                           }`}
                         >
-                          {v.decisao}
+                          {voteLabel(v.decisao)}
                         </span>
                       </div>
                     );
@@ -669,15 +692,14 @@ export default function LegislativePanel({
             {/* Rodapé do Modal com Informações Auditáveis */}
             <div className="p-3.5 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
               <span className="flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
                 Votos oficiais extraídos dos registros nominais em Plenário
               </span>
               <span className="font-mono text-slate-400">
                 Mostrando {modalFilteredVotes.length} de {votesData?.total || 0} votos
               </span>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

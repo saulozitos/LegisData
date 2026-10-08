@@ -2,7 +2,7 @@ import uuid
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -66,6 +66,10 @@ class FederalTransferByState(TimeStampedModel):
     valor_pago_brl: Mapped[Decimal] = mapped_column("valorPagoBrl", Numeric(18, 2), nullable=False)
     populacao_estimada: Mapped[Optional[int]] = mapped_column("populacaoEstimada", Integer, nullable=True)
     valor_per_capita_brl: Mapped[Optional[Decimal]] = mapped_column("valorPerCapitaBrl", Numeric(12, 2), nullable=True)
+    periodo_inicio: Mapped[Optional[str]] = mapped_column("periodoInicio", String(7), nullable=True)
+    periodo_fim: Mapped[Optional[str]] = mapped_column("periodoFim", String(7), nullable=True)
+    meses_cobertos: Mapped[Optional[int]] = mapped_column("mesesCobertos", Integer, nullable=True)
+    parcial: Mapped[Optional[bool]] = mapped_column("coberturaParcial", Boolean, nullable=True)
 
 
 class PolicyEconomicImpact(TimeStampedModel):

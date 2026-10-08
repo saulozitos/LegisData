@@ -7,7 +7,13 @@
     "uf": "AC",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5672.jpg",
     "email": "sen.alanrick@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6333",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5982,
@@ -17,7 +23,13 @@
     "uf": "SE",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5982.jpg",
     "email": "sen.alessandrovieira@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-9011",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 6358,
@@ -27,7 +39,13 @@
     "uf": "MA",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador6358.jpg",
     "email": "sen.anapaulalobato@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": null,
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "1º Suplente"
   },
   {
     "senado_id": 5967,
@@ -37,7 +55,13 @@
     "uf": "BA",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5967.jpg",
     "email": "sen.angelocoronel@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6103",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 6009,
@@ -47,7 +71,13 @@
     "uf": "SP",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador6009.jpg",
     "email": "sen.astronautamarcospontes@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-1177",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 4639,
@@ -57,7 +87,13 @@
     "uf": "PA",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador4639.jpg",
     "email": "sen.betofaro@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-5220",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 6336,
@@ -67,7 +103,13 @@
     "uf": "CE",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador6336.jpg",
     "email": "sen.camilosantana@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-5940",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 6295,
@@ -77,7 +119,13 @@
     "uf": "MT",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador6295.jpg",
     "email": "sen.carlosfavaro@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6408",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5936,
@@ -87,7 +135,13 @@
     "uf": "RJ",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5936.jpg",
     "email": "sen.carlosportinho@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6640",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "1º Suplente"
   },
   {
     "senado_id": 5990,
@@ -97,7 +151,13 @@
     "uf": "MG",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5990.jpg",
     "email": "sen.carlosviana@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-3100",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 470,
@@ -107,7 +167,13 @@
     "uf": "RR",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador470.jpg",
     "email": "sen.chicorodrigues@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-2281",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5973,
@@ -117,7 +183,13 @@
     "uf": "CE",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5973.jpg",
     "email": "sen.cidgomes@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6460",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 739,
@@ -127,7 +199,13 @@
     "uf": "PI",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador739.jpg",
     "email": "sen.cironogueira@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6187",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 6337,
@@ -137,7 +215,13 @@
     "uf": "MG",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador6337.jpg",
     "email": "sen.cleitinho@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-3811",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 475,
@@ -147,7 +231,13 @@
     "uf": "RO",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador475.jpg",
     "email": "sen.confuciomoura@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-2470",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 6335,
@@ -157,7 +247,13 @@
     "uf": "DF",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador6335.jpg",
     "email": "sen.damaresalves@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-3265",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5998,
@@ -167,7 +263,13 @@
     "uf": "PB",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5998.jpg",
     "email": "sen.daniellaribeiro@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6788",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 3830,
@@ -177,7 +279,13 @@
     "uf": "AP",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador3830.jpg",
     "email": "sen.davialcolumbre@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6717",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5793,
@@ -187,7 +295,13 @@
     "uf": "RR",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5793.jpg",
     "email": "sen.drhiran@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6251",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5906,
@@ -197,7 +311,13 @@
     "uf": "AL",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5906.jpg",
     "email": "sen.draeudocia@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6083",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "1º Suplente"
   },
   {
     "senado_id": 4994,
@@ -207,7 +327,13 @@
     "uf": "AM",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador4994.jpg",
     "email": "sen.eduardobraga@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6230",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 3777,
@@ -217,7 +343,13 @@
     "uf": "TO",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador3777.jpg",
     "email": "sen.eduardogomes@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6349",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 4642,
@@ -227,7 +359,13 @@
     "uf": "PB",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador4642.jpg",
     "email": "sen.efraimfilho@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-5934",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5718,
@@ -237,7 +375,13 @@
     "uf": "MA",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5718.jpg",
     "email": "sen.elizianegama@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6741",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 22,
@@ -247,7 +391,13 @@
     "uf": "SC",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador22.jpg",
     "email": "sen.esperidiaoamin@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6446",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5953,
@@ -257,7 +407,13 @@
     "uf": "ES",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5953.jpg",
     "email": "sen.fabianocontarato@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-9054",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5917,
@@ -267,7 +423,13 @@
     "uf": "PE",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5917.jpg",
     "email": "sen.fernandodueire@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-3522",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "1º Suplente"
   },
   {
     "senado_id": 345,
@@ -277,7 +439,13 @@
     "uf": "PR",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador345.jpg",
     "email": "sen.flavioarns@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6301",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5894,
@@ -287,7 +455,13 @@
     "uf": "RJ",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5894.jpg",
     "email": "sen.flaviobolsonaro@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-1717",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 6008,
@@ -297,7 +471,13 @@
     "uf": "SP",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador6008.jpg",
     "email": "sen.giordano@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-4177",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "1º Suplente"
   },
   {
     "senado_id": 6341,
@@ -307,7 +487,13 @@
     "uf": "RS",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador6341.jpg",
     "email": "sen.hamiltonmourao@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-1837",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5008,
@@ -317,7 +503,13 @@
     "uf": "PE",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5008.jpg",
     "email": "sen.humbertocosta@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6285",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5385,
@@ -327,7 +519,13 @@
     "uf": "TO",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5385.jpg",
     "email": "sen.iraja@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6469",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 6010,
@@ -337,7 +535,13 @@
     "uf": "SC",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador6010.jpg",
     "email": "sen.ivetedasilveira@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-2200",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "1º Suplente"
   },
   {
     "senado_id": 4770,
@@ -347,7 +551,13 @@
     "uf": "DF",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador4770.jpg",
     "email": "sen.izalcilucas@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6049",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 35,
@@ -357,7 +567,13 @@
     "uf": "PA",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador35.jpg",
     "email": "sen.jaderbarbalho@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-9831",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 6340,
@@ -367,7 +583,13 @@
     "uf": "RO",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador6340.jpg",
     "email": "sen.jaimebagattoli@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-2714",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 581,
@@ -377,7 +599,13 @@
     "uf": "BA",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador581.jpg",
     "email": "sen.jaqueswagner@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6390",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 4531,
@@ -387,7 +615,13 @@
     "uf": "MT",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador4531.jpg",
     "email": "sen.jaymecampos@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-2390",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5895,
@@ -397,7 +631,13 @@
     "uf": "GO",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5895.jpg",
     "email": "sen.jorgekajuru@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-2844",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 6342,
@@ -407,7 +647,13 @@
     "uf": "SC",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador6342.jpg",
     "email": "sen.jorgeseif@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-3784",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 6369,
@@ -417,7 +663,13 @@
     "uf": "PI",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador6369.jpg",
     "email": "sen.jussaralima@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-5800",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "1º Suplente"
   },
   {
     "senado_id": 4811,
@@ -427,7 +679,13 @@
     "uf": "SE",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador4811.jpg",
     "email": "sen.laerciooliveira@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-1763",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5977,
@@ -437,17 +695,13 @@
     "uf": "DF",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5977.jpg",
     "email": null,
-    "cargo": "SENADOR"
-  },
-  {
-    "senado_id": 6359,
-    "nome_civil": "Maria de Lourdes Pereira e Pereira",
-    "nome_eleitoral": "Lourdinha Pereira",
-    "partido_sigla": "PSB",
-    "uf": null,
-    "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador6359.jpg",
-    "email": null,
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6427",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "1º Suplente"
   },
   {
     "senado_id": 5926,
@@ -457,7 +711,13 @@
     "uf": "AP",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5926.jpg",
     "email": "sen.lucasbarreto@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-4851",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 1186,
@@ -467,7 +727,13 @@
     "uf": "RS",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador1186.jpg",
     "email": "sen.luiscarlosheinze@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-4124",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 631,
@@ -477,7 +743,13 @@
     "uf": "ES",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador631.jpg",
     "email": "sen.magnomalta@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6370",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5376,
@@ -487,7 +759,13 @@
     "uf": "SP",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5376.jpg",
     "email": "sen.maragabrilli@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-2191",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 742,
@@ -497,7 +775,13 @@
     "uf": "PI",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador742.jpg",
     "email": "sen.marcelocastro@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-4078",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 285,
@@ -507,7 +791,13 @@
     "uf": "AC",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador285.jpg",
     "email": "sen.marciobittar@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-2115",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5422,
@@ -517,7 +807,13 @@
     "uf": "RO",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5422.jpg",
     "email": "sen.marcosrogerio@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6148",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5942,
@@ -527,7 +823,13 @@
     "uf": "ES",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5942.jpg",
     "email": "sen.marcosdoval@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6747",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5985,
@@ -537,7 +839,13 @@
     "uf": "MS",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5985.jpg",
     "email": "sen.nelsinhotrad@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6767",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5525,
@@ -547,7 +855,13 @@
     "uf": "AM",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5525.jpg",
     "email": "sen.omaraziz@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6579",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5924,
@@ -557,7 +871,13 @@
     "uf": "PR",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5924.jpg",
     "email": "sen.oriovistoguimaraes@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-1635",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5523,
@@ -567,7 +887,13 @@
     "uf": "BA",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5523.jpg",
     "email": "sen.ottoalencar@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-3172",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 825,
@@ -577,7 +903,13 @@
     "uf": "RS",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador825.jpg",
     "email": "sen.paulopaim@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-5232",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5502,
@@ -587,7 +919,13 @@
     "uf": "AM",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5502.jpg",
     "email": "sen.pliniovalerio@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-2898",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5386,
@@ -597,7 +935,13 @@
     "uf": "TO",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5386.jpg",
     "email": "sen.professoradorinhaseabra@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-5990",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5012,
@@ -607,7 +951,13 @@
     "uf": "AP",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5012.jpg",
     "email": "sen.randolferodrigues@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6777",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 70,
@@ -617,7 +967,13 @@
     "uf": "AL",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador70.jpg",
     "email": "sen.renancalheiros@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-2261",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5207,
@@ -627,7 +983,13 @@
     "uf": "AL",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5207.jpg",
     "email": "sen.renanfilho@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6266",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5257,
@@ -637,7 +999,13 @@
     "uf": "MG",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5257.jpg",
     "email": null,
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-2794",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "1º Suplente"
   },
   {
     "senado_id": 6025,
@@ -647,7 +1015,13 @@
     "uf": "RR",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador6025.jpg",
     "email": "sen.robertaacioly@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-5291",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "1º Suplente"
   },
   {
     "senado_id": 4694,
@@ -657,7 +1031,13 @@
     "uf": "RN",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador4694.jpg",
     "email": "sen.rogeriomarinho@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-1826",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5352,
@@ -667,7 +1047,13 @@
     "uf": "SE",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5352.jpg",
     "email": "sen.rogeriocarvalho@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-2201",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5322,
@@ -677,7 +1063,13 @@
     "uf": "RJ",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5322.jpg",
     "email": "sen.romario@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6519",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5974,
@@ -687,7 +1079,13 @@
     "uf": "CE",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5974.jpg",
     "email": null,
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6677",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "1º Suplente"
   },
   {
     "senado_id": 6331,
@@ -697,7 +1095,13 @@
     "uf": "PR",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador6331.jpg",
     "email": "sen.sergiomoro@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6202",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5988,
@@ -707,7 +1111,13 @@
     "uf": "MS",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5988.jpg",
     "email": "sen.sorayathronicke@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-1775",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5959,
@@ -717,7 +1127,13 @@
     "uf": "RN",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5959.jpg",
     "email": "sen.styvensonvalentim@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-1148",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 4560,
@@ -727,7 +1143,13 @@
     "uf": "AC",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador4560.jpg",
     "email": "sen.sergiopetecao@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-4086",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 6338,
@@ -737,7 +1159,13 @@
     "uf": "PE",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador6338.jpg",
     "email": "sen.teresaleitao@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-2423",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5736,
@@ -747,7 +1175,13 @@
     "uf": "MS",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5736.jpg",
     "email": "sen.terezacristina@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-2431",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5899,
@@ -757,7 +1191,13 @@
     "uf": "GO",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5899.jpg",
     "email": "sen.vanderlancardoso@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-2092",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5748,
@@ -767,7 +1207,13 @@
     "uf": "PB",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5748.jpg",
     "email": "sen.venezianovitaldorego@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-2252",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 1173,
@@ -777,7 +1223,13 @@
     "uf": "MT",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador1173.jpg",
     "email": "sen.wellingtonfagundes@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6219",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5411,
@@ -787,7 +1239,13 @@
     "uf": "MA",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5411.jpg",
     "email": "sen.wevertonrocha@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-4161",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5070,
@@ -797,7 +1255,13 @@
     "uf": "GO",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5070.jpg",
     "email": "sen.wildermorais@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6440",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2023-02-01",
+    "mandato_fim": "2031-01-31",
+    "legislatura_inicio": "57",
+    "legislatura_fim": "58",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 5783,
@@ -807,7 +1271,13 @@
     "uf": "RN",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador5783.jpg",
     "email": "sen.zenaidemaia@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-2371",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   },
   {
     "senado_id": 3806,
@@ -817,6 +1287,12 @@
     "uf": "PA",
     "foto_url": "http://www.senado.leg.br/senadores/img/fotos-oficiais/senador3806.jpg",
     "email": "sen.zequinhamarinho@senado.leg.br",
-    "cargo": "SENADOR"
+    "gabinete_telefone": "(61) 3303-6623",
+    "cargo": "SENADOR",
+    "mandato_inicio": "2019-02-01",
+    "mandato_fim": "2027-01-31",
+    "legislatura_inicio": "56",
+    "legislatura_fim": "57",
+    "condicao_mandato": "Titular"
   }
 ]

@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Landmark,
-  ShieldCheck,
   ShieldAlert,
   Users,
   Award,
@@ -12,7 +11,6 @@ import {
   AlertCircle,
   Search,
   X,
-  Sparkles,
   MousePointerClick
 } from "lucide-react";
 import {
@@ -26,12 +24,14 @@ import {
 } from "recharts";
 import {
   getCongressComposition,
-  CongressCompositionResponse,
-  LeaderProfile,
-  PartySeat,
   searchPoliticians,
-  PoliticoSearchResultItem
+  PartySeat,
 } from "../services/api";
+import { useApi } from "@/hooks/useApi";
+import { safeExternalUrl } from "@/lib/safeUrl";
+import { fmtNum } from "@/lib/format";
+import { EmptyState, ErrorState, LoadingState } from "@/components/StateViews";
+import Modal from "@/components/Modal";
 
 interface CongressCompositionPanelProps {
   mandateId: string;
@@ -46,63 +46,30 @@ export default function CongressCompositionPanel({
   onPoliticianSelect,
   onSelectParty,
 }: CongressCompositionPanelProps) {
-  const [data, setData] = useState<CongressCompositionResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const composition = useApi(`congress-composition:${mandateId}`, (signal) => getCongressComposition(mandateId, signal));
+  const data = composition.data ?? null;
   const [activeHouse, setActiveHouse] = useState<"camara" | "senado">("camara");
 
   // Estados do Modal Interativo de Parlamentares da Bancada
   const [selectedParty, setSelectedParty] = useState<string | null>(null);
-  const [partyPoliticians, setPartyPoliticians] = useState<PoliticoSearchResultItem[]>([]);
-  const [loadingParty, setLoadingParty] = useState<boolean>(false);
   const [partySearch, setPartySearch] = useState<string>("");
 
-  useEffect(() => {
-    async function loadComposition() {
-      try {
-        setLoading(true);
-        const res = await getCongressComposition(mandateId);
-        if (res) setData(res);
-      } catch (err) {
-        console.error("Erro ao carregar composição do congresso:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadComposition();
-  }, [mandateId]);
-
   // Carregar parlamentares da bancada selecionada
-  useEffect(() => {
-    if (!selectedParty) {
-      setPartyPoliticians([]);
-      return;
-    }
-
-    async function fetchPartyMembers() {
-      setLoadingParty(true);
-      try {
-        const targetOffice = activeHouse === "camara" ? "DEPUTADO_FEDERAL" : "SENADOR";
-        const res = await searchPoliticians(undefined, targetOffice, selectedParty!, undefined, 200);
-        setPartyPoliticians(res?.politicos || []);
-      } catch (err) {
-        console.error("Erro ao carregar parlamentares da bancada:", err);
-        setPartyPoliticians([]);
-      } finally {
-        setLoadingParty(false);
-      }
-    }
-
-    fetchPartyMembers();
-  }, [selectedParty, activeHouse]);
-
-  // Fechar modal com tecla Esc
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSelectedParty(null);
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  const members = useApi(
+    `party-members:${selectedParty}:${activeHouse}`,
+    (signal) =>
+      searchPoliticians(
+        undefined,
+        activeHouse === "camara" ? "DEPUTADO_FEDERAL" : "SENADOR",
+        selectedParty ?? undefined,
+        undefined,
+        200,
+        signal
+      ),
+    Boolean(selectedParty)
+  );
+  const partyPoliticians = useMemo(() => members.data?.politicos ?? [], [members.data]);
+  const loadingParty = members.loading;
 
   const handlePartyClick = (partido: string) => {
     if (!partido) return;
@@ -126,21 +93,16 @@ export default function CongressCompositionPanel({
     );
   }, [partyPoliticians, partySearch]);
 
-  if (loading) {
-    return (
-      <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-8 text-center animate-pulse">
-        <div className="h-6 bg-slate-800 rounded w-1/3 mx-auto mb-4" />
-        <div className="h-64 bg-slate-800/40 rounded-2xl w-full" />
-      </div>
-    );
-  }
-
-  if (!data) return null;
+  if (composition.loading) return <LoadingState label="Carregando composição do Congresso..." />;
+  if (composition.error) return <ErrorState onRetry={composition.retry} />;
+  if (!data) return <EmptyState title="Composição do Congresso indisponível" />;
 
   const currentHouse = activeHouse === "camara" ? data.camara : data.senado;
-  const houseLabel = activeHouse === "camara" ? "Câmara dos Deputados (513 cadeiras)" : "Senado Federal (81 cadeiras)";
-  const quorumPec = activeHouse === "camara" ? 308 : 49;
-  const quorumSimples = activeHouse === "camara" ? 257 : 41;
+  const totalSeats = currentHouse.total_cadeiras;
+  const houseLabel = `${activeHouse === "camara" ? "Câmara dos Deputados" : "Senado Federal"} (${totalSeats} cadeiras)`;
+  // Quóruns constitucionais calculados sobre o total de cadeiras informado pela API.
+  const quorumPec = Math.ceil((totalSeats * 3) / 5);
+  const quorumSimples = Math.floor(totalSeats / 2) + 1;
 
   const { governabilidade } = currentHouse;
 
@@ -152,7 +114,7 @@ export default function CongressCompositionPanel({
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
-                <Landmark className="w-5 h-5" />
+                <Landmark className="w-5 h-5" aria-hidden="true" />
               </span>
               <h2 className="text-xl font-extrabold text-slate-100 tracking-tight">
                 Composição do Congresso & Governabilidade Presidencial
@@ -166,6 +128,8 @@ export default function CongressCompositionPanel({
           {/* Seletor Câmara / Senado */}
           <div className="flex items-center bg-slate-950 p-1.5 rounded-2xl border border-slate-800 self-start md:self-auto">
             <button
+              type="button"
+              aria-pressed={activeHouse === "camara"}
               onClick={() => {
                 setActiveHouse("camara");
                 setSelectedParty(null);
@@ -179,6 +143,8 @@ export default function CongressCompositionPanel({
               Câmara dos Deputados
             </button>
             <button
+              type="button"
+              aria-pressed={activeHouse === "senado"}
               onClick={() => {
                 setActiveHouse("senado");
                 setSelectedParty(null);
@@ -202,16 +168,16 @@ export default function CongressCompositionPanel({
             </span>
             <div className="flex items-center gap-3">
               <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                Base ({governabilidade.base_aliada_cadeiras} cad. • {governabilidade.base_aliada_pct.toFixed(1)}%)
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                Base ({governabilidade.base_aliada_cadeiras} cad. • {fmtNum(governabilidade.base_aliada_pct)}%)
               </span>
               <span className="flex items-center gap-1.5 text-amber-400 font-bold">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                Centro ({governabilidade.centro_cadeiras} cad. • {governabilidade.centro_pct.toFixed(1)}%)
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" aria-hidden="true" />
+                Centro ({governabilidade.centro_cadeiras} cad. • {fmtNum(governabilidade.centro_pct)}%)
               </span>
               <span className="flex items-center gap-1.5 text-rose-400 font-bold">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                Oposição ({governabilidade.oposicao_cadeiras} cad. • {governabilidade.oposicao_pct.toFixed(1)}%)
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" aria-hidden="true" />
+                Oposição ({governabilidade.oposicao_cadeiras} cad. • {fmtNum(governabilidade.oposicao_pct)}%)
               </span>
             </div>
           </div>
@@ -239,9 +205,9 @@ export default function CongressCompositionPanel({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-900 text-xs">
             <div className="flex items-center gap-2">
               {governabilidade.maioria_simples_atingida ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" aria-hidden="true" />
               ) : (
-                <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" aria-hidden="true" />
               )}
               <span className="text-slate-300">
                 <strong>Maioria Simples ({quorumSimples} votos):</strong>{" "}
@@ -253,9 +219,9 @@ export default function CongressCompositionPanel({
 
             <div className="flex items-center gap-2">
               {governabilidade.maioria_pec_atingida ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" aria-hidden="true" />
               ) : (
-                <ShieldAlert className="w-4 h-4 text-rose-400 flex-shrink-0" />
+                <ShieldAlert className="w-4 h-4 text-rose-400 flex-shrink-0" aria-hidden="true" />
               )}
               <span className="text-slate-300">
                 <strong>Quórum de PEC ({quorumPec} votos - 3/5):</strong>{" "}
@@ -271,23 +237,22 @@ export default function CongressCompositionPanel({
       {/* Cards dos Presidentes da Casa */}
       <div className="bg-slate-900/60 border border-slate-800/80 rounded-3xl p-6 backdrop-blur-md">
         <div className="flex items-center gap-2 mb-4">
-          <Award className="w-4 h-4 text-cyan-400" />
+          <Award className="w-4 h-4 text-cyan-400" aria-hidden="true" />
           <h3 className="text-sm font-bold text-slate-200">
             Presidentes da {activeHouse === "camara" ? "Câmara dos Deputados" : "Senado Federal"} no Mandato
           </h3>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {currentHouse.presidentes.map((p, idx) => (
+          {currentHouse.presidentes.map((p) => (
             <div
-              key={idx}
+              key={`${p.nome}-${p.periodo}`}
               className="bg-slate-950/70 border border-slate-800 hover:border-slate-700 rounded-2xl p-4 flex items-center gap-3.5 transition-all"
             >
-              {p.foto_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
+              {safeExternalUrl(p.foto_url) ? (
                 <img
-                  src={p.foto_url}
-                  alt={p.nome}
+                  src={safeExternalUrl(p.foto_url)}
+                  alt=""
                   referrerPolicy="no-referrer"
                   className="w-14 h-14 rounded-xl object-cover border border-slate-700 flex-shrink-0"
                   onError={(e) => {
@@ -304,7 +269,7 @@ export default function CongressCompositionPanel({
                 <p className="text-xs text-slate-400 mt-0.5">
                   <span className="font-semibold text-cyan-400">{p.partido}</span> • {p.uf}
                 </p>
-                <span className="text-[11px] font-mono text-slate-500 block mt-1">
+                <span className="text-[11px] font-mono text-slate-400 block mt-1">
                   {p.periodo}
                 </span>
               </div>
@@ -317,18 +282,22 @@ export default function CongressCompositionPanel({
       <div className="bg-slate-900/60 border border-slate-800/80 rounded-3xl p-6 backdrop-blur-md space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <BarChart3 className="w-4 h-4 text-cyan-400" />
+            <BarChart3 className="w-4 h-4 text-cyan-400" aria-hidden="true" />
             <h3 className="text-sm font-bold text-slate-200">
               Tamanho das Bancadas Partidárias na {activeHouse === "camara" ? "Câmara" : "Senado"}
             </h3>
           </div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
-            <MousePointerClick className="w-3.5 h-3.5" />
+            <MousePointerClick className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Clique em qualquer barra para ver a lista de parlamentares</span>
           </div>
         </div>
 
-        <div className="h-96 w-full">
+        <div
+          role="img"
+          aria-label={`Gráfico de barras com o tamanho das bancadas partidárias na ${activeHouse === "camara" ? "Câmara" : "Senado"}`}
+          className="h-96 w-full"
+        >
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={currentHouse.bancadas}
@@ -350,23 +319,25 @@ export default function CongressCompositionPanel({
                   borderRadius: "12px",
                   fontSize: "12px"
                 }}
-                formatter={(val: any, _: any, item: any) => [
-                  `${val} cadeiras (${item.payload.percentual}%) - ${item.payload.alinhamento.replace("_", " ")} (Clique para abrir)`,
-                  "Bancada"
-                ]}
+                formatter={(val, _name, item) => {
+                  const seat = item?.payload as PartySeat | undefined;
+                  const detail = seat ? ` (${fmtNum(seat.percentual)}%) - ${seat.alinhamento.replace(/_/g, " ")}` : "";
+                  return [`${val} cadeiras${detail} (Clique para abrir)`, "Bancada"];
+                }}
               />
               <Bar
                 dataKey="cadeiras"
                 radius={[0, 6, 6, 0]}
                 className="cursor-pointer"
-                onClick={(entry: any) => {
-                  const sigla = entry?.partido || entry?.payload?.partido;
+                onClick={(entry) => {
+                  const bar = entry as unknown as { partido?: string; payload?: { partido?: string } };
+                  const sigla = bar?.partido || bar?.payload?.partido;
                   if (sigla) handlePartyClick(sigla);
                 }}
               >
-                {currentHouse.bancadas.map((entry, index) => (
+                {currentHouse.bancadas.map((entry) => (
                   <Cell
-                    key={`cell-${index}`}
+                    key={`cell-${entry.partido}`}
                     fill={entry.cor_hex || "#3b82f6"}
                     className="cursor-pointer hover:opacity-80 transition-opacity"
                     onClick={() => handlePartyClick(entry.partido)}
@@ -376,168 +347,189 @@ export default function CongressCompositionPanel({
             </BarChart>
           </ResponsiveContainer>
         </div>
+
+        {/* Alternativa por teclado/leitor de tela às barras clicáveis do gráfico */}
+        <ul className="flex flex-wrap gap-1.5" aria-label="Bancadas partidárias">
+          {currentHouse.bancadas.map((b) => (
+            <li key={b.partido}>
+              <button
+                type="button"
+                onClick={() => handlePartyClick(b.partido)}
+                className="px-2 py-1 rounded-lg text-[11px] font-semibold bg-slate-950 border border-slate-800 text-slate-300 hover:text-cyan-300 hover:border-cyan-500/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+              >
+                {b.partido} · {b.cadeiras}
+              </button>
+            </li>
+          ))}
+        </ul>
       </div>
 
       {/* ======================================================== */}
       {/* MODAL / GAVETA: PARLAMENTARES DA BANCADA PARTIDÁRIA      */}
       {/* ======================================================== */}
-      {selectedParty && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200"
-          onClick={() => setSelectedParty(null)}
-        >
-          <div
-            className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden relative"
-            onClick={(e) => e.stopPropagation()}
+      <Modal
+        isOpen={Boolean(selectedParty)}
+        onClose={() => setSelectedParty(null)}
+        titleId="party-modal-title"
+        overlayClassName="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md"
+        className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden relative"
+      >
+        {/* Cabeçalho do Modal */}
+        <div className="p-6 border-b border-slate-800 bg-slate-950/90 relative">
+          <button
+            type="button"
+            aria-label="Fechar"
+            onClick={() => setSelectedParty(null)}
+            className="absolute top-5 right-5 p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
           >
-            {/* Cabeçalho do Modal */}
-            <div className="p-6 border-b border-slate-800 bg-slate-950/90 relative">
-              <button
-                onClick={() => setSelectedParty(null)}
-                className="absolute top-5 right-5 p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+            <X className="w-5 h-5" aria-hidden="true" />
+          </button>
 
-              <div className="space-y-3 pr-8">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-black px-3 py-1 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                    Bancada: {selectedParty}
-                  </span>
-                  <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">
-                    {activeHouse === "camara" ? "Câmara dos Deputados" : "Senado Federal"}
-                  </span>
-                  {!loadingParty && (
-                    <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                      {filteredPoliticians.length} parlamentares
-                    </span>
-                  )}
-                </div>
-
-                <h3 className="text-xl sm:text-2xl font-black text-white">
-                  Parlamentares do {selectedParty} no(a) {activeHouse === "camara" ? "Câmara dos Deputados" : "Senado Federal"}
-                </h3>
-
-                <p className="text-xs sm:text-sm text-slate-400">
-                  Lista nominal dos {activeHouse === "camara" ? "deputados federais" : "senadores"} filiados à legenda nesta legislatura.
-                </p>
-
-                {/* Campo de Busca Rápida Dentro do Modal */}
-                <div className="relative pt-2">
-                  <Search className="w-4 h-4 text-slate-500 absolute left-3 top-5" />
-                  <input
-                    type="text"
-                    placeholder={`Buscar parlamentar do ${selectedParty} por nome ou UF (ex: SP, RJ, MG)...`}
-                    value={partySearch}
-                    onChange={(e) => setPartySearch(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-                  />
-                  {partySearch && (
-                    <button
-                      onClick={() => setPartySearch("")}
-                      className="absolute right-3 top-4.5 text-slate-500 hover:text-slate-300"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Conteúdo com Grid de Cards */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {loadingParty ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 animate-pulse">
-                  {Array.from({ length: 15 }).map((_, i) => (
-                    <div key={i} className="h-44 bg-slate-950/60 border border-slate-800 rounded-2xl p-3" />
-                  ))}
-                </div>
-              ) : filteredPoliticians.length === 0 ? (
-                <div className="p-12 text-center text-slate-400 space-y-2 bg-slate-950/40 rounded-2xl border border-slate-800">
-                  <Users className="w-8 h-8 text-slate-600 mx-auto" />
-                  <p className="text-sm font-semibold text-slate-300">Nenhum parlamentar encontrado</p>
-                  <p className="text-xs text-slate-500">
-                    {partySearch ? "Tente outro termo de busca." : `Nenhum membro registrado para o ${selectedParty} nesta Casa.`}
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                  {filteredPoliticians.map((pol) => (
-                    <div
-                      key={pol.id}
-                      onClick={() => {
-                        setSelectedParty(null);
-                        if (onSelectPolitician) {
-                          onSelectPolitician(pol.id);
-                        } else if (onPoliticianSelect) {
-                          onPoliticianSelect(pol.id);
-                        }
-                      }}
-                      title={`Clique para abrir o Raio-X de ${pol.nome_eleitoral}`}
-                      className="bg-slate-950/70 border border-slate-800/90 hover:border-cyan-400/80 rounded-2xl p-3 flex flex-col items-center text-center transition-all duration-200 hover:scale-[1.03] hover:bg-slate-900 group shadow-md cursor-pointer hover:shadow-cyan-950/40 relative"
-                    >
-                      {/* Foto */}
-                      <div className="relative mb-2.5">
-                        {pol.foto_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={pol.foto_url}
-                            alt={pol.nome_eleitoral}
-                            className="w-16 h-16 rounded-xl object-cover border border-slate-700 group-hover:border-cyan-400 transition-colors shadow-sm"
-                            onError={(e) => {
-                              (e.target as HTMLElement).style.display = "none";
-                            }}
-                          />
-                        ) : (
-                          <div className="w-16 h-16 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-sm font-bold text-slate-300">
-                            {pol.nome_eleitoral.slice(0, 2).toUpperCase()}
-                          </div>
-                        )}
-                        <span className="absolute -bottom-1 -right-1 text-[10px] font-black px-1.5 py-0.2 rounded bg-slate-900 text-cyan-300 border border-slate-700 shadow">
-                          {pol.uf}
-                        </span>
-                      </div>
-
-                      {/* Nome & Cargo */}
-                      <span className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors line-clamp-2 leading-tight">
-                        {pol.nome_eleitoral}
-                      </span>
-                      <span className="text-[10px] text-slate-400 mt-1 line-clamp-1" title={pol.nome_civil}>
-                        {pol.nome_civil}
-                      </span>
-
-                      <div className="mt-auto pt-2 w-full flex items-center justify-center gap-1.5 text-[10px]">
-                        <span className="px-2 py-0.5 rounded-md bg-slate-900 font-bold text-slate-300 border border-slate-800">
-                          {pol.partido_sigla}
-                        </span>
-                        <span className="text-slate-500 font-semibold">{pol.uf}</span>
-                      </div>
-
-                      <div className="mt-2 text-[10px] font-semibold text-cyan-400/80 group-hover:text-cyan-300 flex items-center gap-1 transition-colors">
-                        <span>Raio-X</span>
-                        <span>→</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+          <div className="space-y-3 pr-8">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-black px-3 py-1 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                Bancada: {selectedParty}
+              </span>
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">
+                {activeHouse === "camara" ? "Câmara dos Deputados" : "Senado Federal"}
+              </span>
+              {!loadingParty && !members.error && (
+                <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                  {filteredPoliticians.length} parlamentares
+                </span>
               )}
             </div>
 
-            {/* Rodapé do Modal */}
-            <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-              <span>
-                Exibindo <strong>{filteredPoliticians.length}</strong> parlamentares da bancada do <strong>{selectedParty}</strong>
-              </span>
-              <button
-                onClick={() => setSelectedParty(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold transition-colors"
-              >
-                Fechar
-              </button>
+            <h3 id="party-modal-title" className="text-xl sm:text-2xl font-black text-white">
+              Parlamentares do {selectedParty} no(a) {activeHouse === "camara" ? "Câmara dos Deputados" : "Senado Federal"}
+            </h3>
+
+            <p className="text-xs sm:text-sm text-slate-400">
+              Lista nominal dos {activeHouse === "camara" ? "deputados federais" : "senadores"} filiados à legenda.
+            </p>
+
+            {/* Campo de Busca Rápida Dentro do Modal */}
+            <div className="relative pt-2">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-5" aria-hidden="true" />
+              <input
+                type="text"
+                aria-label={`Buscar parlamentar do ${selectedParty} por nome ou UF`}
+                placeholder={`Buscar parlamentar do ${selectedParty} por nome ou UF (ex: SP, RJ, MG)...`}
+                value={partySearch}
+                onChange={(e) => setPartySearch(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-400 focus:outline-none focus:border-cyan-500"
+              />
+              {partySearch && (
+                <button
+                  type="button"
+                  aria-label="Limpar busca"
+                  onClick={() => setPartySearch("")}
+                  className="absolute right-3 top-4.5 text-slate-400 hover:text-slate-200"
+                >
+                  <X className="w-3.5 h-3.5" aria-hidden="true" />
+                </button>
+              )}
             </div>
           </div>
         </div>
-      )}
+
+        {/* Conteúdo com Grid de Cards */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {loadingParty ? (
+            <div role="status" aria-live="polite" className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 animate-pulse">
+              <span className="sr-only">Carregando parlamentares...</span>
+              {Array.from({ length: 15 }).map((_, i) => (
+                <div key={i} className="h-44 bg-slate-950/60 border border-slate-800 rounded-2xl p-3" />
+              ))}
+            </div>
+          ) : members.error ? (
+            <ErrorState onRetry={members.retry} />
+          ) : filteredPoliticians.length === 0 ? (
+            <div role="status" className="p-12 text-center text-slate-400 space-y-2 bg-slate-950/40 rounded-2xl border border-slate-800">
+              <Users className="w-8 h-8 text-slate-400 mx-auto" aria-hidden="true" />
+              <p className="text-sm font-semibold text-slate-300">Nenhum parlamentar encontrado</p>
+              <p className="text-xs text-slate-400">
+                {partySearch ? "Tente outro termo de busca." : `Nenhum membro registrado para o ${selectedParty} nesta Casa.`}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {filteredPoliticians.map((pol) => (
+                <button
+                  type="button"
+                  key={pol.id}
+                  onClick={() => {
+                    setSelectedParty(null);
+                    if (onSelectPolitician) {
+                      onSelectPolitician(pol.id);
+                    } else if (onPoliticianSelect) {
+                      onPoliticianSelect(pol.id);
+                    }
+                  }}
+                  title={`Clique para abrir o Raio-X de ${pol.nome_eleitoral}`}
+                  className="bg-slate-950/70 border border-slate-800/90 hover:border-cyan-400/80 rounded-2xl p-3 flex flex-col items-center text-center transition-all duration-200 hover:scale-[1.03] hover:bg-slate-900 group shadow-md cursor-pointer hover:shadow-cyan-950/40 relative focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+                >
+                  {/* Foto */}
+                  <div className="relative mb-2.5">
+                    {safeExternalUrl(pol.foto_url) ? (
+                      <img
+                        src={safeExternalUrl(pol.foto_url)}
+                        alt=""
+                        referrerPolicy="no-referrer"
+                        className="w-16 h-16 rounded-xl object-cover border border-slate-700 group-hover:border-cyan-400 transition-colors shadow-sm"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-sm font-bold text-slate-300">
+                        {pol.nome_eleitoral.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="absolute -bottom-1 -right-1 text-[10px] font-black px-1.5 py-0.2 rounded bg-slate-900 text-cyan-300 border border-slate-700 shadow">
+                      {pol.uf}
+                    </span>
+                  </div>
+
+                  {/* Nome & Cargo */}
+                  <span className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors line-clamp-2 leading-tight">
+                    {pol.nome_eleitoral}
+                  </span>
+                  <span className="text-[10px] text-slate-400 mt-1 line-clamp-1" title={pol.nome_civil}>
+                    {pol.nome_civil}
+                  </span>
+
+                  <div className="mt-auto pt-2 w-full flex items-center justify-center gap-1.5 text-[10px]">
+                    <span className="px-2 py-0.5 rounded-md bg-slate-900 font-bold text-slate-300 border border-slate-800">
+                      {pol.partido_sigla}
+                    </span>
+                    <span className="text-slate-400 font-semibold">{pol.uf}</span>
+                  </div>
+
+                  <div className="mt-2 text-[10px] font-semibold text-cyan-400/80 group-hover:text-cyan-300 flex items-center gap-1 transition-colors">
+                    <span>Raio-X</span>
+                    <span aria-hidden="true">→</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Rodapé do Modal */}
+        <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+          <span>
+            Exibindo <strong>{filteredPoliticians.length}</strong> parlamentares da bancada do <strong>{selectedParty}</strong>
+          </span>
+          <button
+            type="button"
+            onClick={() => setSelectedParty(null)}
+            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold transition-colors"
+          >
+            Fechar
+          </button>
+        </div>
+      </Modal>
 
       {/* ======================================================== */}
       {/* SEÇÃO DE EDUCAÇÃO CÍVICA: ESTRUTURA E PAPEL DOS PODERES */}
@@ -546,7 +538,7 @@ export default function CongressCompositionPanel({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-slate-900">
           <div className="flex items-center gap-2.5">
             <span className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-              <Landmark className="w-5 h-5" />
+              <Landmark className="w-5 h-5" aria-hidden="true" />
             </span>
             <div>
               <h3 className="text-base sm:text-lg font-bold text-slate-100">
@@ -557,7 +549,7 @@ export default function CongressCompositionPanel({
               </p>
             </div>
           </div>
-          <span className="text-[11px] font-semibold text-slate-500 px-3 py-1 rounded-full bg-slate-900 border border-slate-800">
+          <span className="text-[11px] font-semibold text-slate-400 px-3 py-1 rounded-full bg-slate-900 border border-slate-800">
             Constituição Federal de 1988
           </span>
         </div>
@@ -567,7 +559,7 @@ export default function CongressCompositionPanel({
           <div className="bg-slate-900/80 border border-emerald-500/20 hover:border-emerald-500/40 rounded-xl p-4.5 space-y-2.5 transition-all">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Users className="w-3.5 h-3.5" /> Poder Executivo Federal
+                <Users className="w-3.5 h-3.5" aria-hidden="true" /> Poder Executivo Federal
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-bold">
                 Mandato: 4 anos
@@ -585,7 +577,7 @@ export default function CongressCompositionPanel({
           <div className="bg-slate-900/80 border border-emerald-500/20 hover:border-emerald-500/40 rounded-xl p-4.5 space-y-2.5 transition-all">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Users className="w-3.5 h-3.5" /> Poder Executivo Estadual
+                <Users className="w-3.5 h-3.5" aria-hidden="true" /> Poder Executivo Estadual
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-bold">
                 Mandato: 4 anos
@@ -603,7 +595,7 @@ export default function CongressCompositionPanel({
           <div className="bg-slate-900/80 border border-cyan-500/20 hover:border-cyan-500/40 rounded-xl p-4.5 space-y-2.5 transition-all">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Landmark className="w-3.5 h-3.5" /> Congresso Nacional
+                <Landmark className="w-3.5 h-3.5" aria-hidden="true" /> Congresso Nacional
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-bold">
                 Mandato: 8 anos
@@ -621,7 +613,7 @@ export default function CongressCompositionPanel({
           <div className="bg-slate-900/80 border border-cyan-500/20 hover:border-cyan-500/40 rounded-xl p-4.5 space-y-2.5 transition-all">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Landmark className="w-3.5 h-3.5" /> Câmara dos Deputados
+                <Landmark className="w-3.5 h-3.5" aria-hidden="true" /> Câmara dos Deputados
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-bold">
                 Mandato: 4 anos
@@ -639,7 +631,7 @@ export default function CongressCompositionPanel({
           <div className="bg-slate-900/80 border border-indigo-500/20 hover:border-indigo-500/40 rounded-xl p-4.5 space-y-2.5 transition-all md:col-span-2 lg:col-span-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Landmark className="w-3.5 h-3.5" /> Poder Legislativo Estadual
+                <Landmark className="w-3.5 h-3.5" aria-hidden="true" /> Poder Legislativo Estadual
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-bold">
                 Mandato: 4 anos

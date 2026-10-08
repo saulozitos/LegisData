@@ -1,15 +1,16 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import Header from "@/components/Header";
 import {
   getMandatesPerformance,
   getCompareMandates,
   getPresidentes,
-  MandatoPerformance,
-  CompareMandatesResponse,
   PresidenteHistorico,
 } from "@/services/api";
+import { useApi } from "@/hooks/useApi";
+import { fmtNum, fmtSigned, isNum } from "@/lib/format";
+import { EmptyState, ErrorState, LoadingState } from "@/components/StateViews";
 import { getPresidentPhotoUrl } from "@/components/PresidentTimeline";
 import {
   ResponsiveContainer,
@@ -40,9 +41,7 @@ import {
   Users,
   Trees,
   Search,
-  Filter,
   BarChart3,
-  Landmark,
   Coins,
   CheckCircle2,
   AlertTriangle,
@@ -62,69 +61,66 @@ type ChartMetricType =
   | "HOMICIDIOS"
   | "DESMATAMENTO";
 
+// Atalhos de comparação: só aparecem quando os dois mandatos existem na API.
+const PRESET_DEFINITIONS = [
+  { label: "Bolsonaro vs Lula 3", m1: "bolsonaro-2019", m2: "lula-2023" },
+  { label: "FHC 1 vs Lula 1", m1: "fhc-1995", m2: "lula-2003" },
+  { label: "Lula 2 vs Dilma 1", m1: "lula-2007", m2: "dilma-2011" },
+  { label: "Dilma 1 vs Bolsonaro", m1: "dilma-2011", m2: "bolsonaro-2019" },
+  { label: "FHC 2 vs Lula 1", m1: "fhc-1999", m2: "lula-2003" },
+  { label: "Temer vs Bolsonaro", m1: "temer-2016", m2: "bolsonaro-2019" },
+];
+
+// Áreas temáticas de repasse exibidas como cartões (só aparecem quando a API as retorna).
+const AREA_CARDS = [
+  { key: "Saúde", label: "Saúde (SUS & FNS)", icon: HeartHandshake, border: "border-rose-500/20", text: "text-rose-400" },
+  { key: "Educação", label: "Educação (FUNDEB & FNDE)", icon: GraduationCap, border: "border-indigo-500/20", text: "text-indigo-400" },
+  { key: "Infraestrutura", label: "Infraestrutura & Cidades", icon: Building2, border: "border-amber-500/20", text: "text-amber-400" },
+  { key: "Segurança Pública", label: "Segurança Pública", icon: ShieldAlert, border: "border-cyan-500/20", text: "text-cyan-400" },
+];
+
+/** Classes do "pill" de delta: neutro em zero/ausente; `lowerIsBetter` inverte o sentido bom/ruim. */
+function deltaPillClass(value: number | null | undefined, lowerIsBetter = false): string {
+  const base = "inline-flex items-center gap-1 font-mono font-bold text-xs px-2.5 py-1 rounded-full";
+  if (!isNum(value) || value === 0) return `${base} bg-slate-800 text-slate-300 border border-slate-700`;
+  const good = lowerIsBetter ? value < 0 : value > 0;
+  return good
+    ? `${base} bg-emerald-500/20 text-emerald-300 border border-emerald-500/30`
+    : `${base} bg-rose-500/20 text-rose-300 border border-rose-500/30`;
+}
+
 export default function ComparadorPage() {
-  const [mandates, setMandates] = useState<MandatoPerformance[]>([]);
-  const [presidents, setPresidents] = useState<PresidenteHistorico[]>([]);
-  const [mandate1Id, setMandate1Id] = useState<string>("bolsonaro-2019");
-  const [mandate2Id, setMandate2Id] = useState<string>("lula-2023");
-  const [compareData, setCompareData] = useState<CompareMandatesResponse | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isComparing, setIsComparing] = useState<boolean>(false);
+  const mandatesQuery = useApi("compare-mandates-list", (signal) => getMandatesPerformance(signal));
+  const presidentsQuery = useApi("compare-presidents", (signal) => getPresidentes(signal));
+  const mandates = useMemo(() => mandatesQuery.data ?? [], [mandatesQuery.data]);
+  const presidents = useMemo(() => presidentsQuery.data ?? [], [presidentsQuery.data]);
+  const isLoading = mandatesQuery.loading;
+
+  // Seleção do usuário; sem escolha, usa os dois mandatos mais recentes retornados pela API.
+  const [picked1, setPicked1] = useState<string | null>(null);
+  const [picked2, setPicked2] = useState<string | null>(null);
+  const mandate1Id = picked1 ?? (mandates.length > 1 ? mandates[mandates.length - 2].id_mandato : "");
+  const mandate2Id = picked2 ?? (mandates.length > 0 ? mandates[mandates.length - 1].id_mandato : "");
+
   const [chartMetric, setChartMetric] = useState<ChartMetricType>("PIB");
+
+  // Comparação: cancelada e descartada se a seleção mudar antes da resposta chegar.
+  const compareQuery = useApi(
+    `compare:${mandate1Id}:${mandate2Id}`,
+    (signal) => getCompareMandates(mandate1Id, mandate2Id, signal),
+    Boolean(mandate1Id && mandate2Id)
+  );
+  const compareData = compareQuery.data ?? null;
+  const isComparing = compareQuery.loading;
 
   // Filtros da seção de Repasses Federais por Estado
   const [repasseRegionFilter, setRepasseRegionFilter] = useState<string>("TODAS");
-  const [repasseAreaFilter, setRepasseAreaFilter] = useState<string>("TODAS");
   const [repasseSearchTerm, setRepasseSearchTerm] = useState<string>("");
 
-  // Presets para comparação instantânea
-  const presets = [
-    { label: "Bolsonaro vs Lula 3", m1: "bolsonaro-2019", m2: "lula-2023" },
-    { label: "FHC 1 vs Lula 1", m1: "fhc-1995", m2: "lula-2003" },
-    { label: "Lula 2 vs Dilma 1", m1: "lula-2007", m2: "dilma-2011" },
-    { label: "Dilma 1 vs Bolsonaro", m1: "dilma-2011", m2: "bolsonaro-2019" },
-    { label: "FHC 2 vs Lula 1", m1: "fhc-1999", m2: "lula-2003" },
-    { label: "Temer vs Bolsonaro", m1: "temer-2016", m2: "bolsonaro-2019" },
-  ];
-
-  // Carregar lista de mandatos disponíveis
-  useEffect(() => {
-    async function init() {
-      setIsLoading(true);
-      try {
-        const [mandatesList, presList] = await Promise.all([
-          getMandatesPerformance(),
-          getPresidentes(),
-        ]);
-        setMandates(mandatesList);
-        setPresidents(presList);
-      } catch (err) {
-        console.error("Erro ao carregar lista de mandatos:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    init();
-  }, []);
-
-  // Buscar comparação quando mandate1Id ou mandate2Id mudarem
-  useEffect(() => {
-    if (!mandate1Id || !mandate2Id) return;
-
-    async function fetchComparison() {
-      setIsComparing(true);
-      try {
-        const res = await getCompareMandates(mandate1Id, mandate2Id);
-        setCompareData(res);
-      } catch (err) {
-        console.error("Erro ao buscar dados de comparação:", err);
-      } finally {
-        setIsComparing(false);
-      }
-    }
-
-    fetchComparison();
-  }, [mandate1Id, mandate2Id]);
+  const presets = useMemo(() => {
+    const ids = new Set(mandates.map((m) => m.id_mandato));
+    return PRESET_DEFINITIONS.filter((preset) => ids.has(preset.m1) && ids.has(preset.m2));
+  }, [mandates]);
 
   // Mapa de fotos e detalhes presidenciais
   const presidentMap = useMemo(() => {
@@ -147,19 +143,18 @@ export default function ComparadorPage() {
   const p2 = m2 ? presidentMap[m2.id_mandato] : null;
 
   const handleApplyPreset = (m1Id: string, m2Id: string) => {
-    setMandate1Id(m1Id);
-    setMandate2Id(m2Id);
+    setPicked1(m1Id);
+    setPicked2(m2Id);
   };
 
   const handleSwap = () => {
-    const temp = mandate1Id;
-    setMandate1Id(mandate2Id);
-    setMandate2Id(temp);
+    setPicked1(mandate2Id);
+    setPicked2(mandate1Id);
   };
 
   // Formatadores de valores
   const formatBRL = (val: number | null | undefined) => {
-    if (val === null || val === undefined) return "N/D";
+    if (!isNum(val)) return "N/D";
     if (Math.abs(val) >= 1_000_000_000) {
       return `R$ ${(val / 1_000_000_000).toLocaleString("pt-BR", {
         minimumFractionDigits: 2,
@@ -179,7 +174,7 @@ export default function ComparadorPage() {
   };
 
   const formatNumber = (val: number | null | undefined, decimals = 1, unit = "") => {
-    if (val === null || val === undefined) return "N/D";
+    if (!isNum(val)) return "N/D";
     return `${val.toLocaleString("pt-BR", {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
@@ -307,7 +302,7 @@ export default function ComparadorPage() {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
       <Header />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      <main id="main-content" className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Título e Presets */}
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-2 border-b border-slate-900">
           <div>
@@ -364,12 +359,13 @@ export default function ComparadorPage() {
             </div>
 
             <div className="space-y-3">
-              <label className="block text-xs font-semibold text-slate-300">
+              <label htmlFor="compare-mandate-1" className="block text-xs font-semibold text-slate-300">
                 Selecione o Primeiro Mandato:
               </label>
               <select
+                id="compare-mandate-1"
                 value={mandate1Id}
-                onChange={(e) => setMandate1Id(e.target.value)}
+                onChange={(e) => setPicked1(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-100 focus:outline-none focus:border-cyan-500 transition-colors cursor-pointer"
               >
                 {mandates.map((m) => (
@@ -385,11 +381,11 @@ export default function ComparadorPage() {
                   <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-slate-800 border border-cyan-500/40 shadow-sm flex items-center justify-center flex-shrink-0">
                     <img
                       src={getPresidentPhotoUrl(m1.id_mandato, p1?.foto_url)}
-                      alt={m1.presidente}
+                      alt=""
                       referrerPolicy="no-referrer"
                       className="w-full h-full object-cover object-top"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = "none";
+                        e.currentTarget.style.display = "none";
                       }}
                     />
                     <div className="absolute inset-0 bg-slate-800 -z-10 flex items-center justify-center font-bold text-cyan-400 text-xs">
@@ -410,7 +406,9 @@ export default function ComparadorPage() {
           {/* Botão Swap (Meio) */}
           <div className="md:col-span-1 flex justify-center py-2 md:py-0">
             <button
+              type="button"
               onClick={handleSwap}
+              aria-label="Inverter Mandatos"
               title="Inverter Mandatos"
               className="p-3 rounded-full bg-slate-900 border border-slate-700 hover:border-cyan-400 text-slate-300 hover:text-cyan-300 hover:scale-110 active:scale-95 transition-all shadow-md group cursor-pointer"
             >
@@ -430,12 +428,13 @@ export default function ComparadorPage() {
             </div>
 
             <div className="space-y-3">
-              <label className="block text-xs font-semibold text-slate-300">
+              <label htmlFor="compare-mandate-2" className="block text-xs font-semibold text-slate-300">
                 Selecione o Segundo Mandato:
               </label>
               <select
+                id="compare-mandate-2"
                 value={mandate2Id}
-                onChange={(e) => setMandate2Id(e.target.value)}
+                onChange={(e) => setPicked2(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-100 focus:outline-none focus:border-amber-500 transition-colors cursor-pointer"
               >
                 {mandates.map((m) => (
@@ -451,11 +450,11 @@ export default function ComparadorPage() {
                   <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-slate-800 border border-amber-500/40 shadow-sm flex items-center justify-center flex-shrink-0">
                     <img
                       src={getPresidentPhotoUrl(m2.id_mandato, p2?.foto_url)}
-                      alt={m2.presidente}
+                      alt=""
                       referrerPolicy="no-referrer"
                       className="w-full h-full object-cover object-top"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = "none";
+                        e.currentTarget.style.display = "none";
                       }}
                     />
                     <div className="absolute inset-0 bg-slate-800 -z-10 flex items-center justify-center font-bold text-amber-400 text-xs">
@@ -473,6 +472,21 @@ export default function ComparadorPage() {
             </div>
           </div>
         </div>
+
+        {(isLoading || isComparing) && (
+          <LoadingState label={isLoading ? "Carregando mandatos..." : "Comparando mandatos..."} />
+        )}
+        {mandatesQuery.error && <ErrorState onRetry={mandatesQuery.retry} />}
+        {!mandatesQuery.error && compareQuery.error && (
+          <ErrorState
+            title="Não foi possível comparar os mandatos"
+            message="A API não respondeu à comparação solicitada. Tente novamente."
+            onRetry={compareQuery.retry}
+          />
+        )}
+        {!isLoading && !mandatesQuery.error && mandates.length === 0 && (
+          <EmptyState title="Nenhum mandato disponível" message="A API não retornou mandatos para comparação." />
+        )}
 
         {/* ======================================================== */}
         {/* SCORE SINTÉTICO DE PROSPERIDADE PRESIDENCIAL (0 A 100) */}
@@ -504,8 +518,8 @@ export default function ComparadorPage() {
                   scoresProsperidade.delta_score_geral >= 0 ? "text-amber-400" : "text-cyan-400"
                 }`}>
                   {scoresProsperidade.delta_score_geral >= 0
-                    ? `+${scoresProsperidade.delta_score_geral.toFixed(1)} pts (${m2.presidente.split(" ")[0]})`
-                    : `+${Math.abs(scoresProsperidade.delta_score_geral).toFixed(1)} pts (${m1.presidente.split(" ")[0]})`}
+                    ? `+${fmtNum(scoresProsperidade.delta_score_geral, 1)} pts (${m2.presidente.split(" ")[0]})`
+                    : `+${fmtNum(Math.abs(scoresProsperidade.delta_score_geral))} pts (${m1.presidente.split(" ")[0]})`}
                 </span>
               </div>
             </div>
@@ -519,11 +533,11 @@ export default function ComparadorPage() {
                     <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-slate-800 border border-cyan-500/40">
                       <img
                         src={getPresidentPhotoUrl(m1.id_mandato, p1?.foto_url)}
-                        alt={m1.presidente}
+                        alt=""
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover object-top"
                         onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = "none";
+                          e.currentTarget.style.display = "none";
                         }}
                       />
                     </div>
@@ -534,8 +548,8 @@ export default function ComparadorPage() {
                   </div>
                   <div className="text-right">
                     <div className="text-2xl font-black font-mono text-cyan-400">
-                      {scoresProsperidade.mandate1.score_geral.toFixed(1)}
-                      <span className="text-xs text-slate-500 font-normal"> /100</span>
+                      {fmtNum(scoresProsperidade.mandate1.score_geral, 1)}
+                      <span className="text-xs text-slate-400 font-normal"> /100</span>
                     </div>
                     <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
                       {scoresProsperidade.mandate1.classificacao}
@@ -553,7 +567,7 @@ export default function ComparadorPage() {
                         Pilar Econômico (35%)
                       </span>
                       <span className="font-mono font-bold text-cyan-300">
-                        {scoresProsperidade.mandate1.subscore_economico.toFixed(1)} pts
+                        {fmtNum(scoresProsperidade.mandate1.subscore_economico, 1)} pts
                       </span>
                     </div>
                     <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
@@ -562,8 +576,8 @@ export default function ComparadorPage() {
                         style={{ width: `${Math.min(100, Math.max(0, scoresProsperidade.mandate1.subscore_economico))}%` }}
                       />
                     </div>
-                    <span className="text-[10px] text-slate-500 block">
-                      PIB médio: {m1.pib_medio_anual_pct}% a.a. • Inflação acumulada: {m1.ipca_acumulado_pct}%
+                    <span className="text-[10px] text-slate-400 block">
+                      PIB médio: {fmtNum(m1.pib_medio_anual_pct)}% a.a. • Inflação acumulada: {fmtNum(m1.ipca_acumulado_pct)}%
                     </span>
                   </div>
 
@@ -575,7 +589,7 @@ export default function ComparadorPage() {
                         Pilar Social & Renda (35%)
                       </span>
                       <span className="font-mono font-bold text-emerald-400">
-                        {scoresProsperidade.mandate1.subscore_social.toFixed(1)} pts
+                        {fmtNum(scoresProsperidade.mandate1.subscore_social, 1)} pts
                       </span>
                     </div>
                     <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
@@ -584,8 +598,8 @@ export default function ComparadorPage() {
                         style={{ width: `${Math.min(100, Math.max(0, scoresProsperidade.mandate1.subscore_social))}%` }}
                       />
                     </div>
-                    <span className="text-[10px] text-slate-500 block">
-                      Salário Mínimo: R$ {m1.salario_minimo_final_brl || "N/D"} (US$ {m1.salario_minimo_final_usd || "N/D"})
+                    <span className="text-[10px] text-slate-400 block">
+                      Salário Mínimo: {isNum(m1.salario_minimo_final_brl) ? `R$ ${m1.salario_minimo_final_brl.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "R$ N/D"} ({isNum(m1.salario_minimo_final_usd) ? `US$ ${fmtNum(m1.salario_minimo_final_usd, 2)}` : "US$ N/D"})
                     </span>
                   </div>
 
@@ -597,7 +611,7 @@ export default function ComparadorPage() {
                         Estabilidade & Sustentabilidade (30%)
                       </span>
                       <span className="font-mono font-bold text-teal-300">
-                        {scoresProsperidade.mandate1.subscore_estabilidade.toFixed(1)} pts
+                        {fmtNum(scoresProsperidade.mandate1.subscore_estabilidade, 1)} pts
                       </span>
                     </div>
                     <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
@@ -606,8 +620,8 @@ export default function ComparadorPage() {
                         style={{ width: `${Math.min(100, Math.max(0, scoresProsperidade.mandate1.subscore_estabilidade))}%` }}
                       />
                     </div>
-                    <span className="text-[10px] text-slate-500 block">
-                      Desmatamento médio: {m1.desmatamento_medio_anual_km2 ? `${m1.desmatamento_medio_anual_km2.toLocaleString("pt-BR")} km²/ano` : "N/D"}
+                    <span className="text-[10px] text-slate-400 block">
+                      Desmatamento médio: {isNum(m1.desmatamento_medio_anual_km2) ? `${m1.desmatamento_medio_anual_km2.toLocaleString("pt-BR")} km²/ano` : "N/D"}
                     </span>
                   </div>
                 </div>
@@ -636,11 +650,11 @@ export default function ComparadorPage() {
                     <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-slate-800 border border-amber-500/40">
                       <img
                         src={getPresidentPhotoUrl(m2.id_mandato, p2?.foto_url)}
-                        alt={m2.presidente}
+                        alt=""
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover object-top"
                         onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = "none";
+                          e.currentTarget.style.display = "none";
                         }}
                       />
                     </div>
@@ -651,8 +665,8 @@ export default function ComparadorPage() {
                   </div>
                   <div className="text-right">
                     <div className="text-2xl font-black font-mono text-amber-400">
-                      {scoresProsperidade.mandate2.score_geral.toFixed(1)}
-                      <span className="text-xs text-slate-500 font-normal"> /100</span>
+                      {fmtNum(scoresProsperidade.mandate2.score_geral, 1)}
+                      <span className="text-xs text-slate-400 font-normal"> /100</span>
                     </div>
                     <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">
                       {scoresProsperidade.mandate2.classificacao}
@@ -670,7 +684,7 @@ export default function ComparadorPage() {
                         Pilar Econômico (35%)
                       </span>
                       <span className="font-mono font-bold text-amber-300">
-                        {scoresProsperidade.mandate2.subscore_economico.toFixed(1)} pts
+                        {fmtNum(scoresProsperidade.mandate2.subscore_economico, 1)} pts
                       </span>
                     </div>
                     <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
@@ -679,8 +693,8 @@ export default function ComparadorPage() {
                         style={{ width: `${Math.min(100, Math.max(0, scoresProsperidade.mandate2.subscore_economico))}%` }}
                       />
                     </div>
-                    <span className="text-[10px] text-slate-500 block">
-                      PIB médio: {m2.pib_medio_anual_pct}% a.a. • Inflação acumulada: {m2.ipca_acumulado_pct}%
+                    <span className="text-[10px] text-slate-400 block">
+                      PIB médio: {fmtNum(m2.pib_medio_anual_pct)}% a.a. • Inflação acumulada: {fmtNum(m2.ipca_acumulado_pct)}%
                     </span>
                   </div>
 
@@ -692,7 +706,7 @@ export default function ComparadorPage() {
                         Pilar Social & Renda (35%)
                       </span>
                       <span className="font-mono font-bold text-emerald-400">
-                        {scoresProsperidade.mandate2.subscore_social.toFixed(1)} pts
+                        {fmtNum(scoresProsperidade.mandate2.subscore_social, 1)} pts
                       </span>
                     </div>
                     <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
@@ -701,8 +715,8 @@ export default function ComparadorPage() {
                         style={{ width: `${Math.min(100, Math.max(0, scoresProsperidade.mandate2.subscore_social))}%` }}
                       />
                     </div>
-                    <span className="text-[10px] text-slate-500 block">
-                      Salário Mínimo: R$ {m2.salario_minimo_final_brl || "N/D"} (US$ {m2.salario_minimo_final_usd || "N/D"})
+                    <span className="text-[10px] text-slate-400 block">
+                      Salário Mínimo: {isNum(m2.salario_minimo_final_brl) ? `R$ ${m2.salario_minimo_final_brl.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "R$ N/D"} ({isNum(m2.salario_minimo_final_usd) ? `US$ ${fmtNum(m2.salario_minimo_final_usd, 2)}` : "US$ N/D"})
                     </span>
                   </div>
 
@@ -714,7 +728,7 @@ export default function ComparadorPage() {
                         Estabilidade & Sustentabilidade (30%)
                       </span>
                       <span className="font-mono font-bold text-teal-300">
-                        {scoresProsperidade.mandate2.subscore_estabilidade.toFixed(1)} pts
+                        {fmtNum(scoresProsperidade.mandate2.subscore_estabilidade, 1)} pts
                       </span>
                     </div>
                     <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
@@ -723,8 +737,8 @@ export default function ComparadorPage() {
                         style={{ width: `${Math.min(100, Math.max(0, scoresProsperidade.mandate2.subscore_estabilidade))}%` }}
                       />
                     </div>
-                    <span className="text-[10px] text-slate-500 block">
-                      Desmatamento médio: {m2.desmatamento_medio_anual_km2 ? `${m2.desmatamento_medio_anual_km2.toLocaleString("pt-BR")} km²/ano` : "N/D"}
+                    <span className="text-[10px] text-slate-400 block">
+                      Desmatamento médio: {isNum(m2.desmatamento_medio_anual_km2) ? `${m2.desmatamento_medio_anual_km2.toLocaleString("pt-BR")} km²/ano` : "N/D"}
                     </span>
                   </div>
                 </div>
@@ -774,40 +788,35 @@ export default function ComparadorPage() {
                 <table className="w-full text-left text-sm border-collapse">
                   <thead>
                     <tr className="border-b border-slate-800 text-xs text-slate-400 uppercase tracking-wider">
-                      <th className="py-2.5 px-4 font-semibold">Indicador Econômico</th>
-                      <th className="py-2.5 px-4 font-semibold text-cyan-400">
+                      <th scope="col" className="py-2.5 px-4 font-semibold">Indicador Econômico</th>
+                      <th scope="col" className="py-2.5 px-4 font-semibold text-cyan-400">
                         {m1.presidente}
                       </th>
-                      <th className="py-2.5 px-4 font-semibold text-amber-400">
+                      <th scope="col" className="py-2.5 px-4 font-semibold text-amber-400">
                         {m2.presidente}
                       </th>
-                      <th className="py-2.5 px-4 font-semibold text-right">Diferença (Delta B − A)</th>
+                      <th scope="col" className="py-2.5 px-4 font-semibold text-right">Diferença (Delta B − A)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-200">
                     {/* PIB Médio Anual */}
                     <tr className="hover:bg-slate-800/20 transition-colors">
-                      <td className="py-3 px-4 font-medium flex items-center gap-2">
+                      <td className="py-3 px-4 font-medium">
+<span className="inline-flex items-center gap-2">
                         <TrendingUp className="w-4 h-4 text-emerald-400" />
                         <span>Crescimento do PIB (Médio Anual)</span>
-                      </td>
+                      </span></td>
                       <td className="py-3 px-4 font-mono font-bold text-cyan-300">
-                        {m1.pib_medio_anual_pct > 0 ? `+${m1.pib_medio_anual_pct}%` : `${m1.pib_medio_anual_pct}%`} a.a.
+                        {fmtSigned(m1.pib_medio_anual_pct, "%")} a.a.
                       </td>
                       <td className="py-3 px-4 font-mono font-bold text-amber-300">
-                        {m2.pib_medio_anual_pct > 0 ? `+${m2.pib_medio_anual_pct}%` : `${m2.pib_medio_anual_pct}%`} a.a.
+                        {fmtSigned(m2.pib_medio_anual_pct, "%")} a.a.
                       </td>
                       <td className="py-3 px-4 text-right">
                         <span
-                          className={`inline-flex items-center gap-1 font-mono font-bold text-xs px-2.5 py-1 rounded-full ${
-                            deltas.pib_medio_diff_pp > 0
-                              ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                              : deltas.pib_medio_diff_pp < 0
-                              ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                              : "bg-slate-800 text-slate-300"
-                          }`}
+                          className={deltaPillClass(deltas.pib_medio_diff_pp)}
                         >
-                          {deltas.pib_medio_diff_pp > 0 ? `+${deltas.pib_medio_diff_pp} p.p.` : `${deltas.pib_medio_diff_pp} p.p.`}
+                          {fmtSigned(deltas.pib_medio_diff_pp, " p.p.")}
                         </span>
                       </td>
                     </tr>
@@ -816,30 +825,27 @@ export default function ComparadorPage() {
                     <tr className="hover:bg-slate-800/20 transition-colors">
                       <td className="py-3 px-4 font-medium">Crescimento Acumulado do PIB no Mandato</td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                        +{m1.pib_crescimento_acumulado_pct}%
+                        {fmtSigned(m1.pib_crescimento_acumulado_pct, "%")}
                       </td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                        +{m2.pib_crescimento_acumulado_pct}%
+                        {fmtSigned(m2.pib_crescimento_acumulado_pct, "%")}
                       </td>
                       <td className="py-3 px-4 text-right">
                         <span
-                          className={`inline-flex items-center gap-1 font-mono font-bold text-xs px-2.5 py-1 rounded-full ${
-                            deltas.pib_acumulado_diff_pp > 0
-                              ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                              : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                          }`}
+                          className={deltaPillClass(deltas.pib_acumulado_diff_pp)}
                         >
-                          {deltas.pib_acumulado_diff_pp > 0 ? `+${deltas.pib_acumulado_diff_pp} p.p.` : `${deltas.pib_acumulado_diff_pp} p.p.`}
+                          {fmtSigned(deltas.pib_acumulado_diff_pp, " p.p.")}
                         </span>
                       </td>
                     </tr>
 
                     {/* Inflação Acumulada IPCA */}
                     <tr className="hover:bg-slate-800/20 transition-colors">
-                      <td className="py-3 px-4 font-medium flex items-center gap-2">
+                      <td className="py-3 px-4 font-medium">
+<span className="inline-flex items-center gap-2">
                         <TrendingDown className="w-4 h-4 text-rose-400" />
                         <span>Inflação Acumulada (IPCA)</span>
-                      </td>
+                      </span></td>
                       <td className="py-3 px-4 font-mono font-bold text-cyan-300">
                         {m1.ipca_pos_real_pct
                           ? `${m1.ipca_pos_real_pct}% (pós-Real)`
@@ -852,63 +858,57 @@ export default function ComparadorPage() {
                       </td>
                       <td className="py-3 px-4 text-right">
                         <span
-                          className={`inline-flex items-center gap-1 font-mono font-bold text-xs px-2.5 py-1 rounded-full ${
-                            deltas.ipca_acumulado_diff_pp < 0
-                              ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                              : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                          }`}
+                          className={deltaPillClass(deltas.ipca_acumulado_diff_pp, true)}
                         >
-                          {deltas.ipca_acumulado_diff_pp > 0
-                            ? `+${deltas.ipca_acumulado_diff_pp} p.p.`
-                            : `${deltas.ipca_acumulado_diff_pp} p.p.`}
+                          {fmtSigned(deltas.ipca_acumulado_diff_pp, " p.p.")}
                         </span>
                       </td>
                     </tr>
 
                     {/* Cotação do Dólar PTAX */}
                     <tr className="hover:bg-slate-800/20 transition-colors">
-                      <td className="py-3 px-4 font-medium flex items-center gap-2">
+                      <td className="py-3 px-4 font-medium">
+<span className="inline-flex items-center gap-2">
                         <DollarSign className="w-4 h-4 text-cyan-400" />
                         <span>Cotação do Dólar (PTAX Inicial → Final)</span>
-                      </td>
+                      </span></td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                        {m1.cambio_variacao_pct !== null ? `${m1.cambio_variacao_pct > 0 ? "+" : ""}${m1.cambio_variacao_pct}%` : "N/D"}
-                        <span className="text-xs text-slate-500 block">
-                          (R$ {m1.cambio_inicial_usd_brl} → R$ {m1.cambio_final_usd_brl})
+                        {isNum(m1.cambio_variacao_pct) ? fmtSigned(m1.cambio_variacao_pct, "%") : "N/D"}
+                        <span className="text-xs text-slate-400 block">
+                          (R$ {fmtNum(m1.cambio_inicial_usd_brl, 2)} → R$ {fmtNum(m1.cambio_final_usd_brl, 2)})
                         </span>
                       </td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                        {m2.cambio_variacao_pct !== null ? `${m2.cambio_variacao_pct > 0 ? "+" : ""}${m2.cambio_variacao_pct}%` : "N/D"}
-                        <span className="text-xs text-slate-500 block">
-                          (R$ {m2.cambio_inicial_usd_brl} → R$ {m2.cambio_final_usd_brl})
+                        {isNum(m2.cambio_variacao_pct) ? fmtSigned(m2.cambio_variacao_pct, "%") : "N/D"}
+                        <span className="text-xs text-slate-400 block">
+                          (R$ {fmtNum(m2.cambio_inicial_usd_brl, 2)} → R$ {fmtNum(m2.cambio_final_usd_brl, 2)})
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right">
-                        {deltas.cambio_variacao_diff_pp !== null ? (
+                        {isNum(deltas.cambio_variacao_diff_pp) ? (
                           <span className="inline-flex items-center font-mono font-bold text-xs px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-                            {deltas.cambio_variacao_diff_pp > 0
-                              ? `+${deltas.cambio_variacao_diff_pp} p.p.`
-                              : `${deltas.cambio_variacao_diff_pp} p.p.`}
+                            {fmtSigned(deltas.cambio_variacao_diff_pp, " p.p.")}
                           </span>
                         ) : (
-                          <span className="text-slate-500 text-xs">N/D</span>
+                          <span className="text-slate-400 text-xs">N/D</span>
                         )}
                       </td>
                     </tr>
 
                     {/* Salário Mínimo */}
                     <tr className="hover:bg-slate-800/20 transition-colors">
-                      <td className="py-3 px-4 font-medium flex items-center gap-2">
+                      <td className="py-3 px-4 font-medium">
+<span className="inline-flex items-center gap-2">
                         <Coins className="w-4 h-4 text-amber-400" />
                         <span>Salário Mínimo Final (em R$ e US$)</span>
-                      </td>
+                      </span></td>
                       <td className="py-3 px-4 font-mono font-bold text-cyan-300">
                         {m1.salario_minimo_final_brl ? (
                           <div>
                             <span>R$ {m1.salario_minimo_final_brl.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                             {m1.salario_minimo_final_usd && (
                               <span className="text-[11px] text-slate-400 font-normal block">
-                                (US$ {m1.salario_minimo_final_usd.toFixed(2)})
+                                (US$ {fmtNum(m1.salario_minimo_final_usd, 2)})
                               </span>
                             )}
                           </div>
@@ -920,26 +920,22 @@ export default function ComparadorPage() {
                             <span>R$ {m2.salario_minimo_final_brl.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                             {m2.salario_minimo_final_usd && (
                               <span className="text-[11px] text-slate-400 font-normal block">
-                                (US$ {m2.salario_minimo_final_usd.toFixed(2)})
+                                (US$ {fmtNum(m2.salario_minimo_final_usd, 2)})
                               </span>
                             )}
                           </div>
                         ) : "N/D"}
                       </td>
                       <td className="py-3 px-4 text-right">
-                        {deltas.salario_minimo_brl_diff !== null && deltas.salario_minimo_brl_diff !== undefined ? (
+                        {isNum(deltas.salario_minimo_brl_diff) ? (
                           <span
-                            className={`inline-flex items-center gap-1 font-mono font-bold text-xs px-2.5 py-1 rounded-full ${
-                              deltas.salario_minimo_brl_diff > 0
-                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                                : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                            }`}
+                            className={deltaPillClass(deltas.salario_minimo_brl_diff)}
                           >
                             {deltas.salario_minimo_brl_diff > 0 ? "+" : ""}
                             R$ {deltas.salario_minimo_brl_diff.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         ) : (
-                          <span className="text-slate-500 text-xs">N/D</span>
+                          <span className="text-slate-400 text-xs">N/D</span>
                         )}
                       </td>
                     </tr>
@@ -958,197 +954,185 @@ export default function ComparadorPage() {
                 <table className="w-full text-left text-sm border-collapse">
                   <thead>
                     <tr className="border-b border-slate-800 text-xs text-slate-400 uppercase tracking-wider">
-                      <th className="py-2.5 px-4 font-semibold">Indicador Social</th>
-                      <th className="py-2.5 px-4 font-semibold text-cyan-400">
+                      <th scope="col" className="py-2.5 px-4 font-semibold">Indicador Social</th>
+                      <th scope="col" className="py-2.5 px-4 font-semibold text-cyan-400">
                         {m1.presidente}
                       </th>
-                      <th className="py-2.5 px-4 font-semibold text-amber-400">
+                      <th scope="col" className="py-2.5 px-4 font-semibold text-amber-400">
                         {m2.presidente}
                       </th>
-                      <th className="py-2.5 px-4 font-semibold text-right">Diferença (Delta B − A)</th>
+                      <th scope="col" className="py-2.5 px-4 font-semibold text-right">Diferença (Delta B − A)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-200">
                     {/* Extrema Pobreza Nacional */}
                     <tr className="hover:bg-slate-800/20 transition-colors">
-                      <td className="py-3 px-4 font-medium flex items-center gap-2">
+                      <td className="py-3 px-4 font-medium">
+<span className="inline-flex items-center gap-2">
                         <Users className="w-4 h-4 text-rose-400" />
                         <div>
                           <span>Extrema Pobreza Nacional (% população)</span>
-                          <span className="text-[11px] text-slate-500 block">Linha de Pobreza Extrema Banco Mundial / IBGE</span>
+                          <span className="text-[11px] text-slate-400 block">Linha de Pobreza Extrema Banco Mundial / IBGE</span>
                         </div>
-                      </td>
+                      </span></td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                        {m1.sociais?.extrema_pobreza_final_pct !== undefined ? (
+                        {isNum(m1.sociais?.extrema_pobreza_final_pct) ? (
                           <div>
                             <span className="font-bold text-cyan-300">{m1.sociais?.extrema_pobreza_final_pct}%</span>
-                            <span className="text-[11px] text-slate-500 block">
-                              (Inicial: {m1.sociais?.extrema_pobreza_inicial_pct}%)
+                            <span className="text-[11px] text-slate-400 block">
+                              (Inicial: {isNum(m1.sociais?.extrema_pobreza_inicial_pct) ? `${m1.sociais?.extrema_pobreza_inicial_pct}%` : "N/D"})
                             </span>
                           </div>
                         ) : "N/D"}
                       </td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                        {m2.sociais?.extrema_pobreza_final_pct !== undefined ? (
+                        {isNum(m2.sociais?.extrema_pobreza_final_pct) ? (
                           <div>
                             <span className="font-bold text-amber-300">{m2.sociais?.extrema_pobreza_final_pct}%</span>
-                            <span className="text-[11px] text-slate-500 block">
-                              (Inicial: {m2.sociais?.extrema_pobreza_inicial_pct}%)
+                            <span className="text-[11px] text-slate-400 block">
+                              (Inicial: {isNum(m2.sociais?.extrema_pobreza_inicial_pct) ? `${m2.sociais?.extrema_pobreza_inicial_pct}%` : "N/D"})
                             </span>
                           </div>
                         ) : "N/D"}
                       </td>
                       <td className="py-3 px-4 text-right">
-                        {deltas.extrema_pobreza_diff_pp !== null && deltas.extrema_pobreza_diff_pp !== undefined ? (
+                        {isNum(deltas.extrema_pobreza_diff_pp) ? (
                           <span
-                            className={`inline-flex items-center gap-1 font-mono font-bold text-xs px-2.5 py-1 rounded-full ${
-                              deltas.extrema_pobreza_diff_pp < 0
-                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                                : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                            }`}
+                            className={deltaPillClass(deltas.extrema_pobreza_diff_pp, true)}
                           >
-                            {deltas.extrema_pobreza_diff_pp > 0 ? `+${deltas.extrema_pobreza_diff_pp} p.p.` : `${deltas.extrema_pobreza_diff_pp} p.p.`}
+                            {fmtSigned(deltas.extrema_pobreza_diff_pp, " p.p.")}
                           </span>
                         ) : (
-                          <span className="text-slate-500 text-xs">N/D</span>
+                          <span className="text-slate-400 text-xs">N/D</span>
                         )}
                       </td>
                     </tr>
 
                     {/* Taxa de Analfabetismo */}
                     <tr className="hover:bg-slate-800/20 transition-colors">
-                      <td className="py-3 px-4 font-medium flex items-center gap-2">
+                      <td className="py-3 px-4 font-medium">
+<span className="inline-flex items-center gap-2">
                         <GraduationCap className="w-4 h-4 text-indigo-400" />
                         <div>
                           <span>Taxa de Analfabetismo (% 15+ anos)</span>
-                          <span className="text-[11px] text-slate-500 block">População sem domínio de leitura e escrita (PNAD/IBGE)</span>
+                          <span className="text-[11px] text-slate-400 block">População sem domínio de leitura e escrita (PNAD/IBGE)</span>
                         </div>
-                      </td>
+                      </span></td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                        {m1.sociais?.analfabetismo_final_pct !== undefined ? (
+                        {isNum(m1.sociais?.analfabetismo_final_pct) ? (
                           <div>
                             <span className="font-bold text-cyan-300">{m1.sociais?.analfabetismo_final_pct}%</span>
-                            <span className="text-[11px] text-slate-500 block">
-                              (Inicial: {m1.sociais?.analfabetismo_inicial_pct}%)
+                            <span className="text-[11px] text-slate-400 block">
+                              (Inicial: {isNum(m1.sociais?.analfabetismo_inicial_pct) ? `${m1.sociais?.analfabetismo_inicial_pct}%` : "N/D"})
                             </span>
                           </div>
                         ) : "N/D"}
                       </td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                        {m2.sociais?.analfabetismo_final_pct !== undefined ? (
+                        {isNum(m2.sociais?.analfabetismo_final_pct) ? (
                           <div>
                             <span className="font-bold text-amber-300">{m2.sociais?.analfabetismo_final_pct}%</span>
-                            <span className="text-[11px] text-slate-500 block">
-                              (Inicial: {m2.sociais?.analfabetismo_inicial_pct}%)
+                            <span className="text-[11px] text-slate-400 block">
+                              (Inicial: {isNum(m2.sociais?.analfabetismo_inicial_pct) ? `${m2.sociais?.analfabetismo_inicial_pct}%` : "N/D"})
                             </span>
                           </div>
                         ) : "N/D"}
                       </td>
                       <td className="py-3 px-4 text-right">
-                        {deltas.analfabetismo_diff_pp !== null && deltas.analfabetismo_diff_pp !== undefined ? (
+                        {isNum(deltas.analfabetismo_diff_pp) ? (
                           <span
-                            className={`inline-flex items-center gap-1 font-mono font-bold text-xs px-2.5 py-1 rounded-full ${
-                              deltas.analfabetismo_diff_pp < 0
-                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                                : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                            }`}
+                            className={deltaPillClass(deltas.analfabetismo_diff_pp, true)}
                           >
-                            {deltas.analfabetismo_diff_pp > 0 ? `+${deltas.analfabetismo_diff_pp} p.p.` : `${deltas.analfabetismo_diff_pp} p.p.`}
+                            {fmtSigned(deltas.analfabetismo_diff_pp, " p.p.")}
                           </span>
                         ) : (
-                          <span className="text-slate-500 text-xs">N/D</span>
+                          <span className="text-slate-400 text-xs">N/D</span>
                         )}
                       </td>
                     </tr>
 
                     {/* Insegurança Alimentar Grave */}
                     <tr className="hover:bg-slate-800/20 transition-colors">
-                      <td className="py-3 px-4 font-medium flex items-center gap-2">
+                      <td className="py-3 px-4 font-medium">
+<span className="inline-flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4 text-amber-400" />
                         <div>
                           <span>Insegurança Alimentar Grave (Fome Crônica)</span>
-                          <span className="text-[11px] text-slate-500 block">Escala Brasileira de Insegurança Alimentar (EBIA / Rede PENSSAN)</span>
+                          <span className="text-[11px] text-slate-400 block">Escala Brasileira de Insegurança Alimentar (EBIA / Rede PENSSAN)</span>
                         </div>
-                      </td>
+                      </span></td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                        {m1.fome_final_pct !== undefined && m1.fome_final_pct !== null ? (
+                        {isNum(m1.fome_final_pct) ? (
                           <div>
                             <span className="font-bold text-cyan-300">{m1.fome_final_pct}%</span>
-                            <span className="text-[11px] text-slate-500 block">
-                              (Inicial: {m1.fome_inicial_pct}%)
+                            <span className="text-[11px] text-slate-400 block">
+                              (Inicial: {isNum(m1.fome_inicial_pct) ? `${m1.fome_inicial_pct}%` : "N/D"})
                             </span>
                           </div>
                         ) : "N/D"}
                       </td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                        {m2.fome_final_pct !== undefined && m2.fome_final_pct !== null ? (
+                        {isNum(m2.fome_final_pct) ? (
                           <div>
                             <span className="font-bold text-amber-300">{m2.fome_final_pct}%</span>
-                            <span className="text-[11px] text-slate-500 block">
-                              (Inicial: {m2.fome_inicial_pct}%)
+                            <span className="text-[11px] text-slate-400 block">
+                              (Inicial: {isNum(m2.fome_inicial_pct) ? `${m2.fome_inicial_pct}%` : "N/D"})
                             </span>
                           </div>
                         ) : "N/D"}
                       </td>
                       <td className="py-3 px-4 text-right">
-                        {deltas.inseguranca_alimentar_diff_pp !== null && deltas.inseguranca_alimentar_diff_pp !== undefined ? (
+                        {isNum(deltas.inseguranca_alimentar_diff_pp) ? (
                           <span
-                            className={`inline-flex items-center gap-1 font-mono font-bold text-xs px-2.5 py-1 rounded-full ${
-                              deltas.inseguranca_alimentar_diff_pp < 0
-                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                                : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                            }`}
+                            className={deltaPillClass(deltas.inseguranca_alimentar_diff_pp, true)}
                           >
-                            {deltas.inseguranca_alimentar_diff_pp > 0 ? `+${deltas.inseguranca_alimentar_diff_pp} p.p.` : `${deltas.inseguranca_alimentar_diff_pp} p.p.`}
+                            {fmtSigned(deltas.inseguranca_alimentar_diff_pp, " p.p.")}
                           </span>
                         ) : (
-                          <span className="text-slate-500 text-xs">N/D</span>
+                          <span className="text-slate-400 text-xs">N/D</span>
                         )}
                       </td>
                     </tr>
 
                     {/* Índice de Gini */}
                     <tr className="hover:bg-slate-800/20 transition-colors">
-                      <td className="py-3 px-4 font-medium flex items-center gap-2">
+                      <td className="py-3 px-4 font-medium">
+<span className="inline-flex items-center gap-2">
                         <Scale className="w-4 h-4 text-cyan-400" />
                         <div>
                           <span>Índice de Gini (Desigualdade de Renda)</span>
-                          <span className="text-[11px] text-slate-500 block">Escala de 0 a 1 (quanto menor, menor a desigualdade social)</span>
+                          <span className="text-[11px] text-slate-400 block">Escala de 0 a 1 (quanto menor, menor a desigualdade social)</span>
                         </div>
-                      </td>
+                      </span></td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                        {m1.sociais?.gini_final !== undefined ? (
+                        {isNum(m1.sociais?.gini_final) ? (
                           <div>
                             <span className="font-bold text-cyan-300">{m1.sociais?.gini_final}</span>
-                            <span className="text-[11px] text-slate-500 block">
-                              (Inicial: {m1.sociais?.gini_inicial})
+                            <span className="text-[11px] text-slate-400 block">
+                              (Inicial: {isNum(m1.sociais?.gini_inicial) ? m1.sociais?.gini_inicial : "N/D"})
                             </span>
                           </div>
                         ) : "N/D"}
                       </td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                        {m2.sociais?.gini_final !== undefined ? (
+                        {isNum(m2.sociais?.gini_final) ? (
                           <div>
                             <span className="font-bold text-amber-300">{m2.sociais?.gini_final}</span>
-                            <span className="text-[11px] text-slate-500 block">
-                              (Inicial: {m2.sociais?.gini_inicial})
+                            <span className="text-[11px] text-slate-400 block">
+                              (Inicial: {isNum(m2.sociais?.gini_inicial) ? m2.sociais?.gini_inicial : "N/D"})
                             </span>
                           </div>
                         ) : "N/D"}
                       </td>
                       <td className="py-3 px-4 text-right">
-                        {deltas.gini_diff !== null && deltas.gini_diff !== undefined ? (
+                        {isNum(deltas.gini_diff) ? (
                           <span
-                            className={`inline-flex items-center gap-1 font-mono font-bold text-xs px-2.5 py-1 rounded-full ${
-                              deltas.gini_diff < 0
-                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                                : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                            }`}
+                            className={deltaPillClass(deltas.gini_diff, true)}
                           >
-                            {deltas.gini_diff > 0 ? `+${deltas.gini_diff}` : `${deltas.gini_diff}`}
+                            {fmtSigned(deltas.gini_diff, "", 3)}
                           </span>
                         ) : (
-                          <span className="text-slate-500 text-xs">N/D</span>
+                          <span className="text-slate-400 text-xs">N/D</span>
                         )}
                       </td>
                     </tr>
@@ -1167,135 +1151,126 @@ export default function ComparadorPage() {
                 <table className="w-full text-left text-sm border-collapse">
                   <thead>
                     <tr className="border-b border-slate-800 text-xs text-slate-400 uppercase tracking-wider">
-                      <th className="py-2.5 px-4 font-semibold">Indicador</th>
-                      <th className="py-2.5 px-4 font-semibold text-cyan-400">
+                      <th scope="col" className="py-2.5 px-4 font-semibold">Indicador</th>
+                      <th scope="col" className="py-2.5 px-4 font-semibold text-cyan-400">
                         {m1.presidente}
                       </th>
-                      <th className="py-2.5 px-4 font-semibold text-amber-400">
+                      <th scope="col" className="py-2.5 px-4 font-semibold text-amber-400">
                         {m2.presidente}
                       </th>
-                      <th className="py-2.5 px-4 font-semibold text-right">Diferença (Delta B − A)</th>
+                      <th scope="col" className="py-2.5 px-4 font-semibold text-right">Diferença (Delta B − A)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-200">
                     {/* Taxa de Homicídios */}
                     <tr className="hover:bg-slate-800/20 transition-colors">
-                      <td className="py-3 px-4 font-medium flex items-center gap-2">
+                      <td className="py-3 px-4 font-medium">
+<span className="inline-flex items-center gap-2">
                         <ShieldAlert className="w-4 h-4 text-rose-400" />
                         <div>
                           <span>Taxa de Homicídios (por 100 mil habitantes)</span>
-                          <span className="text-[11px] text-slate-500 block">Atlas da Violência / IPEA / FBSP</span>
+                          <span className="text-[11px] text-slate-400 block">Atlas da Violência / IPEA / FBSP</span>
                         </div>
-                      </td>
+                      </span></td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
                         <span className="font-bold text-cyan-300">{formatNumber(m1.homicidios_medio, 1)}</span>
-                        <span className="text-[11px] text-slate-500 block">
+                        <span className="text-[11px] text-slate-400 block">
                           (Início: {formatNumber(m1.homicidios_inicial, 1)} → Fim: {formatNumber(m1.homicidios_final, 1)})
                         </span>
                       </td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
                         <span className="font-bold text-amber-300">{formatNumber(m2.homicidios_medio, 1)}</span>
-                        <span className="text-[11px] text-slate-500 block">
+                        <span className="text-[11px] text-slate-400 block">
                           (Início: {formatNumber(m2.homicidios_inicial, 1)} → Fim: {formatNumber(m2.homicidios_final, 1)})
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right">
-                        {deltas.homicidios_medio_diff !== null && deltas.homicidios_medio_diff !== undefined ? (
+                        {isNum(deltas.homicidios_medio_diff) ? (
                           <span
-                            className={`inline-flex items-center gap-1 font-mono font-bold text-xs px-2.5 py-1 rounded-full ${
-                              deltas.homicidios_medio_diff < 0
-                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                                : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                            }`}
+                            className={deltaPillClass(deltas.homicidios_medio_diff, true)}
                           >
-                            {deltas.homicidios_medio_diff > 0 ? `+${deltas.homicidios_medio_diff}` : `${deltas.homicidios_medio_diff}`} /100k
+                            {fmtSigned(deltas.homicidios_medio_diff)} /100k
                           </span>
                         ) : (
-                          <span className="text-slate-500 text-xs">N/D</span>
+                          <span className="text-slate-400 text-xs">N/D</span>
                         )}
                       </td>
                     </tr>
 
                     {/* Taxa de Feminicídios */}
                     <tr className="hover:bg-slate-800/20 transition-colors">
-                      <td className="py-3 px-4 font-medium flex items-center gap-2">
+                      <td className="py-3 px-4 font-medium">
+<span className="inline-flex items-center gap-2">
                         <Users className="w-4 h-4 text-fuchsia-400" />
                         <div>
                           <span>Taxa de Feminicídios (por 100 mil mulheres)</span>
-                          <span className="text-[11px] text-slate-500 block">Assassinatos de mulheres em razão do gênero</span>
+                          <span className="text-[11px] text-slate-400 block">Assassinatos de mulheres em razão do gênero</span>
                         </div>
-                      </td>
+                      </span></td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
                         <span className="font-bold text-cyan-300">{formatNumber(m1.feminicidios_medio, 2)}</span>
-                        <span className="text-[11px] text-slate-500 block">
+                        <span className="text-[11px] text-slate-400 block">
                           (Início: {formatNumber(m1.feminicidios_inicial, 2)} → Fim: {formatNumber(m1.feminicidios_final, 2)})
                         </span>
                       </td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
                         <span className="font-bold text-amber-300">{formatNumber(m2.feminicidios_medio, 2)}</span>
-                        <span className="text-[11px] text-slate-500 block">
+                        <span className="text-[11px] text-slate-400 block">
                           (Início: {formatNumber(m2.feminicidios_inicial, 2)} → Fim: {formatNumber(m2.feminicidios_final, 2)})
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right">
-                        {deltas.feminicidios_medio_diff !== null && deltas.feminicidios_medio_diff !== undefined ? (
+                        {isNum(deltas.feminicidios_medio_diff) ? (
                           <span
-                            className={`inline-flex items-center gap-1 font-mono font-bold text-xs px-2.5 py-1 rounded-full ${
-                              deltas.feminicidios_medio_diff < 0
-                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                                : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                            }`}
+                            className={deltaPillClass(deltas.feminicidios_medio_diff, true)}
                           >
-                            {deltas.feminicidios_medio_diff > 0 ? `+${deltas.feminicidios_medio_diff}` : `${deltas.feminicidios_medio_diff}`}
+                            {fmtSigned(deltas.feminicidios_medio_diff)} /100k
                           </span>
                         ) : (
-                          <span className="text-slate-500 text-xs">N/D</span>
+                          <span className="text-slate-400 text-xs">N/D</span>
                         )}
                       </td>
                     </tr>
 
                     {/* Desmatamento Amazônia */}
                     <tr className="hover:bg-slate-800/20 transition-colors">
-                      <td className="py-3 px-4 font-medium flex items-center gap-2">
+                      <td className="py-3 px-4 font-medium">
+<span className="inline-flex items-center gap-2">
                         <Trees className="w-4 h-4 text-emerald-400" />
                         <div>
                           <span>Desmatamento Amazônia (km² anual / PRODES/INPE)</span>
-                          <span className="text-[11px] text-slate-500 block">Taxa oficial de supressão vegetal na Amazônia Legal</span>
+                          <span className="text-[11px] text-slate-400 block">Taxa oficial de supressão vegetal na Amazônia Legal</span>
                         </div>
-                      </td>
+                      </span></td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
                         <span className="font-bold text-cyan-300">
-                          {m1.desmatamento_medio_anual_km2 ? `${m1.desmatamento_medio_anual_km2.toLocaleString("pt-BR")} km²/ano` : "N/D"}
+                          {isNum(m1.desmatamento_medio_anual_km2) ? `${m1.desmatamento_medio_anual_km2.toLocaleString("pt-BR")} km²/ano` : "N/D"}
                         </span>
                         {m1.desmatamento_acumulado_km2 && (
-                          <span className="text-[11px] text-slate-500 block">
+                          <span className="text-[11px] text-slate-400 block">
                             (Total no mandato: {m1.desmatamento_acumulado_km2.toLocaleString("pt-BR")} km²)
                           </span>
                         )}
                       </td>
                       <td className="py-3 px-4 font-mono font-semibold text-slate-300">
                         <span className="font-bold text-amber-300">
-                          {m2.desmatamento_medio_anual_km2 ? `${m2.desmatamento_medio_anual_km2.toLocaleString("pt-BR")} km²/ano` : "N/D"}
+                          {isNum(m2.desmatamento_medio_anual_km2) ? `${m2.desmatamento_medio_anual_km2.toLocaleString("pt-BR")} km²/ano` : "N/D"}
                         </span>
                         {m2.desmatamento_acumulado_km2 && (
-                          <span className="text-[11px] text-slate-500 block">
+                          <span className="text-[11px] text-slate-400 block">
                             (Total no mandato: {m2.desmatamento_acumulado_km2.toLocaleString("pt-BR")} km²)
                           </span>
                         )}
                       </td>
                       <td className="py-3 px-4 text-right">
-                        {deltas.desmatamento_medio_diff !== null && deltas.desmatamento_medio_diff !== undefined ? (
+                        {isNum(deltas.desmatamento_medio_diff) ? (
                           <span
-                            className={`inline-flex items-center gap-1 font-mono font-bold text-xs px-2.5 py-1 rounded-full ${
-                              deltas.desmatamento_medio_diff < 0
-                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                                : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                            }`}
+                            className={deltaPillClass(deltas.desmatamento_medio_diff, true)}
                           >
-                            {deltas.desmatamento_medio_diff > 0 ? `+${deltas.desmatamento_medio_diff.toLocaleString("pt-BR")}` : `${deltas.desmatamento_medio_diff.toLocaleString("pt-BR")}`} km²
+                            {fmtSigned(deltas.desmatamento_medio_diff, "", 0)} km²
                           </span>
                         ) : (
-                          <span className="text-slate-500 text-xs">N/D</span>
+                          <span className="text-slate-400 text-xs">N/D</span>
                         )}
                       </td>
                     </tr>
@@ -1324,6 +1299,8 @@ export default function ComparadorPage() {
             {/* Seletor de Métrica do Gráfico */}
             <div className="flex items-center bg-slate-950 border border-slate-800 p-1 rounded-xl overflow-x-auto max-w-full">
               <button
+                type="button"
+                aria-pressed={chartMetric === "PIB"}
                 onClick={() => setChartMetric("PIB")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   chartMetric === "PIB"
@@ -1334,6 +1311,8 @@ export default function ComparadorPage() {
                 PIB (%)
               </button>
               <button
+                type="button"
+                aria-pressed={chartMetric === "IPCA"}
                 onClick={() => setChartMetric("IPCA")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   chartMetric === "IPCA"
@@ -1344,6 +1323,8 @@ export default function ComparadorPage() {
                 IPCA (%)
               </button>
               <button
+                type="button"
+                aria-pressed={chartMetric === "USD"}
                 onClick={() => setChartMetric("USD")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   chartMetric === "USD"
@@ -1354,6 +1335,8 @@ export default function ComparadorPage() {
                 Dólar (R$)
               </button>
               <button
+                type="button"
+                aria-pressed={chartMetric === "SALARIO"}
                 onClick={() => setChartMetric("SALARIO")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   chartMetric === "SALARIO"
@@ -1364,6 +1347,8 @@ export default function ComparadorPage() {
                 Salário Mínimo
               </button>
               <button
+                type="button"
+                aria-pressed={chartMetric === "POBREZA"}
                 onClick={() => setChartMetric("POBREZA")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   chartMetric === "POBREZA"
@@ -1374,6 +1359,8 @@ export default function ComparadorPage() {
                 Extr. Pobreza
               </button>
               <button
+                type="button"
+                aria-pressed={chartMetric === "ANALFABETISMO"}
                 onClick={() => setChartMetric("ANALFABETISMO")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   chartMetric === "ANALFABETISMO"
@@ -1384,6 +1371,8 @@ export default function ComparadorPage() {
                 Analfabetismo
               </button>
               <button
+                type="button"
+                aria-pressed={chartMetric === "FOME"}
                 onClick={() => setChartMetric("FOME")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   chartMetric === "FOME"
@@ -1394,6 +1383,8 @@ export default function ComparadorPage() {
                 Fome
               </button>
               <button
+                type="button"
+                aria-pressed={chartMetric === "GINI"}
                 onClick={() => setChartMetric("GINI")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   chartMetric === "GINI"
@@ -1404,6 +1395,8 @@ export default function ComparadorPage() {
                 Gini
               </button>
               <button
+                type="button"
+                aria-pressed={chartMetric === "HOMICIDIOS"}
                 onClick={() => setChartMetric("HOMICIDIOS")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   chartMetric === "HOMICIDIOS"
@@ -1414,6 +1407,8 @@ export default function ComparadorPage() {
                 Homicídios
               </button>
               <button
+                type="button"
+                aria-pressed={chartMetric === "DESMATAMENTO"}
                 onClick={() => setChartMetric("DESMATAMENTO")}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   chartMetric === "DESMATAMENTO"
@@ -1427,7 +1422,11 @@ export default function ComparadorPage() {
           </div>
 
           {/* Gráfico Recharts */}
-          <div className="h-80 w-full pt-4">
+          <div
+            role="img"
+            aria-label={`Gráfico de linhas comparando ${m1?.presidente ?? "o mandato A"} e ${m2?.presidente ?? "o mandato B"}: ${metricConfig.title}`}
+            className="h-80 w-full pt-4"
+          >
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trajectory} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
@@ -1457,7 +1456,7 @@ export default function ComparadorPage() {
                               {m1?.presidente} ({dataPoint?.m1_calendar_year || "N/D"}):
                             </span>
                             <span className="font-mono font-bold">
-                              {dataPoint?.[metricConfig.m1Key] !== null && dataPoint?.[metricConfig.m1Key] !== undefined
+                              {isNum(dataPoint?.[metricConfig.m1Key])
                                 ? `${dataPoint[metricConfig.m1Key]}${metricConfig.unit}`
                                 : "N/D"}
                             </span>
@@ -1467,7 +1466,7 @@ export default function ComparadorPage() {
                               {m2?.presidente} ({dataPoint?.m2_calendar_year || "N/D"}):
                             </span>
                             <span className="font-mono font-bold">
-                              {dataPoint?.[metricConfig.m2Key] !== null && dataPoint?.[metricConfig.m2Key] !== undefined
+                              {isNum(dataPoint?.[metricConfig.m2Key])
                                 ? `${dataPoint[metricConfig.m2Key]}${metricConfig.unit}`
                                 : "N/D"}
                             </span>
@@ -1519,16 +1518,16 @@ export default function ComparadorPage() {
                     Distribuição de Verbas e Repasses Federais por Estados
                   </h2>
                   <p className="text-xs text-slate-400">
-                    Confronto direto dos recursos transferidos aos 27 estados da federação em 4 áreas estruturantes
+                    Confronto direto dos recursos transferidos aos estados da federação nas áreas estruturantes
                   </p>
                 </div>
               </div>
               <div className="text-right">
-                <span className="text-[11px] text-slate-400 block">Total Geral Repassado (4 anos):</span>
+                <span className="text-[11px] text-slate-400 block">Total Geral Repassado no mandato:</span>
                 <span className="text-xs font-mono font-bold text-cyan-400">
                   {formatBRL(repassesComp.summary?.m1_total_geral)} (A)
                 </span>
-                <span className="text-xs text-slate-500 mx-1.5">vs</span>
+                <span className="text-xs text-slate-400 mx-1.5">vs</span>
                 <span className="text-xs font-mono font-bold text-amber-400">
                   {formatBRL(repassesComp.summary?.m2_total_geral)} (B)
                 </span>
@@ -1537,173 +1536,44 @@ export default function ComparadorPage() {
 
             {/* CARDS DAS 4 ÁREAS TEMÁTICAS */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* 1. Saúde (SUS & FNS) */}
-              {repassesComp.by_area?.["Saúde"] && (
-                <div className="bg-slate-950/80 border border-rose-500/20 rounded-xl p-4 space-y-2.5 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-400">
-                      <HeartHandshake className="w-4 h-4" />
-                      Saúde (SUS & FNS)
-                    </span>
-                    <span
-                      className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-                        repassesComp.by_area["Saúde"].growth_pct >= 0
-                          ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
-                          : "bg-rose-500/15 text-rose-300 border border-rose-500/30"
-                      }`}
-                    >
-                      {repassesComp.by_area["Saúde"].growth_pct >= 0 ? "+" : ""}
-                      {repassesComp.by_area["Saúde"].growth_pct}%
-                    </span>
-                  </div>
-                  <div className="space-y-1 text-xs">
-                    <div className="flex justify-between items-center text-slate-400">
-                      <span>{m1?.presidente.split(" ")[0]}:</span>
-                      <strong className="text-cyan-300 font-mono">
-                        {formatBRL(repassesComp.by_area["Saúde"].m1_total)}
-                      </strong>
+              {AREA_CARDS.map((card) => {
+                const area = repassesComp.by_area?.[card.key];
+                if (!area) return null;
+                const Icon = card.icon;
+                return (
+                  <div key={card.key} className={`bg-slate-950/80 border ${card.border} rounded-xl p-4 space-y-2.5 shadow-sm`}>
+                    <div className="flex items-center justify-between">
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-bold ${card.text}`}>
+                        <Icon className="w-4 h-4" aria-hidden="true" />
+                        {card.label}
+                      </span>
+                      <span
+                        className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                          isNum(area.growth_pct) && area.growth_pct >= 0
+                            ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+                            : "bg-rose-500/15 text-rose-300 border border-rose-500/30"
+                        }`}
+                      >
+                        {fmtSigned(area.growth_pct, "%")}
+                      </span>
                     </div>
-                    <div className="flex justify-between items-center text-slate-400">
-                      <span>{m2?.presidente.split(" ")[0]}:</span>
-                      <strong className="text-amber-300 font-mono">
-                        {formatBRL(repassesComp.by_area["Saúde"].m2_total)}
-                      </strong>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex justify-between items-center text-slate-400">
+                        <span>{m1?.presidente.split(" ")[0]}:</span>
+                        <strong className="text-cyan-300 font-mono">{formatBRL(area.m1_total)}</strong>
+                      </div>
+                      <div className="flex justify-between items-center text-slate-400">
+                        <span>{m2?.presidente.split(" ")[0]}:</span>
+                        <strong className="text-amber-300 font-mono">{formatBRL(area.m2_total)}</strong>
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-[11px] text-slate-500 border-t border-slate-900 pt-2 flex justify-between">
-                    <span>Diferença:</span>
-                    <strong className="text-slate-300 font-mono">
-                      {formatBRL(repassesComp.by_area["Saúde"].diff_brl)}
-                    </strong>
-                  </div>
-                </div>
-              )}
-
-              {/* 2. Educação (FUNDEB & FNDE) */}
-              {repassesComp.by_area?.["Educação"] && (
-                <div className="bg-slate-950/80 border border-indigo-500/20 rounded-xl p-4 space-y-2.5 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-400">
-                      <GraduationCap className="w-4 h-4" />
-                      Educação (FUNDEB & FNDE)
-                    </span>
-                    <span
-                      className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-                        repassesComp.by_area["Educação"].growth_pct >= 0
-                          ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
-                          : "bg-rose-500/15 text-rose-300 border border-rose-500/30"
-                      }`}
-                    >
-                      {repassesComp.by_area["Educação"].growth_pct >= 0 ? "+" : ""}
-                      {repassesComp.by_area["Educação"].growth_pct}%
-                    </span>
-                  </div>
-                  <div className="space-y-1 text-xs">
-                    <div className="flex justify-between items-center text-slate-400">
-                      <span>{m1?.presidente.split(" ")[0]}:</span>
-                      <strong className="text-cyan-300 font-mono">
-                        {formatBRL(repassesComp.by_area["Educação"].m1_total)}
-                      </strong>
-                    </div>
-                    <div className="flex justify-between items-center text-slate-400">
-                      <span>{m2?.presidente.split(" ")[0]}:</span>
-                      <strong className="text-amber-300 font-mono">
-                        {formatBRL(repassesComp.by_area["Educação"].m2_total)}
-                      </strong>
+                    <div className="text-[11px] text-slate-400 border-t border-slate-900 pt-2 flex justify-between">
+                      <span>Diferença:</span>
+                      <strong className="text-slate-300 font-mono">{formatBRL(area.diff_brl)}</strong>
                     </div>
                   </div>
-                  <div className="text-[11px] text-slate-500 border-t border-slate-900 pt-2 flex justify-between">
-                    <span>Diferença:</span>
-                    <strong className="text-slate-300 font-mono">
-                      {formatBRL(repassesComp.by_area["Educação"].diff_brl)}
-                    </strong>
-                  </div>
-                </div>
-              )}
-
-              {/* 3. Infraestrutura & Cidades */}
-              {repassesComp.by_area?.["Infraestrutura"] && (
-                <div className="bg-slate-950/80 border border-amber-500/20 rounded-xl p-4 space-y-2.5 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-400">
-                      <Building2 className="w-4 h-4" />
-                      Infraestrutura & Cidades
-                    </span>
-                    <span
-                      className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-                        repassesComp.by_area["Infraestrutura"].growth_pct >= 0
-                          ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
-                          : "bg-rose-500/15 text-rose-300 border border-rose-500/30"
-                      }`}
-                    >
-                      {repassesComp.by_area["Infraestrutura"].growth_pct >= 0 ? "+" : ""}
-                      {repassesComp.by_area["Infraestrutura"].growth_pct}%
-                    </span>
-                  </div>
-                  <div className="space-y-1 text-xs">
-                    <div className="flex justify-between items-center text-slate-400">
-                      <span>{m1?.presidente.split(" ")[0]}:</span>
-                      <strong className="text-cyan-300 font-mono">
-                        {formatBRL(repassesComp.by_area["Infraestrutura"].m1_total)}
-                      </strong>
-                    </div>
-                    <div className="flex justify-between items-center text-slate-400">
-                      <span>{m2?.presidente.split(" ")[0]}:</span>
-                      <strong className="text-amber-300 font-mono">
-                        {formatBRL(repassesComp.by_area["Infraestrutura"].m2_total)}
-                      </strong>
-                    </div>
-                  </div>
-                  <div className="text-[11px] text-slate-500 border-t border-slate-900 pt-2 flex justify-between">
-                    <span>Diferença:</span>
-                    <strong className="text-slate-300 font-mono">
-                      {formatBRL(repassesComp.by_area["Infraestrutura"].diff_brl)}
-                    </strong>
-                  </div>
-                </div>
-              )}
-
-              {/* 4. Segurança Pública */}
-              {repassesComp.by_area?.["Segurança Pública"] && (
-                <div className="bg-slate-950/80 border border-cyan-500/20 rounded-xl p-4 space-y-2.5 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-cyan-400">
-                      <ShieldAlert className="w-4 h-4" />
-                      Segurança Pública
-                    </span>
-                    <span
-                      className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-                        repassesComp.by_area["Segurança Pública"].growth_pct >= 0
-                          ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
-                          : "bg-rose-500/15 text-rose-300 border border-rose-500/30"
-                      }`}
-                    >
-                      {repassesComp.by_area["Segurança Pública"].growth_pct >= 0 ? "+" : ""}
-                      {repassesComp.by_area["Segurança Pública"].growth_pct}%
-                    </span>
-                  </div>
-                  <div className="space-y-1 text-xs">
-                    <div className="flex justify-between items-center text-slate-400">
-                      <span>{m1?.presidente.split(" ")[0]}:</span>
-                      <strong className="text-cyan-300 font-mono">
-                        {formatBRL(repassesComp.by_area["Segurança Pública"].m1_total)}
-                      </strong>
-                    </div>
-                    <div className="flex justify-between items-center text-slate-400">
-                      <span>{m2?.presidente.split(" ")[0]}:</span>
-                      <strong className="text-amber-300 font-mono">
-                        {formatBRL(repassesComp.by_area["Segurança Pública"].m2_total)}
-                      </strong>
-                    </div>
-                  </div>
-                  <div className="text-[11px] text-slate-500 border-t border-slate-900 pt-2 flex justify-between">
-                    <span>Diferença:</span>
-                    <strong className="text-slate-300 font-mono">
-                      {formatBRL(repassesComp.by_area["Segurança Pública"].diff_brl)}
-                    </strong>
-                  </div>
-                </div>
-              )}
+                );
+              })}
             </div>
 
             {/* TERMÔMETRO DE DISTRIBUIÇÃO REGIONAL & PACTO FEDERATIVO */}
@@ -1740,7 +1610,7 @@ export default function ComparadorPage() {
                       <div className="flex justify-between">
                         <span className="text-slate-400">Valor Per Capita:</span>
                         <strong className="text-cyan-300 font-mono">
-                          R$ {termometroRepasses.m1_lider_per_capita.valor_per_capita.toFixed(0)}/hab
+                          R$ {fmtNum(termometroRepasses.m1_lider_per_capita.valor_per_capita, 0)}/hab
                         </strong>
                       </div>
                     </div>
@@ -1761,7 +1631,7 @@ export default function ComparadorPage() {
                       <div className="flex justify-between">
                         <span className="text-slate-400">Valor Per Capita:</span>
                         <strong className="text-amber-300 font-mono">
-                          R$ {termometroRepasses.m2_lider_per_capita.valor_per_capita.toFixed(0)}/hab
+                          R$ {fmtNum(termometroRepasses.m2_lider_per_capita.valor_per_capita, 0)}/hab
                         </strong>
                       </div>
                     </div>
@@ -1826,7 +1696,9 @@ export default function ComparadorPage() {
                 <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg p-0.5">
                   {["TODAS", "Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"].map((reg) => (
                     <button
+                      type="button"
                       key={reg}
+                      aria-pressed={repasseRegionFilter === reg}
                       onClick={() => setRepasseRegionFilter(reg)}
                       className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
                         repasseRegionFilter === reg
@@ -1842,13 +1714,14 @@ export default function ComparadorPage() {
 
               {/* Busca por Estado */}
               <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
                 <input
                   type="text"
+                  aria-label="Filtrar estado ou UF"
                   placeholder="Filtrar estado ou UF..."
                   value={repasseSearchTerm}
                   onChange={(e) => setRepasseSearchTerm(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500 w-full sm:w-48"
+                  className="bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-400 focus:outline-none focus:border-emerald-500 w-full sm:w-48"
                 />
               </div>
             </div>
@@ -1858,28 +1731,29 @@ export default function ComparadorPage() {
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-950/90 sticky top-0 z-10 backdrop-blur-md">
                   <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider">
-                    <th className="py-2.5 px-3.5 font-bold">UF / Estado</th>
-                    <th className="py-2.5 px-3 font-semibold">Região</th>
-                    <th className="py-2.5 px-3 font-semibold text-cyan-400">
+                    <th scope="col" className="py-2.5 px-3.5 font-bold">UF / Estado</th>
+                    <th scope="col" className="py-2.5 px-3 font-semibold">Região</th>
+                    <th scope="col" className="py-2.5 px-3 font-semibold text-cyan-400">
                       Total {m1?.presidente.split(" ")[0]}
                     </th>
-                    <th className="py-2.5 px-3 font-semibold text-amber-400">
+                    <th scope="col" className="py-2.5 px-3 font-semibold text-amber-400">
                       Total {m2?.presidente.split(" ")[0]}
                     </th>
-                    <th className="py-2.5 px-3 font-semibold">Diferença (B − A)</th>
-                    <th className="py-2.5 px-3 font-semibold">Variação %</th>
-                    <th className="py-2.5 px-3.5 font-semibold text-right">Per Capita (A vs B)</th>
+                    <th scope="col" className="py-2.5 px-3 font-semibold">Diferença (B − A)</th>
+                    <th scope="col" className="py-2.5 px-3 font-semibold">Variação %</th>
+                    <th scope="col" className="py-2.5 px-3.5 font-semibold text-right">Per Capita (A vs B)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 text-slate-200">
                   {filteredUFs.map((item) => (
                     <tr key={item.uf} className="hover:bg-slate-800/30 transition-colors">
-                      <td className="py-2.5 px-3.5 font-bold flex items-center gap-1.5">
+                      <td className="py-2.5 px-3.5 font-bold">
+<span className="inline-flex items-center gap-1.5">
                         <span className="px-1.5 py-0.5 rounded bg-slate-800 text-emerald-400 font-mono text-[10px]">
                           {item.uf}
                         </span>
                         <span>{item.estado_nome}</span>
-                      </td>
+                      </span></td>
                       <td className="py-2.5 px-3 text-slate-400">{item.regiao}</td>
                       <td className="py-2.5 px-3 font-mono font-bold text-cyan-300">
                         {formatBRL(item.m1_total)}
@@ -1909,9 +1783,9 @@ export default function ComparadorPage() {
                         </span>
                       </td>
                       <td className="py-2.5 px-3.5 text-right font-mono text-slate-400">
-                        <span className="text-cyan-400">R$ {item.m1_per_capita.toFixed(0)}</span>
-                        <span className="mx-1 text-slate-600">/</span>
-                        <span className="text-amber-400 font-bold">R$ {item.m2_per_capita.toFixed(0)}</span>
+                        <span className="text-cyan-400">R$ {fmtNum(item.m1_per_capita, 0)}</span>
+                        <span className="mx-1 text-slate-400">/</span>
+                        <span className="text-amber-400 font-bold">R$ {fmtNum(item.m2_per_capita, 0)}</span>
                       </td>
                     </tr>
                   ))}
@@ -1942,8 +1816,8 @@ export default function ComparadorPage() {
                   Principais Reformas e Acontecimentos:
                 </span>
                 <ul className="list-disc list-inside space-y-1">
-                  {m1.marcos_economicos_principais?.map((marco, i) => (
-                    <li key={i} className="text-slate-300 leading-relaxed">
+                  {m1.marcos_economicos_principais?.map((marco) => (
+                    <li key={marco} className="text-slate-300 leading-relaxed">
                       {marco}
                     </li>
                   )) || <li>Dados históricos não informados</li>}
@@ -1969,8 +1843,8 @@ export default function ComparadorPage() {
                   Principais Reformas e Acontecimentos:
                 </span>
                 <ul className="list-disc list-inside space-y-1">
-                  {m2.marcos_economicos_principais?.map((marco, i) => (
-                    <li key={i} className="text-slate-300 leading-relaxed">
+                  {m2.marcos_economicos_principais?.map((marco) => (
+                    <li key={marco} className="text-slate-300 leading-relaxed">
                       {marco}
                     </li>
                   )) || <li>Dados históricos não informados</li>}

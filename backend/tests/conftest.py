@@ -1,6 +1,316 @@
-import os
-import pytest
+"""Fixtures compartilhadas: banco SQLite em memória, override único de get_db e diretório de dados isolado."""
 
-# Garante variáveis mínimas para a suíte de testes sem vazar credenciais
+import json
+import os
+import uuid
+from datetime import date, datetime, timezone
+from types import SimpleNamespace
+
+# Garante variáveis mínimas para a suíte de testes sem vazar credenciais (antes de importar a aplicação)
 os.environ.setdefault("POSTGRES_PASSWORD", "test_db_password_ci")
 os.environ.setdefault("ENVIRONMENT", "test")
+
+import pytest  # noqa: E402
+from app import main as main_module  # noqa: E402
+from app.api.v1 import analytics, economic, legislative, politicians  # noqa: E402
+from app.core import data_files  # noqa: E402
+from app.core.config import settings  # noqa: E402
+from app.core.database import get_db  # noqa: E402
+from app.models import (  # noqa: E402
+    Base,
+    CargoPoliticoEnum,
+    CasaLegislativaEnum,
+    CertidaoJudicial,
+    DespesaCota,
+    DoacaoCampanha,
+    EmendaParlamentar,
+    Mandate,
+    ParliamentaryVote,
+    PartyAffiliation,
+    PoliticalParty,
+    Politician,
+    Proposition,
+    StatusMandatoEnum,
+    TipoProposicaoEnum,
+    VotingSession,
+    VotoOpcaoEnum,
+)
+from app.services import cidadania_service  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+
+FAR_FUTURE = date(2999, 1, 31)
+
+
+@pytest.fixture(autouse=True)
+def _isolation(monkeypatch):
+    """Zera estado global entre testes: caches de arquivos, rate limiter e cache do serviço de cidadania."""
+    monkeypatch.setattr(settings, "RATE_LIMIT_PER_MINUTE", 0)
+    monkeypatch.setattr(cidadania_service, "_cache_data", None)
+    monkeypatch.setattr(cidadania_service, "_cache_timestamp", 0.0)
+    data_files._cache.clear()
+    politicians._json_cache.clear()
+    main_module._rate_limiter._hits.clear()
+    yield
+    data_files._cache.clear()
+    politicians._json_cache.clear()
+    main_module._rate_limiter._hits.clear()
+
+
+@pytest.fixture()
+def session_factory():
+    """Banco SQLite em memória, novo a cada teste (isolamento total, sem ordem de execução relevante)."""
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    yield factory
+    engine.dispose()
+
+
+@pytest.fixture()
+def db(session_factory):
+    session = session_factory()
+    yield session
+    session.close()
+
+
+@pytest.fixture()
+def client(session_factory):
+    """TestClient com override de get_db. Define e remove somente a própria chave (nunca `clear()`)."""
+
+    def _override():
+        session = session_factory()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    main_module.app.dependency_overrides[get_db] = _override
+    try:
+        # Sem `with`: o lifespan (migração DDL do Postgres) não deve rodar na suíte
+        yield TestClient(main_module.app)
+    finally:
+        main_module.app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.fixture()
+def data_dir(tmp_path, monkeypatch):
+    """Diretório de dados do ETL isolado: nenhum teste depende dos arquivos reais do repositório."""
+    directory = tmp_path / "processed"
+    directory.mkdir()
+    for module in (economic, analytics, politicians, legislative):
+        monkeypatch.setattr(module, "DATA_DIR", directory)
+    data_files._cache.clear()
+    politicians._json_cache.clear()
+    return directory
+
+
+def write_json(directory, name, payload):
+    path = directory / name
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def write_text(directory, name, content):
+    path = directory / name
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+@pytest.fixture()
+def seed(db):
+    """
+    Dados mínimos e determinísticos:
+      - PT e PTB (siglas parecidas para testar match exato), partido S.PART.
+      - Fulano (CPF, CEAP, doação), "Lula da Fonte" (deputado comum), Beltrano (PTB),
+        duas "Maria Silva" (nome ambíguo) e um presidente real (mandato de PRESIDENTE).
+      - Uma proposição com duas sessões na Câmara (mérito com mais quórum + destaque) para testar placar.
+    """
+    pt = PoliticalParty(acronym="PT", full_name="Partido dos Trabalhadores")
+    ptb = PoliticalParty(acronym="PTB", full_name="Partido Trabalhista Brasileiro")
+    sem_partido = PoliticalParty(acronym="S.PART.", full_name="Sem Partido")
+    db.add_all([pt, ptb, sem_partido])
+    db.flush()
+
+    fulano = Politician(civil_name="Fulano de Tal", electoral_name="Fulano", camara_id=111, cpf="12345678901")
+    lula_fonte = Politician(civil_name="Lula da Fonte", electoral_name="Lula da Fonte", camara_id=222)
+    beltrano = Politician(civil_name="Beltrano", electoral_name="Beltrano", camara_id=333)
+    maria_a = Politician(civil_name="Maria Silva", electoral_name="Maria Silva", camara_id=444)
+    maria_b = Politician(civil_name="Maria Silva", electoral_name="Maria Silva", camara_id=445)
+    presidente = Politician(civil_name="Luiz Inacio Lula da Silva", electoral_name="Lula", tse_id="9999")
+    db.add_all([fulano, lula_fonte, beltrano, maria_a, maria_b, presidente])
+    db.flush()
+
+    def deputado(pol, party, uf="SP", end=FAR_FUTURE, year=2022, start=date(2023, 2, 1), **kw):
+        mandate = Mandate(
+            politician_id=pol.id,
+            party_id=party.id,
+            office=CargoPoliticoEnum.DEPUTADO_FEDERAL,
+            election_year=year,
+            start_date=start,
+            end_date=end,
+            jurisdiction_state=uf,
+            **kw,
+        )
+        db.add(mandate)
+        return mandate
+
+    m_fulano = deputado(fulano, pt)
+    deputado(lula_fonte, pt)
+    deputado(beltrano, ptb, uf="RJ")
+    deputado(maria_a, ptb, uf="MG")
+    deputado(maria_b, ptb, uf="BA")
+    # Mandato histórico (encerrado): NÃO pode contar na bancada atual
+    deputado(fulano, ptb, uf="SP", end=date(2010, 1, 31), year=2006, start=date(2007, 2, 1))
+    db.add(
+        Mandate(
+            politician_id=presidente.id,
+            party_id=pt.id,
+            office=CargoPoliticoEnum.PRESIDENTE,
+            election_year=2022,
+            start_date=date(2023, 1, 1),
+            end_date=None,
+            jurisdiction_state="BR",
+            status=StatusMandatoEnum.TITULAR_ATIVO,
+        )
+    )
+    for pol, party in ((fulano, pt), (lula_fonte, pt), (beltrano, ptb)):
+        db.add(PartyAffiliation(politician_id=pol.id, party_id=party.id, start_date=date(2020, 1, 1), is_current=True))
+    db.flush()
+
+    db.add(
+        DespesaCota(
+            politician_id=fulano.id,
+            year=2024,
+            month=3,
+            expense_type="Combustível",
+            net_value=100,
+            supplier_name="Posto X",
+            supplier_cnpj_cpf="123.456.789-01",
+        )
+    )
+    db.add(
+        DespesaCota(
+            politician_id=fulano.id,
+            year=2024,
+            month=4,
+            expense_type="Combustível",
+            net_value=50,
+            supplier_name="Posto X",
+            supplier_cnpj_cpf="123.456.789-01",
+        )
+    )
+    db.add(
+        DoacaoCampanha(
+            politician_id=fulano.id,
+            election_year=2022,
+            donor_name="Fulana Doadora",
+            donor_cpf_cnpj="98765432100",
+            amount_donated=500,
+        )
+    )
+    db.add(
+        EmendaParlamentar(
+            politician_id=fulano.id,
+            year=2024,
+            amendment_type="INDIVIDUAL",
+            committed_value=100,
+            paid_value=50,
+            destination_locality="SP",
+            function_area=None,
+        )
+    )
+    db.add(
+        CertidaoJudicial(
+            politician_id=lula_fonte.id, court_agency="STF", certificate_type="Criminal", status="Nada Consta"
+        )
+    )
+
+    proposition = Proposition(
+        proposition_type=TipoProposicaoEnum.PL,
+        number=10,
+        year=2023,
+        title="PL 10/2023",
+        summary="Ementa do PL 10",
+        thematic_area="Economia",
+        presentation_date=date(2023, 3, 1),
+        author_politician_id=fulano.id,
+        author_name="Fulano",
+        external_camara_id=999,
+    )
+    # Mesma numeração, outro ano e outro id externo: número de matéria nunca identifica a proposição
+    outra = Proposition(
+        proposition_type=TipoProposicaoEnum.PL,
+        number=10,
+        year=2024,
+        title="PL 10/2024",
+        summary="Outra matéria com o mesmo número",
+        thematic_area="Saúde",
+        presentation_date=date(2024, 3, 1),
+        external_camara_id=1000,
+    )
+    executiva = Proposition(
+        proposition_type=TipoProposicaoEnum.MPV,
+        number=1,
+        year=2023,
+        title="MPV 1/2023",
+        summary="Medida do Executivo",
+        presentation_date=date(2023, 5, 1),
+        is_executive_initiative=True,
+        external_camara_id=1001,
+    )
+    db.add_all([proposition, outra, executiva])
+    db.flush()
+
+    merito = VotingSession(
+        proposition_id=proposition.id,
+        legislative_house=CasaLegislativaEnum.CAMARA_DOS_DEPUTADOS,
+        session_datetime=datetime(2023, 5, 2, 15, 0, tzinfo=timezone.utc),
+        agenda_title="Votação de mérito",
+        is_approved=True,
+        external_id="sess-merito",
+    )
+    destaque = VotingSession(
+        proposition_id=proposition.id,
+        legislative_house=CasaLegislativaEnum.CAMARA_DOS_DEPUTADOS,
+        session_datetime=datetime(2023, 5, 3, 15, 0, tzinfo=timezone.utc),
+        agenda_title="Destaque",
+        is_approved=False,
+        external_id="sess-destaque",
+    )
+    db.add_all([merito, destaque])
+    db.flush()
+    for pol, choice in (
+        (fulano, VotoOpcaoEnum.SIM),
+        (lula_fonte, VotoOpcaoEnum.NAO),
+        (beltrano, VotoOpcaoEnum.OBSTRUCAO),
+        (maria_a, VotoOpcaoEnum.AUSENTE),
+        (maria_b, VotoOpcaoEnum.ARTIGO_17),
+    ):
+        db.add(ParliamentaryVote(voting_session_id=merito.id, politician_id=pol.id, party_id=pt.id, vote_choice=choice))
+    db.add(
+        ParliamentaryVote(
+            voting_session_id=destaque.id, politician_id=fulano.id, party_id=pt.id, vote_choice=VotoOpcaoEnum.SIM
+        )
+    )
+    db.commit()
+
+    return SimpleNamespace(
+        pt=pt,
+        ptb=ptb,
+        fulano=fulano,
+        lula_fonte=lula_fonte,
+        beltrano=beltrano,
+        maria_a=maria_a,
+        maria_b=maria_b,
+        presidente=presidente,
+        mandate_fulano=m_fulano,
+        proposition=proposition,
+        outra=outra,
+        executiva=executiva,
+        merito=merito,
+        destaque=destaque,
+        unknown_uuid=str(uuid.uuid4()),
+    )

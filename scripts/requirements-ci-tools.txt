@@ -1,0 +1,8 @@
+# Ferramentas de qualidade/segurança com versão fixa.
+# Usado pelo CI (.github/workflows/ci.yml) e recomendado para o CI local (scripts/local_ci.sh).
+black==25.1.0
+isort==6.0.1
+flake8==7.1.2
+bandit==1.8.3
+mypy==1.15.0
+pip-audit==2.8.0

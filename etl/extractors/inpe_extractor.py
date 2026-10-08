@@ -1,112 +1,156 @@
 """
-Extrator de Dados de Desmatamento da Amazônia Legal (PRODES / INPE)
-Fonte Oficial: Instituto Nacional de Pesquisas Espaciais (INPE) - Projeto PRODES / TerraBrasilis
-Série Histórica Anual Oficial: 1995 a 2024
+Desmatamento da Amazônia Legal — taxas anuais oficiais do PRODES/INPE (TerraBrasilis).
+
+Fonte oficial: arquivo `ratesAAAA.json` publicado pelo painel TerraBrasilis
+(https://terrabrasilis.dpi.inpe.br/app/prodes/dashboard/deforestation/files/), com a taxa consolidada de cada
+período PRODES (1º ago do ano anterior a 31 jul do ano de referência) por Estado. A taxa da Amazônia Legal é a
+soma dos Estados. O nome do arquivo traz o ano da última atualização (hoje `rates2025.json`): o extrator testa os
+anos mais recentes até achar um.
+
+Por que não somar as feições do WFS: a soma de `area_km` das geometrias NÃO reproduz a taxa oficial (diferenças de
+até 12%), porque a taxa oficial é estimada com tratamento de áreas cobertas por nuvem.
+
+As taxas de 1993 e 1994 são a média 1993-94 divulgada pelo INPE (mesmo valor nos dois anos).
 """
 
 import json
 import logging
+import time
+from datetime import date
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
 
-from etl.config import RAW_DATA_DIR, PROCESSED_DATA_DIR
+from etl.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
+from etl.utils.http_client import HttpClient, HttpError
+from etl.utils.io_utils import atomic_write_json
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("INPEExtractor")
 
-# Série Histórica Consolidada Oficial do PRODES / INPE (Taxa Anual de Desmatamento em km²)
-# Medição de 1º de agosto do ano anterior a 31 de julho do ano de referência
-PRODES_AMAZONIA_HISTORICO: Dict[int, float] = {
-    1995: 29059.0,  # Pico histórico
-    1996: 18161.0,
-    1997: 13227.0,
-    1998: 17383.0,
-    1999: 17259.0,
-    2000: 15850.0,
-    2001: 18165.0,
-    2002: 21650.0,
-    2003: 25396.0,
-    2004: 27772.0,  # Criação do PPCDAm (Plano de Ação para Prevenção e Controle do Desmatamento)
-    2005: 19014.0,
-    2006: 14286.0,
-    2007: 11651.0,
-    2008: 12911.0,
-    2009: 7464.0,
-    2010: 7000.0,
-    2011: 6418.0,
-    2012: 4571.0,   # Menor taxa histórica da série PRODES
-    2013: 5891.0,
-    2014: 5012.0,
-    2015: 6207.0,
-    2016: 7893.0,
-    2017: 6947.0,
-    2018: 7536.0,
-    2019: 10129.0,
-    2020: 10851.0,
-    2021: 13038.0,
-    2022: 11594.0,
-    2023: 9001.0,
-    2024: 6288.0,   # Redução consolidada PRODES 2024
-}
+BASE_ARQUIVOS = "https://terrabrasilis.dpi.inpe.br/app/prodes/dashboard/deforestation/files"
+CACHE_TTL_HORAS = 24 * 7
+TIPO_TAXA = 1  # `type` 1 = taxa de desmatamento (km²)
+FONTE = "INPE / PRODES — taxa anual consolidada (TerraBrasilis)"
+# Faixa plausível (km²/ano) para recusar resposta corrompida; a série real fica entre ~4,5 mil e ~30 mil.
+TAXA_MIN_KM2, TAXA_MAX_KM2 = 1_000.0, 60_000.0
+NOTA_MEDIA_1993_94 = "Média 1993-94 divulgada pelo INPE (mesmo valor nos dois anos)"
+
+
+def taxas_por_periodo(payload: Dict[str, Any]) -> Dict[int, float]:
+    """{ano de referência PRODES: km²} somando os Estados de cada período."""
+    periodos = payload.get("periods") if isinstance(payload, dict) else None
+    if not isinstance(periodos, list) or not periodos:
+        raise HttpError(BASE_ARQUIVOS, None, "Arquivo de taxas do PRODES sem 'periods'")
+    serie: Dict[int, float] = {}
+    for periodo in periodos:
+        try:
+            ano = int(periodo["endDate"]["year"])
+            total = sum(
+                float(area["area"])
+                for feicao in periodo["features"]
+                for area in feicao["areas"]
+                if area.get("type") == TIPO_TAXA
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not (TAXA_MIN_KM2 <= total <= TAXA_MAX_KM2):
+            logger.warning("PRODES %s fora da faixa plausível (%.1f km²): descartado.", ano, total)
+            continue
+        serie[ano] = round(total, 1)
+    return serie
 
 
 class INPEExtractor:
-    """Consome e gerencia os dados oficiais de desmatamento da Amazônia Legal do PRODES/INPE."""
+    """Consome as taxas anuais oficiais de desmatamento da Amazônia Legal."""
 
-    def __init__(self, raw_cache_dir: Path = RAW_DATA_DIR, processed_dir: Path = PROCESSED_DATA_DIR):
-        self.cache_dir = raw_cache_dir
-        self.processed_dir = processed_dir
-        self.cache_file = self.cache_dir / "inpe_prodes_desmatamento_amazonia.json"
+    def __init__(
+        self,
+        raw_cache_dir: Path = RAW_DATA_DIR,
+        processed_dir: Path = PROCESSED_DATA_DIR,
+        http: Optional[HttpClient] = None,
+        hoje: Optional[date] = None,
+    ):
+        self.cache_dir = Path(raw_cache_dir) / "prodes"
+        self.processed_dir = Path(processed_dir)
+        self.cache_file = self.cache_dir / "prodes_taxas_amazonia_legal.json"
+        self.http = http or HttpClient(timeout=60.0, max_retries=3, min_interval=0.5)
+        self.hoje = hoje or date.today()
+        self._serie: Optional[Dict[int, float]] = None
+
+    # ------------------------------------------------------------------ download
+    def _baixar_payload(self) -> Dict[str, Any]:
+        """Procura `rates{ano}.json` do ano seguinte para trás (o INPE publica o arquivo com o ano da revisão)."""
+        for ano in range(self.hoje.year + 1, self.hoje.year - 4, -1):
+            url = f"{BASE_ARQUIVOS}/rates{ano}.json"
+            try:
+                payload = self.http.get_json(url)
+            except HttpError as exc:
+                if exc.status == 404:
+                    continue
+                raise
+            logger.info("Taxas PRODES obtidas de %s", url)
+            return payload
+        raise HttpError(BASE_ARQUIVOS, 404, "Nenhum arquivo ratesAAAA.json encontrado")
+
+    def _ler_cache(self) -> Optional[Dict[int, float]]:
+        if not self.cache_file.exists() or (time.time() - self.cache_file.stat().st_mtime) > CACHE_TTL_HORAS * 3600:
+            return None
+        return self._ler_arquivo_cache()
+
+    def _ler_arquivo_cache(self) -> Optional[Dict[int, float]]:
+        try:
+            with open(self.cache_file, "r", encoding="utf-8") as fh:
+                return {int(a): float(v) for a, v in json.load(fh).items()}
+        except (OSError, ValueError, AttributeError):
+            return None
+
+    # ------------------------------------------------------------------ série
+    def fetch_series(self, use_cache: bool = True) -> Dict[int, float]:
+        """{ano-PRODES: km²}. Falha de rede usa o cache anterior; sem cache, levanta erro (nunca devolve vazio)."""
+        if use_cache:
+            cache = self._ler_cache()
+            if cache:
+                return cache
+        try:
+            serie = taxas_por_periodo(self._baixar_payload())
+        except HttpError as exc:
+            logger.error("TerraBrasilis indisponível: %s", exc)
+            antigo = self._ler_arquivo_cache()
+            if antigo:
+                return antigo
+            raise
+        if not serie:
+            raise HttpError(BASE_ARQUIVOS, None, "Nenhuma taxa PRODES válida obtida")
+        atomic_write_json(self.cache_file, {str(a): v for a, v in sorted(serie.items())})
+        return serie
 
     def fetch_deforestation_history(self, use_cache: bool = True) -> pd.DataFrame:
-        """
-        Retorna um DataFrame com a taxa de desmatamento anual em km² (1995 a 2024).
-        """
-        if use_cache and self.cache_file.exists():
-            try:
-                with open(self.cache_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    return pd.DataFrame(data)
-            except Exception as e:
-                logger.warning(f"Erro ao ler cache do INPE: {e}. Recriando a partir da série oficial.")
-
-        records = [
-            {
+        serie = self.fetch_series(use_cache=use_cache)
+        self._serie = serie
+        registros: List[Dict[str, Any]] = []
+        for ano, km2 in sorted(serie.items()):
+            registro: Dict[str, Any] = {
                 "ano": ano,
                 "desmatamento_km2": km2,
-                "fonte": "INPE / PRODES (Amazônia Legal)",
-                "unidade": "km²"
+                "fonte": FONTE,
+                "unidade": "km²",
+                "is_synthetic": False,
             }
-            for ano, km2 in sorted(PRODES_AMAZONIA_HISTORICO.items())
-        ]
-
-        try:
-            with open(self.cache_file, "w", encoding="utf-8") as f:
-                json.dump(records, f, ensure_ascii=False, indent=2)
-            logger.info(f"Série de desmatamento PRODES/INPE salva em cache: {len(records)} anos.")
-        except Exception as ex:
-            logger.error(f"Erro ao salvar cache do INPE: {ex}")
-
-        return pd.DataFrame(records)
+            if ano in (1993, 1994):
+                registro["nota"] = NOTA_MEDIA_1993_94
+            registros.append(registro)
+        return pd.DataFrame(registros)
 
     def get_deforestation_for_years(self, years: List[int]) -> Dict[str, Any]:
-        """
-        Calcula o total acumulado e a média anual de desmatamento para uma lista de anos (mandato).
-        """
-        matched_values = [PRODES_AMAZONIA_HISTORICO[y] for y in years if y in PRODES_AMAZONIA_HISTORICO]
-        if not matched_values:
-            return {
-                "desmatamento_acumulado_km2": None,
-                "desmatamento_medio_anual_km2": None,
-                "anos_com_dados": 0
-            }
-
-        total_acumulado = round(float(sum(matched_values)), 1)
-        media_anual = round(float(total_acumulado / len(matched_values)), 1)
-
+        """Total acumulado e média anual de desmatamento para os anos informados (ex.: um mandato)."""
+        serie = self._serie if self._serie is not None else self.fetch_series()
+        valores = [serie[y] for y in years if y in serie]
+        if not valores:
+            return {"desmatamento_acumulado_km2": None, "desmatamento_medio_anual_km2": None, "anos_com_dados": 0}
+        total = round(float(sum(valores)), 1)
         return {
-            "desmatamento_acumulado_km2": total_acumulado,
-            "desmatamento_medio_anual_km2": media_anual,
-            "anos_com_dados": len(matched_values)
+            "desmatamento_acumulado_km2": total,
+            "desmatamento_medio_anual_km2": round(total / len(valores), 1),
+            "anos_com_dados": len(valores),
         }

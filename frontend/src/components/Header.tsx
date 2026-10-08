@@ -2,6 +2,8 @@
 
 import React from "react";
 import Link from "next/link";
+import { useApi } from "@/hooks/useApi";
+import { getApiHealth } from "@/services/api";
 import { usePathname } from "next/navigation";
 import {
   Landmark,
@@ -10,6 +12,28 @@ import {
   ArrowLeftRight,
   Vote,
 } from "lucide-react";
+
+function ApiStatusBadge() {
+  const { data, error, loading } = useApi("api-health", (signal) => getApiHealth(signal));
+  const online = Boolean(data) && !error;
+  const label = loading ? "Verificando API..." : online ? "API Online" : "API Indisponível";
+  const tone = loading
+    ? "bg-slate-500/10 border-slate-500/20 text-slate-300"
+    : online
+      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+      : "bg-rose-500/10 border-rose-500/20 text-rose-400";
+  const dot = loading ? "bg-slate-400" : online ? "bg-emerald-400 animate-pulse" : "bg-rose-400";
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${tone}`}
+    >
+      <span className={`w-2 h-2 rounded-full ${dot}`} aria-hidden="true" />
+      <span>{label}</span>
+    </div>
+  );
+}
 
 export default function Header() {
   const pathname = usePathname();
@@ -21,14 +45,14 @@ export default function Header() {
         <Link href="/" className="flex items-center gap-3 group">
           <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-emerald-500 via-teal-400 to-amber-400 p-[2px] shadow-lg shadow-emerald-500/10 group-hover:scale-105 transition-transform">
             <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
-              <Landmark className="w-5 h-5 text-emerald-400" />
+              <Landmark className="w-5 h-5 text-emerald-400" aria-hidden="true" />
             </div>
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">
+              <span className="text-xl font-bold bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">
                 LegisData
-              </h1>
+              </span>
               <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                 v1.0 • 1992 - Presente
               </span>
@@ -40,9 +64,10 @@ export default function Header() {
         </Link>
 
         {/* Navigation Tabs */}
-        <nav className="flex items-center gap-1.5 bg-slate-900/90 border border-slate-800 p-1 rounded-xl">
+        <nav aria-label="Navegação principal" className="flex items-center gap-1.5 bg-slate-900/90 border border-slate-800 p-1 rounded-xl">
           <Link
             href="/"
+            aria-current={pathname === "/" ? "page" : undefined}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
               pathname === "/"
                 ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shadow-sm shadow-emerald-500/10"
@@ -55,6 +80,7 @@ export default function Header() {
 
           <Link
             href="/comparador"
+            aria-current={pathname === "/comparador" ? "page" : undefined}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
               pathname === "/comparador"
                 ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-sm shadow-cyan-500/10"
@@ -72,6 +98,7 @@ export default function Header() {
 
           <Link
             href="/cidadania"
+            aria-current={pathname === "/cidadania" ? "page" : undefined}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
               pathname === "/cidadania"
                 ? "bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-sm shadow-amber-500/10"
@@ -92,10 +119,7 @@ export default function Header() {
             <Database className="w-3.5 h-3.5 text-cyan-400" />
             <span>BCB • IBGE • Congresso</span>
           </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>API Online</span>
-          </div>
+          <ApiStatusBadge />
           <a
             href="https://github.com/saulozitos/LegisData"
             target="_blank"

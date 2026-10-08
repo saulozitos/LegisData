@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
-import {
-  CalendarioVotacoesResponse,
-  DiaVotacaoItem,
-  SessaoCalendarioItem,
-  getVotingCalendar,
-} from "@/services/api";
+import React, { useState, useMemo } from "react";
+import { getVotingCalendar } from "@/services/api";
+import { useApi } from "@/hooks/useApi";
+import { safeExternalUrl } from "@/lib/safeUrl";
+import { fmtNum } from "@/lib/format";
+import { EmptyState, ErrorState } from "@/components/StateViews";
 import {
   CalendarDays,
   Calendar,
@@ -15,20 +14,13 @@ import {
   ExternalLink,
   Users,
   Landmark,
-  FileText,
   Clock,
   Sparkles,
   Filter,
   Layers,
   ChevronRight,
-  TrendingUp,
-  Award,
   Vote,
 } from "lucide-react";
-
-interface VotingCalendarPanelProps {
-  onSelectPolitician?: (id: string) => void;
-}
 
 const MESES_NOMES = [
   "Janeiro",
@@ -45,42 +37,20 @@ const MESES_NOMES = [
   "Dezembro",
 ];
 
-export default function VotingCalendarPanel({
-  onSelectPolitician,
-}: VotingCalendarPanelProps = {}) {
+export default function VotingCalendarPanel() {
   const [selectedYear, setSelectedYear] = useState<number | undefined>(undefined);
-  const [data, setData] = useState<CalendarioVotacoesResponse | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
   const [monthFilter, setMonthFilter] = useState<number | "TODOS">("TODOS");
 
-  useEffect(() => {
-    let isCancelled = false;
-    async function loadCalendar() {
-      setIsLoading(true);
-      try {
-        const res = await getVotingCalendar(selectedYear);
-        if (!isCancelled && res) {
-          setData(res);
-          if (!selectedDateStr && res.dias.length > 0) {
-            setSelectedDateStr(res.dias[0].data);
-          } else if (res.dias.length > 0 && !res.dias.some((d) => d.data === selectedDateStr)) {
-            setSelectedDateStr(res.dias[0].data);
-          }
-        }
-      } catch (err) {
-        console.error("Erro ao carregar calendário legislativo:", err);
-      } finally {
-        if (!isCancelled) {
-          setIsLoading(false);
-        }
-      }
-    }
-    loadCalendar();
-    return () => {
-      isCancelled = true;
-    };
-  }, [selectedYear]);
+  const calendar = useApi(`voting-calendar:${selectedYear ?? "default"}`, (signal) =>
+    getVotingCalendar(selectedYear, signal)
+  );
+  // Dado do ano solicitado: nunca exibe dias de outro ano quando a requisição atual falha.
+  const data = calendar.data ?? null;
+  const isLoading = calendar.loading;
+  // A lista de anos permanece disponível mesmo durante a troca/erro.
+  const availableYears = (data ?? calendar.previousData)?.anos_disponiveis ?? [];
+  const shownYear = selectedYear ?? data?.ano_selecionado;
 
   // Filtrar dias exibidos pelo mês selecionado
   const filteredDays = useMemo(() => {
@@ -104,7 +74,7 @@ export default function VotingCalendarPanel({
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-6 border-b border-slate-800">
           <div className="flex items-center gap-3.5">
             <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex-shrink-0">
-              <CalendarDays className="w-6 h-6" />
+              <CalendarDays className="w-6 h-6" aria-hidden="true" />
             </div>
             <div>
               <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
@@ -120,20 +90,22 @@ export default function VotingCalendarPanel({
           </div>
 
           {/* Seletor de Ano */}
-          {data && data.anos_disponiveis.length > 0 && (
+          {availableYears.length > 0 && (
             <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
               <span className="text-xs font-semibold text-slate-400 px-2 flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                <Calendar className="w-3.5 h-3.5 text-cyan-400" aria-hidden="true" />
                 Ano:
               </span>
-              {data.anos_disponiveis.map((ano) => (
+              {availableYears.map((ano) => (
                 <button
+                  type="button"
                   key={ano}
+                  aria-pressed={shownYear === ano}
                   onClick={() => setSelectedYear(ano)}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold font-mono transition-all ${
-                    (selectedYear === ano || (!selectedYear && data.ano_selecionado === ano))
+                    shownYear === ano
                       ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                      : "text-slate-300 hover:text-slate-100 hover:bg-slate-800/60"
                   }`}
                 >
                   {ano}
@@ -142,6 +114,8 @@ export default function VotingCalendarPanel({
             </div>
           )}
         </div>
+
+        {calendar.error && <ErrorState onRetry={calendar.retry} />}
 
         {/* ======================================================== */}
         {/* 2. ESTATÍSTICA GLOBAL ANUAL (REQUISITO OFICIAL) */}
@@ -153,7 +127,7 @@ export default function VotingCalendarPanel({
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
-                    <Sparkles className="w-4 h-4" />
+                    <Sparkles className="w-4 h-4" aria-hidden="true" />
                     Transparência de Atividade Deliberativa
                   </div>
                   <h3 className="text-base sm:text-lg font-black text-slate-100">
@@ -166,7 +140,7 @@ export default function VotingCalendarPanel({
 
                 <div className="flex-shrink-0 text-right sm:border-l sm:border-slate-800 sm:pl-6">
                   <div className="text-2xl sm:text-3xl font-black font-mono text-emerald-400">
-                    {data.estatisticas_anuais.percentual_dias_ativos}%
+                    {fmtNum(data.estatisticas_anuais.percentual_dias_ativos)}%
                   </div>
                   <div className="text-[11px] font-semibold text-slate-400">
                     Frequência anual em plenário
@@ -193,45 +167,45 @@ export default function VotingCalendarPanel({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
               <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-1">
                 <div className="text-xs text-slate-400 font-semibold flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4 text-emerald-400" />
+                  <Calendar className="w-4 h-4 text-emerald-400" aria-hidden="true" />
                   Dias com Sessão Nominal
                 </div>
                 <div className="text-2xl font-black font-mono text-slate-100">
                   {data.estatisticas_anuais.dias_com_votacao}{" "}
-                  <span className="text-xs font-normal text-slate-500 font-sans">
+                  <span className="text-xs font-normal text-slate-400 font-sans">
                     de {data.estatisticas_anuais.total_dias_ano} dias
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-500">
+                <div className="text-[11px] text-slate-400">
                   Sessões deliberativas registradas no ano
                 </div>
               </div>
 
               <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-1">
                 <div className="text-xs text-slate-400 font-semibold flex items-center gap-1.5">
-                  <Layers className="w-4 h-4 text-cyan-400" />
+                  <Layers className="w-4 h-4 text-cyan-400" aria-hidden="true" />
                   Total de Deliberações Nominais
                 </div>
                 <div className="text-2xl font-black font-mono text-cyan-300">
                   {data.estatisticas_anuais.total_sessoes_ano}{" "}
-                  <span className="text-xs font-normal text-slate-500 font-sans">votações</span>
+                  <span className="text-xs font-normal text-slate-400 font-sans">votações</span>
                 </div>
-                <div className="text-[11px] text-slate-500">
+                <div className="text-[11px] text-slate-400">
                   Placar nominal registrado na Câmara e no Senado
                 </div>
               </div>
 
               <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-1">
                 <div className="text-xs text-slate-400 font-semibold flex items-center gap-1.5">
-                  <Vote className="w-4 h-4 text-amber-400" />
+                  <Vote className="w-4 h-4 text-amber-400" aria-hidden="true" />
                   Média de Matérias por Dia de Sessão
                 </div>
                 <div className="text-2xl font-black font-mono text-amber-300">
                   {data.estatisticas_anuais.dias_com_votacao > 0
                     ? (data.estatisticas_anuais.total_sessoes_ano / data.estatisticas_anuais.dias_com_votacao).toFixed(1)
-                    : "0.0"}
+                    : "Indisponível"}
                 </div>
-                <div className="text-[11px] text-slate-500">
+                <div className="text-[11px] text-slate-400">
                   Densidade de deliberação nas datas convocadas
                 </div>
               </div>
@@ -245,7 +219,7 @@ export default function VotingCalendarPanel({
         <div className="space-y-2 pt-2 border-t border-slate-800">
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span className="font-semibold flex items-center gap-1.5">
-              <Filter className="w-3.5 h-3.5 text-cyan-400" />
+              <Filter className="w-3.5 h-3.5 text-cyan-400" aria-hidden="true" />
               Filtrar por Mês:
             </span>
             <span>
@@ -255,11 +229,13 @@ export default function VotingCalendarPanel({
 
           <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-thin">
             <button
+              type="button"
+              aria-pressed={monthFilter === "TODOS"}
               onClick={() => setMonthFilter("TODOS")}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                 monthFilter === "TODOS"
                   ? "bg-slate-800 text-white border border-slate-700 shadow-sm"
-                  : "bg-slate-950 text-slate-400 border border-slate-800 hover:text-slate-200"
+                  : "bg-slate-950 text-slate-300 border border-slate-800 hover:text-slate-100"
               }`}
             >
               Todos os Meses
@@ -269,19 +245,21 @@ export default function VotingCalendarPanel({
               const hasVotes = data?.dias.some((d) => d.mes === mesNum);
               return (
                 <button
+                  type="button"
                   key={mesNum}
+                  aria-pressed={monthFilter === mesNum}
                   onClick={() => setMonthFilter(mesNum)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap flex items-center gap-1.5 ${
                     monthFilter === mesNum
                       ? "bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/20"
                       : hasVotes
                       ? "bg-slate-950 text-slate-300 border border-emerald-500/30 hover:border-emerald-500/60"
-                      : "bg-slate-950/50 text-slate-600 border border-slate-900 cursor-not-allowed"
+                      : "bg-slate-950/50 text-slate-500 border border-slate-900 cursor-not-allowed"
                   }`}
                   disabled={!hasVotes}
                 >
                   <span>{nome.slice(0, 3)}</span>
-                  {hasVotes && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+                  {hasVotes && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" aria-hidden="true" />}
                 </button>
               );
             })}
@@ -297,7 +275,7 @@ export default function VotingCalendarPanel({
         <div className="lg:col-span-5 bg-slate-900/80 border border-slate-800 rounded-3xl p-5 backdrop-blur-md shadow-xl space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-slate-800">
             <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-emerald-400" />
+              <Calendar className="w-4 h-4 text-emerald-400" aria-hidden="true" />
               <h3 className="text-sm font-bold text-slate-100">
                 Datas com Votação Registrada
               </h3>
@@ -308,13 +286,14 @@ export default function VotingCalendarPanel({
           </div>
 
           {isLoading ? (
-            <div className="space-y-2.5 animate-pulse">
+            <div role="status" aria-live="polite" className="space-y-2.5 animate-pulse">
+              <span className="sr-only">Carregando calendário...</span>
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="h-16 bg-slate-950/80 rounded-2xl border border-slate-800" />
               ))}
             </div>
           ) : filteredDays.length === 0 ? (
-            <div className="py-12 text-center text-slate-500 text-xs">
+            <div role="status" className="py-12 text-center text-slate-400 text-xs">
               Nenhuma sessão de votação nominal registrada para o filtro selecionado.
             </div>
           ) : (
@@ -322,10 +301,12 @@ export default function VotingCalendarPanel({
               {filteredDays.map((dia) => {
                 const isSelected = dia.data === selectedDateStr;
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={dia.data}
+                    aria-pressed={isSelected}
                     onClick={() => setSelectedDateStr(dia.data)}
-                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                    className={`w-full text-left p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
                       isSelected
                         ? "bg-slate-800/90 border-emerald-500/80 shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-500/40"
                         : "bg-slate-950/70 border-slate-800 hover:border-slate-700 hover:bg-slate-900/60"
@@ -333,7 +314,7 @@ export default function VotingCalendarPanel({
                   >
                     <div className="flex items-center gap-3.5">
                       {/* Ponto indicador de votação ativa */}
-                      <div className="relative flex items-center justify-center">
+                      <div className="relative flex items-center justify-center" aria-hidden="true">
                         <span className="w-3 h-3 rounded-full bg-emerald-400" />
                         <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping absolute opacity-75" />
                       </div>
@@ -360,11 +341,11 @@ export default function VotingCalendarPanel({
 
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <span className="text-xs font-mono font-bold text-slate-300 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-xl">
-                        {dia.total_votacoes} matéria{dia.total_votacoes > 1 ? "s" : ""}
+                        {dia.total_votacoes} matéria{dia.total_votacoes === 1 ? "" : "s"}
                       </span>
-                      <ChevronRight className={`w-4 h-4 transition-transform ${isSelected ? "text-emerald-400 translate-x-1" : "text-slate-600"}`} />
+                      <ChevronRight className={`w-4 h-4 transition-transform ${isSelected ? "text-emerald-400 translate-x-1" : "text-slate-400"}`} aria-hidden="true" />
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -379,7 +360,7 @@ export default function VotingCalendarPanel({
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" aria-hidden="true" />
                     <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">
                       Deliberações Registradas
                     </span>
@@ -408,11 +389,11 @@ export default function VotingCalendarPanel({
 
               {/* Lista de Sessões e Proposições Deliberadas */}
               <div className="space-y-4">
-                {activeDay.sessoes.map((sess, idx) => {
+                {activeDay.sessoes.map((sess) => {
                   const isCamara = sess.casa === "CAMARA_DOS_DEPUTADOS";
                   return (
                     <div
-                      key={sess.sessao_id || idx}
+                      key={sess.sessao_id}
                       className="bg-slate-950/80 border border-slate-800/90 rounded-2xl p-5 space-y-4 shadow-lg hover:border-slate-700 transition-colors"
                     >
                       {/* Topo da Sessão: Casa Legislativa, Horário e Status */}
@@ -423,12 +404,12 @@ export default function VotingCalendarPanel({
                               ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
                               : "bg-cyan-500/15 text-cyan-300 border-cyan-500/30"
                           }`}>
-                            {isCamara ? <Users className="w-3.5 h-3.5" /> : <Landmark className="w-3.5 h-3.5" />}
+                            {isCamara ? <Users className="w-3.5 h-3.5" aria-hidden="true" /> : <Landmark className="w-3.5 h-3.5" aria-hidden="true" />}
                             <span>{sess.casa_nome}</span>
                           </span>
 
                           <span className="text-xs font-mono text-slate-400 flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5 text-slate-500" />
+                            <Clock className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
                             {sess.hora}
                           </span>
                         </div>
@@ -440,12 +421,12 @@ export default function VotingCalendarPanel({
                         }`}>
                           {sess.aprovada ? (
                             <>
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
                               <span>Aprovada</span>
                             </>
                           ) : (
                             <>
-                              <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                              <XCircle className="w-3.5 h-3.5 text-rose-400" aria-hidden="true" />
                               <span>Rejeitada</span>
                             </>
                           )}
@@ -477,16 +458,16 @@ export default function VotingCalendarPanel({
                           </div>
 
                           {/* LINK OFICIAL NA ÍNTEGRA (REQUISITO 2 e 4) */}
-                          {sess.proposicao.url_oficial && (
+                          {safeExternalUrl(sess.proposicao.url_oficial) && (
                             <a
-                              href={sess.proposicao.url_oficial}
+                              href={safeExternalUrl(sess.proposicao.url_oficial)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 px-3 py-1 rounded-xl transition-all shadow-sm"
                               title="Ler texto da lei na íntegra no portal oficial"
                             >
                               <span>Ler Proposição na Íntegra</span>
-                              <ExternalLink className="w-3.5 h-3.5" />
+                              <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
                             </a>
                           )}
                         </div>
@@ -499,8 +480,8 @@ export default function VotingCalendarPanel({
                           {sess.proposicao.ementa}
                         </p>
 
-                        <div className="text-[11px] text-slate-500 pt-1 border-t border-slate-800/80">
-                          Autor da iniciativa: <strong className="text-slate-400 font-medium">{sess.proposicao.autor_nome}</strong>
+                        <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800/80">
+                          Autor da iniciativa: <strong className="text-slate-300 font-medium">{sess.proposicao.autor_nome}</strong>
                         </div>
                       </div>
 
@@ -560,11 +541,12 @@ export default function VotingCalendarPanel({
                 })}
               </div>
             </div>
-          ) : (
-            <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-12 text-center text-slate-500 text-xs">
-              Selecione uma data à esquerda para visualizar as deliberações e links na íntegra.
-            </div>
-          )}
+          ) : !isLoading && !calendar.error ? (
+            <EmptyState
+              title="Nenhuma deliberação para exibir"
+              message="Selecione uma data à esquerda para visualizar as deliberações e links na íntegra."
+            />
+          ) : null}
         </div>
       </div>
     </div>

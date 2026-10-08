@@ -1,7 +1,9 @@
+import hmac
 from typing import List, Optional
 
+from app.core.config import settings
 from app.services.cidadania_service import get_consultas_publicas
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Header, Query
 from pydantic import BaseModel, Field
 
 router = APIRouter()
@@ -30,13 +32,9 @@ class ConsultaPublicaItem(BaseModel):
     autor: Optional[str] = Field(None, description="Parlamentar ou comissão proponente")
     data_apresentacao: Optional[str] = Field(None, description="Data de apresentação da proposta")
     destaque: Optional[bool] = Field(False, description="Indica se é um tema de altíssimo impacto nacional")
-
-
-class ConsultasResponse(BaseModel):
-    total: int
-    fonte: str
-    aviso: str
-    itens: List[ConsultaPublicaItem]
+    fonte_dados: Optional[str] = Field(
+        None, description="Origem do registro: 'tempo_real' (portal oficial) ou 'curadoria' (placar de referência)"
+    )
 
 
 @router.get(
@@ -50,13 +48,24 @@ class ConsultasResponse(BaseModel):
     ),
 )
 def listar_consultas(
-    casa: Optional[str] = Query(None, description="Filtrar por casa legislativa: 'Senado' ou 'Câmara'"),
-    force_refresh: bool = Query(False, description="Forçar renovação imediata do cache"),
+    casa: Optional[str] = Query(None, max_length=20, description="Filtrar por casa legislativa: 'Senado' ou 'Câmara'"),
+    force_refresh: bool = Query(
+        False,
+        description="Forçar renovação do cache (somente com o header X-Admin-Token válido; ignorado para anônimos)",
+    ),
+    x_admin_token: Optional[str] = Header(None),
 ):
-    consultas = get_consultas_publicas(force_refresh=force_refresh)
+    # A renovação forçada dispara dezenas de chamadas a APIs governamentais: restrita a quem tem o token
+    allow_refresh = bool(
+        force_refresh
+        and settings.ADMIN_REFRESH_TOKEN
+        and x_admin_token
+        and hmac.compare_digest(x_admin_token, settings.ADMIN_REFRESH_TOKEN)
+    )
+    consultas = get_consultas_publicas(force_refresh=allow_refresh)
 
     if casa:
         casa_filtro = casa.strip().lower()
-        consultas = [c for c in consultas if c.get("casa", "").lower() == casa_filtro]
+        consultas = [c for c in consultas if (c.get("casa") or "").lower() == casa_filtro]
 
     return consultas

@@ -8,9 +8,9 @@ from sqlalchemy.orm import Session, sessionmaker
 engine = create_engine(
     settings.sync_database_url,
     pool_pre_ping=True,
-    pool_size=20,
-    max_overflow=40,
-    pool_timeout=30,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
+    pool_timeout=settings.DB_POOL_TIMEOUT,
     pool_recycle=1800,
 )
 

@@ -1,10 +1,11 @@
 # Dependências do Pipeline de Ingestão e ETL (Python)
-pandas>=2.0.0
-requests>=2.31.0
-numpy>=1.24.0
-python-dateutil>=2.8.2
-urllib3>=2.0.0
-tqdm>=4.66.0
-pydantic>=2.5.0
-sqlalchemy>=2.0.0
-psycopg2-binary>=2.9.9
+# Faixas compatíveis com backend/requirements.txt (o ETL importa os models/engine do backend).
+# `requests`, `tqdm`, `pydantic`, `python-dateutil` e `urllib3` foram removidos: o ETL usa apenas a biblioteca
+# padrão (urllib via etl.utils.http_client) e nunca importa esses pacotes.
+pandas>=2.2.0,<3.0
+numpy>=1.26.0,<3.0
+sqlalchemy>=2.0.28,<3.0
+psycopg2-binary>=2.9.9,<3.0
+# pydantic-settings é exigido por backend/app/core/config.py, importado pela carga no banco
+pydantic>=2.6.0,<3.0
+pydantic-settings>=2.2.0,<3.0

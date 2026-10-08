@@ -3,15 +3,15 @@ from uuid import UUID
 
 from app.core.database import get_db
 from app.models.executivo import MandateIndicator, PresidentialMandate
-from app.schemas.executivo import PresidentialMandateResponse
+from app.schemas.executivo import PresidentialMandateListItem
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 router = APIRouter()
 
 
-@router.get("/mandates", response_model=List[PresidentialMandateResponse])
-async def list_presidential_mandates(db: Session = Depends(get_db)):
+@router.get("/mandates", response_model=List[PresidentialMandateListItem])
+def list_presidential_mandates(db: Session = Depends(get_db)):
     """
     Lista todos os mandatos presidenciais
     """
@@ -20,7 +20,7 @@ async def list_presidential_mandates(db: Session = Depends(get_db)):
 
 
 @router.get("/mandates/{mandate_id}/summary")
-async def get_mandate_summary(mandate_id: UUID, db: Session = Depends(get_db)):
+def get_mandate_summary(mandate_id: UUID, db: Session = Depends(get_db)):
     """
     Retorna um resumo de KPIs do mandato para exibição em cards:
     - Inflação IPCA: média, min, max e valor inicial/final
@@ -32,7 +32,7 @@ async def get_mandate_summary(mandate_id: UUID, db: Session = Depends(get_db)):
     """
     mandate = db.query(PresidentialMandate).filter(PresidentialMandate.id == mandate_id).first()
     if not mandate:
-        raise HTTPException(status_code=404, detail="Mandate not found")
+        raise HTTPException(status_code=404, detail="Mandato não encontrado.")
 
     indicators = (
         db.query(MandateIndicator)
@@ -68,7 +68,7 @@ async def get_mandate_summary(mandate_id: UUID, db: Session = Depends(get_db)):
     # Emendas: acumulado total (valor do último mês reportado, que é cumulativo no ano)
     # Calcula melhor como a soma dos valores "finais de cada ano"
     emendas_total = None
-    if "emendas_bilhoes" in by_key:
+    if by_key.get("emendas_bilhoes") and kpis.get("emendas_bilhoes"):
         vals = by_key["emendas_bilhoes"]
         # Agrupa por ano e pega o max de cada ano (valor de dezembro de cada ano)
         por_ano: Dict[int, float] = {}
@@ -97,13 +97,13 @@ async def get_mandate_summary(mandate_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.get("/mandates/{mandate_id}/indicators")
-async def get_mandate_indicators(mandate_id: UUID, db: Session = Depends(get_db)):
+def get_mandate_indicators(mandate_id: UUID, db: Session = Depends(get_db)):
     """
     Retorna os indicadores de um mandato específico, agrupados por data (para gráficos de séries temporais)
     """
     mandate = db.query(PresidentialMandate).filter(PresidentialMandate.id == mandate_id).first()
     if not mandate:
-        raise HTTPException(status_code=404, detail="Mandate not found")
+        raise HTTPException(status_code=404, detail="Mandato não encontrado.")
 
     indicators = (
         db.query(MandateIndicator)

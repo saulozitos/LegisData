@@ -63,6 +63,7 @@ Todos os dados são coletados de forma rastreável por extratores dedicados (`Us
 | **Senado Federal** | Senadores, proposições legislativas, sessões deliberativas e cota parlamentar | `legis.senado.leg.br/dadosabertos` |
 | **Banco Central do Brasil (BCB)** | Séries temporais de IPCA, taxa Selic, Câmbio USD PTAX e Dívida Líquida/PIB | Sistema Gerenciador de Séries Temporais (SGS) |
 | **IBGE** | Contas Nacionais (PIB real), séries demográficas e desemprego (PNAD Contínua) | Banco de Dados SIDRA / Agregados API |
+| **IBGE (microdados)** | Classes sociais por faixas de salário mínimo, calculadas dos microdados anuais da PNAD Contínua (visita 5, 2016 em diante) com o peso amostral calibrado | `ftp.ibge.gov.br/.../Pesquisa_Nacional_por_Amostra_de_Domicilios_continua/Anual/Microdados/` |
 | **INPE** | Desmatamento anual consolidado na Amazônia Legal e Cerrado | Projeto PRODES / Plataforma TerraBrasilis |
 | **IPEA & FBSP** | Séries históricas de segurança pública, taxas de homicídio e feminicídio | IpeaData & Fórum Brasileiro de Segurança Pública |
 
@@ -72,16 +73,25 @@ Todos os dados são coletados de forma rastreável por extratores dedicados (`Us
 
 A infraestrutura e o pipeline de CI/CD do LegisData foram endurecidos contra ameaças cibernéticas e auditorias de conformidade:
 
-- **Isolamento de Banco e API:** O serviço PostgreSQL (`5432`) e o backend FastAPI (`8000`) são restritos estritamente ao loopback local (`127.0.0.1`), impedindo conexões diretas via rede externa ou LAN.
-- **Fail-Fast de Credenciais:** A aplicação recusa iniciar sem uma senha de banco explícita configurada no ambiente. Não existem senhas padrão ou fallbacks no código.
-- **Contêineres Não-Root:** As imagens Docker executam sob usuário não-privilegiado (`appuser`), mitigando riscos de escalonamento de privilégios.
-- **Proteção contra Vazamento:** Arquivos `.dockerignore` na raiz e nos subprojetos garantem que segredos (`.env`), chaves e arquivos temporários não entrem nas camadas das imagens.
+- **Isolamento de Rede:** no `docker-compose.yml` de produção, PostgreSQL e backend **não publicam portas no host**; a comunicação ocorre pela rede interna do Compose. O frontend escuta apenas em `127.0.0.1:3000` e deve ser exposto por um proxy reverso que termine TLS e envie HSTS. Para desenvolvimento, `docker-compose.dev.yml` publica Postgres (`5432`) e API (`8000`) somente em loopback (`make up-db` / `make docker-up`).
+- **Fail-Fast de Credenciais:** a aplicação recusa iniciar sem uma senha de banco explícita configurada no ambiente. O `.env.example` traz apenas `CHANGE_ME`. O modo SSL do banco é configurável (`DB_SSLMODE`; `disable` no Postgres interno do Compose, `require` para bancos gerenciados).
+- **Contêineres Endurecidos:** backend e frontend executam sob usuário não-privilegiado (`appuser`), com `no-new-privileges`, `cap_drop: ALL`, healthchecks e limites de recursos. O Postgres usa a imagem oficial (inicializa como root e depois roda como `postgres`) e também recebe `no-new-privileges`. Imagens fixadas em tag minor; o Dependabot propõe as atualizações.
+- **Proteção contra Vazamento:** arquivos `.dockerignore` na raiz e nos subprojetos garantem que segredos (`.env`), chaves e arquivos temporários não entrem nas camadas das imagens.
 - **CI/CD Endurecido (GitHub Actions):**
-  - Runner em nuvem isolado (`ubuntu-latest`) substituindo runners `self-hosted` para blindagem contra Remote Code Execution (RCE) via Pull Requests de forks.
-  - Princípio de privilégio mínimo: `permissions: { contents: read }`.
-  - Fixação de todas as actions por hash imutável (SHA).
-- **Proteção contra DoS em APIs Governamentais:** O endpoint `/cidadania/consultas` possui rate-limiting em memória com cooldown mínimo de 5 minutos, protegendo os servidores do Senado e da Câmara contra bloqueios.
-- **Divulgação Responsável:** Política formal de segurança em [SECURITY.md](SECURITY.md) e recurso *Private Vulnerability Reporting* habilitado no repositório.
+  - Runner em nuvem isolado (`ubuntu-latest`), sem runners `self-hosted`, e sem `pull_request_target`.
+  - Privilégio mínimo (`permissions: { contents: read }`), `timeout-minutes` em todos os jobs e actions fixadas por SHA.
+  - Deploy só dispara **após o CI concluir com sucesso na `main`**, usa o ambiente protegido `production` (configure revisores obrigatórios nas Settings do GitHub), `concurrency` sem sobreposição, verifica o fingerprint do host SSH (secret `DEPLOY_HOST_FINGERPRINT`) e implanta o SHA exato validado.
+  - Auditoria de dependências (`pip-audit`, `npm audit --omit=dev`), `bandit`, `mypy` e gate de cobertura com branches. O CI local (`make ci` / `scripts/local_ci.sh`) executa as mesmas etapas. Dependabot configurado para pip, npm, Docker e Actions.
+- **Limitação a clientes (rate limit):** a API aplica limite por IP em memória (`RATE_LIMIT_PER_MINUTE`, resposta 429), **por worker**; o `force_refresh` de `/cidadania/consultas` exige o header `X-Admin-Token`. Para um limite distribuído, aplique também limites no proxy reverso/WAF.
+- **Divulgação Responsável:** política formal em [SECURITY.md](SECURITY.md). Habilitar o *Private Vulnerability Reporting* é uma configuração do GitHub que não é verificável pelo repositório: confirme em Settings → Security.
+
+### ⚠️ Ações manuais pendentes (fora do código)
+
+- Configurar os secrets `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_DIR` e **`DEPLOY_HOST_FINGERPRINT`**, e criar o ambiente `production` com revisores obrigatórios.
+- Usar uma chave SSH dedicada ao deploy, com `command=` restrito no `authorized_keys` do servidor.
+- Os vídeos `assets/LegisData.mp4` e `assets/LegisData.webm` (~60 MB) e os dados em `etl/data/` (ex.: `emendas_parlamentares_2019_2026.json`, ~35 MB, e `raw/` duplicados por data) pesam no clone: mover para GitHub Releases ou Git LFS (não foram removidos aqui para não quebrar referências).
+- Confirmar o e-mail de contato em `SECURITY.md` e o *Private Vulnerability Reporting*.
+- Pin por digest (`@sha256:`) das imagens base, se desejado, via Dependabot/Renovate.
 
 ---
 
@@ -102,7 +112,7 @@ A infraestrutura e o pipeline de CI/CD do LegisData foram endurecidos contra ame
 - **Qualidade & DevOps:**
   - **Docker Compose** para orquestração segura.
   - **Linters & Formatters:** `black`, `isort`, `flake8`, `mypy`, `eslint`.
-  - **Segurança Estática:** `bandit`.
+  - **Segurança:** `bandit`, `pip-audit`, `npm audit`.
   - **Testes Automatizados:** `pytest` (backend) e `vitest` (frontend).
 
 ---
@@ -153,6 +163,14 @@ pip install -r backend/requirements.txt
 make run-load-db
 ```
 *O pipeline executará as migrações, ingerindo séries históricas, parlamentares, cota CEAP, emendas, processos e doações do TSE.*
+
+Etapas de extração independentes (cada uma grava só se a validação passar): `python etl/run_etl.py --ceap` (CEAP e emendas oficiais) e `python etl/run_etl.py --pnad` (baixa ~1,5 GB de microdados da PNAD Contínua para `etl/data/raw/pnad/`, ignorado pelo Git, e gera `etl/data/processed/pnad_faixas_salario_minimo.json`, consumido por `/api/v1/analytics/social-classes`).
+
+Dados do TSE (dados abertos em `cdn.tse.jus.br`; os zips brutos, de ~2 GB no total, ficam em `etl/data/raw/tse/`, ignorado pelo Git): `--patrimonio` (bens declarados, `bem_candidato`, 2006–2024), `--doacoes` (receitas de campanha, `prestacao_contas`, 2002–2022; os 20 maiores doadores por candidato e uma linha "Demais doadores"; CPF de pessoa física gravado mascarado), `--eleicoes` (resultados presidenciais por UF, 1994–2022, turno decisivo, a partir de `votacao_candidato_munzona`) e `--candidaturas` (registros de candidatura indeferidos/cancelados/cassados, `consulta_cand`). O vínculo candidato→político usa CPF e data de nascimento obtidos das APIs oficiais da Câmara e do Senado (cache em `etl/data/raw/identidades_parlamentares.json`, nunca versionado) e nome EXATO; homônimos ambíguos são descartados. Lacunas conhecidas: não há bens declarados de 2002 nem resultados de 1989 nos dados abertos do TSE, e não há fonte aberta unificada de processos judiciais (o DataJud/CNJ exige chave); sem dado, a tela mostra "Dado indisponível".
+
+Votações: `python etl/run_etl.py --votacoes` baixa os arquivos anuais de votações da Câmara (2019 em diante, cache em `etl/data/raw/votacoes/`, ignorado pelo Git) e as votações nominais do Senado, com a orientação da bancada do **Governo** em cada votação, e grava `etl/data/processed/votacoes/{camara,senado}_AAAA.json.gz` mais `parlamentares_legislaturas_anteriores.json` (ex-parlamentares, para vincular emendas, CEAP e votos). A carga (`--load-db`) é idempotente, cria os ex-parlamentares com seus mandatos e alimenta o **Basômetro** (`/api/v1/politicians/{id}`): % de votos alinhados à orientação do Governo, calculada só sobre votações com orientação SIM/NÃO e com amostra mínima de 10 votações. Só entram votações de plenário ligadas a PEC, PL, PLP, MPV ou PDL; voto secreto não tem voto individual. `python -m etl.scripts.diagnose_emendas` mostra por que emendas ficam sem vínculo (bancadas e Relator-Geral não são pessoas).
+
+Presença em plenário e remuneração (somente dados oficiais; nada é sorteado): `python etl/run_etl.py --presenca` extrai (i) da **Câmara** o relatório oficial "Presença em Plenário" de cada deputado no portal da Câmara (dia com sessão deliberativa: presença, ausência, missão, licença e demais justificativas; série publicada a partir de 2020, e o resultado é conferido com o resumo oficial da própria página) e (ii) do **Senado** a presença derivada das votações nominais de plenário (voto, P-NRV ou presidência = presente; AP, MIS, LS e LP = ausência justificada; a API não informa ausência não justificada, então esse campo fica `null`). O portal da Câmara limita a taxa de requisições (HTTP 429, algo em torno de 3 a 4 páginas por minuto): o cliente espera o resfriamento sem alterar a identificação, a extração é **retomável** pelo cache em `etl/data/raw/presenca/` (ignorado pelo Git) e grava um resultado parcial a cada 200 páginas novas. Use `--presenca-max-paginas N` para limitar as páginas novas por execução e rode de novo para continuar. `python etl/run_etl.py --remuneracao` lê no portal da Câmara a remuneração fixa mensal de cada deputado e o líquido do mês mais recente (demais campos ficam `null`; o Senado não tem fonte estruturada). `--load-presenca` carrega ambos de forma idempotente (substitui o período do parlamentar, inclusive linhas sintéticas antigas); o dossiê mostra unidade, período e fonte da assiduidade.
 
 ### Passo 5: Iniciar o Backend (FastAPI)
 ```bash

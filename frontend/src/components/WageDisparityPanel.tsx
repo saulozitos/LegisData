@@ -1,16 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   TrendingUp,
   Scale,
-  Users,
   Search,
   CheckCircle2,
   XCircle,
   HelpCircle,
-  AlertTriangle,
-  ArrowUpRight
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -23,52 +20,36 @@ import {
   Legend,
   CartesianGrid
 } from "recharts";
-import {
-  getWageDisparity,
-  WageDisparityResponse
-} from "../services/api";
+import { getWageDisparity } from "../services/api";
+import { useApi } from "@/hooks/useApi";
+import { safeExternalUrl } from "@/lib/safeUrl";
+import { fmtNum, isNum } from "@/lib/format";
+import { EmptyState, ErrorState, LoadingState } from "@/components/StateViews";
 
-interface WageDisparityPanelProps {
-  mandateId?: string | null;
-}
-
-export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProps = {}) {
-  const [data, setData] = useState<WageDisparityResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+export default function WageDisparityPanel() {
+  const { data, loading, error, retry } = useApi("wage-disparity", (signal) => getWageDisparity(signal));
   const [chartMode, setChartMode] = useState<"valores" | "indices">("valores");
   const [searchTerm, setSearchTerm] = useState("");
   const [voteFilter, setVoteFilter] = useState<string>("ALL");
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true);
-        const res = await getWageDisparity();
-        if (res) setData(res);
-      } catch (err) {
-        console.error("Erro ao carregar dados de disparidade salarial:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadData();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-8 text-center animate-pulse">
-        <div className="h-6 bg-slate-800 rounded w-1/3 mx-auto mb-4" />
-        <div className="h-64 bg-slate-800/40 rounded-2xl w-full" />
-      </div>
-    );
+  if (loading) return <LoadingState label="Carregando disparidade salarial..." />;
+  if (error) return <ErrorState onRetry={retry} />;
+  if (!data || !data.serie_historica?.length || !data.estatisticas_disparidade) {
+    return <EmptyState title="Disparidade salarial indisponível" />;
   }
 
-  if (!data) return null;
-
   const { serie_historica, votacao_salario_minimo, estatisticas_disparidade } = data;
+  const votosAmostra = votacao_salario_minimo?.votos_amostra ?? [];
+  const primeiroAno = serie_historica[0].ano;
+  const ultimoAno = serie_historica[serie_historica.length - 1].ano;
+  const picoPresidente = serie_historica.find((s) => s.ano === estatisticas_disparidade.pico_multiplo_ano)?.presidente_dominante;
+  const fmtBrlValue = (v: number | null | undefined) =>
+    isNum(v) ? `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "Indisponível";
+  const fmtGrowth = (v: number | null | undefined) =>
+    isNum(v) ? `+${v.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%` : "Variação indisponível";
 
   // Filtrar deputados na votação
-  const filteredVotes = votacao_salario_minimo.votos_amostra.filter((v) => {
+  const filteredVotes = votosAmostra.filter((v) => {
     const matchesSearch =
       v.deputado_nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
       v.partido_sigla.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -85,10 +66,10 @@ export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProp
           <div>
             <div className="flex items-center gap-2 mb-1.5">
               <span className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
-                <Scale className="w-5 h-5" />
+                <Scale className="w-5 h-5" aria-hidden="true" />
               </span>
               <h2 className="text-xl font-extrabold text-slate-100 tracking-tight">
-                Salário Mínimo do Trabalhador vs Salário Parlamentar (1994 - 2026)
+                Salário Mínimo do Trabalhador vs Salário Parlamentar ({primeiroAno} - {ultimoAno})
               </h2>
             </div>
             <p className="text-xs text-slate-400 max-w-3xl leading-relaxed">
@@ -99,6 +80,8 @@ export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProp
           {/* Toggle de Modo do Gráfico */}
           <div className="flex items-center bg-slate-950 p-1.5 rounded-2xl border border-slate-800 self-start md:self-auto">
             <button
+              type="button"
+              aria-pressed={chartMode === "valores"}
               onClick={() => setChartMode("valores")}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 chartMode === "valores"
@@ -109,6 +92,8 @@ export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProp
               Valores Nominais (R$)
             </button>
             <button
+              type="button"
+              aria-pressed={chartMode === "indices"}
               onClick={() => setChartMode("indices")}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 chartMode === "indices"
@@ -116,7 +101,7 @@ export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProp
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              Índices Base 100 (1994)
+              Índices Base 100 ({primeiroAno})
             </button>
           </div>
         </div>
@@ -128,10 +113,10 @@ export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProp
               Subsídio Parlamentar Atual
             </span>
             <div className="text-2xl font-black text-amber-400 font-mono">
-              R$ {estatisticas_disparidade.salario_parlamentar_atual_2024.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+              {fmtBrlValue(estatisticas_disparidade.salario_parlamentar_atual_2024)}
             </div>
-            <span className="text-[11px] text-slate-500 mt-1 block">
-              +1.288% desde 1994 (R$ 3.000)
+            <span className="text-[11px] text-slate-400 mt-1 block">
+              {fmtGrowth(estatisticas_disparidade.crescimento_acumulado_salario_parlamentar_pct)} desde {primeiroAno} ({fmtBrlValue(estatisticas_disparidade.salario_parlamentar_inicial_1994)})
             </span>
           </div>
 
@@ -140,10 +125,10 @@ export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProp
               Salário Mínimo Nacional
             </span>
             <div className="text-2xl font-black text-emerald-400 font-mono">
-              R$ {estatisticas_disparidade.salario_minimo_atual_2024.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+              {fmtBrlValue(estatisticas_disparidade.salario_minimo_atual_2024)}
             </div>
-            <span className="text-[11px] text-slate-500 mt-1 block">
-              +1.917% desde 1994 (R$ 70,00)
+            <span className="text-[11px] text-slate-400 mt-1 block">
+              {fmtGrowth(estatisticas_disparidade.crescimento_acumulado_salario_minimo_pct)} desde {primeiroAno} ({fmtBrlValue(estatisticas_disparidade.salario_minimo_inicial_real_1994)})
             </span>
           </div>
 
@@ -152,10 +137,12 @@ export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProp
               Múltiplo de Disparidade Atual
             </span>
             <div className="text-2xl font-black text-slate-100 font-mono">
-              {estatisticas_disparidade.multiplo_atual.toFixed(1)}x
+              {fmtNum(estatisticas_disparidade.multiplo_atual)}x
             </div>
-            <span className="text-[11px] text-slate-500 mt-1 block">
-              1 salário parlamentar = ~30 salários mínimos
+            <span className="text-[11px] text-slate-400 mt-1 block">
+              {isNum(estatisticas_disparidade.multiplo_atual)
+                ? `1 salário parlamentar = ~${fmtNum(estatisticas_disparidade.multiplo_atual, 0)} salários mínimos`
+                : "Múltiplo atual indisponível"}
             </span>
           </div>
 
@@ -164,10 +151,11 @@ export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProp
               Pico Histórico de Disparidade
             </span>
             <div className="text-2xl font-black text-rose-400 font-mono">
-              {estatisticas_disparidade.pico_multiplo_valor.toFixed(1)}x
+              {fmtNum(estatisticas_disparidade.pico_multiplo_valor)}x
             </div>
-            <span className="text-[11px] text-slate-500 mt-1 block">
-              Atingido em {estatisticas_disparidade.pico_multiplo_ano} (Governo FHC 1)
+            <span className="text-[11px] text-slate-400 mt-1 block">
+              Atingido em {estatisticas_disparidade.pico_multiplo_ano}
+              {picoPresidente ? ` (${picoPresidente})` : ""}
             </span>
           </div>
         </div>
@@ -177,19 +165,23 @@ export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProp
       <div className="bg-slate-900/60 border border-slate-800/80 rounded-3xl p-6 backdrop-blur-md">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-amber-400" />
+            <TrendingUp className="w-4 h-4 text-amber-400" aria-hidden="true" />
             <h3 className="text-sm font-bold text-slate-200">
               {chartMode === "valores"
                 ? "Evolução do Salário Parlamentar (Eixo Esq.) vs Salário Mínimo (Eixo Dir.)"
                 : "Trajetória Indexada: Crescimento Relativo (1994 = 100)"}
             </h3>
           </div>
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-slate-400">
             Fonte: Decretos Legislativos & Séries BCB/IBGE
           </span>
         </div>
 
-        <div className="h-80 w-full">
+        <div
+          role="img"
+          aria-label="Gráfico comparativo entre o salário parlamentar e o salário mínimo ao longo dos anos"
+          className="h-80 w-full"
+        >
           <ResponsiveContainer width="100%" height="100%">
             {chartMode === "valores" ? (
               <ComposedChart data={serie_historica} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
@@ -215,12 +207,14 @@ export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProp
                     borderRadius: "12px",
                     fontSize: "12px"
                   }}
-                  formatter={(val: any, name: any) => {
-                    const num = Number(val) || 0;
-                    if (name === "Salário Parlamentar (BRL)") return [`R$ ${num.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, name];
-                    if (name === "Salário Mínimo (BRL)") return [`R$ ${num.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, name];
-                    if (name === "Múltiplo (x)") return [`${num.toFixed(1)}x salários mínimos`, name];
-                    return [val, name];
+                  formatter={(val, name) => {
+                    const num = Number(val);
+                    if (!Number.isFinite(num)) return ["Indisponível", String(name)];
+                    if (name === "Salário Parlamentar (BRL)" || name === "Salário Mínimo (BRL)") {
+                      return [`R$ ${num.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, String(name)];
+                    }
+                    if (name === "Múltiplo (x)") return [`${num.toFixed(1)}x salários mínimos`, String(name)];
+                    return [String(val), String(name)];
                   }}
                 />
                 <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }} />
@@ -258,7 +252,7 @@ export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProp
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                 Votação Nominal Auditável
               </span>
-              <span className="text-xs text-slate-500 font-mono">
+              <span className="text-xs text-slate-400 font-mono">
                 {votacao_salario_minimo.data_votacao} • {votacao_salario_minimo.casa}
               </span>
             </div>
@@ -275,21 +269,21 @@ export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProp
             <div className="text-center px-2">
               <span className="text-[10px] uppercase font-bold text-emerald-400 block">SIM</span>
               <span className="text-xl font-black text-slate-100 font-mono">
-                {votacao_salario_minimo.placar.SIM}
+                {votacao_salario_minimo.placar?.SIM ?? "—"}
               </span>
             </div>
             <div className="w-px h-8 bg-slate-800" />
             <div className="text-center px-2">
               <span className="text-[10px] uppercase font-bold text-rose-400 block">NÃO</span>
               <span className="text-xl font-black text-slate-100 font-mono">
-                {votacao_salario_minimo.placar.NAO}
+                {votacao_salario_minimo.placar?.NAO ?? "—"}
               </span>
             </div>
             <div className="w-px h-8 bg-slate-800" />
             <div className="text-center px-2">
               <span className="text-[10px] uppercase font-bold text-amber-400 block">ABST.</span>
               <span className="text-xl font-black text-slate-100 font-mono">
-                {votacao_salario_minimo.placar.ABSTENCAO}
+                {votacao_salario_minimo.placar?.ABSTENCAO ?? "—"}
               </span>
             </div>
           </div>
@@ -298,26 +292,31 @@ export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProp
         {/* Filtros e Busca */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="relative w-full sm:w-80">
-            <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" aria-hidden="true" />
             <input
               type="text"
+              aria-label="Buscar deputado, partido ou UF"
               placeholder="Buscar deputado, partido ou UF..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3.5 py-2 text-xs font-medium text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3.5 py-2 text-xs font-medium text-slate-200 placeholder:text-slate-400 focus:outline-none focus:border-amber-500"
             />
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-auto">
             <button
+              type="button"
+              aria-pressed={voteFilter === "ALL"}
               onClick={() => setVoteFilter("ALL")}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 voteFilter === "ALL" ? "bg-slate-800 text-slate-200 border border-slate-700" : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              Todos ({votacao_salario_minimo.votos_amostra.length})
+              Todos ({votosAmostra.length})
             </button>
             <button
+              type="button"
+              aria-pressed={voteFilter === "SIM"}
               onClick={() => setVoteFilter("SIM")}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 voteFilter === "SIM" ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" : "text-slate-400 hover:text-slate-200"
@@ -326,6 +325,8 @@ export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProp
               Votaram SIM
             </button>
             <button
+              type="button"
+              aria-pressed={voteFilter === "NAO"}
               onClick={() => setVoteFilter("NAO")}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 voteFilter === "NAO" ? "bg-rose-500/20 text-rose-300 border border-rose-500/40" : "text-slate-400 hover:text-slate-200"
@@ -338,16 +339,16 @@ export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProp
 
         {/* Tabela de Votos dos Parlamentares */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-1">
-          {filteredVotes.map((v, idx) => (
+          {filteredVotes.map((v) => (
             <div
-              key={idx}
+              key={`${v.deputado_nome}-${v.partido_sigla}-${v.uf}`}
               className="bg-slate-950/70 border border-slate-800/80 hover:border-slate-700 rounded-2xl p-3 flex items-center justify-between gap-3 transition-all"
             >
               <div className="flex items-center gap-3">
-                {v.foto_url ? (
+                {safeExternalUrl(v.foto_url) ? (
                   <img
-                    src={v.foto_url}
-                    alt={v.deputado_nome}
+                    src={safeExternalUrl(v.foto_url)}
+                    alt=""
                     referrerPolicy="no-referrer"
                     className="w-10 h-10 rounded-xl object-cover border border-slate-700 flex-shrink-0"
                     onError={(e) => {
@@ -355,7 +356,7 @@ export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProp
                     }}
                   />
                 ) : (
-                  <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-400 flex-shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-300 flex-shrink-0">
                     {v.partido_sigla}
                   </div>
                 )}
@@ -370,19 +371,19 @@ export default function WageDisparityPanel({ mandateId }: WageDisparityPanelProp
               <div>
                 {v.voto === "SIM" && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
                     SIM
                   </span>
                 )}
                 {v.voto === "NAO" && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-rose-500/15 text-rose-400 border border-rose-500/30">
-                    <XCircle className="w-3.5 h-3.5" />
+                    <XCircle className="w-3.5 h-3.5" aria-hidden="true" />
                     NÃO
                   </span>
                 )}
                 {v.voto !== "SIM" && v.voto !== "NAO" && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                    <HelpCircle className="w-3.5 h-3.5" />
+                    <HelpCircle className="w-3.5 h-3.5" aria-hidden="true" />
                     {v.voto}
                   </span>
                 )}

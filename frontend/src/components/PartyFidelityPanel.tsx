@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import {
-  PartyFidelityResponse,
-  PartyBalanceItem,
-  TopNomad,
-} from "@/services/api";
+import { PartyFidelityResponse, PartyBalanceItem } from "@/services/api";
+import PartyLink from "@/components/PartyLink";
+import { safeExternalUrl } from "@/lib/safeUrl";
+import { EmptyState } from "@/components/StateViews";
+import { fmtPct, isNum } from "@/lib/format";
 import {
   ResponsiveContainer,
   BarChart,
@@ -18,17 +18,12 @@ import {
   Cell,
 } from "recharts";
 import {
-  Users,
   TrendingUp,
-  TrendingDown,
   ArrowRight,
   Search,
-  Sparkles,
   Award,
-  Layers,
   ChevronDown,
   ChevronUp,
-  Landmark,
   ShieldAlert,
 } from "lucide-react";
 
@@ -45,44 +40,58 @@ export default function PartyFidelityPanel({
   const [expandedNomadId, setExpandedNomadId] = useState<string | null>(null);
   const [chartFilter, setChartFilter] = useState<"TOP_MOVERS" | "ALL">("TOP_MOVERS");
 
-  if (!fidelityData) {
-    return null;
-  }
-
-  const { party_balance, top_nomads, summary } = fidelityData;
+  const partyBalance = useMemo(() => fidelityData?.party_balance ?? [], [fidelityData]);
+  const topNomads = useMemo(() => fidelityData?.top_nomads ?? [], [fidelityData]);
+  // O backend devolve `summary: {}` quando não há dados: cada campo pode estar ausente.
+  const summary: Partial<NonNullable<PartyFidelityResponse["summary"]>> = fidelityData?.summary ?? {};
 
   // Filtrar partidos para o gráfico (remover siglas zeradas e limitar aos que tiveram movimentação)
   const chartData = useMemo(() => {
-    const withMovement = party_balance.filter(
+    const withMovement = partyBalance.filter(
       (p) => p.saldo_liquido !== 0 || p.ganhos > 0 || p.perdas > 0
     );
 
     if (chartFilter === "TOP_MOVERS") {
-      // Top 7 maiores ganhadores e Top 7 maiores perdedores
-      const gainers = withMovement.filter((p) => p.saldo_liquido > 0).slice(0, 6);
-      const losers = withMovement.filter((p) => p.saldo_liquido < 0).slice(-6);
+      // Maiores ganhadores e maiores perdedores, ordenados explicitamente (não depende da ordem da API)
+      const gainers = withMovement
+        .filter((p) => p.saldo_liquido > 0)
+        .sort((a, b) => b.saldo_liquido - a.saldo_liquido)
+        .slice(0, 6);
+      const losers = withMovement
+        .filter((p) => p.saldo_liquido < 0)
+        .sort((a, b) => a.saldo_liquido - b.saldo_liquido)
+        .slice(0, 6);
       return [...gainers, ...losers].sort((a, b) => b.saldo_liquido - a.saldo_liquido);
     }
 
     return withMovement.slice(0, 20);
-  }, [party_balance, chartFilter]);
+  }, [partyBalance, chartFilter]);
 
   // Filtrar nômades pela busca
   const filteredNomads = useMemo(() => {
-    if (!searchTerm.trim()) return top_nomads.slice(0, 15);
+    if (!searchTerm.trim()) return topNomads.slice(0, 15);
     const term = searchTerm.toLowerCase();
-    return top_nomads.filter(
+    return topNomads.filter(
       (n) =>
         n.nome_eleitoral.toLowerCase().includes(term) ||
         n.partido_atual.toLowerCase().includes(term) ||
         n.siglas_sequencia.some((s) => s.toLowerCase().includes(term)) ||
         n.uf.toLowerCase().includes(term)
     );
-  }, [top_nomads, searchTerm]);
+  }, [topNomads, searchTerm]);
 
   const toggleExpand = (id: string) => {
     setExpandedNomadId(expandedNomadId === id ? null : id);
   };
+
+  if (!fidelityData || (partyBalance.length === 0 && topNomads.length === 0)) {
+    return (
+      <EmptyState
+        title="Fidelidade partidária indisponível"
+        message="Os dados de filiações do TSE ainda não estão disponíveis."
+      />
+    );
+  }
 
   return (
     <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 backdrop-blur-md space-y-6">
@@ -91,7 +100,7 @@ export default function PartyFidelityPanel({
         <div>
           <div className="flex items-center gap-2">
             <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
-              <ShieldAlert className="w-5 h-5" />
+              <ShieldAlert className="w-5 h-5" aria-hidden="true" />
             </span>
             <h2 className="text-base sm:text-lg font-bold text-slate-100">
               TSE Analytics: Dinâmica Partidária & Infidelidade Parlamentar
@@ -107,35 +116,29 @@ export default function PartyFidelityPanel({
           <div className="px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs">
             <span className="text-slate-400">Taxa de Migração: </span>
             <strong className="text-amber-400 font-mono">
-              {summary.taxa_migracao_pct}%
+              {fmtPct(summary.taxa_migracao_pct, 1)}
             </strong>{" "}
-            <span className="text-[11px] text-slate-400">
-              ({summary.total_nomades}/{summary.total_parlamentares})
-            </span>
+            {isNum(summary.total_nomades) && isNum(summary.total_parlamentares) && (
+              <span className="text-[11px] text-slate-400">
+                ({summary.total_nomades}/{summary.total_parlamentares})
+              </span>
+            )}
           </div>
 
           <div className="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300">
             <span>Maior Ganho: </span>
-            <strong
-              onClick={() => onSelectParty && summary.partido_maior_ganho && onSelectParty(summary.partido_maior_ganho)}
-              className={`font-bold ${onSelectParty ? "cursor-pointer hover:underline" : ""}`}
-              title={onSelectParty ? `Ver bancada do ${summary.partido_maior_ganho}` : undefined}
-            >
-              {summary.partido_maior_ganho}
-            </strong>{" "}
-            <span className="font-mono font-bold">+{summary.saldo_maior_ganho}</span>
+            <PartyLink sigla={summary.partido_maior_ganho} onSelectParty={onSelectParty} className="font-bold" />{" "}
+            {isNum(summary.saldo_maior_ganho) && (
+              <span className="font-mono font-bold">+{summary.saldo_maior_ganho}</span>
+            )}
           </div>
 
           <div className="px-3 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300">
             <span>Maior Perda: </span>
-            <strong
-              onClick={() => onSelectParty && summary.partido_maior_perda && onSelectParty(summary.partido_maior_perda)}
-              className={`font-bold ${onSelectParty ? "cursor-pointer hover:underline" : ""}`}
-              title={onSelectParty ? `Ver bancada do ${summary.partido_maior_perda}` : undefined}
-            >
-              {summary.partido_maior_perda}
-            </strong>{" "}
-            <span className="font-mono font-bold">{summary.saldo_maior_perda}</span>
+            <PartyLink sigla={summary.partido_maior_perda} onSelectParty={onSelectParty} className="font-bold" />{" "}
+            {isNum(summary.saldo_maior_perda) && (
+              <span className="font-mono font-bold">{summary.saldo_maior_perda}</span>
+            )}
           </div>
         </div>
       </div>
@@ -147,7 +150,7 @@ export default function PartyFidelityPanel({
           <div className="flex items-center justify-between pb-2 border-b border-slate-900">
             <div>
               <div className="flex items-center gap-1.5">
-                <TrendingUp className="w-4 h-4 text-emerald-400" />
+                <TrendingUp className="w-4 h-4 text-emerald-400" aria-hidden="true" />
                 <h3 className="text-xs sm:text-sm font-bold text-slate-200">
                   Saldo Líquido de Cadeiras por Legenda
                 </h3>
@@ -160,6 +163,8 @@ export default function PartyFidelityPanel({
             {/* Alternador de visualização */}
             <div className="flex items-center bg-slate-900 border border-slate-800 p-0.5 rounded-lg text-[10px]">
               <button
+                type="button"
+                aria-pressed={chartFilter === "TOP_MOVERS"}
                 onClick={() => setChartFilter("TOP_MOVERS")}
                 className={`px-2 py-1 rounded font-semibold transition-all ${
                   chartFilter === "TOP_MOVERS"
@@ -170,6 +175,8 @@ export default function PartyFidelityPanel({
                 Destaques
               </button>
               <button
+                type="button"
+                aria-pressed={chartFilter === "ALL"}
                 onClick={() => setChartFilter("ALL")}
                 className={`px-2 py-1 rounded font-semibold transition-all ${
                   chartFilter === "ALL"
@@ -245,9 +252,9 @@ export default function PartyFidelityPanel({
                 />
                 <ReferenceLine x={0} stroke="#475569" strokeWidth={1.5} />
                 <Bar dataKey="saldo_liquido" radius={[4, 4, 4, 4]}>
-                  {chartData.map((entry, index) => (
+                  {chartData.map((entry) => (
                     <Cell
-                      key={`cell-${index}`}
+                      key={`cell-${entry.partido}`}
                       fill={entry.saldo_liquido >= 0 ? "#10b981" : "#f43f5e"}
                       fillOpacity={0.85}
                     />
@@ -258,7 +265,7 @@ export default function PartyFidelityPanel({
           </div>
 
           <p className="text-[10px] text-slate-400 italic text-center">
-            Nota: Perdas acentuadas em PSL e DEM refletem a fusão que originou o União Brasil.
+            Nota: fusões e incorporações partidárias também aparecem como migração de cadeiras.
           </p>
         </div>
 
@@ -266,26 +273,27 @@ export default function PartyFidelityPanel({
         <div className="lg:col-span-7 bg-slate-950/70 border border-slate-800/90 rounded-xl p-4.5 flex flex-col justify-between space-y-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-900">
             <div className="flex items-center gap-1.5">
-              <Award className="w-4 h-4 text-amber-400" />
+              <Award className="w-4 h-4 text-amber-400" aria-hidden="true" />
               <div>
                 <h3 className="text-xs sm:text-sm font-bold text-slate-200">
-                  Ranking dos "Nômades Partidários"
+                  Ranking dos &quot;Nômades Partidários&quot;
                 </h3>
                 <p className="text-[11px] text-slate-400">
-                  Parlamentares da 57ª Legislatura com mais trocas de legenda na carreira
+                  Parlamentares com mais trocas de legenda na carreira (dados do TSE)
                 </p>
               </div>
             </div>
 
             {/* Busca Rápida */}
             <div className="relative w-full sm:w-56">
-              <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" aria-hidden="true" />
               <input
                 type="text"
+                aria-label="Buscar nômade por nome, partido ou UF"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Buscar por nome ou partido..."
-                className="w-full bg-slate-900/90 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                className="w-full bg-slate-900/90 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-400 focus:outline-none focus:border-cyan-500 transition-colors"
               />
             </div>
           </div>
@@ -293,7 +301,7 @@ export default function PartyFidelityPanel({
           {/* Lista Compacta de Parlamentares */}
           <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
             {filteredNomads.length === 0 ? (
-              <div className="text-center py-8 text-slate-500 text-xs">
+              <div role="status" className="text-center py-8 text-slate-400 text-xs">
                 Nenhum parlamentar encontrado para o termo pesquisado.
               </div>
             ) : (
@@ -306,10 +314,10 @@ export default function PartyFidelityPanel({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2.5">
-                        {nomad.foto_url ? (
+                        {safeExternalUrl(nomad.foto_url) ? (
                           <img
-                            src={nomad.foto_url}
-                            alt={nomad.nome_eleitoral}
+                            src={safeExternalUrl(nomad.foto_url)}
+                            alt=""
                             referrerPolicy="no-referrer"
                             className="w-8 h-8 rounded-full object-cover border border-slate-700 flex-shrink-0"
                             onError={(e) => {
@@ -333,13 +341,11 @@ export default function PartyFidelityPanel({
                           </div>
                           <span className="text-[11px] text-slate-400">
                             Atual:{" "}
-                            <strong
-                              onClick={() => onSelectParty && nomad.partido_atual && onSelectParty(nomad.partido_atual)}
-                              className={`text-cyan-400 ${onSelectParty ? "cursor-pointer hover:underline" : ""}`}
-                              title={onSelectParty ? `Ver bancada do ${nomad.partido_atual}` : undefined}
-                            >
-                              {nomad.partido_atual}
-                            </strong>
+                            <PartyLink
+                              sigla={nomad.partido_atual}
+                              onSelectParty={onSelectParty}
+                              className="text-cyan-400 font-bold"
+                            />
                           </span>
                         </div>
                       </div>
@@ -350,14 +356,17 @@ export default function PartyFidelityPanel({
                         </span>
 
                         <button
+                          type="button"
                           onClick={() => toggleExpand(nomad.id)}
+                          aria-expanded={isExpanded}
+                          aria-label={`Detalhes das filiações de ${nomad.nome_eleitoral}`}
                           className="p-1 text-slate-400 hover:text-slate-200 transition-colors"
                           title="Ver detalhes de cada filiação"
                         >
                           {isExpanded ? (
-                            <ChevronUp className="w-4 h-4" />
+                            <ChevronUp className="w-4 h-4" aria-hidden="true" />
                           ) : (
-                            <ChevronDown className="w-4 h-4" />
+                            <ChevronDown className="w-4 h-4" aria-hidden="true" />
                           )}
                         </button>
                       </div>
@@ -369,19 +378,17 @@ export default function PartyFidelityPanel({
                         const isLast = idx === nomad.siglas_sequencia.length - 1;
                         return (
                           <React.Fragment key={`${nomad.id}-${sigla}-${idx}`}>
-                            <span
-                              onClick={() => onSelectParty && sigla && onSelectParty(sigla)}
+                            <PartyLink
+                              sigla={sigla}
+                              onSelectParty={onSelectParty}
                               className={`px-1.5 py-0.5 rounded font-mono font-semibold ${
                                 isLast
                                   ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
-                                  : "bg-slate-800/80 text-slate-400"
-                              } ${onSelectParty ? "cursor-pointer hover:underline hover:text-cyan-200" : ""}`}
-                              title={onSelectParty ? `Ver bancada do ${sigla}` : undefined}
-                            >
-                              {sigla}
-                            </span>
+                                  : "bg-slate-800/80 text-slate-300"
+                              }`}
+                            />
                             {!isLast && (
-                              <ArrowRight className="w-2.5 h-2.5 text-slate-600 flex-shrink-0" />
+                              <ArrowRight className="w-2.5 h-2.5 text-slate-400 flex-shrink-0" aria-hidden="true" />
                             )}
                           </React.Fragment>
                         );
@@ -395,21 +402,17 @@ export default function PartyFidelityPanel({
                           Histórico Cronológico Registrado no TSE:
                         </span>
                         <div className="space-y-1 bg-slate-950/60 p-2 rounded-lg border border-slate-900">
-                          {nomad.historico.map((h, i) => (
+                          {nomad.historico.map((h) => (
                             <div
-                              key={i}
+                              key={`${h.partido}-${h.data_filiacao}`}
                               className="flex items-center justify-between text-slate-300 text-[10px]"
                             >
                               <div className="flex items-center gap-2">
-                                <span
-                                  onClick={() => onSelectParty && h.partido && onSelectParty(h.partido)}
-                                  className={`font-mono font-bold text-cyan-300 w-14 ${
-                                    onSelectParty ? "cursor-pointer hover:underline" : ""
-                                  }`}
-                                  title={onSelectParty ? `Ver bancada do ${h.partido}` : undefined}
-                                >
-                                  {h.partido}
-                                </span>
+                                <PartyLink
+                                  sigla={h.partido}
+                                  onSelectParty={onSelectParty}
+                                  className="font-mono font-bold text-cyan-300 w-14 text-left"
+                                />
                                 <span className="text-slate-400">
                                   {h.data_filiacao} → {h.data_desfiliacao || "Ativo (Atual)"}
                                 </span>

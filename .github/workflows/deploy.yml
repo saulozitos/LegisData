@@ -1,38 +1,60 @@
 name: Deploy
 
+# O deploy só ocorre depois que o CI conclui com sucesso na main.
+# O disparo manual (workflow_dispatch) exige aprovação do ambiente "production".
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: ["CI Quality Gate"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Deploy to Server
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
+      DEPLOY_HOST_FINGERPRINT: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
+      # SHA exato validado pelo CI (workflow_run) ou o SHA do disparo manual.
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
     steps:
-      - name: Checkout Código
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Verificar configuração de deploy
+        run: |
+          if [ -z "$DEPLOY_HOST" ]; then
+            echo "DEPLOY_HOST não configurado; deploy ignorado."
+            echo "SKIP_DEPLOY=true" >> "$GITHUB_ENV"
+          elif [ -z "$DEPLOY_HOST_FINGERPRINT" ]; then
+            echo "::error::Secret DEPLOY_HOST_FINGERPRINT é obrigatório (fingerprint SHA256 do host SSH, ex.: ssh-keyscan + ssh-keygen -lf)."
+            exit 1
+          fi
 
       - name: Executar Deploy via SSH Seguro
-        if: env.DEPLOY_HOST != ''
+        if: env.SKIP_DEPLOY != 'true'
         uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: DEPLOY_DIR
+          fingerprint: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
+          envs: DEPLOY_DIR,DEPLOY_SHA
           script: |
             set -e
             cd "${DEPLOY_DIR:?Variavel DEPLOY_DIR obrigatoria configurada nos secrets do repositorio}"
-            git pull origin main
+            git fetch origin main
+            git checkout --detach "${DEPLOY_SHA:?SHA de deploy ausente}"
             if command -v docker-compose >/dev/null 2>&1; then
               docker-compose up -d --build
             else

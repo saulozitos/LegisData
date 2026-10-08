@@ -1,15 +1,17 @@
-import json
+import re
 import unicodedata
 import uuid
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from pathlib import Path  # noqa: F401
 from typing import Any, Dict, List, Optional
 
 from app.core.config import PROCESSED_DATA_DIR
+from app.core.data_files import load_json_cached
 from app.core.database import get_db
 from app.models import (
     AttendanceRecord,
     CargoPoliticoEnum,
+    CasaLegislativaEnum,
     CertidaoJudicial,
     DespesaCota,
     DoacaoCampanha,
@@ -26,15 +28,25 @@ from app.models import (
     TipoPresencaEnum,
     VotingSession,
 )
+from app.services.basometro import calcular_basometro
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import asc, desc, func, or_
+from sqlalchemy import and_, asc, desc, func, or_
 from sqlalchemy.orm import Session
 
 router = APIRouter()
 DATA_DIR = PROCESSED_DATA_DIR
 
-_ceap_cache: Optional[Dict[str, Any]] = None
-_emendas_cache: Optional[List[Dict[str, Any]]] = None
+# Fuso fixo do Brasil (sem horário de verão desde 2019) para exibir datas de sessões sem depender de tzdata
+BRT = timezone(timedelta(hours=-3))
+# Limites de listas devolvidas no dossiê (os agregados são sempre calculados no banco, sobre todos os registros)
+MAX_VOTES_LISTED = 300
+MAX_PROPOSITIONS_LISTED = 500
+MAX_EMENDAS_LISTED = 500
+ALL_KEYWORDS = ("todos", "todas", "all")
+
+# Cache dos arquivos JSON processados (invalidado por mtime; arquivo ausente nunca é cacheado)
+_json_cache: Dict[str, Any] = {}
+_load_json_cached = load_json_cached
 
 
 def _normalize_name(text: Optional[str]) -> str:
@@ -43,62 +55,81 @@ def _normalize_name(text: Optional[str]) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", text.upper()) if unicodedata.category(c) != "Mn").strip()
 
 
+def _escape_like(value: str) -> str:
+    """Escapa curingas do LIKE para que '%' e '_' digitados pelo usuário sejam literais."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _contains(column, value: str):
+    return column.ilike(f"%{_escape_like(value.strip())}%", escape="\\")
+
+
+def _mask_document(doc: Optional[str]) -> Optional[str]:
+    """Mascara CPF (LGPD): ***.123.456-**. CNPJ (pessoa jurídica) é dado público e permanece íntegro."""
+    if not doc:
+        return doc
+    if "*" in doc:  # já mascarado na origem (ETL grava CPF de doador mascarado): não mascara de novo
+        return doc
+    digits = re.sub(r"\D", "", doc)
+    if len(digits) == 11:
+        return f"***.{digits[3:6]}.{digits[6:9]}-**"
+    if len(digits) == 14:
+        return doc
+    if len(digits) > 4:
+        return "*" * (len(digits) - 4) + digits[-4:]
+    return "***"
+
+
+def _processed_ceap_index() -> Dict[str, Any]:
+    file_path = DATA_DIR / "despesas_ceap_historico.json"
+    if not file_path.exists():
+        file_path = DATA_DIR / "despesas_ceap_2019_2026.json"
+    raw = _load_json_cached(file_path)
+    if not isinstance(raw, dict):
+        return {}
+    cached = _json_cache.get(str(file_path) + "#index")
+    mtime = file_path.stat().st_mtime
+    if cached and cached[0] == mtime:
+        return cached[1]
+    index = {_normalize_name(k): v for k, v in raw.items()}
+    _json_cache[str(file_path) + "#index"] = (mtime, index)
+    return index
+
+
+def _processed_emendas_index() -> Dict[str, List[Dict[str, Any]]]:
+    file_path = DATA_DIR / "emendas_parlamentares_historico.json"
+    if not file_path.exists():
+        file_path = DATA_DIR / "emendas_parlamentares_2019_2026.json"
+    raw = _load_json_cached(file_path)
+    if not isinstance(raw, list):
+        return {}
+    cached = _json_cache.get(str(file_path) + "#index")
+    mtime = file_path.stat().st_mtime
+    if cached and cached[0] == mtime:
+        return cached[1]
+    index: Dict[str, List[Dict[str, Any]]] = {}
+    for item in raw:
+        index.setdefault(_normalize_name(item.get("politician_name", "")), []).append(item)
+    _json_cache[str(file_path) + "#index"] = (mtime, index)
+    return index
+
+
 def _get_processed_ceap(electoral_name: str, civil_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    global _ceap_cache
-    if _ceap_cache is None:
-        file_path = DATA_DIR / "despesas_ceap_historico.json"
-        if not file_path.exists():
-            file_path = DATA_DIR / "despesas_ceap_2019_2026.json"
-        if file_path.exists():
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    raw = json.load(f)
-                    _ceap_cache = {_normalize_name(k): v for k, v in raw.items()}
-            except Exception:
-                _ceap_cache = {}
-        else:
-            _ceap_cache = {}
-
-    norm_elec = _normalize_name(electoral_name)
-    norm_civ = _normalize_name(civil_name) if civil_name else ""
-
-    if norm_elec in _ceap_cache:
-        return _ceap_cache[norm_elec]
-    if norm_civ and norm_civ in _ceap_cache:
-        return _ceap_cache[norm_civ]
-
-    for k, v in _ceap_cache.items():
-        if (norm_elec and (norm_elec in k or k in norm_elec)) or (norm_civ and (norm_civ in k or k in norm_civ)):
-            return v
+    """Busca CEAP consolidada no arquivo do ETL por nome normalizado EXATO (nunca por substring)."""
+    index = _processed_ceap_index()
+    for candidate in (_normalize_name(electoral_name), _normalize_name(civil_name)):
+        if candidate and candidate in index:
+            return index[candidate]
     return None
 
 
 def _get_processed_emendas(electoral_name: str, civil_name: Optional[str] = None) -> List[Dict[str, Any]]:
-    global _emendas_cache
-    if _emendas_cache is None:
-        file_path = DATA_DIR / "emendas_parlamentares_historico.json"
-        if not file_path.exists():
-            file_path = DATA_DIR / "emendas_parlamentares_2019_2026.json"
-        if file_path.exists():
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    _emendas_cache = json.load(f)
-            except Exception:
-                _emendas_cache = []
-        else:
-            _emendas_cache = []
-
-    norm_elec = _normalize_name(electoral_name)
-    norm_civ = _normalize_name(civil_name) if civil_name else ""
-
-    res = []
-    for item in _emendas_cache:
-        item_norm = _normalize_name(item.get("politician_name", ""))
-        if (norm_elec and (norm_elec == item_norm or norm_elec in item_norm or item_norm in norm_elec)) or (
-            norm_civ and (norm_civ == item_norm or norm_civ in item_norm or item_norm in norm_civ)
-        ):
-            res.append(item)
-    return res
+    """Busca emendas no arquivo do ETL por nome normalizado EXATO (nunca por substring)."""
+    index = _processed_emendas_index()
+    for candidate in (_normalize_name(electoral_name), _normalize_name(civil_name)):
+        if candidate and candidate in index:
+            return index[candidate]
+    return []
 
 
 SIMBOLICO_KEYWORDS = [
@@ -126,54 +157,94 @@ SIMBOLICO_KEYWORDS = [
     "institui a semana",
 ]
 
-PARTY_GOV_BASELINE = {
-    "PT": 98.5,
-    "PCdoB": 96.0,
-    "PV": 94.5,
-    "REDE": 92.0,
-    "PSOL": 86.5,
-    "PSB": 84.0,
-    "PDT": 79.0,
-    "MDB": 74.0,
-    "PSD": 72.5,
-    "SOLIDARIEDADE": 68.0,
-    "AVANTE": 66.0,
-    "CIDADANIA": 60.0,
-    "UNIÃO": 58.0,
-    "PP": 54.5,
-    "REPUBLICANOS": 51.0,
-    "PODEMOS": 46.0,
-    "PODE": 46.0,
-    "PSDB": 42.0,
-    "PRD": 38.0,
-    "NOVO": 18.0,
-    "PL": 14.5,
+# Fotos locais dos presidentes, aplicadas SOMENTE a quem possui mandato de PRESIDENTE (nunca por substring de nome)
+PRESIDENT_PHOTOS = {
+    "ITAMAR FRANCO": "/presidents/itamar-franco.jpg",
+    "FERNANDO HENRIQUE CARDOSO": "/presidents/fhc.jpg",
+    "LUIZ INACIO LULA DA SILVA": "/presidents/lula.jpg",
+    "LULA": "/presidents/lula.jpg",
+    "DILMA ROUSSEFF": "/presidents/dilma.jpg",
+    "MICHEL TEMER": "/presidents/temer.jpg",
+    "JAIR BOLSONARO": "/presidents/bolsonaro.jpg",
+    "JAIR MESSIAS BOLSONARO": "/presidents/bolsonaro.jpg",
+}
+
+VOTE_LABELS = {
+    "SIM": "Sim",
+    "NAO": "Não",
+    "ABSTENCAO": "Abstenção",
+    "OBSTRUCAO": "Obstrução",
+    "AUSENTE": "Ausente",
+    "ARTIGO_17": "Art. 17",
 }
 
 
-def _format_photo_url(politician: Politician) -> Optional[str]:
-    """Retorna URL confiável da foto ou fallback local para presidentes."""
+def _opt_float(valor: Any) -> Optional[float]:
+    """float(valor) preservando None (dado não informado pela fonte)."""
+    return None if valor is None else float(valor)
+
+
+_UNIDADE_ASSIDUIDADE = {
+    CasaLegislativaEnum.CAMARA_DOS_DEPUTADOS.value: "dia com sessão deliberativa",
+    CasaLegislativaEnum.SENADO_FEDERAL.value: "dia com votação nominal em plenário",
+}
+_FONTE_ASSIDUIDADE = {
+    CasaLegislativaEnum.CAMARA_DOS_DEPUTADOS.value: "Câmara dos Deputados — Presença em Plenário (Ato da Mesa nº 191/2017)",
+    CasaLegislativaEnum.SENADO_FEDERAL.value: "Senado Federal — votações nominais de plenário (presença derivada do voto)",
+}
+
+
+def _unidade_assiduidade(casas: Any) -> Optional[str]:
+    return " / ".join(_UNIDADE_ASSIDUIDADE[c] for c in sorted(casas) if c in _UNIDADE_ASSIDUIDADE) or None
+
+
+def _fonte_assiduidade(casas: Any) -> Optional[str]:
+    return " | ".join(_FONTE_ASSIDUIDADE[c] for c in sorted(casas) if c in _FONTE_ASSIDUIDADE) or None
+
+
+def _format_photo_url(politician: Politician, is_president: bool = False) -> Optional[str]:
+    """Retorna URL confiável da foto ou fallback local para presidentes (identificados por mandato)."""
     if politician.photo_url:
         return politician.photo_url
 
-    name_lower = politician.electoral_name.lower()
-    if "itamar" in name_lower:
-        return "/presidents/itamar-franco.jpg"
-    if "cardoso" in name_lower or "fhc" in name_lower:
-        return "/presidents/fhc.jpg"
-    if "lula" in name_lower and "fonte" not in name_lower:
-        return "/presidents/lula.jpg"
-    if "dilma" in name_lower:
-        return "/presidents/dilma.jpg"
-    if "temer" in name_lower:
-        return "/presidents/temer.jpg"
-    if "bolsonaro" in name_lower:
-        return "/presidents/bolsonaro.jpg"
+    if is_president:
+        for candidate in (_normalize_name(politician.electoral_name), _normalize_name(politician.civil_name)):
+            if candidate in PRESIDENT_PHOTOS:
+                return PRESIDENT_PHOTOS[candidate]
 
     if politician.camara_id:
         return f"https://www.camara.leg.br/internet/deputado/bandep/{politician.camara_id}.jpg"
 
     return None
+
+
+def _official_url(prop: Proposition) -> Optional[str]:
+    if prop.official_url:
+        return prop.official_url
+    if prop.external_camara_id:
+        return f"https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao={prop.external_camara_id}"
+    if prop.external_senado_id:
+        return f"https://www25.senado.leg.br/web/atividade/materias/-/materia/{prop.external_senado_id}"
+    return None
+
+
+def _to_brt(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(BRT)
+
+
+def _pct(part: float, total: float) -> float:
+    return round((part / total) * 100, 1) if total > 0 else 0.0
+
+
+def _load_json_list_or_404(filename: str, detail: str) -> Any:
+    data = _load_json_cached(DATA_DIR / filename)
+    if data is None:
+        raise HTTPException(status_code=404, detail=detail)
+    return data
 
 
 @router.get("/presidents", response_model=List[Dict[str, Any]])
@@ -182,38 +253,52 @@ def get_historical_presidents():
     Retorna o catálogo histórico completo dos Presidentes do Brasil (Itamar Franco -> Presente),
     incluindo ministros da fazenda, vices, partidos e marcos econômicos.
     """
-    file_path = DATA_DIR / "presidentes_historico.json"
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Dados de presidentes ainda não processados.")
-
-    with open(file_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return _load_json_list_or_404("presidentes_historico.json", "Dados de presidentes ainda não processados.")
 
 
 @router.get("/presidents/{mandate_id}")
 def get_president_by_mandate(mandate_id: str):
     """Retorna detalhes específicos de um mandato presidencial."""
-    file_path = DATA_DIR / "presidentes_historico.json"
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Dados não encontrados.")
-
-    with open(file_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-        for pres in data:
-            if pres["id_referencia"] == mandate_id:
-                return pres
+    data = _load_json_list_or_404("presidentes_historico.json", "Dados não encontrados.")
+    for pres in data:
+        if pres.get("id_referencia") == mandate_id:
+            return pres
 
     raise HTTPException(status_code=404, detail=f"Mandato '{mandate_id}' não encontrado.")
+
+
+def _parse_office(office: Optional[str]) -> Optional[CargoPoliticoEnum]:
+    if not office or office.lower() in ALL_KEYWORDS:
+        return None
+    try:
+        return CargoPoliticoEnum[office.strip().upper()]
+    except KeyError:
+        valid = ", ".join(c.name for c in CargoPoliticoEnum)
+        raise HTTPException(status_code=422, detail=f"Cargo inválido '{office}'. Valores aceitos: {valid}.")
+
+
+def _parse_uf(uf: Optional[str]) -> Optional[str]:
+    if not uf or uf.lower() in ALL_KEYWORDS:
+        return None
+    clean = uf.strip().upper()
+    if not re.fullmatch(r"[A-Z]{2}", clean):
+        raise HTTPException(status_code=422, detail=f"UF inválida '{uf}'. Use a sigla de 2 letras.")
+    return clean
+
+
+def _is_current_mandate_clause():
+    today = date.today()
+    return or_(Mandate.end_date.is_(None), Mandate.end_date >= today)
 
 
 @router.get("", response_model=Dict[str, Any])
 @router.get("/", response_model=Dict[str, Any])
 def search_politicians(
-    search: Optional[str] = Query(None, description="Busca por nome eleitoral ou civil"),
+    search: Optional[str] = Query(None, max_length=100, description="Busca por nome eleitoral ou civil"),
     office: Optional[str] = Query(None, description="Filtro por cargo (DEPUTADO_FEDERAL, SENADOR, PRESIDENTE)"),
-    party: Optional[str] = Query(None, description="Filtro por sigla do partido"),
-    partido: Optional[str] = Query(None, description="Alias para party"),
-    uf: Optional[str] = Query(None, description="Filtro por UF de jurisdição"),
+    party: Optional[str] = Query(None, max_length=50, description="Filtro por sigla do partido (match exato)"),
+    partido: Optional[str] = Query(None, max_length=50, description="Alias para party"),
+    uf: Optional[str] = Query(None, description="Filtro por UF de jurisdição do mandato"),
     limit: int = Query(50, ge=1, le=800, description="Quantidade máxima de registros"),
     offset: int = Query(0, ge=0, description="Deslocamento para paginação"),
     db: Session = Depends(get_db),
@@ -224,111 +309,81 @@ def search_politicians(
     """
     query = db.query(Politician)
 
-    if search:
-        search_pattern = f"%{search.strip()}%"
+    if search and search.strip():
         query = query.filter(
             or_(
-                Politician.electoral_name.ilike(search_pattern),
-                Politician.civil_name.ilike(search_pattern),
+                _contains(Politician.electoral_name, search),
+                _contains(Politician.civil_name, search),
             )
         )
 
-    target_party = (party or partido).strip() if (party or partido) else None
-    if target_party and target_party.lower() in ("todos", "todas", "all"):
-        target_party = None
+    raw_party = (party or partido or "").strip()
+    target_party = None if not raw_party or raw_party.lower() in ALL_KEYWORDS else raw_party.upper()
+    office_enum = _parse_office(office)
+    clean_uf = _parse_uf(uf)
 
-    # Filtrar por partido, cargo ou UF com alta precisão
-    if target_party or office or uf:
-        if target_party:
-            clean_party = target_party.strip().upper()
-            party_ids_subq = (
-                db.query(PoliticalParty.id)
-                .filter(
-                    or_(
-                        func.upper(PoliticalParty.acronym) == clean_party,
-                        PoliticalParty.acronym.ilike(f"%{clean_party}%"),
-                        PoliticalParty.full_name.ilike(f"%{clean_party}%"),
-                    )
-                )
-                .subquery()
-            )
+    if target_party:
+        # Match exato de sigla (PT não traz PTB) e somente vínculo ATUAL (filiação vigente ou mandato em curso)
+        party_ids = db.query(PoliticalParty.id).filter(func.upper(PoliticalParty.acronym) == target_party)
+        party_mandate_subq = db.query(Mandate.politician_id).filter(
+            Mandate.party_id.in_(party_ids), _is_current_mandate_clause()
+        )
+        party_aff_subq = db.query(PartyAffiliation.politician_id).filter(
+            PartyAffiliation.party_id.in_(party_ids), PartyAffiliation.is_current.is_(True)
+        )
+        query = query.filter(or_(Politician.id.in_(party_mandate_subq), Politician.id.in_(party_aff_subq)))
 
-            party_mandate_subq = db.query(Mandate.politician_id).filter(Mandate.party_id.in_(party_ids_subq))
-            party_aff_subq = db.query(PartyAffiliation.politician_id).filter(
-                PartyAffiliation.party_id.in_(party_ids_subq)
-            )
+    if office_enum:
+        query = query.filter(Politician.id.in_(db.query(Mandate.politician_id).filter(Mandate.office == office_enum)))
 
-            query = query.filter(
-                or_(
-                    Politician.id.in_(party_mandate_subq),
-                    Politician.id.in_(party_aff_subq),
-                )
-            )
-
-        if office and office.lower() not in ("todos", "todas", "all"):
-            try:
-                c_enum = CargoPoliticoEnum[office.upper()]
-                mandate_office_subq = db.query(Mandate.politician_id).filter(Mandate.office == c_enum)
-                query = query.filter(Politician.id.in_(mandate_office_subq))
-            except KeyError:
-                pass
-
-        if uf and uf.lower() not in ("todos", "todas", "all"):
-            mandate_uf_subq = db.query(Mandate.politician_id).filter(Mandate.jurisdiction_state == uf.upper())
-            query = query.filter(
-                or_(
-                    Politician.id.in_(mandate_uf_subq),
-                    Politician.birthplace_state == uf.upper(),
-                )
-            )
+    if clean_uf:
+        query = query.filter(
+            Politician.id.in_(db.query(Mandate.politician_id).filter(Mandate.jurisdiction_state == clean_uf))
+        )
 
     total_count = query.count()
-    politicians = query.order_by(Politician.electoral_name.asc()).offset(offset).limit(limit).all()
+    politicians = query.order_by(Politician.electoral_name.asc(), Politician.id.asc()).offset(offset).limit(limit).all()
+
+    # Busca em lote (sem N+1): todos os mandatos e filiações atuais dos políticos da página
+    pol_ids = [p.id for p in politicians]
+    mandates_by_pol: Dict[uuid.UUID, List[Any]] = {}
+    current_party_by_pol: Dict[uuid.UUID, PoliticalParty] = {}
+    if pol_ids:
+        mandate_rows = (
+            db.query(Mandate, PoliticalParty)
+            .outerjoin(PoliticalParty, Mandate.party_id == PoliticalParty.id)
+            .filter(Mandate.politician_id.in_(pol_ids))
+            .order_by(desc(Mandate.start_date))
+            .all()
+        )
+        for m, p in mandate_rows:
+            mandates_by_pol.setdefault(m.politician_id, []).append((m, p))
+
+        aff_rows = (
+            db.query(PartyAffiliation, PoliticalParty)
+            .join(PoliticalParty, PartyAffiliation.party_id == PoliticalParty.id)
+            .filter(PartyAffiliation.politician_id.in_(pol_ids), PartyAffiliation.is_current.is_(True))
+            .all()
+        )
+        for aff, p in aff_rows:
+            current_party_by_pol.setdefault(aff.politician_id, p)
 
     results = []
     for pol in politicians:
-        # Obter mandato filtrado ou mais recente
-        latest_mandate_q = (
-            db.query(Mandate, PoliticalParty)
-            .outerjoin(PoliticalParty, Mandate.party_id == PoliticalParty.id)
-            .filter(Mandate.politician_id == pol.id)
-        )
-        if office:
-            try:
-                c_enum = CargoPoliticoEnum[office.upper()]
-                latest_mandate_q = latest_mandate_q.filter(Mandate.office == c_enum)
-            except KeyError:
-                pass
-        if target_party:
-            latest_mandate_q = latest_mandate_q.filter(PoliticalParty.acronym.ilike(target_party))
-
-        latest_mandate = latest_mandate_q.order_by(desc(Mandate.start_date)).first()
-        if not latest_mandate:
-            latest_mandate = (
-                db.query(Mandate, PoliticalParty)
-                .outerjoin(PoliticalParty, Mandate.party_id == PoliticalParty.id)
-                .filter(Mandate.politician_id == pol.id)
-                .order_by(desc(Mandate.start_date))
-                .first()
-            )
-
-        mandate_obj = latest_mandate[0] if latest_mandate else None
-        party_obj = latest_mandate[1] if latest_mandate else None
-
-        # Obter partido da filiação atual caso não tenha no mandato
+        candidates = mandates_by_pol.get(pol.id, [])
+        preferred = [
+            c
+            for c in candidates
+            if (not office_enum or c[0].office == office_enum)
+            and (not target_party or (c[1] and c[1].acronym.upper() == target_party))
+        ]
+        chosen = (preferred or candidates or [None])[0]
+        mandate_obj = chosen[0] if chosen else None
+        party_obj = chosen[1] if chosen else None
         if not party_obj:
-            current_aff = (
-                db.query(PartyAffiliation, PoliticalParty)
-                .join(PoliticalParty, PartyAffiliation.party_id == PoliticalParty.id)
-                .filter(
-                    PartyAffiliation.politician_id == pol.id,
-                    PartyAffiliation.is_current.is_(True),
-                )
-                .first()
-            )
-            if current_aff:
-                party_obj = current_aff[1]
+            party_obj = current_party_by_pol.get(pol.id)
 
+        is_president = any(c[0].office == CargoPoliticoEnum.PRESIDENTE for c in candidates)
         results.append(
             {
                 "id": str(pol.id),
@@ -338,7 +393,7 @@ def search_politicians(
                 "partido_sigla": party_obj.acronym if party_obj else "S.PART.",
                 "partido_nome": party_obj.full_name if party_obj else "Sem Partido",
                 "uf": (mandate_obj.jurisdiction_state if mandate_obj else (pol.birthplace_state or "BR")),
-                "foto_url": _format_photo_url(pol),
+                "foto_url": _format_photo_url(pol, is_president),
                 "camara_id": pol.camara_id,
                 "senado_id": pol.senado_id,
             }
@@ -352,92 +407,107 @@ def search_politicians(
     }
 
 
-def _enrich_judicial_records(pol: Politician, certidoes_db: List[CertidaoJudicial], db: Session) -> Dict[str, Any]:
+def _resolve_politician(db: Session, politician_id: str) -> Politician:
     """
-    Enriquece dados judiciais com comprovação documental a partir da tabela
-    `processos_judiciais` no PostgreSQL, números de processo, datas oficiais de autuação/julgamento
-    e links diretos para tribunais (STF, TSE, TRF).
-    Elimina rigorosamente falsos positivos em homônimos (ex: Lula da Fonte).
+    Resolve o político por UUID, ID da Câmara/Senado ou nome exato (slug). Nunca por substring:
+    se o nome for ambíguo devolve 409 em vez de escolher um registro arbitrário.
     """
-    name_low = (pol.electoral_name or "").lower().strip()
-    civil_low = (pol.civil_name or "").lower().strip()
-    is_lula_fonte = "lula da fonte" in name_low or "lula da fonte" in civil_low
+    try:
+        pol = db.query(Politician).filter(Politician.id == uuid.UUID(politician_id)).first()
+        if pol:
+            return pol
+    except ValueError:
+        pass
 
-    # 1. Consulta processos judiciais comprovados diretamente no banco de dados PostgreSQL
-    processos_detalhados: List[Dict[str, Any]] = []
-    if not is_lula_fonte:
-        processos_db = (
-            db.query(ProcessoJudicial)
-            .filter(ProcessoJudicial.politician_id == pol.id)
-            .order_by(desc(ProcessoJudicial.process_date))
+    if politician_id.isdigit():
+        num_id = int(politician_id)
+        pol = (
+            db.query(Politician)
+            .filter(or_(Politician.camara_id == num_id, Politician.senado_id == num_id))
+            .order_by(Politician.camara_id.is_(None), Politician.electoral_name)
+            .first()
+        )
+        if pol:
+            return pol
+
+    slug = politician_id.replace("-", " ").strip().lower()
+    if slug:
+        matches = (
+            db.query(Politician)
+            .filter(or_(func.lower(Politician.electoral_name) == slug, func.lower(Politician.civil_name) == slug))
+            .order_by(Politician.electoral_name, Politician.id)
+            .limit(2)
             .all()
         )
-        processos_detalhados = [
-            {
-                "numero_processo": p.process_number,
-                "tribunal": p.court_agency,
-                "data_processo": p.process_date,
-                "classe_assunto": p.case_class,
-                "descricao": p.description,
-                "situacao_juridica": p.legal_status,
-                "link_comprovacao": p.proof_url,
-                "status_resumo": p.status_summary,
-            }
-            for p in processos_db
-        ]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise HTTPException(status_code=409, detail=f"Identificador '{politician_id}' é ambíguo; use o ID.")
 
-    possui_processos = len(processos_detalhados) > 0 or (bool(pol.possui_processos_declarados) and not is_lula_fonte)
+    raise HTTPException(status_code=404, detail=f"Político '{politician_id}' não encontrado.")
 
-    # Fallback caso esteja sinalizado como positivo no banco mas sem detalhamento individual cadastrado ainda
-    if possui_processos and not processos_detalhados and not is_lula_fonte:
+
+def _enrich_judicial_records(pol: Politician, certidoes_db: List[CertidaoJudicial], db: Session) -> Dict[str, Any]:
+    """
+    Consolida dados judiciais a partir de `processos_judiciais` e `certidoes_judiciais`.
+    Campos ausentes são devolvidos como None: nenhum número de processo, data ou código é inventado.
+    """
+    processos_db = (
+        db.query(ProcessoJudicial)
+        .filter(ProcessoJudicial.politician_id == pol.id)
+        .order_by(desc(ProcessoJudicial.process_date))
+        .all()
+    )
+    processos_detalhados: List[Dict[str, Any]] = [
+        {
+            "numero_processo": p.process_number,
+            "tribunal": p.court_agency,
+            "data_processo": p.process_date,
+            "classe_assunto": p.case_class,
+            "descricao": p.description,
+            "situacao_juridica": p.legal_status,
+            "link_comprovacao": p.proof_url,
+            "status_resumo": p.status_summary,
+        }
+        for p in processos_db
+    ]
+
+    def _is_positive(cert: CertidaoJudicial) -> bool:
+        status_clean = (cert.status or "").lower()
+        return "positiva" in status_clean or "declarada" in status_clean
+
+    # Certidão positiva/declarada registrada também significa que há processos, mesmo que o sinalizador esteja desligado
+    possui_processos = (
+        len(processos_detalhados) > 0
+        or bool(pol.possui_processos_declarados)
+        or any(_is_positive(c) for c in certidoes_db)
+    )
+
+    # Sinalizado como positivo mas sem detalhamento individual: usa apenas o que a certidão realmente registra
+    if possui_processos and not processos_detalhados:
         for c in certidoes_db:
             status_clean = (c.status or "").lower()
             if "positiva" in status_clean or "declarada" in status_clean:
                 processos_detalhados.append(
                     {
-                        "numero_processo": getattr(c, "process_number", None) or f"{c.court_agency}-DECL-2022",
+                        "numero_processo": c.process_number,
                         "tribunal": c.court_agency,
-                        "data_processo": getattr(c, "issue_date", None) or "15/08/2022",
+                        "data_processo": c.issue_date,
                         "classe_assunto": c.certificate_type,
-                        "descricao": c.details
-                        or "Certidão positiva apresentada perante a Justiça Eleitoral no registro de candidatura.",
-                        "situacao_juridica": "Processo distribuído e declarado perante a Justiça Eleitoral (candidatura deferida).",
-                        "link_comprovacao": getattr(c, "proof_url", None)
-                        or "https://divulgacandcontas.tse.jus.br/divulga/#/",
+                        "descricao": c.details,
+                        "situacao_juridica": None,
+                        "link_comprovacao": c.proof_url,
                         "status_resumo": "Declarado no TSE",
                     }
                 )
 
-    # Lista de certidões individuais
     certidoes_lista = []
     orgaos_declarados = []
-    uf_val = (pol.birthplace_state if pol.birthplace_state and pol.birthplace_state != "BR" else "DF").upper()
-
     for c in certidoes_db:
-        status_c = "Nada Consta" if is_lula_fonte else c.status
-        details_c = (
-            "Nada consta na distribuição da respectiva jurisdição perante a Justiça Eleitoral."
-            if is_lula_fonte
-            else c.details
-        )
-        is_pos = ("positiva" in status_c.lower() or "declarada" in status_c.lower()) and not is_lula_fonte
+        status_c = c.status or ""
+        is_pos = "positiva" in status_c.lower() or "declarada" in status_c.lower()
         if is_pos:
             orgaos_declarados.append(c.court_agency)
-
-        proc_num = getattr(c, "process_number", None)
-        dt_emissao = getattr(c, "issue_date", None) or "15/08/2022"
-        lk_comp = getattr(c, "proof_url", None)
-        cod_aut = getattr(c, "auth_code", None)
-
-        if not lk_comp:
-            if "STF" in c.court_agency:
-                lk_comp = "https://portal.stf.jus.br/processos/" if is_pos else "https://portal.stf.jus.br/certidoes/"
-            elif "TSE" in c.court_agency:
-                lk_comp = "https://divulgacandcontas.tse.jus.br/divulga/#/"
-            elif "TRF" in c.court_agency:
-                lk_comp = "https://sistemas.trf1.jus.br/certidao/"
-            else:
-                lk_comp = f"https://www.tj{uf_val.lower()}.jus.br/"
 
         certidoes_lista.append(
             {
@@ -447,24 +517,299 @@ def _enrich_judicial_records(pol: Politician, certidoes_db: List[CertidaoJudicia
                 "tipo": c.certificate_type,
                 "status_ficha": status_c,
                 "status": status_c,
-                "detalhes": details_c,
-                "numero_processo": proc_num or f"CERT-TSE-2022/{str(c.id)[:8].upper()}",
-                "data_emissao": dt_emissao,
-                "link_comprovacao": lk_comp,
-                "codigo_autenticidade": cod_aut or f"AUT-{str(c.id)[:8].upper()}-2022",
+                "detalhes": c.details,
+                "numero_processo": c.process_number,
+                "data_emissao": c.issue_date,
+                "link_comprovacao": c.proof_url,
+                "codigo_autenticidade": c.auth_code,
             }
         )
 
-    link_tse = f"https://divulgacandcontas.tse.jus.br/divulga/#/candidato/2022/2040602022/{uf_val}"
-
     return {
         "possui_processos_declarados": possui_processos,
-        "status_geral": ("Processos Declarados" if possui_processos else "Nada Consta (Ficha Limpa)"),
-        "orgaos_declarados": list(set(orgaos_declarados)),
-        "link_tse_divulgacand": link_tse,
+        # "Nada Consta" só é afirmado quando há certidão registrada; sem nenhum dado o status é null (desconhecido)
+        "status_geral": (
+            "Processos Declarados" if possui_processos else ("Nada Consta (Ficha Limpa)" if certidoes_lista else None)
+        ),
+        "dados_certidoes_disponiveis": len(certidoes_lista) > 0 or len(processos_detalhados) > 0,
+        "orgaos_declarados": sorted(set(orgaos_declarados)),
+        # Portal público de consulta (não aponta para um candidato específico)
+        "link_tse_divulgacand": "https://divulgacandcontas.tse.jus.br/divulga/#/",
         "processos_detalhados": processos_detalhados,
         "certidoes": certidoes_lista,
     }
+
+
+def _ceap_from_db(db: Session, pol: Politician) -> Optional[Dict[str, Any]]:
+    """Agrega a CEAP no banco (SUM/GROUP BY) em vez de carregar milhares de linhas em memória."""
+    flt = DespesaCota.politician_id == pol.id
+    total_val, total_notas = db.query(func.coalesce(func.sum(DespesaCota.net_value), 0), func.count()).filter(flt).one()
+    if not total_notas:
+        return None
+    total_ceap_geral = float(total_val)
+
+    type_rows = (
+        db.query(DespesaCota.expense_type, func.sum(DespesaCota.net_value).label("total"))
+        .filter(flt)
+        .group_by(DespesaCota.expense_type)
+        .order_by(desc("total"))
+        .all()
+    )
+    gastos_por_tipo = [
+        {"tipo_despesa": t, "total_gasto": round(float(v), 2), "percentual": _pct(float(v), total_ceap_geral)}
+        for t, v in type_rows
+    ]
+
+    supplier_rows = (
+        db.query(
+            DespesaCota.supplier_name,
+            func.max(DespesaCota.supplier_cnpj_cpf),
+            func.sum(DespesaCota.net_value).label("total"),
+            func.count(),
+        )
+        .filter(flt)
+        .group_by(DespesaCota.supplier_name)
+        .order_by(desc("total"))
+        .limit(10)
+        .all()
+    )
+    maiores_fornecedores = [
+        {
+            "nome_fornecedor": name,
+            "cnpj_cpf": _mask_document(doc),
+            "total_recebido": round(float(total), 2),
+            "num_notas": int(n),
+        }
+        for name, doc, total, n in supplier_rows
+    ]
+
+    recentes = (
+        db.query(DespesaCota)
+        .filter(flt)
+        .order_by(desc(DespesaCota.year), desc(DespesaCota.month).nulls_last(), DespesaCota.id)
+        .limit(15)
+        .all()
+    )
+    despesas_recentes = [
+        {
+            "ano": d.year,
+            "mes": d.month,
+            "tipo_despesa": d.expense_type,
+            "valor_liquido": float(d.net_value),
+            "nome_fornecedor": d.supplier_name,
+            "cnpj_cpf": _mask_document(d.supplier_cnpj_cpf),
+            "data_emissao": d.issue_date.isoformat() if d.issue_date else None,
+            "documento_url": d.document_url,
+        }
+        for d in recentes
+    ]
+    return {
+        "possui_dados": True,
+        "gasto_total_recente": round(total_ceap_geral, 2),
+        "total_notas": int(total_notas),
+        "gastos_por_tipo": gastos_por_tipo,
+        "maiores_fornecedores": maiores_fornecedores,
+        "despesas_recentes": despesas_recentes,
+    }
+
+
+def _ceap_from_file(pol: Politician) -> Optional[Dict[str, Any]]:
+    proc_ceap = _get_processed_ceap(pol.electoral_name, pol.civil_name)
+    if not proc_ceap:
+        return None
+    total_ceap_geral = float(proc_ceap.get("total_gasto") or 0.0)
+    gastos_por_tipo = [
+        {
+            "tipo_despesa": t,
+            "total_gasto": round(float(v), 2),
+            "percentual": _pct(float(v), total_ceap_geral),
+        }
+        for t, v in (proc_ceap.get("por_tipo") or {}).items()
+    ]
+    gastos_por_tipo.sort(key=lambda x: x["total_gasto"], reverse=True)
+
+    maiores_fornecedores = [
+        {
+            "nome_fornecedor": f.get("nome") or "Fornecedor",
+            "cnpj_cpf": _mask_document(f.get("cnpj_cpf")),
+            "total_recebido": round(float(f.get("total") or 0.0), 2),
+            "num_notas": int(f.get("notas") or 1),
+        }
+        for f in (proc_ceap.get("fornecedores") or {}).values()
+    ]
+    maiores_fornecedores.sort(key=lambda x: x["total_recebido"], reverse=True)
+    maiores_fornecedores = maiores_fornecedores[:10]
+
+    por_ano = proc_ceap.get("por_ano") or {}
+    despesas_recentes = [
+        {
+            "ano": int(ano),
+            "mes": None,
+            "tipo_despesa": "Consolidado Anual CEAP (Prestação de Contas)",
+            "valor_liquido": round(float(val), 2),
+            "nome_fornecedor": "Congresso Nacional (Câmara / Senado)",
+            "cnpj_cpf": None,
+            "data_emissao": None,
+            "documento_url": None,
+        }
+        for ano, val in sorted(por_ano.items(), reverse=True)
+    ]
+    return {
+        "possui_dados": True,
+        "gasto_total_recente": round(total_ceap_geral, 2),
+        "total_notas": int(proc_ceap.get("total_notas") or len(despesas_recentes)),
+        "gastos_por_tipo": gastos_por_tipo,
+        "maiores_fornecedores": maiores_fornecedores,
+        "despesas_recentes": despesas_recentes,
+        "por_ano": por_ano,
+    }
+
+
+def _emendas_summary(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Resumo de emendas a partir de linhas normalizadas (valor_empenhado, valor_pago, localidade, tipo, funcao)."""
+    total_empenhado = float(sum(r["valor_empenhado"] for r in rows))
+    total_pago = float(sum(r["valor_pago"] for r in rows))
+
+    def group(key: str) -> Dict[str, float]:
+        acc: Dict[str, float] = {}
+        for r in rows:
+            acc[r[key]] = acc.get(r[key], 0.0) + r["valor_pago"]
+        return acc
+
+    def to_list(acc: Dict[str, float], label: str) -> List[Dict[str, Any]]:
+        out = [{label: k, "valor_pago": round(v, 2), "percentual": _pct(v, total_pago)} for k, v in acc.items()]
+        out.sort(key=lambda x: x["valor_pago"], reverse=True)
+        return out
+
+    return {
+        "possui_dados": True,
+        "total_empenhado": round(total_empenhado, 2),
+        "total_pago": round(total_pago, 2),
+        "percentual_execucao": _pct(total_pago, total_empenhado),
+        "destinos_principais": to_list(group("localidade_destino"), "localidade"),
+        "distribuicao_por_tipo": to_list(group("tipo_emenda"), "tipo"),
+        "distribuicao_por_area": to_list(group("funcao"), "area"),
+    }
+
+
+def _emendas_from_db(db: Session, pol: Politician) -> Optional[Dict[str, Any]]:
+    flt = EmendaParlamentar.politician_id == pol.id
+    total_emp, total_pago, total_n = (
+        db.query(
+            func.coalesce(func.sum(EmendaParlamentar.committed_value), 0),
+            func.coalesce(func.sum(EmendaParlamentar.paid_value), 0),
+            func.count(),
+        )
+        .filter(flt)
+        .one()
+    )
+    if not total_n:
+        return None
+    total_emp, total_pago = float(total_emp), float(total_pago)
+
+    def grouped(column, label: str, default: Optional[str] = None) -> List[Dict[str, Any]]:
+        col = func.coalesce(column, default) if default else column
+        rows = (
+            db.query(col, func.sum(EmendaParlamentar.paid_value).label("total"))
+            .filter(flt)
+            .group_by(col)
+            .order_by(desc("total"))
+            .all()
+        )
+        return [{label: k, "valor_pago": round(float(v), 2), "percentual": _pct(float(v), total_pago)} for k, v in rows]
+
+    emendas = (
+        db.query(EmendaParlamentar)
+        .filter(flt)
+        .order_by(desc(EmendaParlamentar.year), desc(EmendaParlamentar.paid_value), EmendaParlamentar.id)
+        .limit(MAX_EMENDAS_LISTED)
+        .all()
+    )
+    return {
+        "possui_dados": True,
+        "total_empenhado": round(total_emp, 2),
+        "total_pago": round(total_pago, 2),
+        "percentual_execucao": _pct(total_pago, total_emp),
+        "destinos_principais": grouped(EmendaParlamentar.destination_locality, "localidade"),
+        "distribuicao_por_tipo": grouped(EmendaParlamentar.amendment_type, "tipo"),
+        "distribuicao_por_area": grouped(EmendaParlamentar.function_area, "area", "Outras Funções"),
+        "total_emendas": int(total_n),
+        "lista_emendas": [
+            {
+                "id": str(e.id),
+                "ano": e.year,
+                "codigo_emenda": e.amendment_code,
+                "tipo_emenda": e.amendment_type,
+                "valor_empenhado": float(e.committed_value),
+                "valor_pago": float(e.paid_value),
+                "localidade_destino": e.destination_locality,
+                "funcao": e.function_area,
+            }
+            for e in emendas
+        ],
+    }
+
+
+def _normalize_emenda_rows(raw: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    rows = []
+    for e in raw:
+        rows.append(
+            {
+                "ano": e.get("ano"),
+                "codigo_emenda": e.get("codigo_emenda"),
+                "tipo_emenda": e.get("tipo_emenda") or "INDIVIDUAL",
+                "valor_empenhado": float(e.get("valor_empenhado") or 0.0),
+                "valor_pago": float(e.get("valor_pago") or 0.0),
+                "localidade_destino": e.get("localidade_destino") or "Não Informado",
+                "funcao": e.get("funcao") or "Outras Funções",
+            }
+        )
+    return rows
+
+
+def _emendas_from_file(pol: Politician) -> Optional[Dict[str, Any]]:
+    raw = _get_processed_emendas(pol.electoral_name, pol.civil_name)
+    if not raw:
+        return None
+    rows = _normalize_emenda_rows(raw)
+    summary = _emendas_summary(rows)
+    summary["total_emendas"] = len(rows)
+    summary["lista_emendas"] = [
+        {
+            "id": str(r["codigo_emenda"] or idx),
+            "ano": int(r["ano"]) if r["ano"] is not None else None,
+            "codigo_emenda": r["codigo_emenda"],
+            "tipo_emenda": r["tipo_emenda"],
+            "valor_empenhado": r["valor_empenhado"],
+            "valor_pago": r["valor_pago"],
+            "localidade_destino": r["localidade_destino"],
+            "funcao": r["funcao"],
+        }
+        for idx, r in enumerate(rows[:MAX_EMENDAS_LISTED])
+    ]
+    return summary
+
+
+EMPTY_EMENDAS = {
+    "possui_dados": False,
+    "total_empenhado": 0.0,
+    "total_pago": 0.0,
+    "percentual_execucao": 0.0,
+    "destinos_principais": [],
+    "distribuicao_por_tipo": [],
+    "distribuicao_por_area": [],
+    "total_emendas": 0,
+    "lista_emendas": [],
+}
+
+EMPTY_CEAP = {
+    "possui_dados": False,
+    "gasto_total_recente": 0.0,
+    "total_notas": 0,
+    "gastos_por_tipo": [],
+    "maiores_fornecedores": [],
+    "despesas_recentes": [],
+}
 
 
 @router.get("/{politician_id}", response_model=Dict[str, Any])
@@ -477,37 +822,10 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     - Matérias de autoria própria
     - Histórico de votações nominais nas grandes leis
     - Contabilização de presenças e faltas com taxa de assiduidade
+
+    Dados ausentes são devolvidos como null (ou "possui_dados": false); nada é inferido ou fabricado.
     """
-    pol = None
-
-    # 1. Tentar busca por UUID
-    try:
-        pol_uuid = uuid.UUID(politician_id)
-        pol = db.query(Politician).filter_by(id=pol_uuid).first()
-    except (ValueError, AttributeError):
-        pass
-
-    # 2. Tentar busca por ID externo da Câmara ou Senado
-    if not pol and politician_id.isdigit():
-        num_id = int(politician_id)
-        pol = db.query(Politician).filter(or_(Politician.camara_id == num_id, Politician.senado_id == num_id)).first()
-
-    # 3. Tentar busca aproximada por nome ou identificador slug
-    if not pol:
-        clean_slug = politician_id.replace("-", " ")
-        pol = (
-            db.query(Politician)
-            .filter(
-                or_(
-                    Politician.electoral_name.ilike(f"%{clean_slug}%"),
-                    Politician.civil_name.ilike(f"%{clean_slug}%"),
-                )
-            )
-            .first()
-        )
-
-    if not pol:
-        raise HTTPException(status_code=404, detail=f"Político '{politician_id}' não encontrado.")
+    pol = _resolve_politician(db, politician_id)
 
     # A. Trajetória de Mandatos
     mandates_db = (
@@ -522,6 +840,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     cargo_atual = "PARLAMENTAR"
     uf_atual = pol.birthplace_state or "BR"
     partido_atual_sigla = "S.PART."
+    presidential_periods = []
 
     for idx, (m, party) in enumerate(mandates_db):
         if idx == 0:
@@ -529,6 +848,8 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             uf_atual = m.jurisdiction_state
             if party:
                 partido_atual_sigla = party.acronym
+        if m.office == CargoPoliticoEnum.PRESIDENTE:
+            presidential_periods.append((m.start_date, m.end_date))
 
         mandatos_list.append(
             {
@@ -543,7 +864,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
                 "partido_sigla": party.acronym if party else "S.PART.",
                 "uf": m.jurisdiction_state,
                 "total_votos": m.total_votes,
-                "percentual_votos": (float(m.vote_percentage) if m.vote_percentage else None),
+                "percentual_votos": (float(m.vote_percentage) if m.vote_percentage is not None else None),
                 "coligacao": m.coalition_name,
             }
         )
@@ -575,69 +896,86 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             }
         )
 
-    # C. Remunerações (Salário, CEAP, Benefícios)
-    remuns_db = (
+    # C. Remunerações (Salário, CEAP, Benefícios) — totais calculados no banco para o ano mais recente com dados
+    remun_filter = PoliticianRemuneration.politician_id == pol.id
+    remuns_recent = (
         db.query(PoliticianRemuneration)
-        .filter(PoliticianRemuneration.politician_id == pol.id)
-        .order_by(
-            desc(PoliticianRemuneration.reference_year),
-            desc(PoliticianRemuneration.reference_month),
-        )
+        .filter(remun_filter)
+        .order_by(desc(PoliticianRemuneration.reference_year), desc(PoliticianRemuneration.reference_month))
+        .limit(12)
         .all()
     )
+    remuneracao_historico = [
+        {
+            "ano": r.reference_year,
+            "mes": r.reference_month,
+            "salario_bruto": float(r.gross_salary),
+            # Campos que a fonte oficial não informa para o mês ficam null (nunca 0 presumido)
+            "salario_liquido": _opt_float(r.net_salary),
+            "cota_ceap": _opt_float(r.parliamentary_quota_ceap),
+            "auxilio_moradia": _opt_float(r.housing_allowance),
+            "outros_beneficios": _opt_float(r.other_benefits),
+            "fonte": r.data_source,
+        }
+        for r in remuns_recent
+    ]
 
-    remuneracao_historico = []
+    ano_remuneracao = remuns_recent[0].reference_year if remuns_recent else None
     total_bruto_ano = Decimal("0.00")
-    total_liquido_ano = Decimal("0.00")
-    total_ceap_ano = Decimal("0.00")
-    total_beneficios_ano = Decimal("0.00")
-
-    for r in remuns_db:
-        if r.reference_year == 2023:
-            total_bruto_ano += r.gross_salary
-            total_liquido_ano += r.net_salary
-            total_ceap_ano += r.parliamentary_quota_ceap
-            total_beneficios_ano += r.housing_allowance + r.other_benefits
-
-        remuneracao_historico.append(
-            {
-                "ano": r.reference_year,
-                "mes": r.reference_month,
-                "salario_bruto": float(r.gross_salary),
-                "salario_liquido": float(r.net_salary),
-                "cota_ceap": float(r.parliamentary_quota_ceap),
-                "auxilio_moradia": float(r.housing_allowance),
-                "outros_beneficios": float(r.other_benefits),
-                "fonte": r.data_source,
-            }
+    total_ceap_ano: Optional[Decimal] = None
+    total_beneficios_ano: Optional[Decimal] = None
+    media_ceap: Optional[float] = None
+    if ano_remuneracao is not None:
+        bruto, ceap, qtd_ceap, benef, qtd_benef = (
+            db.query(
+                func.coalesce(func.sum(PoliticianRemuneration.gross_salary), 0),
+                func.sum(PoliticianRemuneration.parliamentary_quota_ceap),
+                func.count(PoliticianRemuneration.parliamentary_quota_ceap),
+                func.sum(
+                    func.coalesce(PoliticianRemuneration.housing_allowance, 0)
+                    + func.coalesce(PoliticianRemuneration.other_benefits, 0)
+                ),
+                func.count(PoliticianRemuneration.housing_allowance)
+                + func.count(PoliticianRemuneration.other_benefits),
+            )
+            .filter(remun_filter, PoliticianRemuneration.reference_year == ano_remuneracao)
+            .one()
         )
+        total_bruto_ano = Decimal(bruto)
+        if qtd_ceap:
+            total_ceap_ano = Decimal(ceap)
+            media_ceap = float((Decimal(ceap) / Decimal(qtd_ceap)).quantize(Decimal("0.01")))
+        if qtd_benef:
+            total_beneficios_ano = Decimal(benef)
 
-    qtd_meses = len([r for r in remuns_db if r.reference_year == 2023]) or 1
-    media_ceap = (total_ceap_ano / Decimal(str(qtd_meses))).quantize(Decimal("0.01"))
-    sal_bruto_atual = float(remuns_db[0].gross_salary) if remuns_db else 41650.92
-    sal_liquido_atual = float(remuns_db[0].net_salary) if remuns_db else 31238.19
+    sal_bruto_atual = float(remuns_recent[0].gross_salary) if remuns_recent else None
+    sal_liquido_atual = _opt_float(remuns_recent[0].net_salary) if remuns_recent else None
+    # Subsídio bruto registrado no período coberto pela fonte: o líquido só é coletado para o mês mais recente.
+    salario_acumulado_registrado = float(
+        db.query(func.coalesce(func.sum(PoliticianRemuneration.gross_salary), 0)).filter(remun_filter).scalar() or 0
+    )
 
-    # D. Matérias de Autoria Própria
-    is_pres_exec = "lula" in pol.electoral_name.lower() or "bolsonaro" in pol.electoral_name.lower()
+    # D. Matérias de Autoria Própria (iniciativas do Executivo só para quem exerceu mandato de PRESIDENTE,
+    # restritas ao período do mandato)
     prop_conditions = [Proposition.author_politician_id == pol.id]
-    if is_pres_exec:
-        prop_conditions.append(Proposition.is_executive_initiative.is_(True))
+    for p_start, p_end in presidential_periods:
+        exec_clause = and_(Proposition.is_executive_initiative.is_(True), Proposition.presentation_date >= p_start)
+        if p_end:
+            exec_clause = and_(exec_clause, Proposition.presentation_date <= p_end)
+        prop_conditions.append(exec_clause)
 
+    props_filter = or_(*prop_conditions)
+    total_props_db = db.query(func.count(Proposition.id)).filter(props_filter).scalar() or 0
     proposicoes_db = (
-        db.query(Proposition).filter(or_(*prop_conditions)).order_by(desc(Proposition.presentation_date)).all()
+        db.query(Proposition)
+        .filter(props_filter)
+        .order_by(desc(Proposition.presentation_date), Proposition.id)
+        .limit(MAX_PROPOSITIONS_LISTED)
+        .all()
     )
 
     materias_propostas = []
     for p in proposicoes_db:
-        url_oficial = p.official_url or (
-            f"https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao={p.external_camara_id}"
-            if p.external_camara_id
-            else (
-                f"https://www25.senado.leg.br/web/atividade/materias/-/materia/{p.external_senado_id}"
-                if p.external_senado_id
-                else None
-            )
-        )
         txt_full = f"{p.title} {p.summary or ''} {p.thematic_area or ''}".lower()
         is_simb = any(k in txt_full for k in SIMBOLICO_KEYWORDS)
         classif = "SIMBOLICO" if is_simb else "IMPACTO"
@@ -655,7 +993,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
                 "area_tematica": p.thematic_area,
                 "data_apresentacao": (p.presentation_date.isoformat() if p.presentation_date else None),
                 "is_reforma_estrutural": p.is_structural_reform,
-                "url_oficial": url_oficial,
+                "url_oficial": _official_url(p),
                 "classificacao_relevancia": classif,
                 "justificativa_relevancia": justif,
             }
@@ -664,105 +1002,110 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     total_props = len(materias_propostas)
     props_simb = sum(1 for p in materias_propostas if p.get("classificacao_relevancia") == "SIMBOLICO")
     props_imp = total_props - props_simb
-    pct_imp = round((props_imp / total_props) * 100, 1) if total_props > 0 else 100.0
-    pct_simb = round((props_simb / total_props) * 100, 1) if total_props > 0 else 0.0
+    pct_imp = _pct(props_imp, total_props) if total_props > 0 else None
+    pct_simb = _pct(props_simb, total_props) if total_props > 0 else None
+
+    if pct_imp is None:
+        diagnostico_legislativo = None
+    elif pct_imp >= 75:
+        diagnostico_legislativo = "Alta Relevância Estrutural"
+    elif pct_imp >= 50:
+        diagnostico_legislativo = "Equilíbrio Legislativo"
+    else:
+        diagnostico_legislativo = "Foco em Pautas Simbólicas"
 
     relevancia_legislativa = {
         "total_proposicoes": total_props,
+        "total_proposicoes_registradas": int(total_props_db),
+        "amostra_limitada": int(total_props_db) > total_props,
         "projetos_impacto": props_imp,
         "projetos_simbolicos": props_simb,
         "percentual_impacto": pct_imp,
         "percentual_simbolico": pct_simb,
-        "diagnostico": (
-            "Alta Relevância Estrutural"
-            if pct_imp >= 75
-            else ("Equilíbrio Legislativo" if pct_imp >= 50 else "Foco em Pautas Simbólicas")
-        ),
+        "diagnostico": diagnostico_legislativo,
     }
 
-    # E. Como Votou nas Principais Leis
-    votos_db = (
-        db.query(ParliamentaryVote, VotingSession, Proposition)
+    # E. Como Votou nas Principais Leis — agregados no banco; apenas os votos mais recentes são listados
+    axis_col = func.coalesce(Proposition.impact_axis, "Geral")
+    axis_rows = (
+        db.query(axis_col, ParliamentaryVote.vote_choice, func.count())
         .join(VotingSession, ParliamentaryVote.voting_session_id == VotingSession.id)
         .join(Proposition, VotingSession.proposition_id == Proposition.id)
         .filter(ParliamentaryVote.politician_id == pol.id)
-        .order_by(desc(VotingSession.session_datetime))
+        .group_by(axis_col, ParliamentaryVote.vote_choice)
         .all()
     )
-
-    votos_nominais = []
-    historico_votos = []
-    alinhamento_tematico_map = {}
-    votos_analisados_gov = 0
-    votos_alinhados_gov = 0
-    votos_divergentes_gov = 0
-
-    for vote, sess, prop in votos_db:
-        eixo = prop.impact_axis or "Geral"
-        if eixo not in alinhamento_tematico_map:
-            alinhamento_tematico_map[eixo] = {
+    alinhamento_tematico_map: Dict[str, Dict[str, Any]] = {}
+    votos_sim_total = votos_nao_total = 0
+    for eixo, choice, qty in axis_rows:
+        entry = alinhamento_tematico_map.setdefault(
+            eixo,
+            {
                 "eixo": eixo,
                 "total_votacoes": 0,
                 "votos_sim": 0,
                 "votos_nao": 0,
                 "votos_abstencao": 0,
+                "votos_outros": 0,
                 "percentual_favoravel": 0.0,
-            }
-
-        alinhamento_tematico_map[eixo]["total_votacoes"] += 1
-        v_opt = vote.vote_choice.value if hasattr(vote.vote_choice, "value") else str(vote.vote_choice)
-        if v_opt == "SIM":
-            alinhamento_tematico_map[eixo]["votos_sim"] += 1
-            voto_label = "Sim"
-            votos_analisados_gov += 1
-            votos_alinhados_gov += 1
-        elif v_opt == "NAO":
-            alinhamento_tematico_map[eixo]["votos_nao"] += 1
-            voto_label = "Não"
-            votos_analisados_gov += 1
-            votos_divergentes_gov += 1
-        elif "ABST" in v_opt:
-            alinhamento_tematico_map[eixo]["votos_abstencao"] += 1
-            voto_label = "Abstenção"
-        elif "OBST" in v_opt:
-            alinhamento_tematico_map[eixo]["votos_abstencao"] += 1
-            voto_label = "Obstrução"
-        else:
-            alinhamento_tematico_map[eixo]["votos_abstencao"] += 1
-            voto_label = "Ausente"
-
-        dt_formatada = sess.session_datetime.strftime("%d/%m/%Y") if sess.session_datetime else ""
-        tema_display = prop.thematic_area or prop.impact_axis or "Geral"
-        numero_display = f"{prop.proposition_type.value} {prop.number}/{prop.year}" if prop.number else prop.title
-        url_oficial_prop = prop.official_url or (
-            f"https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao={prop.external_camara_id}"
-            if prop.external_camara_id
-            else (
-                f"https://www25.senado.leg.br/web/atividade/materias/-/materia/{prop.external_senado_id}"
-                if prop.external_senado_id
-                else None
-            )
+            },
         )
+        choice_val = choice.value if hasattr(choice, "value") else str(choice)
+        entry["total_votacoes"] += qty
+        if choice_val == "SIM":
+            entry["votos_sim"] += qty
+            votos_sim_total += qty
+        elif choice_val == "NAO":
+            entry["votos_nao"] += qty
+            votos_nao_total += qty
+        elif choice_val in ("ABSTENCAO", "OBSTRUCAO"):
+            entry["votos_abstencao"] += qty
+        else:
+            entry["votos_outros"] += qty
 
-        voto_dict = {
-            "proposicao_id": str(prop.id),
-            "proposicao_titulo": prop.title,
-            "proposicao_numero": numero_display,
-            "proposicao_tipo": prop.proposition_type.value,
-            "tema": tema_display,
-            "setor": prop.thematic_area or "Geral",
-            "eixo_impacto": prop.impact_axis or "Geral",
-            "data": dt_formatada,
-            "data_iso": (sess.session_datetime.isoformat() if sess.session_datetime else None),
-            "voto": voto_label,
-            "decisao": v_opt,
-            "sessao_titulo": sess.agenda_title,
-            "sessao_aprovada": sess.is_approved,
-            "casa_legislativa": sess.legislative_house.value,
-            "url_oficial": url_oficial_prop,
-        }
+    alinhamento_tematico_list = []
+    for dados in alinhamento_tematico_map.values():
+        dados["percentual_favoravel"] = _pct(dados["votos_sim"], dados["votos_sim"] + dados["votos_nao"])
+        alinhamento_tematico_list.append(dados)
+    alinhamento_tematico_list.sort(key=lambda x: x["total_votacoes"], reverse=True)
 
-        historico_votos.append(voto_dict)
+    votos_db = (
+        db.query(ParliamentaryVote, VotingSession, Proposition)
+        .join(VotingSession, ParliamentaryVote.voting_session_id == VotingSession.id)
+        .join(Proposition, VotingSession.proposition_id == Proposition.id)
+        .filter(ParliamentaryVote.politician_id == pol.id)
+        .order_by(desc(VotingSession.session_datetime), ParliamentaryVote.id)
+        .limit(MAX_VOTES_LISTED)
+        .all()
+    )
+
+    votos_nominais = []
+    historico_votos = []
+    for vote, sess, prop in votos_db:
+        v_opt = vote.vote_choice.value if hasattr(vote.vote_choice, "value") else str(vote.vote_choice)
+        voto_label = VOTE_LABELS.get(v_opt, v_opt)
+        sess_dt = _to_brt(sess.session_datetime)
+        numero_display = f"{prop.proposition_type.value} {prop.number}/{prop.year}" if prop.number else prop.title
+
+        historico_votos.append(
+            {
+                "proposicao_id": str(prop.id),
+                "proposicao_titulo": prop.title,
+                "proposicao_numero": numero_display,
+                "proposicao_tipo": prop.proposition_type.value,
+                "tema": prop.thematic_area or prop.impact_axis or "Geral",
+                "setor": prop.thematic_area or "Geral",
+                "eixo_impacto": prop.impact_axis or "Geral",
+                "data": sess_dt.strftime("%d/%m/%Y") if sess_dt else "",
+                "data_iso": sess_dt.isoformat() if sess_dt else None,
+                "voto": voto_label,
+                "decisao": v_opt,
+                "sessao_titulo": sess.agenda_title,
+                "sessao_aprovada": sess.is_approved,
+                "casa_legislativa": sess.legislative_house.value,
+                "url_oficial": _official_url(prop),
+            }
+        )
 
         votos_nominais.append(
             {
@@ -775,76 +1118,59 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
                 "eixos_tags": prop.impact_tags or "",
                 "decisao": v_opt,
                 "sessao_titulo": sess.agenda_title,
-                "sessao_data": sess.session_datetime.isoformat(),
+                "sessao_data": sess_dt.isoformat() if sess_dt else None,
                 "sessao_aprovada": sess.is_approved,
                 "casa_legislativa": sess.legislative_house.value,
             }
         )
 
-    alinhamento_tematico_list = []
-    for eixo, dados in alinhamento_tematico_map.items():
-        total_decididos = dados["votos_sim"] + dados["votos_nao"]
-        if total_decididos > 0:
-            dados["percentual_favoravel"] = round((dados["votos_sim"] / total_decididos) * 100, 1)
-        else:
-            dados["percentual_favoravel"] = 0.0
-        alinhamento_tematico_list.append(dados)
+    # Basômetro: alinhamento à orientação do governo em cada votação nominal (sem baseline inventado).
+    basometro = calcular_basometro(db, pol.id, partido_atual_sigla, votos_sim_total, votos_nao_total)
 
-    alinhamento_tematico_list.sort(key=lambda x: x["total_votacoes"], reverse=True)
-
-    # Basômetro - Taxa de Governismo
-    if votos_analisados_gov >= 2:
-        taxa_governismo_pct = round((votos_alinhados_gov / votos_analisados_gov) * 100, 1)
-    else:
-        taxa_governismo_pct = PARTY_GOV_BASELINE.get(partido_atual_sigla, 50.0)
-
-    if taxa_governismo_pct >= 80.0:
-        classif_gov = "Governista Fiel"
-    elif taxa_governismo_pct >= 60.0:
-        classif_gov = "Base Aliada Moderada"
-    elif taxa_governismo_pct >= 40.0:
-        classif_gov = "Independente / Centro"
-    elif taxa_governismo_pct >= 20.0:
-        classif_gov = "Oposição Moderada"
-    else:
-        classif_gov = "Oposição Firme"
-
-    basometro = {
-        "taxa_governismo_pct": taxa_governismo_pct,
-        "total_votacoes_analisadas": votos_analisados_gov,
-        "votos_alinhados": votos_alinhados_gov,
-        "votos_divergentes": votos_divergentes_gov,
-        "classificacao": classif_gov,
-        "partido_sigla": partido_atual_sigla,
-    }
-
-    # F. Contabilização de Presenças e Faltas (Assiduidade)
-    attendances_query = db.query(AttendanceRecord).filter(AttendanceRecord.politician_id == pol.id)
-    total_sessoes = attendances_query.count()
-
-    presencas_count = attendances_query.filter(AttendanceRecord.attendance_status == TipoPresencaEnum.PRESENTE).count()
-    faltas_justif_count = attendances_query.filter(
-        AttendanceRecord.attendance_status.in_(
-            [
-                TipoPresencaEnum.AUSENCIA_JUSTIFICADA,
-                TipoPresencaEnum.LICENCA_MEDICA,
-                TipoPresencaEnum.MISSAO_OFICIAL,
-            ]
+    # F. Contabilização de Presenças e Faltas (Assiduidade) — uma única consulta agregada
+    att_rows = (
+        db.query(AttendanceRecord.legislative_house, AttendanceRecord.attendance_status, func.count())
+        .filter(AttendanceRecord.politician_id == pol.id)
+        .group_by(AttendanceRecord.legislative_house, AttendanceRecord.attendance_status)
+        .all()
+    )
+    att_counts: Dict[str, int] = {}
+    att_casas = set()
+    for casa_att, status_att, n_att in att_rows:
+        chave_status = status_att.value if hasattr(status_att, "value") else str(status_att)
+        att_counts[chave_status] = att_counts.get(chave_status, 0) + n_att
+        att_casas.add(casa_att.value if hasattr(casa_att, "value") else str(casa_att))
+    att_inicio, att_fim = (
+        db.query(func.min(AttendanceRecord.session_date), func.max(AttendanceRecord.session_date))
+        .filter(AttendanceRecord.politician_id == pol.id)
+        .one()
+    )
+    total_sessoes = sum(att_counts.values())
+    presencas_count = att_counts.get(TipoPresencaEnum.PRESENTE.value, 0)
+    faltas_justif_count = sum(
+        att_counts.get(t.value, 0)
+        for t in (
+            TipoPresencaEnum.AUSENCIA_JUSTIFICADA,
+            TipoPresencaEnum.LICENCA_MEDICA,
+            TipoPresencaEnum.MISSAO_OFICIAL,
         )
-    ).count()
-    faltas_injustif_count = attendances_query.filter(
-        AttendanceRecord.attendance_status == TipoPresencaEnum.AUSENCIA_NAO_JUSTIFICADA
-    ).count()
-
-    taxa_presenca = round((presencas_count / total_sessoes * 100), 1) if total_sessoes > 0 else 100.0
+    )
+    faltas_injustif_count: Optional[int] = att_counts.get(TipoPresencaEnum.AUSENCIA_NAO_JUSTIFICADA.value, 0)
+    # A fonte do Senado (votações nominais) não distingue ausência não justificada: null, nunca 0 presumido.
+    if att_casas == {CasaLegislativaEnum.SENADO_FEDERAL.value}:
+        faltas_injustif_count = None
+    taxa_presenca = round((presencas_count / total_sessoes * 100), 1) if total_sessoes > 0 else None
 
     amostra_faltas = (
-        attendances_query.filter(AttendanceRecord.attendance_status != TipoPresencaEnum.PRESENTE)
-        .order_by(desc(AttendanceRecord.session_date))
+        db.query(AttendanceRecord)
+        .filter(
+            AttendanceRecord.politician_id == pol.id,
+            AttendanceRecord.attendance_status != TipoPresencaEnum.PRESENTE,
+        )
+        .order_by(desc(AttendanceRecord.session_date), AttendanceRecord.id)
         .limit(10)
         .all()
     )
-
     faltas_registros = [
         {
             "data": a.session_date.isoformat(),
@@ -872,12 +1198,12 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
                 "ano": a.election_year,
                 "valor": val_float,
                 "valor_formatado": val_formatado,
-                "detalhes": a.asset_details or "Declaração de bens regular registrada no TSE",
+                "detalhes": a.asset_details,
             }
         )
 
-    crescimento_pct = 0.0
-    crescimento_absoluto = 0.0
+    crescimento_pct: Optional[float] = None
+    crescimento_absoluto: Optional[float] = None
     if len(patrimonio_historico) >= 2:
         val_inicial = patrimonio_historico[0]["valor"]
         val_final = patrimonio_historico[-1]["valor"]
@@ -885,340 +1211,52 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         if val_inicial > 0:
             crescimento_pct = round(((val_final - val_inicial) / val_inicial) * 100, 1)
 
+    has_assets = bool(patrimonio_historico)
     patrimonio_resumo = {
-        "possui_dados": len(patrimonio_historico) > 0,
+        "possui_dados": has_assets,
         "total_declaracoes": len(patrimonio_historico),
-        "primeiro_ano": (patrimonio_historico[0]["ano"] if patrimonio_historico else None),
-        "primeiro_valor": (patrimonio_historico[0]["valor"] if patrimonio_historico else 0.0),
-        "primeiro_valor_formatado": (patrimonio_historico[0]["valor_formatado"] if patrimonio_historico else "R$ 0,00"),
-        "ultimo_ano": patrimonio_historico[-1]["ano"] if patrimonio_historico else None,
-        "ultimo_valor": (patrimonio_historico[-1]["valor"] if patrimonio_historico else 0.0),
-        "ultimo_valor_formatado": (patrimonio_historico[-1]["valor_formatado"] if patrimonio_historico else "R$ 0,00"),
+        "primeiro_ano": patrimonio_historico[0]["ano"] if has_assets else None,
+        "primeiro_valor": patrimonio_historico[0]["valor"] if has_assets else None,
+        "primeiro_valor_formatado": patrimonio_historico[0]["valor_formatado"] if has_assets else None,
+        "ultimo_ano": patrimonio_historico[-1]["ano"] if has_assets else None,
+        "ultimo_valor": patrimonio_historico[-1]["valor"] if has_assets else None,
+        "ultimo_valor_formatado": patrimonio_historico[-1]["valor_formatado"] if has_assets else None,
         "crescimento_pct": crescimento_pct,
         "crescimento_absoluto": crescimento_absoluto,
     }
 
-    # H. Custo do Mandato (CEAP)
-    ceap_db = (
-        db.query(DespesaCota)
-        .filter(DespesaCota.politician_id == pol.id)
-        .order_by(desc(DespesaCota.year), desc(DespesaCota.month))
-        .all()
-    )
-    if ceap_db:
-        total_ceap_geral = float(sum([d.net_value for d in ceap_db]))
-        gastos_por_tipo_map = {}
-        for d in ceap_db:
-            t = d.expense_type
-            gastos_por_tipo_map[t] = gastos_por_tipo_map.get(t, 0.0) + float(d.net_value)
-
-        gastos_por_tipo = [
-            {
-                "tipo_despesa": t,
-                "total_gasto": round(v, 2),
-                "percentual": (round((v / total_ceap_geral * 100), 1) if total_ceap_geral > 0 else 0.0),
-            }
-            for t, v in gastos_por_tipo_map.items()
-        ]
-        gastos_por_tipo.sort(key=lambda x: x["total_gasto"], reverse=True)
-
-        fornecedores_map = {}
-        for d in ceap_db:
-            f_key = d.supplier_name
-            if f_key not in fornecedores_map:
-                fornecedores_map[f_key] = {
-                    "nome_fornecedor": d.supplier_name,
-                    "cnpj_cpf": d.supplier_cnpj_cpf,
-                    "total_recebido": 0.0,
-                    "num_notas": 0,
-                }
-            fornecedores_map[f_key]["total_recebido"] += float(d.net_value)
-            fornecedores_map[f_key]["num_notas"] += 1
-
-        maiores_fornecedores = list(fornecedores_map.values())
-        maiores_fornecedores.sort(key=lambda x: x["total_recebido"], reverse=True)
-        maiores_fornecedores = maiores_fornecedores[:10]
-        for mf in maiores_fornecedores:
-            mf["total_recebido"] = round(mf["total_recebido"], 2)
-
-        despesas_recentes = [
-            {
-                "ano": d.year,
-                "mes": d.month,
-                "tipo_despesa": d.expense_type,
-                "valor_liquido": float(d.net_value),
-                "nome_fornecedor": d.supplier_name,
-                "cnpj_cpf": d.supplier_cnpj_cpf,
-                "data_emissao": d.issue_date.isoformat() if d.issue_date else None,
-                "documento_url": d.document_url,
-            }
-            for d in ceap_db[:15]
-        ]
-
-        custos_ceap = {
-            "possui_dados": True,
-            "gasto_total_recente": round(total_ceap_geral, 2),
-            "total_notas": len(ceap_db),
-            "gastos_por_tipo": gastos_por_tipo,
-            "maiores_fornecedores": maiores_fornecedores,
-            "despesas_recentes": despesas_recentes,
-        }
-    else:
-        proc_ceap = _get_processed_ceap(pol.electoral_name, pol.civil_name)
-        if proc_ceap:
-            total_ceap_geral = float(proc_ceap.get("total_gasto", 0.0))
-            gastos_por_tipo = [
-                {
-                    "tipo_despesa": t,
-                    "total_gasto": round(float(v), 2),
-                    "percentual": (round((float(v) / total_ceap_geral * 100), 1) if total_ceap_geral > 0 else 0.0),
-                }
-                for t, v in proc_ceap.get("por_tipo", {}).items()
-            ]
-            gastos_por_tipo.sort(key=lambda x: x["total_gasto"], reverse=True)
-
-            maiores_fornecedores = [
-                {
-                    "nome_fornecedor": f.get("nome", "Fornecedor"),
-                    "cnpj_cpf": f.get("cnpj_cpf"),
-                    "total_recebido": round(float(f.get("total", 0.0)), 2),
-                    "num_notas": int(f.get("notas", 1)),
-                }
-                for f in proc_ceap.get("fornecedores", {}).values()
-            ]
-            maiores_fornecedores.sort(key=lambda x: x["total_recebido"], reverse=True)
-            maiores_fornecedores = maiores_fornecedores[:10]
-
-            despesas_recentes = [
-                {
-                    "ano": int(ano),
-                    "mes": None,
-                    "tipo_despesa": "Consolidado Anual CEAP (Prestação de Contas)",
-                    "valor_liquido": round(float(val), 2),
-                    "nome_fornecedor": "Congresso Nacional (Câmara / Senado)",
-                    "cnpj_cpf": None,
-                    "data_emissao": f"{ano}-12-31",
-                    "documento_url": None,
-                }
-                for ano, val in sorted(proc_ceap.get("por_ano", {}).items(), reverse=True)
-            ]
-
-            custos_ceap = {
-                "possui_dados": True,
-                "gasto_total_recente": round(total_ceap_geral, 2),
-                "total_notas": int(proc_ceap.get("total_notas", len(despesas_recentes))),
-                "gastos_por_tipo": gastos_por_tipo,
-                "maiores_fornecedores": maiores_fornecedores,
-                "despesas_recentes": despesas_recentes,
-                "por_ano": proc_ceap.get("por_ano", {}),
-            }
-        else:
-            custos_ceap = {
-                "possui_dados": False,
-                "gasto_total_recente": 0.0,
-                "total_notas": 0,
-                "gastos_por_tipo": [],
-                "maiores_fornecedores": [],
-                "despesas_recentes": [],
-            }
+    # H. Custo do Mandato (CEAP): banco (agregado) -> arquivo do ETL -> vazio
+    custos_ceap = _ceap_from_db(db, pol) or _ceap_from_file(pol) or dict(EMPTY_CEAP)
 
     # I. Trilha do Dinheiro (Emendas Parlamentares)
-    emendas_db = (
-        db.query(EmendaParlamentar)
-        .filter(EmendaParlamentar.politician_id == pol.id)
-        .order_by(desc(EmendaParlamentar.year), desc(EmendaParlamentar.paid_value))
-        .all()
-    )
-    if emendas_db:
-        total_empenhado_emendas = float(sum([e.committed_value for e in emendas_db]))
-        total_pago_emendas = float(sum([e.paid_value for e in emendas_db]))
-
-        destinos_map = {}
-        tipos_map = {}
-        areas_map = {}
-        for e in emendas_db:
-            loc = e.destination_locality
-            v_pago = float(e.paid_value)
-            destinos_map[loc] = destinos_map.get(loc, 0.0) + v_pago
-
-            t = e.amendment_type
-            tipos_map[t] = tipos_map.get(t, 0.0) + v_pago
-
-            area = e.function_area or "Outras Funções"
-            areas_map[area] = areas_map.get(area, 0.0) + v_pago
-
-        destinos_principais = [
-            {
-                "localidade": loc,
-                "valor_pago": round(v, 2),
-                "percentual": (round((v / total_pago_emendas * 100), 1) if total_pago_emendas > 0 else 0.0),
-            }
-            for loc, v in destinos_map.items()
-        ]
-        destinos_principais.sort(key=lambda x: x["valor_pago"], reverse=True)
-
-        distribuicao_por_tipo = [
-            {
-                "tipo": t,
-                "valor_pago": round(v, 2),
-                "percentual": (round((v / total_pago_emendas * 100), 1) if total_pago_emendas > 0 else 0.0),
-            }
-            for t, v in tipos_map.items()
-        ]
-        distribuicao_por_tipo.sort(key=lambda x: x["valor_pago"], reverse=True)
-
-        distribuicao_por_area = [
-            {
-                "area": a,
-                "valor_pago": round(v, 2),
-                "percentual": (round((v / total_pago_emendas * 100), 1) if total_pago_emendas > 0 else 0.0),
-            }
-            for a, v in areas_map.items()
-        ]
-        distribuicao_por_area.sort(key=lambda x: x["valor_pago"], reverse=True)
-
-        lista_emendas = [
-            {
-                "id": str(e.id),
-                "ano": e.year,
-                "codigo_emenda": e.amendment_code,
-                "tipo_emenda": e.amendment_type,
-                "valor_empenhado": float(e.committed_value),
-                "valor_pago": float(e.paid_value),
-                "localidade_destino": e.destination_locality,
-                "funcao": e.function_area,
-            }
-            for e in emendas_db
-        ]
-
-        emendas_parlamentares = {
-            "possui_dados": True,
-            "total_empenhado": round(total_empenhado_emendas, 2),
-            "total_pago": round(total_pago_emendas, 2),
-            "percentual_execucao": (
-                round((total_pago_emendas / total_empenhado_emendas * 100), 1) if total_empenhado_emendas > 0 else 0.0
-            ),
-            "destinos_principais": destinos_principais,
-            "distribuicao_por_tipo": distribuicao_por_tipo,
-            "distribuicao_por_area": distribuicao_por_area,
-            "lista_emendas": lista_emendas,
-        }
-    else:
-        proc_emendas = _get_processed_emendas(pol.electoral_name, pol.civil_name)
-        if proc_emendas:
-            total_empenhado_emendas = float(sum(e.get("valor_empenhado", 0.0) for e in proc_emendas))
-            total_pago_emendas = float(sum(e.get("valor_pago", 0.0) for e in proc_emendas))
-
-            destinos_map = {}
-            tipos_map = {}
-            areas_map = {}
-            for e in proc_emendas:
-                loc = e.get("localidade_destino", "Não Informado")
-                v_pago = float(e.get("valor_pago", 0.0))
-                destinos_map[loc] = destinos_map.get(loc, 0.0) + v_pago
-
-                t = e.get("tipo_emenda", "INDIVIDUAL")
-                tipos_map[t] = tipos_map.get(t, 0.0) + v_pago
-
-                area = e.get("funcao") or "Outras Funções"
-                areas_map[area] = areas_map.get(area, 0.0) + v_pago
-
-            destinos_principais = [
-                {
-                    "localidade": loc,
-                    "valor_pago": round(v, 2),
-                    "percentual": (round((v / total_pago_emendas * 100), 1) if total_pago_emendas > 0 else 0.0),
-                }
-                for loc, v in destinos_map.items()
-            ]
-            destinos_principais.sort(key=lambda x: x["valor_pago"], reverse=True)
-
-            distribuicao_por_tipo = [
-                {
-                    "tipo": t,
-                    "valor_pago": round(v, 2),
-                    "percentual": (round((v / total_pago_emendas * 100), 1) if total_pago_emendas > 0 else 0.0),
-                }
-                for t, v in tipos_map.items()
-            ]
-            distribuicao_por_tipo.sort(key=lambda x: x["valor_pago"], reverse=True)
-
-            distribuicao_por_area = [
-                {
-                    "area": a,
-                    "valor_pago": round(v, 2),
-                    "percentual": (round((v / total_pago_emendas * 100), 1) if total_pago_emendas > 0 else 0.0),
-                }
-                for a, v in areas_map.items()
-            ]
-            distribuicao_por_area.sort(key=lambda x: x["valor_pago"], reverse=True)
-
-            lista_emendas = [
-                {
-                    "id": str(e.get("codigo_emenda") or idx),
-                    "ano": int(e.get("ano", 2024)),
-                    "codigo_emenda": e.get("codigo_emenda"),
-                    "tipo_emenda": e.get("tipo_emenda"),
-                    "valor_empenhado": float(e.get("valor_empenhado", 0.0)),
-                    "valor_pago": float(e.get("valor_pago", 0.0)),
-                    "localidade_destino": e.get("localidade_destino"),
-                    "funcao": e.get("funcao"),
-                }
-                for idx, e in enumerate(proc_emendas)
-            ]
-
-            emendas_parlamentares = {
-                "possui_dados": True,
-                "total_empenhado": round(total_empenhado_emendas, 2),
-                "total_pago": round(total_pago_emendas, 2),
-                "percentual_execucao": (
-                    round((total_pago_emendas / total_empenhado_emendas * 100), 1)
-                    if total_empenhado_emendas > 0
-                    else 0.0
-                ),
-                "destinos_principais": destinos_principais,
-                "distribuicao_por_tipo": distribuicao_por_tipo,
-                "distribuicao_por_area": distribuicao_por_area,
-                "lista_emendas": lista_emendas,
-            }
-        else:
-            emendas_parlamentares = {
-                "possui_dados": False,
-                "total_empenhado": 0.0,
-                "total_pago": 0.0,
-                "percentual_execucao": 0.0,
-                "destinos_principais": [],
-                "distribuicao_por_tipo": [],
-                "distribuicao_por_area": [],
-                "lista_emendas": [],
-            }
+    emendas_parlamentares = _emendas_from_db(db, pol) or _emendas_from_file(pol) or dict(EMPTY_EMENDAS)
 
     # J. Raio-X Judicial e Ficha Limpa
     certidoes_db = db.query(CertidaoJudicial).filter(CertidaoJudicial.politician_id == pol.id).all()
     ficha_limpa = _enrich_judicial_records(pol, certidoes_db, db)
 
-    # K. Financiamento de Campanha (Doações Eleitorais TSE)
+    # K. Financiamento de Campanha (Doações Eleitorais TSE) — CPF de doadores pessoa física mascarado
     doacoes_db = (
         db.query(DoacaoCampanha)
         .filter(DoacaoCampanha.politician_id == pol.id)
-        .order_by(desc(DoacaoCampanha.amount_donated))
+        .order_by(desc(DoacaoCampanha.amount_donated), DoacaoCampanha.id)
         .all()
     )
     total_doado = float(sum(d.amount_donated for d in doacoes_db))
     top_5_doadores = [
         {
             "nome_doador": d.donor_name,
-            "cpf_cnpj_doador": d.donor_cpf_cnpj,
+            "cpf_cnpj_doador": _mask_document(d.donor_cpf_cnpj),
             "valor_doado": float(d.amount_donated),
             "tipo_receita": d.donation_type,
-            "percentual": (round((float(d.amount_donated) / total_doado * 100), 1) if total_doado > 0 else 0.0),
+            "percentual": _pct(float(d.amount_donated), total_doado),
         }
         for d in doacoes_db[:5]
     ]
 
     financiamento_campanha = {
         "possui_dados": len(doacoes_db) > 0,
-        "ano_eleicao": doacoes_db[0].election_year if doacoes_db else 2022,
+        "ano_eleicao": doacoes_db[0].election_year if doacoes_db else None,
         "total_arrecadado": round(total_doado, 2),
         "total_doadores": len(doacoes_db),
         "top_doadores": top_5_doadores,
@@ -1227,7 +1265,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
                 "id": str(d.id),
                 "ano_eleicao": d.election_year,
                 "nome_doador": d.donor_name,
-                "cpf_cnpj_doador": d.donor_cpf_cnpj,
+                "cpf_cnpj_doador": _mask_document(d.donor_cpf_cnpj),
                 "valor_doado": float(d.amount_donated),
                 "tipo_receita": d.donation_type,
             }
@@ -1235,53 +1273,55 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         ],
     }
 
-    # L. Algoritmos de Inteligência Cívica e Indicadores Avançados
-    # 1. ROI do Cidadão (Custo por Impacto Legislativo)
-    total_gasto_mandato = float(custos_ceap.get("gasto_total_recente", 0.0))
-    qtd_meses_mandatos = max(len(mandatos_list) * 48, 12)
-    salario_acumulado_estimado = float(sal_liquido_atual) * qtd_meses_mandatos
-    custo_total_operacional = total_gasto_mandato + salario_acumulado_estimado
+    # L. Indicadores avançados — calculados somente com dados reais; sem insumo, retornam null
+    # 1. ROI do Cidadão (custo por impacto legislativo)
+    total_gasto_mandato = float(custos_ceap.get("gasto_total_recente") or 0.0)
+    custo_total_operacional = total_gasto_mandato + salario_acumulado_registrado
+    proj_impacto = int(relevancia_legislativa.get("projetos_impacto") or 0)
+    roi_dados_ok = bool(custos_ceap.get("possui_dados")) and salario_acumulado_registrado > 0 and total_sessoes > 0
 
-    proj_impacto = int(relevancia_legislativa.get("projetos_impacto", 0))
-    custo_por_projeto = (
-        round(custo_total_operacional / max(proj_impacto, 1), 2)
-        if proj_impacto > 0
-        else round(custo_total_operacional, 2)
-    )
+    if roi_dados_ok:
+        custo_por_projeto = round(custo_total_operacional / max(proj_impacto, 1), 2)
+        fator_presenca = min(taxa_presenca or 0.0, 100.0) * 0.30
+        fator_projetos = min(proj_impacto * 10.0, 100.0) * 0.40
+        fator_custo = max(0.0, min(100.0, 100.0 - (custo_por_projeto / 50000.0) * 20.0)) * 0.30
+        nota_roi: Optional[float] = round(fator_presenca + fator_projetos + fator_custo, 1)
 
-    fator_presenca = min(taxa_presenca, 100.0) * 0.30
-    fator_projetos = min(proj_impacto * 10.0, 100.0) * 0.40
-    fator_custo = max(0.0, min(100.0, 100.0 - (custo_por_projeto / 50000.0) * 20.0)) * 0.30
-    nota_roi = round(fator_presenca + fator_projetos + fator_custo, 1)
-
-    if nota_roi >= 85:
-        score_roi = "A+"
-        diag_roi = "Alta eficiência legislativa com forte entrega de matérias estruturantes e assiduidade destacada."
-    elif nota_roi >= 70:
-        score_roi = "A"
-        diag_roi = "Bom custo-benefício para o cidadão, com produção legislativa consistente."
-    elif nota_roi >= 55:
-        score_roi = "B"
-        diag_roi = "Produção legislativa e assiduidade em nível regular."
-    elif nota_roi >= 40:
-        score_roi = "C"
-        diag_roi = "Custo operacional elevado em relação ao volume de matérias estruturantes apresentadas."
+        if nota_roi >= 85:
+            score_roi = "A+"
+            diag_roi = (
+                "Alta eficiência legislativa com forte entrega de matérias estruturantes e assiduidade destacada."
+            )
+        elif nota_roi >= 70:
+            score_roi = "A"
+            diag_roi = "Bom custo-benefício para o cidadão, com produção legislativa consistente."
+        elif nota_roi >= 55:
+            score_roi = "B"
+            diag_roi = "Produção legislativa e assiduidade em nível regular."
+        elif nota_roi >= 40:
+            score_roi = "C"
+            diag_roi = "Custo operacional elevado em relação ao volume de matérias estruturantes apresentadas."
+        else:
+            score_roi = "D"
+            diag_roi = "Baixo retorno legislativo em proporção ao custo operacional do mandato."
     else:
-        score_roi = "D"
-        diag_roi = "Baixo retorno legislativo em proporção ao custo operacional do mandato."
+        custo_por_projeto = None
+        nota_roi = None
+        score_roi = None
+        diag_roi = "Dados insuficientes (CEAP, remuneração e presenças são necessários para calcular o indicador)."
 
     roi_cidadao = {
         "score": score_roi,
         "nota": nota_roi,
-        "custo_total_operacional": round(custo_total_operacional, 2),
+        "custo_total_operacional": round(custo_total_operacional, 2) if roi_dados_ok else None,
         "custo_por_projeto_impacto": custo_por_projeto,
         "projetos_estruturantes": proj_impacto,
         "diagnostico": diag_roi,
     }
 
     # 2. Concentração de Fornecedores da CEAP (Índice HHI)
-    maiores_forn = custos_ceap.get("maiores_fornecedores", [])
-    total_gasto_ceap = float(custos_ceap.get("gasto_total_recente", 0.0))
+    maiores_forn = custos_ceap.get("maiores_fornecedores") or []
+    total_gasto_ceap = float(custos_ceap.get("gasto_total_recente") or 0.0)
     if total_gasto_ceap > 0 and maiores_forn:
         hhi = sum(((f["total_recebido"] / total_gasto_ceap * 100.0) ** 2) for f in maiores_forn)
         top1_forn = maiores_forn[0]
@@ -1300,8 +1340,8 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         hhi = 0.0
         top1_pct = 0.0
         top1_forn = None
-        nivel_risco_ceap = "BAIXO"
-        diag_hhi = "Sem despesas concentradas registradas."
+        nivel_risco_ceap = None
+        diag_hhi = "Sem despesas registradas para calcular concentração."
 
     concentracao_ceap = {
         "indice_hhi": round(hhi, 1),
@@ -1312,45 +1352,50 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         "diagnostico": diag_hhi,
     }
 
-    # 3. Enriquecimento Patrimonial vs. Renda Oficial
-    val_patrimonio_inicial = float(patrimonio_resumo.get("primeiro_valor", 0.0) or 0.0)
-    val_patrimonio_final = float(patrimonio_resumo.get("ultimo_valor", 0.0) or 0.0)
-    delta_patrimonio = val_patrimonio_final - val_patrimonio_inicial
+    # 3. Evolução patrimonial vs. remuneração oficial registrada (só com ≥2 declarações e remuneração real)
+    if len(patrimonio_historico) >= 2 and salario_acumulado_registrado > 0:
+        delta_patrimonio: Optional[float] = float(crescimento_absoluto or 0.0)
+        razao_patrimonio_renda: Optional[float] = round(delta_patrimonio / salario_acumulado_registrado, 2)
 
-    if salario_acumulado_estimado > 0:
-        razao_patrimonio_renda = round(delta_patrimonio / salario_acumulado_estimado, 2)
+        if delta_patrimonio <= 0 or razao_patrimonio_renda <= 0.8:
+            compat_patrimonial = "COMPATÍVEL"
+            diag_patrimonio = (
+                "Crescimento patrimonial compatível ou inferior ao somatório dos subsídios brutos registrados."
+            )
+        elif razao_patrimonio_renda <= 2.0:
+            compat_patrimonial = "MODERADO"
+            diag_patrimonio = "Evolução patrimonial compatível com rendimentos oficiais acrescidos de valorização imobiliária ou investimentos."
+        else:
+            compat_patrimonial = "ATÍPICO"
+            diag_patrimonio = f"Variação atípica: o patrimônio declarado cresceu {razao_patrimonio_renda}x o total de subsídios registrados."
     else:
-        razao_patrimonio_renda = 0.0
-
-    if delta_patrimonio <= 0 or razao_patrimonio_renda <= 0.8:
-        compat_patrimonial = "COMPATÍVEL"
-        diag_patrimonio = (
-            "Crescimento patrimonial compatível ou inferior ao somatório dos subsídios líquidos oficiais do mandato."
-        )
-    elif razao_patrimonio_renda <= 2.0:
-        compat_patrimonial = "MODERADO"
-        diag_patrimonio = "Evolução patrimonial compatível com rendimentos oficiais acrescidos de valorização imobiliária ou investimentos."
-    else:
-        compat_patrimonial = "ATÍPICO"
-        diag_patrimonio = f"Alerta de Variação Atípica: O patrimônio líquido cresceu {razao_patrimonio_renda}x mais do que o total de salários recebidos no período público."
+        delta_patrimonio = None
+        razao_patrimonio_renda = None
+        compat_patrimonial = None
+        diag_patrimonio = "Dados insuficientes (requer ao menos 2 declarações de bens e remuneração registrada)."
 
     enriquecimento_patrimonial = {
-        "delta_patrimonio": round(delta_patrimonio, 2),
-        "salario_acumulado_estimado": round(salario_acumulado_estimado, 2),
+        "delta_patrimonio": round(delta_patrimonio, 2) if delta_patrimonio is not None else None,
+        "salario_acumulado_estimado": round(salario_acumulado_registrado, 2) if salario_acumulado_registrado else None,
         "razao_patrimonio_renda": razao_patrimonio_renda,
         "compatibilidade": compat_patrimonial,
         "diagnostico": diag_patrimonio,
     }
 
-    # 4. Estabilidade Partidária & Coerência Ideológica
+    # 4. Estabilidade Partidária (período derivado das datas de filiação registradas)
     total_filiacoes = len(filiacoes_list)
     trocas_partidarias = max(0, total_filiacoes - 1)
-    primeiro_ano = mandatos_list[-1].get("ano_eleicao") or 2022 if mandatos_list else 2022
-    ultimo_ano = mandatos_list[0].get("ano_eleicao") or 2026 if mandatos_list else 2026
-    anos_totais = max(4, abs(int(ultimo_ano) - int(primeiro_ano)) + 4)
-    media_anos_partido = round(anos_totais / max(total_filiacoes, 1), 1)
+    filiacao_anos = [a.start_date.year for a, _ in affiliations_db if a.start_date]
+    if filiacao_anos:
+        anos_totais = max(1, date.today().year - min(filiacao_anos))
+        media_anos_partido: Optional[float] = round(anos_totais / max(total_filiacoes, 1), 1)
+    else:
+        media_anos_partido = None
 
-    if trocas_partidarias <= 1:
+    if total_filiacoes == 0:
+        classif_fidelidade = None
+        diag_fidelidade = "Sem filiações registradas."
+    elif trocas_partidarias <= 1:
         classif_fidelidade = "ALTA_FIDELIDADE"
         diag_fidelidade = (
             f"Fidelidade partidária exemplar ({trocas_partidarias} troca de legenda ao longo da trajetória pública)."
@@ -1366,36 +1411,39 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         "total_trocas": trocas_partidarias,
         "anos_medio_por_partido": media_anos_partido,
         "classificacao": classif_fidelidade,
-        "taxa_governismo_pct": basometro.get("taxa_governismo_pct", 50.0),
+        "taxa_governismo_pct": basometro["taxa_governismo_pct"],
         "diagnostico": diag_fidelidade,
     }
 
     # 5. Eficiência e Alocação de Emendas Parlamentares
-    tot_emp_emendas = float(emendas_parlamentares.get("total_empenhado", 0.0))
-    tot_pago_emendas = float(emendas_parlamentares.get("total_pago", 0.0))
-    taxa_exec_emendas = round((tot_pago_emendas / tot_emp_emendas * 100.0), 1) if tot_emp_emendas > 0 else 0.0
-
-    destinos = emendas_parlamentares.get("destinos_principais", [])
+    tot_emp_emendas = float(emendas_parlamentares.get("total_empenhado") or 0.0)
+    tot_pago_emendas = float(emendas_parlamentares.get("total_pago") or 0.0)
+    destinos = emendas_parlamentares.get("destinos_principais") or []
     top1_dest = destinos[0] if destinos else None
-
-    dist_tipos = emendas_parlamentares.get("distribuicao_por_tipo", [])
+    dist_tipos = emendas_parlamentares.get("distribuicao_por_tipo") or []
     pix_item = next(
         (t for t in dist_tipos if "PIX" in t.get("tipo", "").upper() or "ESPECIAL" in t.get("tipo", "").upper()),
         None,
     )
     pct_pix = pix_item.get("percentual", 0.0) if pix_item else 0.0
 
-    if taxa_exec_emendas >= 85.0:
-        classif_emendas = "ALTA_EFICIÊNCIA"
-        diag_emendas = f"Excelente índice de liberação: {taxa_exec_emendas}% dos recursos empenhados foram efetivamente pagos aos destinos."
-    elif taxa_exec_emendas >= 60.0:
-        classif_emendas = "MÉDIA_EFICIÊNCIA"
-        diag_emendas = (
-            f"Execução intermediária ({taxa_exec_emendas}% pago), com parcela significativa de restos a pagar."
-        )
+    if tot_emp_emendas > 0:
+        taxa_exec_emendas: Optional[float] = round((tot_pago_emendas / tot_emp_emendas * 100.0), 1)
+        if taxa_exec_emendas >= 85.0:
+            classif_emendas = "ALTA_EFICIÊNCIA"
+            diag_emendas = f"Excelente índice de liberação: {taxa_exec_emendas}% dos recursos empenhados foram efetivamente pagos aos destinos."
+        elif taxa_exec_emendas >= 60.0:
+            classif_emendas = "MÉDIA_EFICIÊNCIA"
+            diag_emendas = (
+                f"Execução intermediária ({taxa_exec_emendas}% pago), com parcela significativa de restos a pagar."
+            )
+        else:
+            classif_emendas = "BAIXA_EFICIÊNCIA"
+            diag_emendas = f"Baixa conversão orçamentária: apenas {taxa_exec_emendas}% dos recursos alocados foram efetivamente liquidados."
     else:
-        classif_emendas = "BAIXA_EFICIÊNCIA"
-        diag_emendas = f"Baixa conversão orçamentária: apenas {taxa_exec_emendas}% dos recursos alocados foram efetivamente liquidados."
+        taxa_exec_emendas = None
+        classif_emendas = None
+        diag_emendas = "Sem emendas registradas."
 
     eficiencia_emendas = {
         "taxa_conversao_pct": taxa_exec_emendas,
@@ -1421,32 +1469,20 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             "id": str(pol.id),
             "nome_eleitoral": pol.electoral_name,
             "nome_civil": pol.civil_name,
-            "cpf": pol.cpf,
             "genero": pol.gender,
             "data_nascimento": pol.birth_date.isoformat() if pol.birth_date else None,
             "naturalidade": (
                 f"{pol.birthplace_city}/{pol.birthplace_state}"
                 if pol.birthplace_city
-                else (pol.birthplace_state or "Brasil")
+                else pol.birthplace_state  # sem naturalidade cadastrada: null (nunca um valor genérico inventado)
             ),
-            "foto_url": _format_photo_url(pol),
+            "foto_url": _format_photo_url(pol, bool(presidential_periods)),
             "cargo_atual": cargo_atual,
             "partido_atual": partido_atual_sigla,
             "uf": uf_atual,
-            "email": pol.email
-            or (
-                f"dep.{pol.camara_id}@camara.leg.br"
-                if pol.camara_id
-                else (f"sen.{pol.senado_id}@senado.leg.br" if pol.senado_id else None)
-            ),
-            "gabinete_sala": pol.cabinet_room
-            or (
-                f"Anexo IV, Gabinete {(pol.camara_id % 700) + 100}"
-                if pol.camara_id
-                else "Ala Filinto Müller, Gabinete 12"
-            ),
-            "gabinete_telefone": pol.cabinet_phone
-            or (f"(61) 3215-5{(pol.camara_id % 700) + 100:03d}" if pol.camara_id else "(61) 3303-4114"),
+            "email": pol.email,
+            "gabinete_sala": pol.cabinet_room,
+            "gabinete_telefone": pol.cabinet_phone,
             "biografia": pol.biography,
             "redes_sociais": pol.social_links,
             "camara_id": pol.camara_id,
@@ -1459,12 +1495,14 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             "resumo": {
                 "salario_bruto_atual": sal_bruto_atual,
                 "salario_liquido_atual": sal_liquido_atual,
-                "media_ceap_mensal": float(media_ceap),
+                "media_ceap_mensal": media_ceap,
+                "ano_referencia": ano_remuneracao,
+                # Chaves *_2023 mantidas por compatibilidade: refletem o ano em "ano_referencia"
                 "total_bruto_2023": float(total_bruto_ano),
-                "total_ceap_2023": float(total_ceap_ano),
-                "total_beneficios_2023": float(total_beneficios_ano),
+                "total_ceap_2023": _opt_float(total_ceap_ano),
+                "total_beneficios_2023": _opt_float(total_beneficios_ano),
             },
-            "historico": remuneracao_historico[:12],
+            "historico": remuneracao_historico,
         },
         "custos_ceap": custos_ceap,
         "emendas_parlamentares": emendas_parlamentares,
@@ -1483,6 +1521,10 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             "faltas_nao_justificadas": faltas_injustif_count,
             "taxa_presenca_pct": taxa_presenca,
             "amostra_faltas": faltas_registros,
+            "periodo_inicio": att_inicio.isoformat() if att_inicio else None,
+            "periodo_fim": att_fim.isoformat() if att_fim else None,
+            "unidade": _unidade_assiduidade(att_casas),
+            "fonte": _fonte_assiduidade(att_casas),
         },
         "evolucao_patrimonial": {
             "resumo": patrimonio_resumo,
@@ -1495,35 +1537,23 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
 @router.get("/{politician_id}/ceap")
 def get_politician_ceap(politician_id: str, db: Session = Depends(get_db)):
     """Retorna o detalhamento das despesas da CEAP (Cota Parlamentar)."""
-    try:
-        val_uuid = uuid.UUID(politician_id)
-        pol = db.query(Politician).filter(Politician.id == val_uuid).first()
-    except ValueError:
-        pol = (
-            db.query(Politician)
-            .filter(
-                (Politician.electoral_name.ilike(f"%{politician_id}%"))
-                | (Politician.civil_name.ilike(f"%{politician_id}%"))
-            )
-            .first()
+    pol = _resolve_politician(db, politician_id)
+
+    flt = DespesaCota.politician_id == pol.id
+    total, total_notas = db.query(func.coalesce(func.sum(DespesaCota.net_value), 0), func.count()).filter(flt).one()
+    if total_notas:
+        despesas = (
+            db.query(DespesaCota)
+            .filter(flt)
+            .order_by(desc(DespesaCota.year), desc(DespesaCota.month).nulls_last(), DespesaCota.id)
+            .limit(2000)
+            .all()
         )
-
-    if not pol:
-        raise HTTPException(status_code=404, detail="Político não encontrado.")
-
-    despesas = (
-        db.query(DespesaCota)
-        .filter(DespesaCota.politician_id == pol.id)
-        .order_by(desc(DespesaCota.year), desc(DespesaCota.month))
-        .all()
-    )
-    if despesas:
-        total = sum([d.net_value for d in despesas])
         return {
             "politico_id": str(pol.id),
             "nome": pol.electoral_name,
             "total_gasto": float(total),
-            "total_notas": len(despesas),
+            "total_notas": int(total_notas),
             "despesas": [
                 {
                     "ano": d.year,
@@ -1531,7 +1561,7 @@ def get_politician_ceap(politician_id: str, db: Session = Depends(get_db)):
                     "tipo": d.expense_type,
                     "valor": float(d.net_value),
                     "fornecedor": d.supplier_name,
-                    "cnpj_cpf": d.supplier_cnpj_cpf,
+                    "cnpj_cpf": _mask_document(d.supplier_cnpj_cpf),
                     "data": d.issue_date.isoformat() if d.issue_date else None,
                     "url": d.document_url,
                 }
@@ -1549,16 +1579,16 @@ def get_politician_ceap(politician_id: str, db: Session = Depends(get_db)):
                 "valor": float(val),
                 "fornecedor": "Senado Federal / Câmara dos Deputados",
                 "cnpj_cpf": None,
-                "data": f"{ano}-12-31",
+                "data": None,
                 "url": None,
             }
-            for ano, val in sorted(proc_ceap.get("por_ano", {}).items(), reverse=True)
+            for ano, val in sorted((proc_ceap.get("por_ano") or {}).items(), reverse=True)
         ]
         return {
             "politico_id": str(pol.id),
             "nome": pol.electoral_name,
-            "total_gasto": float(proc_ceap.get("total_gasto", 0.0)),
-            "total_notas": int(proc_ceap.get("total_notas", len(despesas_list))),
+            "total_gasto": float(proc_ceap.get("total_gasto") or 0.0),
+            "total_notas": int(proc_ceap.get("total_notas") or len(despesas_list)),
             "despesas": despesas_list,
         }
 
@@ -1574,32 +1604,26 @@ def get_politician_ceap(politician_id: str, db: Session = Depends(get_db)):
 @router.get("/{politician_id}/emendas")
 def get_politician_emendas(politician_id: str, db: Session = Depends(get_db)):
     """Retorna as emendas parlamentares alocadas pelo deputado ou senador."""
-    try:
-        val_uuid = uuid.UUID(politician_id)
-        pol = db.query(Politician).filter(Politician.id == val_uuid).first()
-    except ValueError:
-        pol = (
-            db.query(Politician)
-            .filter(
-                (Politician.electoral_name.ilike(f"%{politician_id}%"))
-                | (Politician.civil_name.ilike(f"%{politician_id}%"))
-            )
-            .first()
+    pol = _resolve_politician(db, politician_id)
+
+    flt = EmendaParlamentar.politician_id == pol.id
+    total_emp, total_pago, total_n = (
+        db.query(
+            func.coalesce(func.sum(EmendaParlamentar.committed_value), 0),
+            func.coalesce(func.sum(EmendaParlamentar.paid_value), 0),
+            func.count(),
         )
-
-    if not pol:
-        raise HTTPException(status_code=404, detail="Político não encontrado.")
-
-    emendas = (
-        db.query(EmendaParlamentar)
-        .filter(EmendaParlamentar.politician_id == pol.id)
-        .order_by(desc(EmendaParlamentar.year), desc(EmendaParlamentar.paid_value))
-        .all()
+        .filter(flt)
+        .one()
     )
-    if emendas:
-        total_emp = sum([e.committed_value for e in emendas])
-        total_pago = sum([e.paid_value for e in emendas])
-
+    if total_n:
+        emendas = (
+            db.query(EmendaParlamentar)
+            .filter(flt)
+            .order_by(desc(EmendaParlamentar.year), desc(EmendaParlamentar.paid_value), EmendaParlamentar.id)
+            .limit(2000)
+            .all()
+        )
         return {
             "politico_id": str(pol.id),
             "nome": pol.electoral_name,
@@ -1619,26 +1643,24 @@ def get_politician_emendas(politician_id: str, db: Session = Depends(get_db)):
             ],
         }
 
-    proc_emendas = _get_processed_emendas(pol.electoral_name, pol.civil_name)
-    if proc_emendas:
-        total_emp = sum(e.get("valor_empenhado", 0.0) for e in proc_emendas)
-        total_pago = sum(e.get("valor_pago", 0.0) for e in proc_emendas)
+    rows = _normalize_emenda_rows(_get_processed_emendas(pol.electoral_name, pol.civil_name))
+    if rows:
         return {
             "politico_id": str(pol.id),
             "nome": pol.electoral_name,
-            "total_empenhado": float(total_emp),
-            "total_pago": float(total_pago),
+            "total_empenhado": float(sum(r["valor_empenhado"] for r in rows)),
+            "total_pago": float(sum(r["valor_pago"] for r in rows)),
             "emendas": [
                 {
-                    "ano": e.get("ano"),
-                    "codigo": e.get("codigo_emenda"),
-                    "tipo": e.get("tipo_emenda"),
-                    "valor_empenhado": float(e.get("valor_empenhado", 0.0)),
-                    "valor_pago": float(e.get("valor_pago", 0.0)),
-                    "destino": e.get("localidade_destino"),
-                    "area": e.get("funcao"),
+                    "ano": r["ano"],
+                    "codigo": r["codigo_emenda"],
+                    "tipo": r["tipo_emenda"],
+                    "valor_empenhado": r["valor_empenhado"],
+                    "valor_pago": r["valor_pago"],
+                    "destino": r["localidade_destino"],
+                    "area": r["funcao"],
                 }
-                for e in proc_emendas
+                for r in rows[:2000]
             ],
         }
 
@@ -1654,22 +1676,7 @@ def get_politician_emendas(politician_id: str, db: Session = Depends(get_db)):
 @router.get("/{politician_id}/certidoes")
 def get_politician_certidoes(politician_id: str, db: Session = Depends(get_db)):
     """Retorna as certidões judiciais e status perante a Lei da Ficha Limpa."""
-    try:
-        val_uuid = uuid.UUID(politician_id)
-        pol = db.query(Politician).filter(Politician.id == val_uuid).first()
-    except ValueError:
-        pol = (
-            db.query(Politician)
-            .filter(
-                (Politician.electoral_name.ilike(f"%{politician_id}%"))
-                | (Politician.civil_name.ilike(f"%{politician_id}%"))
-            )
-            .first()
-        )
-
-    if not pol:
-        raise HTTPException(status_code=404, detail="Político não encontrado.")
-
+    pol = _resolve_politician(db, politician_id)
     certidoes = db.query(CertidaoJudicial).filter(CertidaoJudicial.politician_id == pol.id).all()
 
     ficha_data = _enrich_judicial_records(pol, certidoes, db)
@@ -1679,26 +1686,12 @@ def get_politician_certidoes(politician_id: str, db: Session = Depends(get_db)):
 @router.get("/{politician_id}/doacoes")
 def get_politician_doacoes(politician_id: str, db: Session = Depends(get_db)):
     """Retorna as doações e financiamento eleitoral de campanha (TSE)."""
-    try:
-        val_uuid = uuid.UUID(politician_id)
-        pol = db.query(Politician).filter(Politician.id == val_uuid).first()
-    except ValueError:
-        pol = (
-            db.query(Politician)
-            .filter(
-                (Politician.electoral_name.ilike(f"%{politician_id}%"))
-                | (Politician.civil_name.ilike(f"%{politician_id}%"))
-            )
-            .first()
-        )
-
-    if not pol:
-        raise HTTPException(status_code=404, detail="Político não encontrado.")
+    pol = _resolve_politician(db, politician_id)
 
     doacoes = (
         db.query(DoacaoCampanha)
         .filter(DoacaoCampanha.politician_id == pol.id)
-        .order_by(desc(DoacaoCampanha.amount_donated))
+        .order_by(desc(DoacaoCampanha.amount_donated), DoacaoCampanha.id)
         .all()
     )
 
@@ -1711,10 +1704,10 @@ def get_politician_doacoes(politician_id: str, db: Session = Depends(get_db)):
         "top_5": [
             {
                 "nome_doador": d.donor_name,
-                "cpf_cnpj_doador": d.donor_cpf_cnpj,
+                "cpf_cnpj_doador": _mask_document(d.donor_cpf_cnpj),
                 "valor_doado": float(d.amount_donated),
                 "tipo_receita": d.donation_type,
-                "percentual": (round((float(d.amount_donated) / total_doado * 100), 1) if total_doado > 0 else 0.0),
+                "percentual": _pct(float(d.amount_donated), total_doado),
             }
             for d in doacoes[:5]
         ],
@@ -1723,7 +1716,7 @@ def get_politician_doacoes(politician_id: str, db: Session = Depends(get_db)):
                 "id": str(d.id),
                 "ano_eleicao": d.election_year,
                 "nome_doador": d.donor_name,
-                "cpf_cnpj_doador": d.donor_cpf_cnpj,
+                "cpf_cnpj_doador": _mask_document(d.donor_cpf_cnpj),
                 "valor_doado": float(d.amount_donated),
                 "tipo_receita": d.donation_type,
             }

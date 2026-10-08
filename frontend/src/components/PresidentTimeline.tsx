@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect, useMemo } from "react";
 import { PresidenteHistorico } from "@/services/api";
+import { isActiveMandate } from "@/lib/mandate";
 import { Calendar, Sparkles } from "lucide-react";
 
 interface PresidentTimelineProps {
@@ -10,7 +11,7 @@ interface PresidentTimelineProps {
   onSelect: (id: string | null) => void;
 }
 
-export function getPresidentPhotoUrl(idReferencia?: string, fotoUrl?: string): string {
+export function getPresidentPhotoUrl(idReferencia?: string, fotoUrl?: string): string | undefined {
   if (fotoUrl && fotoUrl.startsWith("/presidents/")) return fotoUrl;
   if (idReferencia) {
     if (idReferencia.includes("itamar")) return "/presidents/itamar-franco.jpg";
@@ -20,7 +21,7 @@ export function getPresidentPhotoUrl(idReferencia?: string, fotoUrl?: string): s
     if (idReferencia.includes("temer")) return "/presidents/temer.jpg";
     if (idReferencia.includes("bolsonaro")) return "/presidents/bolsonaro.jpg";
   }
-  return fotoUrl || "/presidents/lula.jpg";
+  return fotoUrl || undefined;
 }
 
 export default function PresidentTimeline({
@@ -35,13 +36,8 @@ export default function PresidentTimeline({
   const currentPresident = useMemo(() => {
     if (!presidents || presidents.length === 0) return null;
     return (
-      presidents.find(
-        (p) =>
-          p.status_mandato === "TITULAR_ATIVO" ||
-          p.status_mandato === "EM_EXERCICIO" ||
-          p.status_mandato === "ATIVO" ||
-          !p.data_fim
-      ) || presidents[presidents.length - 1]
+      presidents.find((p) => isActiveMandate(p.status_mandato, p.data_fim)) ||
+      presidents[presidents.length - 1]
     );
   }, [presidents]);
 
@@ -94,13 +90,13 @@ export default function PresidentTimeline({
     <div className="w-full">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3">
         <div className="flex items-center gap-2 flex-wrap">
-          <Calendar className="w-4 h-4 text-emerald-400" />
+          <Calendar className="w-4 h-4 text-emerald-400" aria-hidden="true" />
           <h2 className="text-sm font-semibold tracking-wider uppercase text-slate-300">
-            Linha do Tempo Presidencial (1992 - 2026)
+            Linha do Tempo Presidencial (1992 - Presente)
           </h2>
           {selectedPresident ? (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden="true" />
               {selectedPresident.id_referencia === currentPresident?.id_referencia ? (
                 <>Presidente Atual (Padrão): {selectedPresident.nome_eleitoral}</>
               ) : (
@@ -118,17 +114,19 @@ export default function PresidentTimeline({
           {/* Botão para restaurar o Presidente Atual sempre que outro mandato ou Todos estiver ativo */}
           {selectedId !== currentPresident?.id_referencia && currentPresident && (
             <button
+              type="button"
               onClick={() => onSelect(currentPresident.id_referencia)}
               className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 hover:border-emerald-500/60 transition-all cursor-pointer shadow-sm shadow-emerald-500/10 active:scale-95"
               title="Restaurar o presidente atual em exercício como filtro padrão"
             >
-              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
               Presidente Atual ({currentPresident.nome_eleitoral.split(" ")[0]})
             </button>
           )}
 
           {selectedId !== null && (
             <button
+              type="button"
               onClick={() => onSelect(null)}
               className="text-[11px] font-medium text-slate-400 hover:text-slate-200 underline underline-offset-2 transition-all cursor-pointer"
               title="Exibir dados consolidados de todos os mandatos desde 1992"
@@ -137,7 +135,7 @@ export default function PresidentTimeline({
             </button>
           )}
 
-          <span className="text-xs text-slate-500 hidden xl:inline">
+          <span className="text-xs text-slate-400 hidden xl:inline">
             Clique no presidente para filtrar abas
           </span>
         </div>
@@ -150,7 +148,9 @@ export default function PresidentTimeline({
       >
         {/* Botão de Visão Geral / Todos os Mandatos */}
         <button
+          type="button"
           ref={selectedId === null ? selectedButtonRef : null}
+          aria-pressed={selectedId === null}
           onClick={() => onSelect(null)}
           className={`flex-shrink-0 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-left border transition-all duration-200 cursor-pointer ${
             selectedId === null
@@ -169,7 +169,7 @@ export default function PresidentTimeline({
             >
               Visão Geral
             </span>
-            <span className="text-[11px] text-slate-500 font-medium">1992 - 2026</span>
+            <span className="text-[11px] text-slate-400 font-medium">1992 - Presente</span>
           </div>
         </button>
 
@@ -182,8 +182,10 @@ export default function PresidentTimeline({
 
           return (
             <button
+              type="button"
               key={p.id_referencia}
               ref={isSelected ? selectedButtonRef : null}
+              aria-pressed={isSelected}
               onClick={() => {
                 if (isSelected) {
                   // Se desmarcar um presidente histórico, restaura o atual por padrão;
@@ -215,20 +217,23 @@ export default function PresidentTimeline({
                     : "border-slate-700/80"
                 }`}
               >
-                <img
-                  src={getPresidentPhotoUrl(p.id_referencia, p.foto_url)}
-                  alt={p.nome_eleitoral}
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover object-top"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    if (!target.src.includes("/presidents/")) {
-                      target.src = getPresidentPhotoUrl(p.id_referencia);
-                    } else {
-                      target.style.display = "none";
-                    }
-                  }}
-                />
+                {getPresidentPhotoUrl(p.id_referencia, p.foto_url) && (
+                  <img
+                    src={getPresidentPhotoUrl(p.id_referencia, p.foto_url)}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover object-top"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      const local = getPresidentPhotoUrl(p.id_referencia);
+                      if (local && !target.src.endsWith(local)) {
+                        target.src = local;
+                      } else {
+                        target.style.display = "none";
+                      }
+                    }}
+                  />
+                )}
                 <div className="absolute inset-0 bg-slate-800 -z-10 flex items-center justify-center text-xs font-bold text-slate-300">
                   {p.partido_sigla.slice(0, 2)}
                 </div>
@@ -253,12 +258,12 @@ export default function PresidentTimeline({
                   </span>
                   {isCurrent && (
                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden="true" />
                       Atual
                     </span>
                   )}
                 </div>
-                <span className="text-[11px] text-slate-500 font-medium">
+                <span className="text-[11px] text-slate-400 font-medium">
                   {isCurrent ? `${p.data_inicio.slice(0, 4)} - Em Exercício` : anos}
                 </span>
               </div>

@@ -3,9 +3,8 @@ Extrator e Catálogo Histórico dos Presidentes da República do Brasil (1992 - 
 Abrange desde a posse de Itamar Franco (outubro/1992) até a atual administração.
 """
 
-from typing import List, Dict, Any
 from datetime import datetime
-
+from typing import Any, Dict, List, Optional
 
 PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
     {
@@ -32,17 +31,22 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
             {"nome": "Gustavo Krause", "inicio": "1992-10-02", "fim": "1992-12-16"},
             {"nome": "Paulo Roberto Haddad", "inicio": "1992-12-16", "fim": "1993-03-01"},
             {"nome": "Eliseu Resende", "inicio": "1993-03-01", "fim": "1993-05-19"},
-            {"nome": "Fernando Henrique Cardoso", "inicio": "1993-05-19", "fim": "1994-03-30", "papel": "Arquiteto do Plano Real"},
+            {
+                "nome": "Fernando Henrique Cardoso",
+                "inicio": "1993-05-19",
+                "fim": "1994-03-30",
+                "papel": "Arquiteto do Plano Real",
+            },
             {"nome": "Rubens Ricupero", "inicio": "1994-03-30", "fim": "1994-09-06"},
-            {"nome": "Ciro Gomes", "inicio": "1994-09-06", "fim": "1995-01-01"}
+            {"nome": "Ciro Gomes", "inicio": "1994-09-06", "fim": "1995-01-01"},
         ],
         "marcos_economicos": [
             "Lançamento do Plano Real (Medida Provisória nº 434 de 27/02/1994)",
             "Criação da Unidade Real de Valor (URV) em março de 1994",
             "Entrada em circulação da nova moeda Real (R$) em 01/07/1994",
-            "Fim da hiperinflação crônica de décadas (queda de ~40% ao mês para ~2% ao mês)"
+            "Fim da hiperinflação crônica de décadas (queda de ~40% ao mês para ~2% ao mês)",
         ],
-        "foto_url": "/presidents/itamar-franco.jpg"
+        "foto_url": "/presidents/itamar-franco.jpg",
     },
     {
         "id_referencia": "fhc-1995",
@@ -65,16 +69,21 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
         "motivo_inicio": "Eleito em 1º turno com 54,28% dos votos válidos.",
         "vice_presidente": "Marco Maciel (PFL)",
         "ministros_fazenda_chave": [
-            {"nome": "Pedro Malan", "inicio": "1995-01-01", "fim": "1999-01-01", "papel": "Consolidação da estabilização monetária"}
+            {
+                "nome": "Pedro Malan",
+                "inicio": "1995-01-01",
+                "fim": "1999-01-01",
+                "papel": "Consolidação da estabilização monetária",
+            }
         ],
         "marcos_economicos": [
             "Regime de bandas cambiais (âncora cambial para conter preços)",
             "Programa de Estímulo à Reestruturação e ao Sistema Financeiro Nacional (PROER)",
             "Grandes privatizações (Sistema Telebrás, Companhia Vale do Rio Doce - CVRD)",
             "Emenda Constitucional da Reeleição (EC nº 16/1997)",
-            "Impacto da Crise Asiática (1997) e Crise Russa (1998) com elevação recorde da Selic a 45% a.a."
+            "Impacto da Crise Asiática (1997) e Crise Russa (1998) com elevação recorde da Selic a 45% a.a.",
         ],
-        "foto_url": "/presidents/fhc.jpg"
+        "foto_url": "/presidents/fhc.jpg",
     },
     {
         "id_referencia": "fhc-1999",
@@ -96,17 +105,15 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
         "status_mandato": "CONCLUIDO",
         "motivo_inicio": "Reeleito em 1º turno com 53,06% dos votos válidos.",
         "vice_presidente": "Marco Maciel (PFL)",
-        "ministros_fazenda_chave": [
-            {"nome": "Pedro Malan", "inicio": "1999-01-01", "fim": "2003-01-01"}
-        ],
+        "ministros_fazenda_chave": [{"nome": "Pedro Malan", "inicio": "1999-01-01", "fim": "2003-01-01"}],
         "marcos_economicos": [
             "Transição para Câmbio Flutuante em janeiro de 1999 após maxidesvalorização do Real",
             "Criação do Regime de Metas para a Inflação (Decreto nº 3.088/1999) sob Arminio Fraga no BCB",
             "Implementação do 'Tripé Macroeconômico' (Câmbio Flutuante, Metas de Inflação e Metas de Superávit Primário)",
             "Aprovação da Lei de Responsabilidade Fiscal - LRF (Lei Complementar nº 101/2000)",
-            "Crise energética brasileira ('Crise do Apagão' em 2001) e recessão pontual"
+            "Crise energética brasileira ('Crise do Apagão' em 2001) e recessão pontual",
         ],
-        "foto_url": "/presidents/fhc.jpg"
+        "foto_url": "/presidents/fhc.jpg",
     },
     {
         "id_referencia": "lula-2003",
@@ -130,7 +137,7 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
         "vice_presidente": "José Alencar (PL)",
         "ministros_fazenda_chave": [
             {"nome": "Antonio Palocci", "inicio": "2003-01-01", "fim": "2006-03-27"},
-            {"nome": "Guido Mantega", "inicio": "2006-03-27", "fim": "2007-01-01"}
+            {"nome": "Guido Mantega", "inicio": "2006-03-27", "fim": "2007-01-01"},
         ],
         "marcos_economicos": [
             "Manutenção do Tripé Macroeconômico e credibilidade da 'Carta ao Povo Brasileiro'",
@@ -138,9 +145,9 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
             "Início do grande ciclo global de alta das commodities (Boom das Commodities)",
             "Criação e unificação do Programa Bolsa Família (Lei nº 10.836/2004)",
             "Quitação antecipada da dívida brasileira com o Fundo Monetário Internacional (FMI) em 2005",
-            "Início da expressiva acumulação de reservas internacionais em moeda estrangeira"
+            "Início da expressiva acumulação de reservas internacionais em moeda estrangeira",
         ],
-        "foto_url": "/presidents/lula.jpg"
+        "foto_url": "/presidents/lula.jpg",
     },
     {
         "id_referencia": "lula-2007",
@@ -162,17 +169,15 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
         "status_mandato": "CONCLUIDO",
         "motivo_inicio": "Reeleito em 2º turno com 60,83% dos votos válidos.",
         "vice_presidente": "José Alencar (PRB)",
-        "ministros_fazenda_chave": [
-            {"nome": "Guido Mantega", "inicio": "2007-01-01", "fim": "2011-01-01"}
-        ],
+        "ministros_fazenda_chave": [{"nome": "Guido Mantega", "inicio": "2007-01-01", "fim": "2011-01-01"}],
         "marcos_economicos": [
             "Lançamento do Programa de Aceleração do Crescimento (PAC)",
             "Descoberta e anúncio comercial da camada Pré-Sal na Bacia de Santos",
             "Conquista do Grau de Investimento (Investment Grade) pelas agências S&P e Fitch em 2008",
             "Enfrentamento da Crise Financeira Global (Subprime 2008) via bancos públicos e desonerações (IPI)",
-            "Crescimento recorde do PIB em 2010 (+7,5%), maior taxa em mais de 24 anos"
+            "Crescimento recorde do PIB em 2010 (+7,5%), maior taxa em mais de 24 anos",
         ],
-        "foto_url": "/presidents/lula.jpg"
+        "foto_url": "/presidents/lula.jpg",
     },
     {
         "id_referencia": "dilma-2011",
@@ -194,17 +199,15 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
         "status_mandato": "CONCLUIDO",
         "motivo_inicio": "Eleita em 2º turno com 56,05% dos votos válidos.",
         "vice_presidente": "Michel Temer (PMDB)",
-        "ministros_fazenda_chave": [
-            {"nome": "Guido Mantega", "inicio": "2011-01-01", "fim": "2015-01-01"}
-        ],
+        "ministros_fazenda_chave": [{"nome": "Guido Mantega", "inicio": "2011-01-01", "fim": "2015-01-01"}],
         "marcos_economicos": [
             "Adoção da chamada 'Nova Matriz Econômica' (estímulo fiscal, controle tarifário e subsídios via BNDES)",
             "Queda da Taxa Selic para mínimas históricas temporárias (7,25% a.a. em 2012) e subsequente pressão inflacionária",
             "Desonerações da folha de pagamento e contenção artificial de tarifas de energia e combustíveis",
             "Mínima taxa histórica de desemprego (em torno de 4,8% em 2014) em contraste com perda de dinamismo industrial",
-            "Jornadas de Junho de 2013 (grandes manifestações populares)"
+            "Jornadas de Junho de 2013 (grandes manifestações populares)",
         ],
-        "foto_url": "/presidents/dilma.jpg"
+        "foto_url": "/presidents/dilma.jpg",
     },
     {
         "id_referencia": "dilma-2015",
@@ -227,17 +230,22 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
         "motivo_inicio": "Reeleita em 2º turno com 51,64% dos votos válidos.",
         "vice_presidente": "Michel Temer (PMDB)",
         "ministros_fazenda_chave": [
-            {"nome": "Joaquim Levy", "inicio": "2015-01-01", "fim": "2015-12-18", "papel": "Tentativa de ajuste fiscal"},
-            {"nome": "Nelson Barbosa", "inicio": "2015-12-18", "fim": "2016-05-12"}
+            {
+                "nome": "Joaquim Levy",
+                "inicio": "2015-01-01",
+                "fim": "2015-12-18",
+                "papel": "Tentativa de ajuste fiscal",
+            },
+            {"nome": "Nelson Barbosa", "inicio": "2015-12-18", "fim": "2016-05-12"},
         ],
         "marcos_economicos": [
             "Grave recessão econômica de 2015-2016 (queda acumulada de ~7% do PIB)",
             "Aceleração inflacionária (IPCA superior a 10% em 2015) com tarifaço e correção de preços represados",
             "Perda do Grau de Investimento soberano pelas agências de risco",
             "Deterioração das contas públicas, déficits primários sucessivos e pedaladas fiscais",
-            "Processo de impeachment votado pelo Congresso Nacional, concluído em 31/08/2016"
+            "Processo de impeachment votado pelo Congresso Nacional, concluído em 31/08/2016",
         ],
-        "foto_url": "/presidents/dilma.jpg"
+        "foto_url": "/presidents/dilma.jpg",
     },
     {
         "id_referencia": "temer-2016",
@@ -261,7 +269,7 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
         "vice_presidente": "Vago (Temer era o vice-presidente)",
         "ministros_fazenda_chave": [
             {"nome": "Henrique Meirelles", "inicio": "2016-05-12", "fim": "2018-04-10"},
-            {"nome": "Eduardo Guardia", "inicio": "2018-04-10", "fim": "2019-01-01"}
+            {"nome": "Eduardo Guardia", "inicio": "2018-04-10", "fim": "2019-01-01"},
         ],
         "marcos_economicos": [
             "Implementação do documento 'Uma Ponte para o Futuro'",
@@ -269,9 +277,9 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
             "Aprovação da Reforma Trabalhista (Lei nº 13.467/2017)",
             "Queda acelerada da inflação e redução da Selic de 14,25% para 6,5% a.a.",
             "Ilan Goldfajn na presidência do Banco Central",
-            "Crise da Greve dos Caminhoneiros em maio de 2018 com desabastecimento temporário"
+            "Crise da Greve dos Caminhoneiros em maio de 2018 com desabastecimento temporário",
         ],
-        "foto_url": "/presidents/temer.jpg"
+        "foto_url": "/presidents/temer.jpg",
     },
     {
         "id_referencia": "bolsonaro-2019",
@@ -302,9 +310,9 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
             "Aprovação da Autonomia Formal do Banco Central do Brasil (LC nº 179/2021)",
             "Lançamento do sistema de pagamentos instantâneos PIX pelo Banco Central (nov/2020)",
             "Pandemia de Covid-19 (2020-2021) com aprovação do Orçamento de Guerra e Auxílio Emergencial",
-            "Forte desvalorização cambial (dólar acima de R$ 5,00) e choque inflacionário global de combustíveis e alimentos"
+            "Forte desvalorização cambial (dólar acima de R$ 5,00) e choque inflacionário global de combustíveis e alimentos",
         ],
-        "foto_url": "/presidents/bolsonaro.jpg"
+        "foto_url": "/presidents/bolsonaro.jpg",
     },
     {
         "id_referencia": "lula-2023",
@@ -328,17 +336,17 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
         "vice_presidente": "Geraldo Alckmin (PSB)",
         "ministros_fazenda_chave": [
             {"nome": "Fernando Haddad", "inicio": "2023-01-01", "fim": None, "papel": "Ministro da Fazenda"},
-            {"nome": "Simone Tebet", "inicio": "2023-01-01", "fim": None, "papel": "Ministra do Planejamento"}
+            {"nome": "Simone Tebet", "inicio": "2023-01-01", "fim": None, "papel": "Ministra do Planejamento"},
         ],
         "marcos_economicos": [
             "Aprovação do Novo Arcabouço Fiscal (Lei Complementar nº 200/2023) substituindo o Teto de Gastos",
             "Aprovação histórica da Reforma Tributária sobre o Consumo (EC nº 132/2023 - IVA Dual: CBS e IBS)",
             "Reelevação da nota soberana de crédito do Brasil por agências globais (S&P, Fitch, Moody's)",
             "Queda da inflação e ciclo de alívio monetário seguido de vigilância fiscal",
-            "Adoção do Plano de Transformação Ecológica e retomada dos investimentos do Novo PAC"
+            "Adoção do Plano de Transformação Ecológica e retomada dos investimentos do Novo PAC",
         ],
-        "foto_url": "/presidents/lula.jpg"
-    }
+        "foto_url": "/presidents/lula.jpg",
+    },
 ]
 
 
@@ -351,14 +359,20 @@ class PresidentsExtractor:
         return PRESIDENTES_HISTORICO
 
     @staticmethod
-    def get_mandate_by_date(date_str: str) -> Dict[str, Any]:
+    def get_mandate_by_date(date_str: str) -> Optional[Dict[str, Any]]:
         """
         Retorna o presidente que governava na data especificada (formato YYYY-MM-DD).
         """
         dt = datetime.strptime(date_str, "%Y-%m-%d")
         for pres in PRESIDENTES_HISTORICO:
             dt_inicio = datetime.strptime(pres["data_inicio"], "%Y-%m-%d")
-            dt_fim = datetime.strptime(pres["data_fim"], "%Y-%m-%d") if pres["data_fim"] else datetime.now()
-            if dt_inicio <= dt <= dt_fim:
+            # `data_fim` é o dia da posse do sucessor: intervalo [inicio, fim). Antes `<=` devolvia o
+            # presidente ANTERIOR na própria data de posse do seguinte.
+            if pres["data_fim"]:
+                dt_fim = datetime.strptime(pres["data_fim"], "%Y-%m-%d")
+                dentro = dt_inicio <= dt < dt_fim
+            else:
+                dentro = dt_inicio <= dt <= datetime.now()
+            if dentro:
                 return pres
         return None

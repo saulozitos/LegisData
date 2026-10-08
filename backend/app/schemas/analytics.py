@@ -109,6 +109,10 @@ class StateTransferItem(BaseModel):
 class FederalTransfersResponse(BaseModel):
     mandato_id: str
     periodo: str
+    periodo_inicio: Optional[str] = None
+    periodo_fim: Optional[str] = None
+    meses_cobertos: Optional[int] = None
+    cobertura_parcial: Optional[bool] = None
     total_repassado_brl: float
     areas_resumo: Dict[str, float]
     regioes_resumo: Dict[str, float]

@@ -170,8 +170,14 @@ class AnnualSocialIndicator(TimeStampedModel):
         "populacaoInsegurancaAlimentarMilhoes", Numeric(6, 2), nullable=True
     )
     gini_index: Mapped[Optional[Decimal]] = mapped_column("indiceGini", Numeric(5, 3), nullable=True)
+    poverty_pct: Mapped[Optional[Decimal]] = mapped_column("populacaoPobrezaPct", Numeric(5, 2), nullable=True)
+    food_insecurity_total_pct: Mapped[Optional[Decimal]] = mapped_column(
+        "populacaoInsegurancaAlimentarTotalPct", Numeric(5, 2), nullable=True
+    )
+    unemployment_pct: Mapped[Optional[Decimal]] = mapped_column("taxaDesempregoPct", Numeric(5, 2), nullable=True)
+    gini_series: Mapped[Optional[str]] = mapped_column("serieGini", String(100), nullable=True)
     data_source: Mapped[str] = mapped_column(
-        "fonteDados", String(100), default="IBGE / IPEA / FAO / Penssan", nullable=False
+        "fonteDados", String(100), default="IBGE / SIDRA (PNAD, PNAD Contínua, ODS)", nullable=False
     )
 
 
@@ -189,6 +195,7 @@ class StateSocialIndicator(TimeStampedModel):
         "insegurancaAlimentarPct", Numeric(5, 2), nullable=True
     )
     gini_index: Mapped[Optional[Decimal]] = mapped_column("indiceGini", Numeric(5, 3), nullable=True)
+    poverty_pct: Mapped[Optional[Decimal]] = mapped_column("pobrezaPct", Numeric(5, 2), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("ano", "uf", name="uq_social_indicator_year_uf"),

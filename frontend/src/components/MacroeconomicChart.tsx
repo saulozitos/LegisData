@@ -16,49 +16,33 @@ import {
 } from "recharts";
 import { ResumoMacroeconomicoAnual } from "@/services/api";
 import { LineChart, Filter, Info, TrendingUp } from "lucide-react";
+import { isNum } from "@/lib/format";
+import type { MandateRange } from "@/lib/mandate";
 
 interface MacroeconomicChartProps {
   data: ResumoMacroeconomicoAnual[];
   selectedMandateId?: string | null;
+  /** Mandatos (derivados da API de presidentes) usados para delimitar os períodos e o zoom. */
+  mandates?: MandateRange[];
 }
 
-const MANDATE_LOOKUP: Record<string, { start: number; end: number; label: string }> = {
-  "itamar-franco-1992": { start: 1993, end: 1994, label: "Itamar Franco" },
-  "fhc-1995": { start: 1995, end: 1998, label: "FHC 1" },
-  "fhc-1999": { start: 1999, end: 2002, label: "FHC 2" },
-  "lula-2003": { start: 2003, end: 2006, label: "Lula 1" },
-  "lula-2007": { start: 2007, end: 2010, label: "Lula 2" },
-  "dilma-2011": { start: 2011, end: 2014, label: "Dilma 1" },
-  "dilma-2015": { start: 2015, end: 2016, label: "Dilma 2" },
-  "temer-2016": { start: 2016, end: 2018, label: "Michel Temer" },
-  "bolsonaro-2019": { start: 2019, end: 2022, label: "Jair Bolsonaro" },
-  "lula-2023": { start: 2023, end: 2026, label: "Lula 3" },
-};
+const ZONE_COLORS = ["#10b981", "#3b82f6", "#ef4444", "#d97706", "#8b5cf6", "#06b6d4"];
 
-// Delimitação dos períodos presidenciais para as ReferenceAreas
-const MANDATE_ZONES = [
-  { id: "itamar", label: "Itamar", start: 1993, end: 1994, color: "#10b981" },
-  { id: "fhc1", label: "FHC 1", start: 1995, end: 1998, color: "#3b82f6" },
-  { id: "fhc2", label: "FHC 2", start: 1999, end: 2002, color: "#2563eb" },
-  { id: "lula1", label: "Lula 1", start: 2003, end: 2006, color: "#ef4444" },
-  { id: "lula2", label: "Lula 2", start: 2007, end: 2010, color: "#dc2626" },
-  { id: "dilma1", label: "Dilma 1", start: 2011, end: 2014, color: "#b91c1c" },
-  { id: "dilma2", label: "Dilma 2", start: 2015, end: 2016, color: "#991b1b" },
-  { id: "temer", label: "Temer", start: 2016, end: 2018, color: "#059669" },
-  { id: "bolsonaro", label: "Bolsonaro", start: 2019, end: 2022, color: "#d97706" },
-  { id: "lula3", label: "Lula 3", start: 2023, end: 2026, color: "#ef4444" },
-];
+// Planos econômicos anteriores ao Real: valores monetários não são comparáveis em R$.
+const LAST_PRE_REAL_YEAR = 1994;
 
 interface CustomTooltipProps {
   active?: boolean;
-  payload?: any[];
+  payload?: Array<{ payload: ResumoMacroeconomicoAnual }>;
   label?: string | number;
   showIbovespa?: boolean;
 }
 
 function MacroeconomicTooltip({ active, payload, label, showIbovespa }: CustomTooltipProps) {
   if (active && payload && payload.length) {
-    const item = payload[0].payload as ResumoMacroeconomicoAnual;
+    const item = payload[0].payload;
+    const pib = item.pib_crescimento_real_pct;
+    const ipca = item.ipca_acumulado_ano_pct;
     return (
       <div className="bg-slate-950/95 border border-slate-700/80 p-3.5 rounded-xl shadow-2xl backdrop-blur-md text-xs space-y-1.5 min-w-[220px]">
         <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2">
@@ -70,28 +54,24 @@ function MacroeconomicTooltip({ active, payload, label, showIbovespa }: CustomTo
         <div className="flex items-center justify-between text-emerald-400">
           <span>Crescimento PIB Real:</span>
           <span className="font-bold">
-            {item.pib_crescimento_real_pct !== null
-              ? `${item.pib_crescimento_real_pct > 0 ? "+" : ""}${item.pib_crescimento_real_pct.toFixed(2)}%`
-              : "N/D"}
+            {isNum(pib) ? `${pib > 0 ? "+" : ""}${pib.toFixed(2)}%` : "N/D"}
           </span>
         </div>
         <div className="flex items-center justify-between text-rose-400">
           <span>Inflação Anual (IPCA):</span>
-          <span className="font-bold">
-            {item.ipca_acumulado_ano_pct !== null
-              ? `${item.ipca_acumulado_ano_pct.toFixed(2)}%`
-              : "N/D"}
-          </span>
+          <span className="font-bold">{isNum(ipca) ? `${ipca.toFixed(2)}%` : "N/D"}</span>
         </div>
-        {item.cambio_dolar_medio && (
+        {isNum(item.cambio_dolar_medio) && (
           <div className="flex items-center justify-between text-slate-400 border-t border-slate-800/80 pt-1 mt-1">
             <span>Câmbio Médio:</span>
             <span className="font-medium text-slate-200">
-              R$ {item.cambio_dolar_medio.toFixed(2)}
+              {item.ano <= LAST_PRE_REAL_YEAR
+                ? "moeda pré-Real (não comparável)"
+                : `R$ ${item.cambio_dolar_medio.toFixed(2)}`}
             </span>
           </div>
         )}
-        {showIbovespa && item.ibovespa_fechamento && (
+        {showIbovespa && isNum(item.ibovespa_fechamento) && (
           <div className="flex items-center justify-between text-purple-400 border-t border-slate-800/80 pt-1 mt-1">
             <span>Ibovespa (Fechamento):</span>
             <span className="font-bold">
@@ -108,17 +88,24 @@ function MacroeconomicTooltip({ active, payload, label, showIbovespa }: CustomTo
 function MacroeconomicChartBase({
   data,
   selectedMandateId,
+  mandates = [],
 }: MacroeconomicChartProps) {
   const [filterMode, setFilterMode] = useState<"pos_real" | "completo">("pos_real");
   const [showIbovespa, setShowIbovespa] = useState<boolean>(false);
   const [zoomMandate, setZoomMandate] = useState<boolean>(false);
 
-  const activeMandateInfo = selectedMandateId ? MANDATE_LOOKUP[selectedMandateId] || null : null;
+  const activeMandateInfo = selectedMandateId
+    ? mandates.find((m) => m.id === selectedMandateId) || null
+    : null;
+
+  const firstYear = data.length > 0 ? Math.min(...data.map((d) => d.ano)) : null;
+  const lastYear = data.length > 0 ? Math.max(...data.map((d) => d.ano)) : null;
+  const firstPosRealYear = 1995;
 
   // Filtragem conforme toggle e zoom no mandato com useMemo
   const chartData = React.useMemo(() => {
     let filtered = filterMode === "pos_real"
-      ? data.filter((d) => d.ano >= 1995)
+      ? data.filter((d) => d.ano >= firstPosRealYear)
       : data;
 
     if (activeMandateInfo && zoomMandate) {
@@ -127,13 +114,26 @@ function MacroeconomicChartBase({
     return filtered;
   }, [data, filterMode, activeMandateInfo, zoomMandate]);
 
+  const zones = React.useMemo(
+    () => mandates.map((m, i) => ({ ...m, color: ZONE_COLORS[i % ZONE_COLORS.length] })),
+    [mandates]
+  );
+
+  if (data.length === 0) {
+    return (
+      <div role="status" className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-8 text-center text-sm text-slate-300">
+        Dado indisponível: a série macroeconômica anual não foi retornada pela API.
+      </div>
+    );
+  }
+
   return (
     <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 backdrop-blur-md">
       {/* Cabeçalho do Gráfico com Título e Seletor de Escala */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
         <div>
           <div className="flex items-center gap-2">
-            <LineChart className="w-5 h-5 text-emerald-400" />
+            <LineChart className="w-5 h-5 text-emerald-400" aria-hidden="true" />
             <h2 className="text-base font-bold text-slate-100">
               Trajetória Macroeconômica: PIB vs. Inflação {showIbovespa ? "vs. Ibovespa" : ""}
             </h2>
@@ -148,36 +148,42 @@ function MacroeconomicChartBase({
           {/* Botão de Zoom no Mandato Selecionado */}
           {activeMandateInfo && (
             <button
+              type="button"
+              aria-pressed={zoomMandate}
               onClick={() => setZoomMandate(!zoomMandate)}
               className={`px-3 py-1.5 rounded-xl font-medium transition-all text-xs flex items-center gap-1.5 border cursor-pointer ${
                 zoomMandate
                   ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-500/10"
-                  : "bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200"
+                  : "bg-slate-950 text-slate-300 border-slate-800 hover:text-slate-100"
               }`}
               title={`Filtrar apenas os anos do governo ${activeMandateInfo.label}`}
             >
-              <Filter className="w-3.5 h-3.5 text-emerald-400" />
+              <Filter className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
               <span>Zoom: {activeMandateInfo.label} ({activeMandateInfo.start}-{activeMandateInfo.end})</span>
             </button>
           )}
 
           {/* Botão de Ativação do Ibovespa */}
           <button
+            type="button"
+            aria-pressed={showIbovespa}
             onClick={() => setShowIbovespa(!showIbovespa)}
             className={`px-3 py-1.5 rounded-xl font-medium transition-all text-xs flex items-center gap-1.5 border cursor-pointer ${
               showIbovespa
                 ? "bg-purple-500/20 text-purple-300 border-purple-500/40 shadow-lg shadow-purple-500/10"
-                : "bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200"
+                : "bg-slate-950 text-slate-300 border-slate-800 hover:text-slate-100"
             }`}
             title="Alternar exibição da linha do Ibovespa com escala própria em pontos"
           >
-            <TrendingUp className="w-3.5 h-3.5 text-purple-400" />
+            <TrendingUp className="w-3.5 h-3.5 text-purple-400" aria-hidden="true" />
             <span>Ibovespa (Pontos B3)</span>
           </button>
 
           {/* Toggle de Recorte Histórico */}
           <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
             <button
+              type="button"
+              aria-pressed={filterMode === "pos_real"}
               onClick={() => setFilterMode("pos_real")}
               className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
                 filterMode === "pos_real"
@@ -185,9 +191,11 @@ function MacroeconomicChartBase({
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              Pós-Plano Real (1995-2026)
+              Pós-Plano Real ({firstPosRealYear}-{lastYear})
             </button>
             <button
+              type="button"
+              aria-pressed={filterMode === "completo"}
               onClick={() => setFilterMode("completo")}
               className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
                 filterMode === "completo"
@@ -195,7 +203,7 @@ function MacroeconomicChartBase({
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              Histórico Completo (1993-2026)
+              Histórico Completo ({firstYear}-{lastYear})
             </button>
           </div>
         </div>
@@ -203,15 +211,19 @@ function MacroeconomicChartBase({
 
       {filterMode === "completo" && (
         <div className="mb-4 flex items-center gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs">
-          <Info className="w-4 h-4 flex-shrink-0" />
+          <Info className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
           <span>
-            Atenção: A inflação de 1993 atingiu 2.477% a.a. no período pré-Real de Itamar Franco, provocando compressão visual das séries posteriores. Use &quot;Pós-Plano Real&quot; para análise de alta precisão.
+            Atenção: a inflação do período pré-Real (anterior a 1995) foi muito superior à atual, o que comprime visualmente as séries posteriores, e valores em moeda anterior ao Real não são comparáveis. Use &quot;Pós-Plano Real&quot; para análise de alta precisão.
           </span>
         </div>
       )}
 
       {/* Área do Gráfico */}
-      <div className="w-full h-80 sm:h-96">
+      <div
+        role="img"
+        aria-label="Gráfico de barras e linhas: crescimento real do PIB e inflação anual (IPCA) por ano, com períodos presidenciais ao fundo"
+        className="w-full h-80 sm:h-96"
+      >
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
             data={chartData}
@@ -220,13 +232,14 @@ function MacroeconomicChartBase({
             <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.6} />
 
             {/* Delimitação dos Períodos Presidenciais (ReferenceArea) */}
-            {MANDATE_ZONES.map((zone) => {
-              if (filterMode === "pos_real" && zone.end < 1995) return null;
+            {zones.map((zone) => {
+              if (filterMode === "pos_real" && zone.end < firstPosRealYear) return null;
+              if (lastYear !== null && zone.start > lastYear) return null;
               return (
                 <ReferenceArea
                   key={zone.id}
-                  x1={Math.max(zone.start, filterMode === "pos_real" ? 1995 : 1993)}
-                  x2={zone.end}
+                  x1={Math.max(zone.start, filterMode === "pos_real" ? firstPosRealYear : (firstYear ?? zone.start))}
+                  x2={Math.min(zone.end, lastYear ?? zone.end)}
                   yAxisId="left"
                   fill={zone.color}
                   fillOpacity={0.07}
@@ -256,7 +269,7 @@ function MacroeconomicChartBase({
               fontSize={11}
               tickLine={false}
               tickFormatter={(v) => `${v}%`}
-              domain={[-6, 10]}
+              domain={[(min: number) => Math.min(-2, Math.floor(min)), (max: number) => Math.max(5, Math.ceil(max))]}
             />
 
             {/* Eixo Y Direito: IPCA */}
@@ -267,7 +280,7 @@ function MacroeconomicChartBase({
               fontSize={11}
               tickLine={false}
               tickFormatter={(v) => `${v}%`}
-              domain={filterMode === "pos_real" ? [0, 25] : [0, "auto"]}
+              domain={filterMode === "pos_real" ? [0, (max: number) => Math.max(15, Math.ceil(max))] : [0, "auto"]}
             />
 
             {/* Eixo Y Terciário: Ibovespa Pontos (quando ativado) */}
@@ -279,7 +292,7 @@ function MacroeconomicChartBase({
                 fontSize={10}
                 tickLine={false}
                 tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
-                domain={[0, 150000]}
+                domain={[0, "auto"]}
               />
             )}
 

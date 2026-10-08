@@ -1,8 +1,20 @@
 import os
 from pathlib import Path
 from typing import List
+from urllib.parse import quote_plus
 
 from pydantic_settings import BaseSettings
+from sqlalchemy.engine import make_url
+
+# Sufixos de hospedagem de bancos gerenciados que exigem TLS
+CLOUD_DB_HOST_SUFFIXES = (
+    "supabase.co",
+    "supabase.com",
+    "neon.tech",
+    "rds.amazonaws.com",
+    "railway.app",
+    "render.com",
+)
 
 
 def get_processed_data_dir() -> Path:
@@ -40,7 +52,23 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = ""
     DATABASE_URL: str = ""
 
+    # Modo SSL do Postgres: "", "disable", "prefer", "require", "verify-full"...
+    # Vazio = automático (require para bancos gerenciados em nuvem, nada para os demais).
+    DB_SSLMODE: str = os.getenv("DB_SSLMODE", "")
+    DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "5"))
+    DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "5"))
+    DB_POOL_TIMEOUT: int = int(os.getenv("DB_POOL_TIMEOUT", "30"))
+
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+    # Regex adicional para previews do projeto na Vercel (restrito ao projeto, não a qualquer *.vercel.app)
+    CORS_ORIGIN_REGEX: str = os.getenv("CORS_ORIGIN_REGEX", r"^https://legisdata(-[a-z0-9-]+)?\.vercel\.app$")
+
+    # Limite de requisições por IP/minuto (em memória, por worker). 0 desativa.
+    RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "120"))
+    # Token que autoriza renovação forçada do cache de consultas públicas (vazio = desabilitado)
+    ADMIN_REFRESH_TOKEN: str = os.getenv("ADMIN_REFRESH_TOKEN", "")
+    # Confia em X-Forwarded-For (somente atrás de proxy reverso controlado)
+    TRUST_PROXY_HEADERS: bool = os.getenv("TRUST_PROXY_HEADERS", "false").lower() == "true"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -55,7 +83,10 @@ class Settings(BaseSettings):
             )
 
         if not db_url:
-            db_url = f"postgresql://{self.POSTGRES_USER}:{pwd}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            db_url = (
+                f"postgresql://{quote_plus(self.POSTGRES_USER)}:{quote_plus(pwd or '')}"
+                f"@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            )
 
         self.POSTGRES_PASSWORD = pwd or ""
         self.DATABASE_URL = db_url
@@ -74,23 +105,29 @@ class Settings(BaseSettings):
         elif url.startswith("postgresql://") and not url.startswith("postgresql+"):
             url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
-        # Em produção (Supabase, Neon, Render), exigir conexões seguras com sslmode=require
-        is_cloud_db = any(
-            host in url
-            for host in [
-                "supabase.co",
-                "neon.tech",
-                "aws",
-                "rds",
-                "railway.app",
-                "render.com",
-            ]
-        )
-        if (self.ENVIRONMENT == "production" or is_cloud_db) and "sslmode" not in url:
-            sep = "&" if "?" in url else "?"
-            url = f"{url}{sep}sslmode=require"
+        # SSL: configurável via DB_SSLMODE; no modo automático só exige TLS para bancos gerenciados em nuvem
+        # (detecção pelo hostname parseado, nunca por substring da URL, que inclui usuário e senha).
+        if "sslmode" not in url:
+            sslmode = self.DB_SSLMODE.strip()
+            if not sslmode and self._is_cloud_host(url):
+                sslmode = "require"
+            if sslmode:
+                sep = "&" if "?" in url else "?"
+                url = f"{url}{sep}sslmode={sslmode}"
 
         return url
+
+    @staticmethod
+    def _is_cloud_host(url: str) -> bool:
+        try:
+            host = (make_url(url).host or "").lower()
+        except Exception:
+            return False
+        return any(host == suffix or host.endswith("." + suffix) for suffix in CLOUD_DB_HOST_SUFFIXES)
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT.lower() == "production"
 
     @property
     def all_cors_origins(self) -> List[str]:
@@ -110,10 +147,11 @@ class Settings(BaseSettings):
 
     API_PORT: int = 8000
 
-    class Config:
-        env_file = (".env", "../.env")
-        case_sensitive = True
-        extra = "ignore"
+    model_config = {
+        "env_file": (".env", "../.env"),
+        "case_sensitive": True,
+        "extra": "ignore",
+    }
 
 
 settings = Settings()

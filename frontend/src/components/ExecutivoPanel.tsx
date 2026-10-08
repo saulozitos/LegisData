@@ -11,13 +11,10 @@ import {
   Area,
   BarChart,
   Bar,
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   ReferenceLine,
   Cell,
@@ -38,20 +35,21 @@ import {
   Award,
 } from "lucide-react";
 import { getPresidentPhotoUrl } from "@/components/PresidentTimeline";
+import { isActiveStatus } from "@/lib/mandate";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmt(v: number | null | undefined, d = 1, prefix = "", suffix = ""): string {
-  if (v == null || isNaN(v)) return "—";
+export function fmt(v: number | null | undefined, d = 1, prefix = "", suffix = ""): string {
+  if (v == null || !Number.isFinite(v)) return "—";
   return `${prefix}${v.toFixed(d)}${suffix}`;
 }
 
-function fmtBRL(v: number | null | undefined): string {
-  if (v == null) return "—";
+export function fmtBRL(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "—";
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v);
 }
 
-function deltaColor(delta: number | null | undefined, invertGood = false): string {
+export function deltaColor(delta: number | null | undefined, invertGood = false): string {
   if (delta == null) return "text-slate-400";
   const isGood = invertGood ? delta < 0 : delta > 0;
   const isBad = invertGood ? delta > 0 : delta < 0;
@@ -61,12 +59,12 @@ function deltaColor(delta: number | null | undefined, invertGood = false): strin
 }
 
 function DeltaIcon({ delta, invertGood = false }: { delta: number | null | undefined; invertGood?: boolean }) {
-  if (delta == null) return <Minus className="w-3.5 h-3.5 text-slate-500" />;
+  if (delta == null) return <Minus className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />;
   const isGood = invertGood ? delta < 0 : delta > 0;
-  if (Math.abs(delta) < 0.5) return <Minus className="w-3.5 h-3.5 text-slate-500" />;
+  if (Math.abs(delta) < 0.5) return <Minus className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />;
   return isGood
-    ? <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-    : <TrendingDown className="w-3.5 h-3.5 text-rose-400" />;
+    ? <TrendingUp className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
+    : <TrendingDown className="w-3.5 h-3.5 text-rose-400" aria-hidden="true" />;
 }
 
 const TOOLTIP_STYLE = {
@@ -95,17 +93,26 @@ function KPICard({ label, value, sublabel, delta, invertGood = false, icon, acce
         <div className={`p-2 rounded-xl ${accentBg}`}>{icon}</div>
         {tooltip && (
           <div className="relative">
-            <Info className="w-3.5 h-3.5 text-slate-700 group-hover:text-slate-500 transition-colors cursor-help" />
-            <div className="absolute right-0 top-5 z-20 w-52 bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-[11px] text-slate-300 hidden group-hover:block shadow-xl leading-relaxed">
+            <button
+              type="button"
+              aria-label={`Sobre ${label}: ${tooltip}`}
+              className="peer rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+            >
+              <Info className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-300 transition-colors cursor-help" aria-hidden="true" />
+            </button>
+            <div
+              role="tooltip"
+              className="absolute right-0 top-5 z-20 w-52 bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-[11px] text-slate-300 hidden group-hover:block peer-hover:block peer-focus-visible:block shadow-xl leading-relaxed"
+            >
               {tooltip}
             </div>
           </div>
         )}
       </div>
       <div>
-        <p className="text-slate-500 text-[10px] font-semibold uppercase tracking-wider mb-0.5">{label}</p>
+        <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-0.5">{label}</p>
         <span className="text-2xl font-bold text-slate-100 tabular-nums leading-tight">{value}</span>
-        {sublabel && <p className="text-[11px] text-slate-500 mt-0.5">{sublabel}</p>}
+        {sublabel && <p className="text-[11px] text-slate-400 mt-0.5">{sublabel}</p>}
       </div>
       {delta != null && (
         <div className={`flex items-center gap-1 text-xs font-semibold ${deltaColor(delta, invertGood)}`}>
@@ -123,17 +130,8 @@ function SectionHeader({ icon, title, desc }: { icon: React.ReactNode; title: st
       <div className="mt-0.5 flex-shrink-0">{icon}</div>
       <div>
         <h3 className="text-base font-bold text-slate-100 leading-tight">{title}</h3>
-        <p className="text-xs text-slate-500 mt-0.5">{desc}</p>
+        <p className="text-xs text-slate-400 mt-0.5">{desc}</p>
       </div>
-    </div>
-  );
-}
-
-function NoDataCard({ message }: { message: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-40 gap-3 text-slate-600">
-      <AlertCircle className="w-8 h-8 opacity-40" />
-      <p className="text-sm">{message}</p>
     </div>
   );
 }
@@ -165,22 +163,6 @@ export default function ExecutivoPanel({
     const end = parseInt(performance.data_fim?.slice(0, 4) ?? String(new Date().getFullYear()));
     return annualData.filter((d) => d.ano >= start && d.ano <= end);
   }, [annualData, mandateId, performance]);
-
-  // Dados para o gráfico de PIB anual (todos os mandatos para contexto histórico)
-  const allYearsChartData = useMemo(() => {
-    return annualData
-      .filter((d) => d.pib_crescimento_real_pct != null)
-      .map((d) => ({
-        ano: d.ano,
-        pib: d.pib_crescimento_real_pct,
-        inflacao: d.ipca_acumulado_ano_pct != null && d.ipca_acumulado_ano_pct < 50
-          ? d.ipca_acumulado_ano_pct
-          : null, // Exclui hiperinflação para não distorcer escala
-        desemprego: d.taxa_desemprego_anual,
-        desmatamento: d.taxa_desmatamento_amazonia,
-        presidente: d.presidente_dominante,
-      }));
-  }, [annualData]);
 
   // Dados específicos do mandato para os gráficos de detalhe
   const mandateChartData = useMemo(() => {
@@ -214,9 +196,9 @@ export default function ExecutivoPanel({
   if (!mandateId || !performance) {
     return (
       <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-8 text-center space-y-3">
-        <Briefcase className="w-10 h-10 mx-auto text-slate-700" />
-        <p className="text-slate-400 font-semibold">Selecione um presidente na Linha do Tempo</p>
-        <p className="text-sm text-slate-600">O Raio-X do Executivo exibirá KPIs econômicos e sociais detalhados do mandato selecionado.</p>
+        <Briefcase className="w-10 h-10 mx-auto text-slate-400" aria-hidden="true" />
+        <p className="text-slate-300 font-semibold">Selecione um presidente na Linha do Tempo</p>
+        <p className="text-sm text-slate-400">O Raio-X do Executivo exibirá KPIs econômicos e sociais detalhados do mandato selecionado.</p>
       </div>
     );
   }
@@ -232,6 +214,11 @@ export default function ExecutivoPanel({
     ? p.salario_minimo_final_brl - p.salario_minimo_inicial_brl : null;
   const deltaDesemprego = (p.desemprego_final_pct != null && p.desemprego_inicial_pct != null)
     ? p.desemprego_final_pct - p.desemprego_inicial_pct : null;
+  const deltaFome = (p.fome_final_pct != null && p.fome_inicial_pct != null)
+    ? p.fome_final_pct - p.fome_inicial_pct : null;
+  // Apenas status explícito de exercício conta como "em exercício" (ex.: IMPEACHMENT, CONCLUIDO não).
+  const isOngoing = isActiveStatus(p.status_mandato);
+  const photoUrl = getPresidentPhotoUrl(meta?.id_referencia ?? p.id_mandato, meta?.foto_url);
 
   return (
     <div className="space-y-6">
@@ -239,7 +226,7 @@ export default function ExecutivoPanel({
       {/* ── Título da Seção: Raio-X do Executivo Integrado ── */}
       <div className="flex items-center gap-3">
         <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
-          <Briefcase className="w-5 h-5" />
+          <Briefcase className="w-5 h-5" aria-hidden="true" />
         </div>
         <div>
           <div className="flex items-center gap-2">
@@ -249,7 +236,7 @@ export default function ExecutivoPanel({
             </span>
           </div>
           <p className="text-xs text-slate-400">
-            Balanço fiscal, indicadores sociais e ranking comparativo com todos os mandatos da Nova República (1992 - 2026)
+            Balanço fiscal, indicadores sociais e ranking comparativo com todos os mandatos da Nova República (1992 - Presente)
           </p>
         </div>
       </div>
@@ -257,16 +244,25 @@ export default function ExecutivoPanel({
       {/* ── Cabeçalho do Mandato ── */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-5 bg-gradient-to-r from-slate-900/90 to-slate-950/60 border border-slate-800 rounded-2xl p-5">
         <div className="relative flex-shrink-0">
-          <img
-            src={getPresidentPhotoUrl(meta?.id_referencia ?? p.id_mandato, meta?.foto_url)}
-            alt={p.presidente}
-            className="w-20 h-20 rounded-2xl object-cover object-top ring-2 ring-slate-700 shadow-xl"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = getPresidentPhotoUrl(p.id_mandato);
-            }}
-          />
-          {p.status_mandato !== "CONCLUIDO" && (
-            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+          {photoUrl && (
+            <img
+              src={photoUrl}
+              alt={p.presidente}
+              referrerPolicy="no-referrer"
+              className="w-20 h-20 rounded-2xl object-cover object-top ring-2 ring-slate-700 shadow-xl"
+              onError={(e) => {
+                const target = e.currentTarget;
+                const local = getPresidentPhotoUrl(p.id_mandato);
+                if (local && !target.src.endsWith(local)) {
+                  target.src = local;
+                } else {
+                  target.style.display = "none";
+                }
+              }}
+            />
+          )}
+          {isOngoing && (
+            <span className="absolute -top-1 -right-1 flex h-3 w-3" aria-hidden="true">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
             </span>
@@ -278,7 +274,7 @@ export default function ExecutivoPanel({
             <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-slate-800 text-slate-300 border border-slate-700">
               {p.partido}
             </span>
-            {p.status_mandato !== "CONCLUIDO" && (
+            {isOngoing && (
               <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
                 Em exercício
               </span>
@@ -286,12 +282,12 @@ export default function ExecutivoPanel({
           </div>
           <p className="text-slate-400 text-sm">{p.anos_cobertos}</p>
           {meta?.marcos_economicos && meta.marcos_economicos.length > 0 && (
-            <p className="text-xs text-slate-500 mt-1.5 truncate">
+            <p className="text-xs text-slate-400 mt-1.5 truncate">
               📌 {meta.marcos_economicos[0]}
             </p>
           )}
         </div>
-        <div className="hidden sm:flex flex-col items-end gap-1 text-xs text-slate-600">
+        <div className="hidden sm:flex flex-col items-end gap-1 text-xs text-slate-400">
           <span>Fontes: IBGE, BCB</span>
           <span>INPE, Atlas da Violência</span>
           <span>Portal Transparência</span>
@@ -300,8 +296,8 @@ export default function ExecutivoPanel({
 
       {/* ── KPI Cards: Econômico ── */}
       <div>
-        <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-3 flex items-center gap-1.5">
-          <BarChart2 className="w-3.5 h-3.5 text-emerald-400" />
+        <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold mb-3 flex items-center gap-1.5">
+          <BarChart2 className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
           Indicadores Econômicos
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -366,16 +362,16 @@ export default function ExecutivoPanel({
       {/* ── KPI Cards: Social & Ambiental ── */}
       {(p.desmatamento_acumulado_km2 != null || p.fome_final_pct != null || p.homicidios_medio != null) && (
         <div>
-          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-3 flex items-center gap-1.5">
-            <Leaf className="w-3.5 h-3.5 text-teal-400" />
+          <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold mb-3 flex items-center gap-1.5">
+            <Leaf className="w-3.5 h-3.5 text-teal-400" aria-hidden="true" />
             Indicadores Sociais & Ambientais
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {p.desmatamento_acumulado_km2 != null && (
               <KPICard
                 label="Desmatamento Amazônia"
-                value={`${(p.desmatamento_acumulado_km2 / 1000).toFixed(0)}k km²`}
-                sublabel={`Média: ${fmt(p.desmatamento_medio_anual_km2 ?? 0, 0)} km²/ano`}
+                value={`${fmt(p.desmatamento_acumulado_km2 / 1000, 0)}k km²`}
+                sublabel={`Média: ${fmt(p.desmatamento_medio_anual_km2, 0)} km²/ano`}
                 icon={<Leaf className="w-4 h-4 text-teal-400" />}
                 accentBg="bg-teal-400/10"
                 tooltip="Desmatamento acumulado na Amazônia Legal (PRODES/INPE) durante o mandato"
@@ -386,7 +382,7 @@ export default function ExecutivoPanel({
                 label="Insegurança Alimentar"
                 value={`${fmt(p.fome_final_pct, 1)}%`}
                 sublabel={`Início: ${fmt(p.fome_inicial_pct, 1)}%`}
-                delta={(p.fome_final_pct ?? 0) - (p.fome_inicial_pct ?? 0)}
+                delta={deltaFome}
                 invertGood
                 icon={<AlertCircle className="w-4 h-4 text-yellow-400" />}
                 accentBg="bg-yellow-400/10"
@@ -437,8 +433,8 @@ export default function ExecutivoPanel({
                   <Tooltip {...TOOLTIP_STYLE} formatter={(v) => [`${Number(v).toFixed(2)}%`, "PIB"]} />
                   <ReferenceLine y={0} stroke="#475569" strokeWidth={1.5} />
                   <Bar dataKey="pib" name="PIB % a.a." radius={[4, 4, 0, 0]}>
-                    {mandateChartData.map((d, i) => (
-                      <Cell key={i} fill={(d.pib ?? 0) >= 0 ? "#34d399" : "#fb7185"} />
+                    {mandateChartData.map((d) => (
+                      <Cell key={d.ano} fill={(d.pib ?? 0) >= 0 ? "#34d399" : "#fb7185"} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -543,9 +539,9 @@ export default function ExecutivoPanel({
                 <Tooltip {...TOOLTIP_STYLE} formatter={(v) => [`${Number(v).toFixed(2)}% a.a.`, "PIB médio"]} />
                 <ReferenceLine x={0} stroke="#475569" strokeWidth={1} />
                 <Bar dataKey="pib" name="PIB médio a.a." radius={[0, 4, 4, 0]}>
-                  {rankingData.map((d, i) => (
+                  {rankingData.map((d) => (
                     <Cell
-                      key={i}
+                      key={d.id}
                       fill={d.id === mandateId ? "#22d3ee" : (d.pib ?? 0) >= 0 ? "#34d399" : "#fb7185"}
                       opacity={d.id === mandateId ? 1 : 0.6}
                     />
@@ -554,8 +550,8 @@ export default function ExecutivoPanel({
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <p className="text-[11px] text-slate-600 flex items-center gap-1">
-            <Info className="w-3 h-3" />
+          <p className="text-[11px] text-slate-400 flex items-center gap-1">
+            <Info className="w-3 h-3" aria-hidden="true" />
             Mandato atual destacado em ciano · Fonte: IBGE/BCB · Anos negativos refletem recessão
           </p>
         </div>
@@ -570,16 +566,16 @@ export default function ExecutivoPanel({
             {/* Ministros da Fazenda / Economia */}
             <div>
               <div className="flex items-center gap-2 mb-3">
-                <Award className="w-4 h-4 text-emerald-400" />
+                <Award className="w-4 h-4 text-emerald-400" aria-hidden="true" />
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
                   Ministros da Fazenda / Economia no Período
                 </h4>
               </div>
               <div className="flex flex-wrap gap-2">
                 {meta?.ministros_fazenda_chave && meta.ministros_fazenda_chave.length > 0 ? (
-                  meta.ministros_fazenda_chave.map((min, idx) => (
+                  meta.ministros_fazenda_chave.map((min) => (
                     <span
-                      key={idx}
+                      key={`${min.nome}-${min.inicio}`}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/60 text-xs font-medium text-slate-200"
                     >
                       <span>{min.nome}</span>
@@ -591,16 +587,16 @@ export default function ExecutivoPanel({
                     </span>
                   ))
                 ) : p.ministros_fazenda_principais && p.ministros_fazenda_principais.length > 0 ? (
-                  p.ministros_fazenda_principais.map((min, idx) => (
+                  p.ministros_fazenda_principais.map((min) => (
                     <span
-                      key={idx}
+                      key={min}
                       className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/60 text-xs font-medium text-slate-200"
                     >
                       {min}
                     </span>
                   ))
                 ) : (
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs text-slate-400">
                     Informação não disponível para este mandato.
                   </span>
                 )}
@@ -617,8 +613,8 @@ export default function ExecutivoPanel({
                   </h4>
                 </div>
                 <ul className="space-y-2">
-                  {meta.marcos_economicos.map((marco, i) => (
-                    <li key={i} className="flex items-start gap-2 text-xs sm:text-sm text-slate-400">
+                  {meta.marcos_economicos.map((marco) => (
+                    <li key={marco} className="flex items-start gap-2 text-xs sm:text-sm text-slate-400">
                       <span className="text-emerald-400 mt-0.5 flex-shrink-0">▸</span>
                       <span>{marco}</span>
                     </li>
@@ -631,15 +627,15 @@ export default function ExecutivoPanel({
       )}
 
       {/* ── Fontes ── */}
-      <div className="bg-slate-900/30 border border-slate-800/40 rounded-xl px-4 py-3 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-slate-600">
-        <span>📊 <strong className="text-slate-500">PIB:</strong> IBGE/BCB</span>
-        <span>📈 <strong className="text-slate-500">IPCA:</strong> IBGE</span>
-        <span>👷 <strong className="text-slate-500">Desemprego:</strong> PNAD Contínua / IBGE</span>
-        <span>💵 <strong className="text-slate-500">Câmbio:</strong> Banco Central do Brasil</span>
-        <span>💰 <strong className="text-slate-500">Salário Mínimo:</strong> MTE/Governo Federal</span>
-        <span>🌳 <strong className="text-slate-500">Desmatamento:</strong> PRODES/INPE</span>
-        <span>🔫 <strong className="text-slate-500">Violência:</strong> Atlas da Violência / FBSP</span>
-        <span>🍽️ <strong className="text-slate-500">Fome:</strong> IBGE / FAO / Rede Penssan</span>
+      <div className="bg-slate-900/30 border border-slate-800/40 rounded-xl px-4 py-3 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-slate-400">
+        <span>📊 <strong className="text-slate-300">PIB:</strong> IBGE/BCB</span>
+        <span>📈 <strong className="text-slate-300">IPCA:</strong> IBGE</span>
+        <span>👷 <strong className="text-slate-300">Desemprego:</strong> PNAD Contínua / IBGE</span>
+        <span>💵 <strong className="text-slate-300">Câmbio:</strong> Banco Central do Brasil</span>
+        <span>💰 <strong className="text-slate-300">Salário Mínimo:</strong> MTE/Governo Federal</span>
+        <span>🌳 <strong className="text-slate-300">Desmatamento:</strong> PRODES/INPE</span>
+        <span>🔫 <strong className="text-slate-300">Violência:</strong> Atlas da Violência / FBSP</span>
+        <span>🍽️ <strong className="text-slate-300">Fome:</strong> IBGE / FAO / Rede Penssan</span>
       </div>
     </div>
   );

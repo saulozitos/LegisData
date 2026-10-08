@@ -1,0 +1,10 @@
+# Override de DESENVOLVIMENTO: publica Postgres e API somente em loopback (127.0.0.1).
+# Nunca use este arquivo no servidor de produção.
+# Uso: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+  backend:
+    ports:
+      - "127.0.0.1:8000:8000"

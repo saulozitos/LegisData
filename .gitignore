@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*
+!.env.example
 *.pem
 *.key
 
@@ -31,6 +32,12 @@ yarn-error.log*
 # Checkpoints do ETL
 etl/data/checkpoint_*.json
 
+# Cobertura de testes
+.coverage
+.coverage.*
+htmlcov/
+coverage/
+
 # Database & Cache
 *.sqlite3
 postgres_data/
@@ -44,3 +51,18 @@ Thumbs.db
 
 .dev*
 .gemini*
+etl/data/raw/pnad/
+etl/data/raw/sidra/
+etl/data/raw/bcb_*.json
+etl/data/raw/transferencias/
+etl/data/raw/atlas_violencia/
+etl/data/raw/prodes/
+etl/data/raw/yahoo/
+etl/data/raw/presenca/
+etl/data/raw/remuneracao/
+etl/data/raw/tse/
+etl/data/raw/identidades_parlamentares.json
+etl/data/raw/votacoes/
+
+# Checkpoints de extração (regeneráveis)
+etl/data/raw/checkpoint_*.json

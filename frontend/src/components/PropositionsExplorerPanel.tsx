@@ -1,13 +1,17 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
-  AuthorProductivityItem,
-  LegislativeExplorerResponse,
   getAuthorsProductivityRanking,
   getLegislativeExplorer,
+  getParties,
 } from "@/services/api";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useApi } from "@/hooks/useApi";
+import { safeExternalUrl } from "@/lib/safeUrl";
+import { fmtNum } from "@/lib/format";
+import { ErrorState } from "@/components/StateViews";
+import PartyLink from "@/components/PartyLink";
 import PropositionVoteModal from "./propositions/PropositionVoteModal";
 import {
   Search,
@@ -57,40 +61,6 @@ function getSectorStyle(sector: string) {
   return { bg: "bg-slate-800", text: "text-slate-300", border: "border-slate-700" };
 }
 
-const RANKING_PARTIDOS_OPTIONS = [
-  "Todos",
-  "PL",
-  "PT",
-  "UNIÃO",
-  "PP",
-  "MDB",
-  "PSD",
-  "Republicanos",
-  "PSDB",
-  "PODEMOS",
-  "PSOL",
-  "PDT",
-  "PSB",
-  "NOVO",
-];
-
-const RANKING_SETORES_OPTIONS = [
-  "Todos",
-  "Saúde",
-  "Educação",
-  "Segurança Pública",
-  "Economia & Finanças",
-  "Trabalho & Previdência",
-  "Meio Ambiente & Clima",
-  "Direitos Humanos & Minorias",
-  "Tecnologia & Inovação",
-  "Infraestrutura & Cidades",
-  "Agricultura & Agropecuária",
-  "Administração & Justiça",
-  "Administração & Cidadania",
-  "Homenagens & Datas Comemorativas",
-];
-
 interface PropositionsExplorerPanelProps {
   onSelectPolitician?: (id: string) => void;
   onSelectParty?: (sigla: string) => void;
@@ -101,21 +71,16 @@ export default function PropositionsExplorerPanel({
   onSelectParty,
 }: PropositionsExplorerPanelProps = {}) {
   // 1. Estados do Ranking de Produtividade (Filtros por Partido, Setor e Critério IPLE)
-  const [ranking, setRanking] = useState<AuthorProductivityItem[]>([]);
-  const [isLoadingRanking, setIsLoadingRanking] = useState<boolean>(true);
   const [rankingParty, setRankingParty] = useState<string>("Todos");
   const [rankingSector, setRankingSector] = useState<string>("Todos");
   const [rankingCriterio, setRankingCriterio] = useState<"efetividade" | "volume">("efetividade");
 
   // 2. Estados do Mural Geral de Votações
-  const [propositionsData, setPropositionsData] = useState<LegislativeExplorerResponse | null>(null);
-  const [isLoadingProps, setIsLoadingProps] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedSetor, setSelectedSetor] = useState<string>("Todos");
   const [selectedTipo, setSelectedTipo] = useState<string>("Todos");
-  const [selectedStatus, setSelectedStatus] = useState<string>("Todos");
+  const [selectedStatus] = useState<string>("Todos");
   const [apenasVotadas, setApenasVotadas] = useState<boolean>(false);
-  const [currentPage, setCurrentPage] = useState<number>(1);
 
   // 3. Estados do Modal de Votação Nominal
   const [selectedPropId, setSelectedPropId] = useState<string | null>(null);
@@ -123,56 +88,51 @@ export default function PropositionsExplorerPanel({
   // Debounce da busca textual
   const debouncedSearch = useDebounce(searchTerm, 350);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [debouncedSearch]);
+  // A página volta para 1 sempre que um filtro muda, sem disparar uma segunda requisição com a página antiga.
+  const filtersKey = JSON.stringify([debouncedSearch, selectedSetor, selectedTipo, selectedStatus, apenasVotadas]);
+  const [pageState, setPageState] = useState<{ key: string; page: number }>({ key: filtersKey, page: 1 });
+  const currentPage = pageState.key === filtersKey ? pageState.page : 1;
+  const setCurrentPage = (next: number | ((prev: number) => number)) =>
+    setPageState((prev) => {
+      const base = prev.key === filtersKey ? prev.page : 1;
+      return { key: filtersKey, page: typeof next === "function" ? next(base) : next };
+    });
 
-  // Carregar Ranking de Autores (Top 20) com filtros de Partido, Setor e Critério (IPLE vs Volume)
-  useEffect(() => {
-    async function fetchRanking() {
-      setIsLoadingRanking(true);
-      try {
-        const data = await getAuthorsProductivityRanking(
-          20,
-          rankingParty !== "Todos" ? rankingParty : undefined,
-          rankingSector !== "Todos" ? rankingSector : undefined,
-          rankingCriterio
-        );
-        setRanking(data);
-      } catch (err) {
-        console.error("Erro ao carregar ranking de autores:", err);
-      } finally {
-        setIsLoadingRanking(false);
-      }
-    }
-    fetchRanking();
-  }, [rankingParty, rankingSector, rankingCriterio]);
+  // Opções de partido vêm do catálogo da API (cacheado); setores vêm do próprio explorador.
+  const partiesCatalog = useApi("parties", (signal) => getParties(signal));
+  const partyOptions = ["Todos", ...(partiesCatalog.data ?? []).map((p) => p.sigla)];
 
-  // Carregar Proposições com filtros e paginação
-  useEffect(() => {
-    async function fetchPropositions() {
-      setIsLoadingProps(true);
-      try {
-        const data = await getLegislativeExplorer({
-          search: debouncedSearch || undefined,
-          setor: selectedSetor !== "Todos" ? selectedSetor : undefined,
-          tipo: selectedTipo !== "Todos" ? selectedTipo : undefined,
-          status: selectedStatus !== "Todos" ? selectedStatus : undefined,
-          apenas_votadas: apenasVotadas,
-          page: currentPage,
-          limit: 15,
-        });
-        setPropositionsData(data);
-      } catch (err) {
-        console.error("Erro ao carregar explorador de proposições:", err);
-      } finally {
-        setIsLoadingProps(false);
-      }
-    }
-    fetchPropositions();
-  }, [debouncedSearch, selectedSetor, selectedTipo, selectedStatus, apenasVotadas, currentPage]);
+  // Ranking de Autores (Top 20) com filtros de Partido, Setor e Critério (IPLE vs Volume)
+  const rankingQuery = useApi(`authors-ranking:${rankingParty}:${rankingSector}:${rankingCriterio}`, (signal) =>
+    getAuthorsProductivityRanking(
+      20,
+      rankingParty !== "Todos" ? rankingParty : undefined,
+      rankingSector !== "Todos" ? rankingSector : undefined,
+      rankingCriterio,
+      signal
+    )
+  );
+  const ranking = rankingQuery.data ?? [];
+  const isLoadingRanking = rankingQuery.loading;
 
-
+  // Proposições com filtros e paginação (mantém a página anterior visível enquanto carrega a nova)
+  const propsQuery = useApi(`explorer:${filtersKey}:${currentPage}`, (signal) =>
+    getLegislativeExplorer(
+      {
+        search: debouncedSearch || undefined,
+        setor: selectedSetor !== "Todos" ? selectedSetor : undefined,
+        tipo: selectedTipo !== "Todos" ? selectedTipo : undefined,
+        status: selectedStatus !== "Todos" ? selectedStatus : undefined,
+        apenas_votadas: apenasVotadas,
+        page: currentPage,
+        limit: 15,
+      },
+      signal
+    )
+  );
+  const propositionsData = propsQuery.data ?? null;
+  const isLoadingProps = propsQuery.loading;
+  const sectorOptions = ["Todos", ...(propsQuery.data ?? propsQuery.previousData)?.setores_disponiveis ?? []];
 
   const maxProjetos = ranking.length > 0 ? ranking[0].total_proposicoes : 1;
 
@@ -183,14 +143,14 @@ export default function PropositionsExplorerPanel({
         <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative z-10 space-y-3">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+            <Sparkles className="w-3.5 h-3.5 text-indigo-400" aria-hidden="true" />
             Produtividade Parlamentar & Mural de Votações
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
             Explorador Geral de Proposições & Autoria
           </h2>
           <p className="text-sm sm:text-base text-slate-300 max-w-3xl leading-relaxed">
-            Acompanhe o ritmo diário do Congresso Nacional na 57ª Legislatura (2023-2026).
+            Acompanhe o ritmo diário do Congresso Nacional.
             Descubra quem são os parlamentares mais produtivos, em quais setores eles concentram suas propostas
             e consulte o placar nominal de aprovação ou rejeição de cada lei.
           </p>
@@ -204,7 +164,7 @@ export default function PropositionsExplorerPanel({
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
-              <Trophy className="w-5 h-5" />
+              <Trophy className="w-5 h-5" aria-hidden="true" />
             </div>
             <div>
               <h3 className="text-lg font-bold text-white flex items-center gap-2 flex-wrap">
@@ -233,34 +193,38 @@ export default function PropositionsExplorerPanel({
             {/* Toggle de Critério IPLE vs Volume */}
             <div className="inline-flex p-1 bg-slate-900 border border-slate-800 rounded-xl text-xs font-semibold">
               <button
+                type="button"
+                aria-pressed={rankingCriterio === "efetividade"}
                 onClick={() => setRankingCriterio("efetividade")}
                 className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
                   rankingCriterio === "efetividade"
                     ? "bg-gradient-to-r from-amber-500/30 to-emerald-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
-                    : "text-slate-400 hover:text-slate-200"
+                    : "text-slate-300 hover:text-slate-100"
                 }`}
                 title="Pondera relevância e aprovações de leis (desestimula spam)"
               >
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
                 <span>Efetividade (IPLE)</span>
               </button>
               <button
+                type="button"
+                aria-pressed={rankingCriterio === "volume"}
                 onClick={() => setRankingCriterio("volume")}
                 className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
                   rankingCriterio === "volume"
                     ? "bg-slate-800 text-white border border-slate-700 shadow-sm"
-                    : "text-slate-400 hover:text-slate-200"
+                    : "text-slate-300 hover:text-slate-100"
                 }`}
                 title="Contagem bruta de projetos protocolados"
               >
-                <BarChart3 className="w-3.5 h-3.5" />
+                <BarChart3 className="w-3.5 h-3.5" aria-hidden="true" />
                 <span>Volume Bruto</span>
               </button>
             </div>
 
             {/* 1. Combobox / Select de Partido */}
             <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5">
-              <Users className="w-3.5 h-3.5 text-slate-400" />
+              <Users className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
               <label htmlFor="ranking-partido-select" className="text-[11px] font-semibold text-slate-400">
                 Partido:
               </label>
@@ -270,7 +234,7 @@ export default function PropositionsExplorerPanel({
                 onChange={(e) => setRankingParty(e.target.value)}
                 className="bg-transparent text-xs font-bold text-slate-100 focus:outline-none cursor-pointer pr-1"
               >
-                {RANKING_PARTIDOS_OPTIONS.map((p) => (
+                {partyOptions.map((p) => (
                   <option key={p} value={p} className="bg-slate-900 text-slate-200">
                     {p === "Todos" ? "Todos os Partidos" : p}
                   </option>
@@ -280,7 +244,7 @@ export default function PropositionsExplorerPanel({
 
             {/* 2. Combobox / Select de Setor / Tema */}
             <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5">
-              <Tag className="w-3.5 h-3.5 text-slate-400" />
+              <Tag className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
               <label htmlFor="ranking-setor-select" className="text-[11px] font-semibold text-slate-400">
                 Setor:
               </label>
@@ -290,7 +254,7 @@ export default function PropositionsExplorerPanel({
                 onChange={(e) => setRankingSector(e.target.value)}
                 className="bg-transparent text-xs font-bold text-slate-100 focus:outline-none cursor-pointer pr-1 max-w-[160px] truncate"
               >
-                {RANKING_SETORES_OPTIONS.map((s) => (
+                {sectorOptions.map((s) => (
                   <option key={s} value={s} className="bg-slate-900 text-slate-200">
                     {s === "Todos" ? "Todos os Setores" : s}
                   </option>
@@ -301,6 +265,7 @@ export default function PropositionsExplorerPanel({
             {/* Botão de Limpar caso algum filtro esteja ativo */}
             {(rankingParty !== "Todos" || rankingSector !== "Todos" || rankingCriterio !== "efetividade") && (
               <button
+                type="button"
                 onClick={() => {
                   setRankingParty("Todos");
                   setRankingSector("Todos");
@@ -309,28 +274,32 @@ export default function PropositionsExplorerPanel({
                 className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-medium transition-colors flex items-center gap-1"
                 title="Limpar filtros do ranking"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-3.5 h-3.5" aria-hidden="true" />
                 <span>Limpar</span>
               </button>
             )}
           </div>
         </div>
 
-        {isLoadingRanking ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {rankingQuery.error ? (
+          <ErrorState onRetry={rankingQuery.retry} />
+        ) : isLoadingRanking ? (
+          <div role="status" aria-live="polite" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <span className="sr-only">Carregando ranking...</span>
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="h-32 bg-slate-900/60 border border-slate-800 rounded-2xl animate-pulse" />
             ))}
           </div>
         ) : ranking.length === 0 ? (
           <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-8 text-center text-slate-400 space-y-2">
-            <Trophy className="w-8 h-8 text-slate-600 mx-auto" />
+            <Trophy className="w-8 h-8 text-slate-400 mx-auto" aria-hidden="true" />
             <p className="text-sm font-semibold text-slate-300">Nenhum parlamentar encontrado para os filtros selecionados</p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-400">
               Partido: <strong>{rankingParty}</strong> • Setor: <strong>{rankingSector}</strong>
             </p>
             {(rankingParty !== "Todos" || rankingSector !== "Todos") && (
               <button
+                type="button"
                 onClick={() => {
                   setRankingParty("Todos");
                   setRankingSector("Todos");
@@ -345,7 +314,6 @@ export default function PropositionsExplorerPanel({
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             {ranking.map((autor) => {
               const setorStyle = getSectorStyle(autor.principal_setor);
-              const isTop3 = autor.posicao <= 3;
 
               return (
                 <div
@@ -364,19 +332,19 @@ export default function PropositionsExplorerPanel({
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex items-center gap-3">
                       <div className="relative">
-                        {autor.foto_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
+                        {safeExternalUrl(autor.foto_url) ? (
                           <img
-                            src={autor.foto_url}
-                            alt={autor.nome_eleitoral}
+                            src={safeExternalUrl(autor.foto_url)}
+                            alt=""
+                            referrerPolicy="no-referrer"
                             className="w-12 h-12 rounded-xl object-cover border border-slate-700 shadow-sm"
                             onError={(e) => {
                               // Fallback se a imagem falhar
-                              (e.target as HTMLElement).style.display = "none";
+                              e.currentTarget.style.display = "none";
                             }}
                           />
                         ) : (
-                          <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 font-bold">
+                          <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 font-bold">
                             {autor.nome_eleitoral.slice(0, 2).toUpperCase()}
                           </div>
                         )}
@@ -396,34 +364,26 @@ export default function PropositionsExplorerPanel({
                       </div>
 
                       <div>
-                        <h4
-                          onClick={() => {
-                            if (autor.politico_id && onSelectPolitician) {
-                              onSelectPolitician(autor.politico_id);
-                            }
-                          }}
-                          className={`text-sm font-bold text-white transition-colors line-clamp-1 ${
-                            autor.politico_id && onSelectPolitician ? "cursor-pointer hover:text-cyan-300" : "hover:text-indigo-300"
-                          }`}
-                          title={autor.politico_id && onSelectPolitician ? "Clique para abrir o Raio-X" : undefined}
-                        >
-                          {autor.nome_eleitoral}
+                        <h4 className="text-sm font-bold text-white transition-colors line-clamp-1">
+                          {autor.politico_id && onSelectPolitician ? (
+                            <button
+                              type="button"
+                              onClick={() => onSelectPolitician(autor.politico_id)}
+                              className="cursor-pointer hover:text-cyan-300 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 rounded"
+                              title="Clique para abrir o Raio-X"
+                            >
+                              {autor.nome_eleitoral}
+                            </button>
+                          ) : (
+                            autor.nome_eleitoral
+                          )}
                         </h4>
                         <div className="flex items-center gap-1.5 mt-0.5">
-                          <span
-                            onClick={(e) => {
-                              if (onSelectParty && autor.partido_sigla) {
-                                e.stopPropagation();
-                                onSelectParty(autor.partido_sigla);
-                              }
-                            }}
-                            className={`text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700 ${
-                              onSelectParty ? "cursor-pointer hover:border-cyan-400 hover:text-cyan-300 transition-colors" : ""
-                            }`}
-                            title={onSelectParty ? `Ver bancada do ${autor.partido_sigla}` : undefined}
-                          >
-                            {autor.partido_sigla}
-                          </span>
+                          <PartyLink
+                            sigla={autor.partido_sigla}
+                            onSelectParty={onSelectParty}
+                            className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700 hover:border-cyan-400 hover:text-cyan-300 transition-colors"
+                          />
                           <span className="text-xs text-slate-400 font-medium">{autor.uf}</span>
                         </div>
                       </div>
@@ -433,13 +393,13 @@ export default function PropositionsExplorerPanel({
                       {rankingCriterio === "efetividade" ? (
                         <div>
                           <span className="text-base font-black text-amber-400 tracking-tight flex items-center justify-end gap-1">
-                            <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
-                            {autor.score_produtividade !== undefined ? autor.score_produtividade.toFixed(1) : "0.0"}
+                            <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" aria-hidden="true" />
+                            {fmtNum(autor.score_produtividade)}
                           </span>
                           <span className="block text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
                             Score IPLE
                           </span>
-                          <span className="text-[10px] text-slate-500">
+                          <span className="text-[10px] text-slate-400">
                             {autor.total_proposicoes} {autor.total_proposicoes === 1 ? "projeto" : "projetos"}
                           </span>
                         </div>
@@ -448,7 +408,7 @@ export default function PropositionsExplorerPanel({
                           <span className="text-lg font-black text-indigo-400 tracking-tight">
                             {autor.total_proposicoes}
                           </span>
-                          <span className="block text-[10px] text-slate-500 uppercase tracking-wider font-semibold">
+                          <span className="block text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
                             projetos
                           </span>
                         </div>
@@ -470,7 +430,7 @@ export default function PropositionsExplorerPanel({
                     )}
                     {autor.classificacao_efetividade === "Volume Alto sem Leis Aprovadas" && (
                       <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1" title="Parlamentar protocolou grande volume de projetos mas nenhuma lei foi aprovada no período">
-                        <AlertTriangle className="w-2.5 h-2.5 text-amber-400" />
+                        <AlertTriangle className="w-2.5 h-2.5 text-amber-400" aria-hidden="true" />
                         Volume s/ Leis
                       </span>
                     )}
@@ -498,11 +458,11 @@ export default function PropositionsExplorerPanel({
                   <div className="mt-auto pt-2 border-t border-slate-800/80 space-y-1.5">
                     <div className="flex items-center justify-between text-[11px]">
                       <span className="text-slate-400 flex items-center gap-1">
-                        <Flame className="w-3 h-3 text-amber-400" />
+                        <Flame className="w-3 h-3 text-amber-400" aria-hidden="true" />
                         Maior Foco:
                       </span>
                       <span className="text-slate-300 font-semibold text-[11px]">
-                        {autor.total_principal_setor} ({Math.round((autor.total_principal_setor / autor.total_proposicoes) * 100)}%)
+                        {autor.total_principal_setor}{autor.total_proposicoes > 0 ? ` (${Math.round((autor.total_principal_setor / autor.total_proposicoes) * 100)}%)` : ""}
                       </span>
                     </div>
                     <div
@@ -526,7 +486,7 @@ export default function PropositionsExplorerPanel({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
-              <Layers className="w-5 h-5" />
+              <Layers className="w-5 h-5" aria-hidden="true" />
             </div>
             <div>
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
@@ -549,20 +509,23 @@ export default function PropositionsExplorerPanel({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Campo de Busca Textual */}
             <div className="relative">
-              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" aria-hidden="true" />
               <input
                 type="text"
+                aria-label="Buscar por título, ementa ou autor"
                 placeholder="Buscar por título, ementa ou autor..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-cyan-500 transition-colors"
               />
               {searchTerm && (
                 <button
+                  type="button"
+                  aria-label="Limpar busca"
                   onClick={() => setSearchTerm("")}
-                  className="absolute right-2.5 top-2.5 text-slate-500 hover:text-slate-300"
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-200"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-3.5 h-3.5" aria-hidden="true" />
                 </button>
               )}
             </div>
@@ -570,15 +533,13 @@ export default function PropositionsExplorerPanel({
             {/* Filtro de Setor */}
             <div>
               <select
+                aria-label="Filtrar por setor"
                 value={selectedSetor}
-                onChange={(e) => {
-                  setSelectedSetor(e.target.value);
-                  setCurrentPage(1);
-                }}
+                onChange={(e) => setSelectedSetor(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
               >
                 <option value="Todos">Todos os Setores (Temas)</option>
-                {propositionsData?.setores_disponiveis.map((st) => (
+                {(propsQuery.data ?? propsQuery.previousData)?.setores_disponiveis.map((st) => (
                   <option key={st} value={st}>
                     {st}
                   </option>
@@ -589,11 +550,9 @@ export default function PropositionsExplorerPanel({
             {/* Filtro de Tipo de Proposição */}
             <div>
               <select
+                aria-label="Filtrar por tipo de proposição"
                 value={selectedTipo}
-                onChange={(e) => {
-                  setSelectedTipo(e.target.value);
-                  setCurrentPage(1);
-                }}
+                onChange={(e) => setSelectedTipo(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
               >
                 <option value="Todos">Todos os Tipos (PL, PEC, PLP...)</option>
@@ -610,13 +569,10 @@ export default function PropositionsExplorerPanel({
                 <input
                   type="checkbox"
                   checked={apenasVotadas}
-                  onChange={(e) => {
-                    setApenasVotadas(e.target.checked);
-                    setCurrentPage(1);
-                  }}
+                  onChange={(e) => setApenasVotadas(e.target.checked)}
                   className="rounded border-slate-700 text-cyan-500 focus:ring-0 focus:ring-offset-0 bg-slate-900"
                 />
-                <Vote className="w-3.5 h-3.5 text-cyan-400" />
+                <Vote className="w-3.5 h-3.5 text-cyan-400" aria-hidden="true" />
                 <span>Apenas com votação nominal</span>
               </label>
             </div>
@@ -626,27 +582,30 @@ export default function PropositionsExplorerPanel({
         {/* TABELA DATAGRID DE PROPOSIÇÕES */}
         <div className="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
           {isLoadingProps ? (
-            <div className="p-12 text-center text-slate-400 space-y-3">
-              <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto" />
+            <div role="status" aria-live="polite" className="p-12 text-center text-slate-400 space-y-3">
+              <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto" aria-hidden="true" />
               <p className="text-xs">Carregando proposições legislativas...</p>
             </div>
+          ) : propsQuery.error ? (
+            <div className="p-6"><ErrorState onRetry={propsQuery.retry} /></div>
           ) : !propositionsData || propositionsData.items.length === 0 ? (
-            <div className="p-12 text-center text-slate-400 space-y-2">
-              <BookOpen className="w-8 h-8 text-slate-600 mx-auto" />
+            <div role="status" className="p-12 text-center text-slate-400 space-y-2">
+              <BookOpen className="w-8 h-8 text-slate-400 mx-auto" aria-hidden="true" />
               <p className="text-sm font-semibold text-slate-300">Nenhuma proposição encontrada</p>
-              <p className="text-xs text-slate-500">Tente ajustar os filtros ou o termo de busca acima.</p>
+              <p className="text-xs text-slate-400">Tente ajustar os filtros ou o termo de busca acima.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs text-slate-200">
+                <caption className="sr-only">Proposições legislativas</caption>
                 <thead className="bg-slate-950/80 text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-800">
                   <tr>
-                    <th className="py-3 px-4 font-semibold">Título / Matéria</th>
-                    <th className="py-3 px-4 font-semibold">Setor (Tema)</th>
-                    <th className="py-3 px-4 font-semibold">Autor Oficial</th>
-                    <th className="py-3 px-4 font-semibold text-center">Placar Geral</th>
-                    <th className="py-3 px-4 font-semibold text-center">Status</th>
-                    <th className="py-3 px-4 font-semibold text-right">Ação</th>
+                    <th scope="col" className="py-3 px-4 font-semibold">Título / Matéria</th>
+                    <th scope="col" className="py-3 px-4 font-semibold">Setor (Tema)</th>
+                    <th scope="col" className="py-3 px-4 font-semibold">Autor Oficial</th>
+                    <th scope="col" className="py-3 px-4 font-semibold text-center">Placar Geral</th>
+                    <th scope="col" className="py-3 px-4 font-semibold text-center">Status</th>
+                    <th scope="col" className="py-3 px-4 font-semibold text-right">Ação</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-medium">
@@ -657,31 +616,35 @@ export default function PropositionsExplorerPanel({
                     return (
                       <tr
                         key={prop.id}
-                        onClick={() => setSelectedPropId(prop.id)}
-                        className="hover:bg-slate-800/50 cursor-pointer transition-colors group"
+                        className="hover:bg-slate-800/50 transition-colors group"
                       >
                         {/* Título & Ementa */}
                         <td className="py-3.5 px-4 max-w-sm">
                           <div className="font-bold text-white group-hover:text-cyan-300 transition-colors flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2">
-                              <span>{prop.titulo}</span>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPropId(prop.id)}
+                                className="text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 rounded"
+                              >
+                                {prop.titulo}
+                              </button>
                               {prop.is_reforma_estrutural && (
                                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
                                   Reforma
                                 </span>
                               )}
                             </div>
-                            {prop.url_oficial && (
+                            {safeExternalUrl(prop.url_oficial) && (
                               <a
-                                href={prop.url_oficial}
+                                href={safeExternalUrl(prop.url_oficial)}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
                                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 px-2 py-0.5 rounded-lg transition-colors shrink-0"
                                 title="Ler na íntegra no site oficial"
                               >
                                 <span>Íntegra</span>
-                                <ExternalLink className="w-3 h-3" />
+                                <ExternalLink className="w-3 h-3" aria-hidden="true" />
                               </a>
                             )}
                           </div>
@@ -702,19 +665,19 @@ export default function PropositionsExplorerPanel({
                         {/* Autor */}
                         <td className="py-3.5 px-4 whitespace-nowrap">
                           <div className="flex items-center gap-2">
-                            {prop.autor_foto ? (
-                              // eslint-disable-next-line @next/next/no-img-element
+                            {safeExternalUrl(prop.autor_foto) ? (
                               <img
-                                src={prop.autor_foto}
-                                alt={prop.autor_nome}
+                                src={safeExternalUrl(prop.autor_foto)}
+                                alt=""
+                                referrerPolicy="no-referrer"
                                 className="w-6 h-6 rounded-full object-cover border border-slate-700"
                                 onError={(e) => {
-                                  (e.target as HTMLElement).style.display = "none";
+                                  e.currentTarget.style.display = "none";
                                 }}
                               />
                             ) : (
-                              <div className="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[10px] text-slate-400">
-                                <Users className="w-3 h-3" />
+                              <div className="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[10px] text-slate-300">
+                                <Users className="w-3 h-3" aria-hidden="true" />
                               </div>
                             )}
                             <div>
@@ -732,7 +695,7 @@ export default function PropositionsExplorerPanel({
                             <div className="inline-flex flex-col items-center">
                               <div className="flex items-center gap-1.5 text-xs font-bold">
                                 <span className="text-emerald-400">Sim: {prop.placar.sim}</span>
-                                <span className="text-slate-600">|</span>
+                                <span className="text-slate-400" aria-hidden="true">|</span>
                                 <span className="text-rose-400">Não: {prop.placar.nao}</span>
                               </div>
                               <div className="w-24 bg-slate-800 h-1 rounded-full overflow-hidden flex mt-1">
@@ -751,7 +714,7 @@ export default function PropositionsExplorerPanel({
                               </div>
                             </div>
                           ) : (
-                            <span className="text-[11px] text-slate-500 italic">Sem votação em plenário</span>
+                            <span className="text-[11px] text-slate-400 italic">Sem votação em plenário</span>
                           )}
                         </td>
 
@@ -759,17 +722,17 @@ export default function PropositionsExplorerPanel({
                         <td className="py-3.5 px-4 text-center whitespace-nowrap">
                           {prop.placar.resultado === "APROVADA" || prop.status.includes("APROVADA") ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                              <CheckCircle2 className="w-3 h-3" />
+                              <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
                               Aprovada
                             </span>
                           ) : prop.placar.resultado === "REJEITADA" || prop.status.includes("REJEITADA") ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30">
-                              <XCircle className="w-3 h-3" />
+                              <XCircle className="w-3 h-3" aria-hidden="true" />
                               Rejeitada
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
-                              <HelpCircle className="w-3 h-3 text-slate-400" />
+                              <HelpCircle className="w-3 h-3 text-slate-400" aria-hidden="true" />
                               Em Tramitação
                             </span>
                           )}
@@ -778,13 +741,11 @@ export default function PropositionsExplorerPanel({
                         {/* Ação */}
                         <td className="py-3.5 px-4 text-right whitespace-nowrap">
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedPropId(prop.id);
-                            }}
+                            type="button"
+                            onClick={() => setSelectedPropId(prop.id)}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 transition-all hover:scale-105"
                           >
-                            <Vote className="w-3.5 h-3.5" />
+                            <Vote className="w-3.5 h-3.5" aria-hidden="true" />
                             <span>{temPlacar ? "Ver Votos" : "Detalhes"}</span>
                           </button>
                         </td>
@@ -806,20 +767,22 @@ export default function PropositionsExplorerPanel({
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   disabled={currentPage <= 1}
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-colors"
                 >
-                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <ChevronLeft className="w-3.5 h-3.5" aria-hidden="true" />
                   Anterior
                 </button>
                 <button
+                  type="button"
                   disabled={currentPage >= propositionsData.total_pages}
                   onClick={() => setCurrentPage((p) => Math.min(propositionsData.total_pages, p + 1))}
                   className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-colors"
                 >
                   Próxima
-                  <ChevronRight className="w-3.5 h-3.5" />
+                  <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
                 </button>
               </div>
             </div>

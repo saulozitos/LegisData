@@ -15,12 +15,24 @@ const eslintConfig = defineConfig([
   ]),
   {
     rules: {
-      "@typescript-eslint/no-explicit-any": "warn",
+      // Regras de hooks são erros: violações quebram a renderização em runtime.
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "error",
+      "react-hooks/set-state-in-effect": "error",
+      "@typescript-eslint/no-explicit-any": "error",
+      "@typescript-eslint/no-unused-vars": "error",
+      "react/no-unescaped-entities": "error",
+      // O app usa <img> simples (fotos externas de domínios oficiais, restritos pela CSP em next.config.ts),
+      // sem o otimizador do next/image; a escolha é única e consistente em todo o código.
+      "@next/next/no-img-element": "off",
+    },
+  },
+  {
+    // Testes usam mocks tipados de forma flexível.
+    files: ["**/*.test.{ts,tsx}", "src/setupTests.ts"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": "warn",
-      "@next/next/no-img-element": "warn",
-      "react-hooks/set-state-in-effect": "warn",
-      "react-hooks/rules-of-hooks": "warn",
-      "react/no-unescaped-entities": "warn",
     },
   },
 ]);

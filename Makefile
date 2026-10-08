@@ -10,6 +10,7 @@ ifeq ($(PYTHON_BIN),)
     ISORT := isort
     MYPY := mypy
     BANDIT := bandit
+    PIP_AUDIT := pip-audit
 else
     PY := $(PYTHON_BIN)/python
     PYTEST := $(PYTHON_BIN)/pytest
@@ -18,6 +19,7 @@ else
     ISORT := $(PYTHON_BIN)/isort
     MYPY := $(PYTHON_BIN)/mypy
     BANDIT := $(PYTHON_BIN)/bandit
+    PIP_AUDIT := $(PYTHON_BIN)/pip-audit
 endif
 
 help:
@@ -72,10 +74,12 @@ typecheck:
 
 security:
 	$(BANDIT) -r backend/app -q
+	$(PIP_AUDIT) -r backend/requirements.txt
+	cd frontend && npm audit --omit=dev --audit-level=high
 
 test:
-	POSTGRES_PASSWORD=test_ci_db_pass_123 ENVIRONMENT=test PYTHONPATH=backend $(PYTEST) backend/tests/
-	cd frontend && npm test -- --run
+	POSTGRES_PASSWORD=test_ci_db_pass_123 ENVIRONMENT=test PYTHONPATH=backend $(PYTEST) --cov=backend/app --cov-branch --cov-fail-under=85 backend/tests/
+	cd frontend && npm run test:coverage
 
 # ------------------------------------------------------------------------------
 # ETL & Dados
@@ -110,14 +114,15 @@ run-load-db:
 # ------------------------------------------------------------------------------
 # Infraestrutura e Servidores
 # ------------------------------------------------------------------------------
+# Desenvolvimento: publica Postgres/API em 127.0.0.1 via docker-compose.dev.yml
 up-db:
-	docker compose up -d postgres
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres
 
 down-db:
 	docker compose down
 
 docker-up:
-	docker compose up -d
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 
 docker-down:
 	docker compose down

@@ -162,8 +162,8 @@ model Politico {
   gabineteTelefone      String?             @db.VarChar(50)
   redesSociais          Json?               // {"twitter": "...", "instagram": "..."}
   possuiProcessosDeclarados Boolean         @default(false)
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
 
   // Relacionamentos
   filiacoes             FiliacaoPartidaria[]
@@ -177,6 +177,8 @@ model Politico {
   emendas               EmendaParlamentar[]
   certidoesJudiciais    CertidaoJudicial[]
   doacoesCampanha       DoacaoCampanha[]
+  declaracoesPatrimonio DeclaracaoPatrimonio[]
+  processosJudiciais    ProcessoJudicial[]
 
   @@index([nomeEleitoral])
   @@index([camaraId])
@@ -196,8 +198,8 @@ model PartidoPolitico {
   espectroPolitico  EspectroPolitico?
   ideologia         String?             @db.VarChar(255)
   lema              String?             @db.VarChar(255)
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
 
   // Autorrelacionamento para fusões (ex: PFL -> DEM -> UNIÃO BRASIL)
   partidoSucessor   PartidoPolitico?    @relation("SucessaoPartidaria", fields: [partidoSucessorId], references: [id])
@@ -219,7 +221,7 @@ model FiliacaoPartidaria {
   isAtual           Boolean            @default(false)
   motivoDesfiliacao MotivoDesfiliacao?
   uf                String?            @db.VarChar(2)
-  createdAt         DateTime           @default(now())
+  createdAt         DateTime           @default(now()) @db.Date @map("created_at")
 
   politico          Politico           @relation(fields: [politicoId], references: [id], onDelete: Cascade)
   partido           PartidoPolitico    @relation(fields: [partidoId], references: [id])
@@ -244,8 +246,8 @@ model Mandato {
   coligacaoNome     String?             @db.VarChar(255)
   totalVotos        Int?
   percentualVotos   Decimal?            @db.Decimal(5, 2)
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
 
   politico          Politico            @relation(fields: [politicoId], references: [id], onDelete: Cascade)
   partido           PartidoPolitico     @relation(fields: [partidoId], references: [id])
@@ -254,6 +256,7 @@ model Mandato {
   gabinete          MembroGabinete[]
   performanceMacro  MandatoPerformanceEconomica?
 
+  @@unique([politicoId, cargo, anoEleicao, numeroMandato], map: "uq_mandate_politician_office_year_term")
   @@index([politicoId])
   @@index([partidoId])
   @@index([anoEleicao])
@@ -287,12 +290,12 @@ model RemuneracaoPolitico {
   anoReferencia       Int
   mesReferencia       Int
   salarioBruto        Decimal      @db.Decimal(12, 2)
-  salarioLiquido      Decimal      @db.Decimal(12, 2)
-  cotaParlamentarCeap Decimal      @default(0.00) @db.Decimal(12, 2) // CEAP (Cota de Exercício de Atividade Parlamentar)
-  auxilioMoradia      Decimal      @default(0.00) @db.Decimal(12, 2)
-  outrosBeneficios    Decimal      @default(0.00) @db.Decimal(12, 2)
+  salarioLiquido      Decimal?     @db.Decimal(12, 2)
+  cotaParlamentarCeap Decimal?     @db.Decimal(12, 2) // CEAP (Cota de Exercício de Atividade Parlamentar)
+  auxilioMoradia      Decimal?     @db.Decimal(12, 2)
+  outrosBeneficios    Decimal?     @db.Decimal(12, 2)
   fonteDados          String       @db.VarChar(100) // Ex: "Portal da Transparência", "Câmara dos Deputados"
-  createdAt           DateTime     @default(now())
+  createdAt           DateTime     @default(now()) @db.Date @map("created_at")
 
   politico            Politico     @relation(fields: [politicoId], references: [id], onDelete: Cascade)
   mandato             Mandato      @relation(fields: [mandatoId], references: [id], onDelete: Cascade)
@@ -328,8 +331,8 @@ model Proposicao {
   iniciativaPoderExecutivo Boolean        @default(false)
   eixoImpacto            String?          @db.VarChar(100)
   eixosImpacto           String?          @db.VarChar(255)
-  createdAt              DateTime         @default(now())
-  updatedAt              DateTime         @updatedAt
+  createdAt              DateTime         @default(now()) @map("created_at")
+  updatedAt              DateTime         @updatedAt @map("updated_at")
 
   autorPolitico          Politico?        @relation("AutorProposicao", fields: [autorPoliticoId], references: [id])
   sessoesVotacao         SessaoVotacao[]
@@ -357,7 +360,9 @@ model SessaoVotacao {
   totalNao           Int              @default(0)
   totalAbstencao     Int              @default(0)
   totalObstrucao     Int              @default(0)
-  createdAt          DateTime         @default(now())
+  orientacaoGoverno  String?          @db.VarChar(20)
+  orientacoesBancadas String?         @db.Text
+  createdAt          DateTime         @default(now()) @map("created_at")
 
   proposicao         Proposicao       @relation(fields: [proposicaoId], references: [id], onDelete: Cascade)
   votos              VotoParlamentar[]
@@ -373,7 +378,7 @@ model VotoParlamentar {
   politicoId      String          @db.Uuid
   partidoId       String?         @db.Uuid // Partido do político no dia exato da votação
   voto            VotoOpcao
-  createdAt       DateTime        @default(now())
+  createdAt       DateTime        @default(now()) @map("created_at")
 
   sessaoVotacao   SessaoVotacao   @relation(fields: [sessaoVotacaoId], references: [id], onDelete: Cascade)
   politico        Politico        @relation(fields: [politicoId], references: [id], onDelete: Cascade)
@@ -394,7 +399,7 @@ model RegistroPresenca {
   dataSessao      DateTime        @db.Date
   tipoPresenca    TipoPresenca
   justificativa   String?         @db.Text
-  createdAt       DateTime        @default(now())
+  createdAt       DateTime        @default(now()) @map("created_at")
 
   politico        Politico        @relation(fields: [politicoId], references: [id], onDelete: Cascade)
   mandato         Mandato         @relation(fields: [mandatoId], references: [id], onDelete: Cascade)
@@ -417,8 +422,8 @@ model SerieIndicador {
   unidade        UnidadeMedida
   orgaoFonte     String                 @db.VarChar(100) // "Banco Central (SGS)", "IBGE (SIDRA)", "DIEESE", "ANP"
   descricao      String?                @db.Text
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
 
   pontosDados    PontoDadoIndicador[]
 
@@ -436,7 +441,6 @@ model PontoDadoIndicador {
   valorDeflacionado Decimal?     @db.Decimal(18, 6) // Valor corrigido pela inflação atual (Real constante)
   moedaOriginal   String         @default("BRL") @db.VarChar(10) // "CR$" (Cruzeiro Real), "URV", "BRL"
   observacao      String?        @db.VarChar(255)
-  createdAt       DateTime       @default(now())
 
   serie           SerieIndicador @relation(fields: [serieId], references: [id], onDelete: Cascade)
 
@@ -473,8 +477,8 @@ model ResumoMacroeconomicoAnual {
   salarioMinimo            Decimal?  @db.Decimal(10, 2) // Salário Mínimo nominal
   taxaHomicidios           Decimal?  @db.Decimal(6, 2) // Homicídios por 100k hab. (IPEA/FBSP)
   taxaFeminicidios         Decimal?  @db.Decimal(6, 2) // Feminicídios por 100k hab. (FBSP)
-  createdAt                DateTime  @default(now())
-  updatedAt                DateTime  @updatedAt
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
 
   @@index([ano])
   @@map("resumos_macroeconomicos_anuais")
@@ -489,9 +493,13 @@ model IndicadorSocialAnual {
   populacaoInsegurancaAlimentarPct Decimal?  @db.Decimal(5, 2)
   populacaoInsegurancaAlimentarMilhoes Decimal? @db.Decimal(6, 2)
   indiceGini                       Decimal?  @db.Decimal(5, 3)
-  fonteDados                       String    @default("IBGE / IPEA / FAO / Penssan") @db.VarChar(100)
-  createdAt                        DateTime  @default(now())
-  updatedAt                        DateTime  @updatedAt
+  populacaoPobrezaPct              Decimal?  @db.Decimal(5, 2)
+  populacaoInsegurancaAlimentarTotalPct Decimal? @db.Decimal(5, 2)
+  taxaDesempregoPct                Decimal?  @db.Decimal(5, 2)
+  serieGini                        String?   @db.VarChar(100)
+  fonteDados                       String    @default("IBGE / SIDRA (PNAD, PNAD Contínua, ODS)") @db.VarChar(100)
+  createdAt                        DateTime  @default(now()) @map("created_at")
+  updatedAt                        DateTime  @updatedAt @map("updated_at")
 
   @@index([ano])
   @@map("indicadores_sociais_anuais")
@@ -507,8 +515,9 @@ model IndicadorSocialUf {
   extremaPobrezaPct    Decimal? @db.Decimal(5, 2)
   insegurancaAlimentarPct Decimal? @db.Decimal(5, 2)
   indiceGini           Decimal? @db.Decimal(5, 3)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  pobrezaPct           Decimal? @db.Decimal(5, 2)
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
   @@unique([ano, uf], map: "uq_social_indicator_year_uf")
   @@index([uf])
@@ -531,8 +540,8 @@ model ResultadoEleicaoPresidencialUf {
   votosSegundoPct        Decimal  @db.Decimal(5, 2)
   totalVotosValidos      Int?
   turno                  Int      @default(2)
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
 
   @@unique([anoEleicao, uf, turno], map: "uq_election_year_uf_round")
   @@index([anoEleicao, uf])
@@ -562,8 +571,8 @@ model MandatoPerformanceEconomica {
   taxaDesempregoInicial   Decimal? @db.Decimal(5, 2)
   taxaDesempregoFinal     Decimal? @db.Decimal(5, 2)
   resumoAnalitico         String?  @db.Text
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
 
   mandato                 Mandato  @relation(fields: [mandatoId], references: [id], onDelete: Cascade)
 
@@ -581,8 +590,12 @@ model RepasseFederalUf {
   valorPagoBrl      Decimal  @db.Decimal(18, 2)
   populacaoEstimada Int?
   valorPerCapitaBrl Decimal? @db.Decimal(12, 2)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  periodoInicio     String?  @db.VarChar(7)
+  periodoFim        String?  @db.VarChar(7)
+  mesesCobertos     Int?
+  coberturaParcial  Boolean?
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@index([mandatoIdRef])
   @@index([uf, ano])
@@ -600,7 +613,8 @@ model AnaliseImpactoPolitica {
   variacaoCambioJanela Decimal?   @db.Decimal(8, 4)
   grauCorrelacaoScore  Decimal?   @db.Decimal(5, 2) // Score estatístico calculado (-1.00 a +1.00)
   parecerCientifico    String?    @db.Text
-  createdAt            DateTime   @default(now())
+  createdAt            DateTime   @default(now()) @map("created_at")
+  updatedAt            DateTime   @updatedAt @map("updated_at")
 
   proposicao           Proposicao @relation(fields: [proposicaoId], references: [id], onDelete: Cascade)
 
@@ -636,7 +650,7 @@ model EmendaParlamentar {
   politicoId          String    @db.Uuid
   ano                 Int
   codigoEmenda        String?   @db.VarChar(50)
-  tipoEmenda          String    @db.VarChar(50)
+  tipoEmenda          String    @db.VarChar(150)
   valorEmpenhado      Decimal   @db.Decimal(15, 2)
   valorPago           Decimal   @db.Decimal(15, 2)
   localidadeDestino   String    @db.VarChar(150)
@@ -660,6 +674,10 @@ model CertidaoJudicial {
   tipoCertidao        String    @db.VarChar(50)
   statusFicha         String    @db.VarChar(50)
   detalhes            String?   @db.Text
+  numeroProcesso      String?   @db.VarChar(100)
+  dataEmissao         String?   @db.VarChar(50)
+  linkComprovacao     String?   @db.VarChar(500)
+  codigoAutenticidade String?   @db.VarChar(100)
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
@@ -687,4 +705,72 @@ model DoacaoCampanha {
   @@index([anoEleicao])
   @@index([politicoId, anoEleicao])
   @@map("doacoes_campanha")
+}
+
+model DeclaracaoPatrimonio {
+  id                String    @id @default(uuid()) @db.Uuid
+  politicoId        String    @db.Uuid
+  anoEleicao        Int
+  valorDeclaradoBrl Decimal   @db.Decimal(15, 2)
+  detalhesBens      String?   @db.Text
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  politico          Politico  @relation(fields: [politicoId], references: [id], onDelete: Cascade)
+
+  @@unique([politicoId, anoEleicao], map: "uq_politician_election_asset")
+  @@index([politicoId])
+  @@index([anoEleicao])
+  @@map("declaracoes_patrimonio")
+}
+
+model ProcessoJudicial {
+  id               String    @id @default(uuid()) @db.Uuid
+  politicoId       String    @db.Uuid
+  numeroProcesso   String    @db.VarChar(100)
+  tribunal         String    @db.VarChar(100)
+  dataProcesso     String    @db.VarChar(50)
+  classeAssunto    String    @db.VarChar(255)
+  descricao        String    @db.Text
+  situacaoJuridica String    @db.Text
+  linkComprovacao  String    @db.VarChar(500)
+  statusResumo     String    @db.VarChar(50)
+  declaradoTse     Boolean   @default(true)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  politico         Politico  @relation(fields: [politicoId], references: [id], onDelete: Cascade)
+
+  @@index([politicoId], map: "idx_processo_politico")
+  @@index([numeroProcesso], map: "idx_processo_numero")
+  @@map("processos_judiciais")
+}
+
+model MandatoPresidencial {
+  id         String                @id @default(uuid()) @db.Uuid
+  nome       String                @db.VarChar(255)
+  inicio     DateTime              @db.Date
+  fim        DateTime?             @db.Date
+  partido    String                @db.VarChar(50)
+  fotoUrl    String?               @db.VarChar(500) @map("foto_url")
+  createdAt  DateTime              @default(now()) @map("created_at")
+  updatedAt  DateTime              @updatedAt @map("updated_at")
+
+  indicadores IndicadorMandato[]
+
+  @@map("presidential_mandates")
+}
+
+model IndicadorMandato {
+  id              String              @id @default(uuid()) @db.Uuid
+  mandatoId       String              @db.Uuid @map("mandate_id")
+  chaveIndicador  String              @db.VarChar(100) @map("chave_indicador")
+  valor           Float
+  dataMedicao     DateTime            @db.Date @map("data_medicao")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  mandato         MandatoPresidencial @relation(fields: [mandatoId], references: [id], onDelete: Cascade)
+
+  @@map("mandate_indicators")
 }

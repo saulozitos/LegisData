@@ -2,6 +2,7 @@
 # ==============================================================================
 # LEGISDATA - LOCAL CI VALIDATION SCRIPT
 # Executa todas as etapas de validação idênticas ao GitHub Actions.
+# Ferramentas: pip install -r backend/requirements.txt -r backend/requirements-dev.txt -r scripts/requirements-ci-tools.txt
 # Para na primeira falha (fail-fast / set -e).
 # ==============================================================================
 set -e
@@ -26,6 +27,7 @@ if [ -d "backend/venv" ]; then
     ISORT="backend/venv/bin/isort"
     MYPY="backend/venv/bin/mypy"
     BANDIT="backend/venv/bin/bandit"
+    PIP_AUDIT="backend/venv/bin/pip-audit"
 elif [ -d ".venv" ]; then
     PYTHON=".venv/bin/python"
     PYTEST=".venv/bin/pytest"
@@ -34,6 +36,7 @@ elif [ -d ".venv" ]; then
     ISORT=".venv/bin/isort"
     MYPY=".venv/bin/mypy"
     BANDIT=".venv/bin/bandit"
+    PIP_AUDIT=".venv/bin/pip-audit"
 else
     PYTHON="python3"
     PYTEST="pytest"
@@ -42,6 +45,7 @@ else
     ISORT="isort"
     MYPY="mypy"
     BANDIT="bandit"
+    PIP_AUDIT="pip-audit"
 fi
 
 export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-test_ci_db_pass_123}"
@@ -62,13 +66,15 @@ $MYPY backend/app --config-file=pyproject.toml
 (cd frontend && npx tsc --noEmit)
 echo -e "${GREEN}✓ Checagem de tipos estáticos aprovada.${RESET}\n"
 
-echo -e "${BOLD}[4/6] Auditoria Estática de Segurança (bandit)...${RESET}"
+echo -e "${BOLD}[4/6] Auditoria de Segurança (bandit, pip-audit & npm audit)...${RESET}"
 $BANDIT -r backend/app -q
+$PIP_AUDIT -r backend/requirements.txt
+(cd frontend && npm audit --omit=dev --audit-level=high)
 echo -e "${GREEN}✓ Auditoria de segurança sem vulnerabilidades detectadas.${RESET}\n"
 
 echo -e "${BOLD}[5/6] Execução da Suíte de Testes Automatizados (pytest & vitest)...${RESET}"
-PYTHONPATH=backend $PYTEST backend/tests/
-(cd frontend && npm test -- --run)
+PYTHONPATH=backend $PYTEST --cov=backend/app --cov-branch --cov-fail-under=85 backend/tests/
+(cd frontend && npm run test:coverage)
 echo -e "${GREEN}✓ Todos os testes automatizados passaram com sucesso.${RESET}\n"
 
 echo -e "${BOLD}[6/6] Compilação de Produção Frontend (next build)...${RESET}"

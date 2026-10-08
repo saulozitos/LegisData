@@ -14,3 +14,5 @@ htmlcov/
 .DS_Store
 .idea/
 .vscode/
+tests/
+requirements-dev.txt

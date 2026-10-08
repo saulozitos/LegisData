@@ -1,108 +1,133 @@
 import React from 'react';
-import { render, screen, act, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ExecutivoDashboard from './page';
+import * as api from '@/services/api';
 
 vi.mock('@/components/Header', () => ({ default: () => <div data-testid="Header" /> }));
+vi.mock('recharts', async () => (await import('@/test/recharts')).rechartsMock);
 vi.mock('@/services/api', () => ({
-  getPresidentialMandates: vi.fn().mockResolvedValue([
-    {
-      id: '123',
-      nome: 'Teste',
-      inicio: '2023-01-01',
-      fim: null,
-      partido: 'PT',
-      foto_url: ''
-    }
-  ]),
-  getMandateIndicators: vi.fn().mockResolvedValue([
-    {
-      data: '2023-01-01',
-      inflacao_ipca: 5.0,
-      aprovacao_popular: 50.0,
-      taxa_sucesso_congresso: 60.0,
-      volume_emendas: 200.0
-    }
-  ])
+  getPresidentialMandates: vi.fn(),
+  getMandateIndicators: vi.fn(),
+  getMandateSummary: vi.fn(),
 }));
+const getMandates = api.getPresidentialMandates as unknown as ReturnType<typeof vi.fn>;
+const getIndicators = api.getMandateIndicators as unknown as ReturnType<typeof vi.fn>;
+const getSummary = api.getMandateSummary as unknown as ReturnType<typeof vi.fn>;
 
-vi.mock('recharts', () => ({
-  ResponsiveContainer: ({ children }: any) => <div>{children}</div>,
-  LineChart: ({ children }: any) => <div>{children}</div>,
-  Line: () => <div />,
-  AreaChart: ({ children }: any) => <div>{children}</div>,
-  Area: () => <div />,
-  BarChart: ({ children }: any) => <div>{children}</div>,
-  Bar: () => <div />,
-  XAxis: () => <div />,
-  YAxis: () => <div />,
-  CartesianGrid: () => <div />,
-  Tooltip: () => <div />,
-  Legend: () => <div />,
-  ReferenceLine: () => <div />,
-}));
+const mandates = [
+  { id: 'fhc', nome: 'Fernando Henrique Cardoso', inicio: '1995-01-01', fim: '1998-12-31', partido: 'PSDB', foto_url: null },
+  { id: 'lula', nome: 'Luiz Inácio Lula da Silva', inicio: '2023-01-01', fim: null, partido: 'PT', foto_url: null },
+];
+
+const stat = (v: number | null) => ({ primeiro: v, ultimo: v, minimo: v, maximo: v, media: v, variacao_pp: v == null ? null : 0.7, total_acumulado: v });
+const summary = (id: string, nome: string) => ({
+  mandate_id: id,
+  nome,
+  partido: 'PT',
+  inicio: '2023-01-01',
+  fim: null,
+  foto_url: null,
+  total_meses: 12,
+  kpis: {
+    inflacao_ipca: stat(5),
+    desemprego_pnad: { primeiro: 9, ultimo: 7, minimo: 7, maximo: 9, media: 8 },
+    aprovacao_popular: stat(50),
+    cambio_usd_brl: stat(5.1),
+    selic_meta: stat(10.5),
+    emendas_bilhoes: stat(null),
+  },
+});
+
+const indicators = [{ data: '2023-01-01', inflacao_ipca: 5, aprovacao_popular: 50, desemprego_pnad: 8, cambio_usd_brl: 5, selic_meta: 11, emendas_bilhoes: 1 }];
+
+beforeEach(() => {
+  getMandates.mockReset();
+  getIndicators.mockReset();
+  getSummary.mockReset();
+});
 
 describe('ExecutivoDashboard', () => {
-  beforeEach(() => {
-    global.fetch = vi.fn().mockImplementation((url: string) => {
-      if (typeof url === 'string' && url.includes('/summary')) {
-        return Promise.resolve({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              mandate_id: '123',
-              nome: 'Teste',
-              partido: 'PT',
-              inicio: '2023-01-01',
-              fim: null,
-              foto_url: '',
-              total_meses: 1,
-              kpis: {
-                inflacao_ipca: { primeiro: 5.0, ultimo: 5.0, minimo: 5.0, maximo: 5.0, media: 5.0, variacao_pp: 0 },
-                aprovacao_popular: { primeiro: 50.0, ultimo: 50.0, minimo: 50.0, maximo: 50.0, media: 50.0 },
-              },
-            }),
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        json: () =>
-          Promise.resolve([
-            {
-              id: '123',
-              nome: 'Teste',
-              inicio: '2023-01-01',
-              fim: null,
-              partido: 'PT',
-              foto_url: '',
-            },
-          ]),
-      });
-    }) as any;
-  });
-
-  // vi.restoreAllMocks is omitted to preserve module mocks
-
-  it('renders loading state initially', async () => {
+  it('seleciona por padrão o mandato mais recente e mostra KPIs reais', async () => {
+    getMandates.mockResolvedValue(mandates);
+    getIndicators.mockResolvedValue(indicators);
+    getSummary.mockResolvedValue(summary('lula', 'Luiz Inácio Lula da Silva'));
     render(<ExecutivoDashboard />);
-    expect(screen.getByRole('main')).toBeInTheDocument();
+    expect(screen.getByText('Carregando mandatos...')).toBeInTheDocument();
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'Luiz Inácio Lula da Silva' })).toBeInTheDocument();
+    expect(getSummary).toHaveBeenCalledWith('lula', expect.any(AbortSignal));
+    expect(screen.getByRole('button', { name: /Silva/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(/Governo atual · 12 meses de dados/)).toBeInTheDocument();
+    expect(screen.getByText('Inflação vs. Aprovação Popular')).toBeInTheDocument();
+    expect(screen.getByText('Câmbio (USD/BRL) × Selic')).toBeInTheDocument();
   });
 
-  it('renders data and handles click', async () => {
-    await act(async () => {
-      render(<ExecutivoDashboard />);
-    });
+  it('KPI sem dado mostra "—", nunca 0 nem NaN', async () => {
+    getMandates.mockResolvedValue(mandates);
+    getIndicators.mockResolvedValue(indicators);
+    getSummary.mockResolvedValue(summary('lula', 'Lula'));
+    render(<ExecutivoDashboard />);
+    await screen.findByRole('heading', { level: 2, name: 'Luiz Inácio Lula da Silva' });
+    const emendas = screen.getByText('Emendas', { selector: 'p' }).closest('div')!.parentElement as HTMLElement;
+    expect(within(emendas).getByText('—')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/NaN|undefined|null/);
+  });
 
-    await waitFor(() => {
-      expect(screen.getByText('Raio-X do Executivo')).toBeInTheDocument();
-    });
+  it('o delta do KPI mostra o sinal e a variação em pp', async () => {
+    getMandates.mockResolvedValue(mandates);
+    getIndicators.mockResolvedValue(indicators);
+    getSummary.mockResolvedValue(summary('lula', 'Lula'));
+    render(<ExecutivoDashboard />);
+    await screen.findByRole('heading', { level: 2, name: 'Luiz Inácio Lula da Silva' });
+    expect(screen.getByText('+0.7 pp vs. início')).toBeInTheDocument();
+    expect(screen.getByText('-2.0 pp vs. início')).toBeInTheDocument(); // desemprego: ultimo - primeiro
+  });
 
-    // Check mandate loaded
-    const mandateBtns = screen.getAllByText('Teste');
-    expect(mandateBtns[0]).toBeInTheDocument();
+  it('troca de mandato busca os dados do mandato escolhido', async () => {
+    getMandates.mockResolvedValue(mandates);
+    getIndicators.mockResolvedValue(indicators);
+    getSummary.mockImplementation((id: string) => Promise.resolve(summary(id, id === 'fhc' ? 'FHC' : 'Lula')));
+    render(<ExecutivoDashboard />);
+    await screen.findByRole('heading', { level: 2, name: 'Luiz Inácio Lula da Silva' });
+    fireEvent.click(screen.getByRole('button', { name: /Cardoso/ }));
+    expect(await screen.findByRole('heading', { level: 2, name: 'Fernando Henrique Cardoso' })).toBeInTheDocument();
+    expect(getIndicators).toHaveBeenCalledWith('fhc', expect.any(AbortSignal));
+  });
 
-    await waitFor(() => {
-      expect(screen.getByText('Inflação vs. Aprovação Popular')).toBeInTheDocument();
-    });
+  it('erro nos mandatos mostra alerta e retry recarrega', async () => {
+    getMandates.mockRejectedValueOnce(new Error('x')).mockResolvedValueOnce(mandates);
+    getIndicators.mockResolvedValue(indicators);
+    getSummary.mockResolvedValue(summary('lula', 'Lula'));
+    render(<ExecutivoDashboard />);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /tentar novamente/i }));
+    expect(await screen.findByRole('heading', { level: 2, name: 'Luiz Inácio Lula da Silva' })).toBeInTheDocument();
+  });
+
+  it('erro nos indicadores do mandato mostra alerta e mantém o seletor', async () => {
+    getMandates.mockResolvedValue(mandates);
+    getIndicators.mockRejectedValueOnce(new Error('x')).mockResolvedValueOnce(indicators);
+    getSummary.mockResolvedValue(summary('lula', 'Lula'));
+    render(<ExecutivoDashboard />);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Cardoso/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /tentar novamente/i }));
+    await waitFor(() => expect(screen.getByRole('heading', { level: 2, name: 'Luiz Inácio Lula da Silva' })).toBeInTheDocument());
+  });
+
+  it('sem mandatos cadastrados mostra estado vazio', async () => {
+    getMandates.mockResolvedValue([]);
+    render(<ExecutivoDashboard />);
+    expect(await screen.findByText('Nenhum mandato cadastrado')).toBeInTheDocument();
+    expect(getSummary).not.toHaveBeenCalled();
+  });
+
+  it('mandato sem resumo mostra mensagem de indisponibilidade', async () => {
+    getMandates.mockResolvedValue(mandates);
+    getIndicators.mockResolvedValue([]);
+    getSummary.mockResolvedValue(null);
+    render(<ExecutivoDashboard />);
+    expect(await screen.findByText(/Não há indicadores disponíveis para este mandato/)).toBeInTheDocument();
   });
 });

@@ -1,6 +1,8 @@
 import logging
 import re
+import threading
 import time
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -10,10 +12,16 @@ logger = logging.getLogger("cidadania_service")
 # TTL do Cache em Memória: 1 hora (3600 segundos)
 CACHE_TTL_SECONDS = 3600
 
+# Intervalo mínimo entre renovações forçadas e entre novas tentativas após falha das fontes oficiais
+MIN_COOLDOWN_SECONDS = 300
+
 _cache_data: Optional[List[Dict[str, Any]]] = None
 _cache_timestamp: float = 0.0
+# Evita que várias threads disparem as dezenas de requisições HTTP ao mesmo tempo no vencimento do cache
+_refresh_lock = threading.Lock()
 
-# Destaques cívicos nacionais com dados oficiais verificados (e-Cidadania e e-Democracia)
+# Destaques cívicos curados manualmente (e-Cidadania e e-Democracia). Os placares são um INSTANTÂNEO DE REFERÊNCIA:
+# só são tratados como "votação aberta" quando a coleta em tempo real confirma a matéria no portal oficial.
 DESTAQUES_CONSULTAS = [
     # --- CONSULTAS ATIVAS (VOTAÇÃO ABERTA AGORA) ---
     {
@@ -147,8 +155,8 @@ def _calcular_totais_e_percentuais(item: Dict[str, Any]) -> Dict[str, Any]:
     if sim is not None and nao is not None:
         total = sim + nao
         item["total_votos"] = total
-        item["percentual_sim"] = round((sim / total * 100), 1) if total > 0 else 50.0
-        item["percentual_nao"] = round((nao / total * 100), 1) if total > 0 else 50.0
+        item["percentual_sim"] = round((sim / total * 100), 1) if total > 0 else None
+        item["percentual_nao"] = round((nao / total * 100), 1) if total > 0 else None
     else:
         item["total_votos"] = None
         item["percentual_sim"] = None
@@ -229,7 +237,9 @@ def fetch_senado_consultas(limit: int = 6) -> List[Dict[str, Any]]:
     # Fallback/Complemento: busca matérias recentes em tramitação via Dados Abertos
     if len(resultados) < limit:
         try:
-            url_api = "https://legis.senado.leg.br/dadosabertos/materia/pesquisa/lista?ano=2024&sigla=PL"
+            url_api = (
+                f"https://legis.senado.leg.br/dadosabertos/materia/pesquisa/lista?ano={date.today().year}&sigla=PL"
+            )
             api_headers = {
                 "Accept": "application/json",
                 "User-Agent": "LegisDataBot/1.0 (https://legisdata.org - Transparência Pública)",
@@ -243,7 +253,7 @@ def fetch_senado_consultas(limit: int = 6) -> List[Dict[str, Any]]:
                         break
                     cod = str(m.get("Codigo"))
                     sigla = m.get("DescricaoIdentificacao") or f"{m.get('Sigla')} {m.get('Numero')}/{m.get('Ano')}"
-                    ementa = m.get("Ementa", "").strip()
+                    ementa = (m.get("Ementa") or "").strip()
                     if not ementa:
                         continue
                     # Para proposições gerais em tramitação legislativa, link para ficha oficial permanente
@@ -289,7 +299,7 @@ def fetch_camara_consultas(limit: int = 6) -> List[Dict[str, Any]]:
             for p in proposicoes:
                 cod = str(p.get("id"))
                 sigla = f"{p.get('siglaTipo')} {p.get('numero')}/{p.get('ano')}"
-                ementa = p.get("ementa", "").strip()
+                ementa = (p.get("ementa") or "").strip()
                 if not ementa:
                     continue
                 item = {
@@ -305,7 +315,7 @@ def fetch_camara_consultas(limit: int = 6) -> List[Dict[str, Any]]:
                     "tema": "Câmara dos Deputados",
                     "status": "Em Discussão no Plenário / Comissões",
                     "autor": None,
-                    "data_apresentacao": (p.get("dataApresentacao", "")[:10] if p.get("dataApresentacao") else None),
+                    "data_apresentacao": (p["dataApresentacao"][:10] if p.get("dataApresentacao") else None),
                     "destaque": False,
                 }
                 resultados.append(_calcular_totais_e_percentuais(item))
@@ -314,62 +324,95 @@ def fetch_camara_consultas(limit: int = 6) -> List[Dict[str, Any]]:
     return resultados
 
 
-def get_consultas_publicas(force_refresh: bool = False) -> List[Dict[str, Any]]:
-    """
-    Retorna a lista agregada de consultas públicas e proposições populares no Senado e na Câmara.
-    Possui cache em memória com TTL de 1 hora.
-    """
-    global _cache_data, _cache_timestamp
-    now = time.time()
-    min_cooldown = 300  # 5 minutos de intervalo mínimo contra DoS em APIs governamentais
+def _sigla_key(item: Dict[str, Any]) -> str:
+    return item["sigla_projeto"].upper().replace(" ", "")
 
-    if _cache_data is not None:
-        elapsed = now - _cache_timestamp
-        if not force_refresh and elapsed < CACHE_TTL_SECONDS:
-            return _cache_data
-        if force_refresh and elapsed < min_cooldown:
-            return _cache_data
 
-    # 1. Carrega destaques com consultas populares estruturadas
+def _build_consultas() -> tuple:
+    """Monta a lista consolidada. Retorna (itens, houve_dados_em_tempo_real)."""
     destaques = [_calcular_totais_e_percentuais(dict(d)) for d in DESTAQUES_CONSULTAS]
 
-    # 2. Busca consultas em tempo real nas duas casas legislativas
     senado_itens = fetch_senado_consultas(limit=6)
     camara_itens = fetch_camara_consultas(limit=6)
+    live_ok = bool(senado_itens or camara_itens)
 
-    # 3. Consolidação e deduplicação por sigla_projeto
+    # Matérias confirmadas como abertas pelo portal oficial nesta coleta
+    abertas_confirmadas = {_sigla_key(i) for i in senado_itens if i.get("em_votacao_aberta")}
+
+    consolidados: List[Dict[str, Any]] = []
     vistos = set()
-    consolidados = []
-
-    # Prioridade para os itens de destaque curados
     for item in destaques:
-        sigla_norm = item["sigla_projeto"].upper().replace(" ", "")
-        vistos.add(sigla_norm)
+        key = _sigla_key(item)
+        vistos.add(key)
+        item["fonte_dados"] = "curadoria"
+        if item.get("em_votacao_aberta") and key not in abertas_confirmadas:
+            # Não confirmada em tempo real: não afirmar que a votação está aberta agora
+            item["em_votacao_aberta"] = False
+            item["status"] = "Consulta indicada como aberta (sem confirmação em tempo real — placar de referência)"
         consolidados.append(item)
 
-    # Itens do scraping do Senado (atualiza os votos do destaque se for o mesmo id)
     for item in senado_itens:
-        sigla_norm = item["sigla_projeto"].upper().replace(" ", "")
-        if sigla_norm in vistos:
-            # Atualiza placar dinâmico no item existente se houver votos frescos
+        key = _sigla_key(item)
+        if key in vistos:
+            # Placar fresco do portal substitui o de referência do destaque curado
             for d in consolidados:
-                if d["sigla_projeto"].upper().replace(" ", "") == sigla_norm:
+                if _sigla_key(d) == key:
                     if item.get("votos_sim") is not None and item.get("votos_nao") is not None:
                         d["votos_sim"] = item["votos_sim"]
                         d["votos_nao"] = item["votos_nao"]
                         _calcular_totais_e_percentuais(d)
+                    if item.get("em_votacao_aberta"):
+                        d["em_votacao_aberta"] = True
+                        d["status"] = "Votação Popular Aberta Agora"
+                        d["fonte_dados"] = "tempo_real"
                     break
         else:
-            vistos.add(sigla_norm)
+            vistos.add(key)
+            item["fonte_dados"] = "tempo_real"
             consolidados.append(item)
 
     for item in camara_itens:
-        sigla_norm = item["sigla_projeto"].upper().replace(" ", "")
-        if sigla_norm not in vistos:
-            vistos.add(sigla_norm)
+        key = _sigla_key(item)
+        if key not in vistos:
+            vistos.add(key)
+            item["fonte_dados"] = "tempo_real"
             consolidados.append(item)
 
-    _cache_data = consolidados
-    _cache_timestamp = now
-    logger.info(f"Cache de Consultas Públicas renovado: {len(consolidados)} projetos carregados.")
-    return _cache_data
+    return consolidados, live_ok
+
+
+def get_consultas_publicas(force_refresh: bool = False) -> List[Dict[str, Any]]:
+    """
+    Retorna a lista agregada de consultas públicas e proposições populares no Senado e na Câmara.
+    Cache em memória com TTL de 1 hora. Se as fontes oficiais falham, mantém o último cache bom (se houver)
+    e só tenta de novo após o cooldown, em vez de sobrescrever os dados com uma lista vazia.
+    """
+    global _cache_data, _cache_timestamp
+
+    def _fresh(now: float) -> bool:
+        if _cache_data is None:
+            return False
+        elapsed = now - _cache_timestamp
+        return (elapsed < CACHE_TTL_SECONDS and not force_refresh) or (force_refresh and elapsed < MIN_COOLDOWN_SECONDS)
+
+    if _fresh(time.time()) and _cache_data is not None:
+        return _cache_data
+
+    with _refresh_lock:
+        now = time.time()
+        if _fresh(now) and _cache_data is not None:  # outra thread já renovou enquanto esperávamos o lock
+            return _cache_data
+
+        consolidados, live_ok = _build_consultas()
+
+        if live_ok or _cache_data is None:
+            _cache_data = consolidados
+            # Sem dados em tempo real, o cache dura só o cooldown: a próxima requisição tenta de novo logo
+            _cache_timestamp = now if live_ok else now - CACHE_TTL_SECONDS + MIN_COOLDOWN_SECONDS
+            logger.info(
+                "Cache de Consultas Públicas renovado: %d projetos (tempo real: %s).", len(consolidados), live_ok
+            )
+        else:
+            logger.warning("Fontes oficiais indisponíveis; mantendo o último cache válido.")
+            _cache_timestamp = now - CACHE_TTL_SECONDS + MIN_COOLDOWN_SECONDS
+        return _cache_data
