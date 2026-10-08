@@ -1169,7 +1169,9 @@ def get_politician_dossier(
     # 4. Estabilidade Partidária & Coerência Ideológica
     total_filiacoes = len(filiacoes_list)
     trocas_partidarias = max(0, total_filiacoes - 1)
-    anos_totais = max(1, (mandatos_list[-1]["ano_fim"] - mandatos_list[0]["ano_inicio"]) if mandatos_list else 4)
+    primeiro_ano = mandatos_list[-1].get("ano_eleicao") or 2022 if mandatos_list else 2022
+    ultimo_ano = mandatos_list[0].get("ano_eleicao") or 2026 if mandatos_list else 2026
+    anos_totais = max(4, abs(int(ultimo_ano) - int(primeiro_ano)) + 4)
     media_anos_partido = round(anos_totais / max(total_filiacoes, 1), 1)
 
     if trocas_partidarias <= 1:
