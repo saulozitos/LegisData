@@ -41,3 +41,5 @@ postgres_data/
 *.swp
 .DS_Store
 Thumbs.db
+
+.dev*
