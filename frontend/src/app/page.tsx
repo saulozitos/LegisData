@@ -17,6 +17,7 @@ import PropositionsExplorerPanel from "@/components/PropositionsExplorerPanel";
 import PartiesPanel from "@/components/PartiesPanel";
 import PartyMembersModal from "@/components/PartyMembersModal";
 import VotingCalendarPanel from "@/components/VotingCalendarPanel";
+import ExecutivoPanel from "@/components/ExecutivoPanel";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import {
   getPresidentes,
@@ -43,6 +44,7 @@ import {
   Layers,
   Compass,
   CalendarDays,
+  Briefcase,
 } from "lucide-react";
 
 type TabType = "macro" | "renda" | "sociedade" | "composicao" | "partidos" | "orcamento" | "fidelidade" | "legislativo" | "produtividade" | "calendario" | "raiox";
@@ -288,15 +290,24 @@ export default function DashboardPage() {
 
             {/* Conteúdo Dinâmico por Aba */}
             {activeTab === "macro" && (
-              <div className="space-y-6">
+              <div className="space-y-8">
                 <section>
+                  <ExecutivoPanel
+                    performance={selectedPerformance}
+                    presidentMeta={selectedPresidentMeta}
+                    annualData={annualSummaries}
+                    mandateId={globalMandate}
+                    allPerformances={performances}
+                  />
+                </section>
+                <section className="pt-6 border-t border-slate-800/80">
                   <PerformanceKpis
                     performance={selectedPerformance}
                     presidentMeta={selectedPresidentMeta}
                     annualData={annualSummaries}
                   />
                 </section>
-                <section>
+                <section className="pt-6 border-t border-slate-800/80">
                   <MacroeconomicChart
                     data={annualSummaries}
                     selectedMandateId={globalMandate}

@@ -1365,9 +1365,14 @@ export interface PresidentialMandate {
 
 export interface MandateIndicatorData {
   data: string;
-  inflacao_ipca?: number;
-  desemprego_pnad?: number;
-  aprovacao_popular?: number;
+  // Indicadores econômicos
+  inflacao_ipca?: number;      // IPCA acumulado 12 meses (%) - fonte: IBGE
+  desemprego_pnad?: number;    // Taxa PNAD Contínua (%) - fonte: IBGE
+  aprovacao_popular?: number;  // Aprovação (%) - fonte: Datafolha/CNT
+  cambio_usd_brl?: number;     // Câmbio USD/BRL médio - fonte: BCB
+  selic_meta?: number;         // Selic meta (%) - fonte: BCB/COPOM
+  emendas_bilhoes?: number;    // Emendas parlamentares acumuladas (R$ bi)
+  // Legado / outros
   taxa_sucesso_congresso?: number;
   volume_emendas?: number;
   [key: string]: string | number | undefined;

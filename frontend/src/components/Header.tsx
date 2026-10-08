@@ -8,7 +8,6 @@ import {
   Database,
   LayoutDashboard,
   ArrowLeftRight,
-  Sparkles,
   Vote,
 } from "lucide-react";
 
@@ -69,17 +68,7 @@ export default function Header() {
             </span>
           </Link>
 
-          <Link
-            href="/executivo"
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              pathname === "/executivo"
-                ? "bg-purple-500/15 text-purple-300 border border-purple-500/30 shadow-sm shadow-purple-500/10"
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-            <span>Raio-X Executivo</span>
-          </Link>
+
 
           <Link
             href="/cidadania"

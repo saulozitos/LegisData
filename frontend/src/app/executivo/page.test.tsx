@@ -30,16 +30,59 @@ vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: any) => <div>{children}</div>,
   LineChart: ({ children }: any) => <div>{children}</div>,
   Line: () => <div />,
+  AreaChart: ({ children }: any) => <div>{children}</div>,
+  Area: () => <div />,
   BarChart: ({ children }: any) => <div>{children}</div>,
   Bar: () => <div />,
   XAxis: () => <div />,
   YAxis: () => <div />,
   CartesianGrid: () => <div />,
   Tooltip: () => <div />,
-  Legend: () => <div />
+  Legend: () => <div />,
+  ReferenceLine: () => <div />,
 }));
 
 describe('ExecutivoDashboard', () => {
+  beforeEach(() => {
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/summary')) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              mandate_id: '123',
+              nome: 'Teste',
+              partido: 'PT',
+              inicio: '2023-01-01',
+              fim: null,
+              foto_url: '',
+              total_meses: 1,
+              kpis: {
+                inflacao_ipca: { primeiro: 5.0, ultimo: 5.0, minimo: 5.0, maximo: 5.0, media: 5.0, variacao_pp: 0 },
+                aprovacao_popular: { primeiro: 50.0, ultimo: 50.0, minimo: 50.0, maximo: 50.0, media: 50.0 },
+              },
+            }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve([
+            {
+              id: '123',
+              nome: 'Teste',
+              inicio: '2023-01-01',
+              fim: null,
+              partido: 'PT',
+              foto_url: '',
+            },
+          ]),
+      });
+    }) as any;
+  });
+
+  // vi.restoreAllMocks is omitted to preserve module mocks
+
   it('renders loading state initially', async () => {
     render(<ExecutivoDashboard />);
     expect(screen.getByRole('main')).toBeInTheDocument();
@@ -49,20 +92,17 @@ describe('ExecutivoDashboard', () => {
     await act(async () => {
       render(<ExecutivoDashboard />);
     });
-    
+
     await waitFor(() => {
       expect(screen.getByText('Raio-X do Executivo')).toBeInTheDocument();
     });
 
     // Check mandate loaded
-    const mandateBtn = screen.getByText('Teste');
-    expect(mandateBtn).toBeInTheDocument();
+    const mandateBtns = screen.getAllByText('Teste');
+    expect(mandateBtns[0]).toBeInTheDocument();
 
-    // Click it to trigger indicator load
-    await act(async () => {
-      fireEvent.click(mandateBtn);
+    await waitFor(() => {
+      expect(screen.getByText('Inflação vs. Aprovação Popular')).toBeInTheDocument();
     });
-
-    expect(screen.getByText('Aprovação Popular vs Inflação')).toBeInTheDocument();
   });
 });

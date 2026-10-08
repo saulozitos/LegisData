@@ -23,7 +23,11 @@ def mock_get_db():
     
     yield mock_session
 
-app.dependency_overrides[get_db] = mock_get_db
+@pytest.fixture(autouse=True)
+def override_db():
+    app.dependency_overrides[get_db] = mock_get_db
+    yield
+    app.dependency_overrides.pop(get_db, None)
 
 def test_list_presidential_mandates():
     response = client.get("/api/v1/executivo/mandates")
