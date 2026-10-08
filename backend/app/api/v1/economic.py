@@ -52,8 +52,8 @@ def get_annual_macro_summary(
 
 @router.get("/ipca-monthly")
 def get_monthly_ipca(
-    ano_inicio: Optional[int] = Query(None, description="Filtrar por ano inicial"),
-    ano_fim: Optional[int] = Query(None, description="Filtrar por ano final")
+    ano_inicio: Optional[int] = Query(None, ge=1900, le=2100, description="Filtrar por ano inicial"),
+    ano_fim: Optional[int] = Query(None, ge=1900, le=2100, description="Filtrar por ano final")
 ):
     """Retorna o histórico mensal do IPCA com filtros opcionais de data."""
     file_path = DATA_DIR / "ipca_mensal_historico.csv"

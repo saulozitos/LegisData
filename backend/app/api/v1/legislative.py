@@ -352,7 +352,7 @@ def get_proposition_nominal_votes(
 
 @router.get("/ranking/authors")
 def get_authors_productivity_ranking(
-    limit: int = 20,
+    limit: int = Query(20, ge=1, le=100, description="Quantidade máxima de autores no ranking"),
     partido: Optional[str] = None,
     setor: Optional[str] = None,
     criterio: str = Query("efetividade", description="Modo de classificação: 'efetividade' (Score IPLE) ou 'volume' (Total bruto de proposições)"),
@@ -542,8 +542,8 @@ def get_legislative_explorer(
     tipo: Optional[str] = None,
     status: Optional[str] = None,
     apenas_votadas: bool = False,
-    page: int = 1,
-    limit: int = 25,
+    page: int = Query(1, ge=1, le=10000, description="Página (a partir de 1)"),
+    limit: int = Query(25, ge=1, le=100, description="Itens por página"),
     db: Session = Depends(get_db)
 ):
     """
@@ -848,7 +848,7 @@ def get_proposition_nominal_votes_split(
 
 @router.get("/calendar")
 def get_voting_calendar(
-    year: Optional[int] = Query(None, description="Ano para filtrar as votações nominais"),
+    year: Optional[int] = Query(None, ge=1900, le=2100, description="Ano para filtrar as votações nominais"),
     db: Session = Depends(get_db)
 ):
     """

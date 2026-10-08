@@ -839,7 +839,7 @@ def get_social_classes_distribution():
 
 @router.get("/social-elections")
 def get_social_elections_correlation(
-    ano: Optional[int] = Query(2022, description="Ano eleitoral de referência (1994, 1998, 2002, 2006, 2010, 2014, 2018, 2022)"),
+    ano: Optional[int] = Query(2022, ge=1900, le=2100, description="Ano eleitoral de referência (1994, 1998, 2002, 2006, 2010, 2014, 2018, 2022)"),
     db: Session = Depends(get_db)
 ):
     """
