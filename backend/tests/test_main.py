@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 from app.main import app, startup_db_migrations
+from app.core.schema_patches import EMENDAS_CEAP_DDL
 from unittest.mock import patch, MagicMock
 
 client = TestClient(app)
@@ -18,7 +19,7 @@ def test_startup_db_migrations():
         mock_db = MagicMock()
         mock_session.return_value.__enter__.return_value = mock_db
         startup_db_migrations()
-        assert mock_db.execute.call_count == 5
+        assert mock_db.execute.call_count == 5 + len(EMENDAS_CEAP_DDL)
         mock_db.commit.assert_called_once()
         
     with patch("app.core.database.SessionLocal") as mock_session:
