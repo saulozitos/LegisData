@@ -41,7 +41,7 @@ from app.models import (
     CargoPoliticoEnum, TipoEsferaEnum, StatusMandatoEnum, MotivoDesfiliacaoEnum,
     TipoProposicaoEnum, StatusTramitacaoEnum, CasaLegislativaEnum,
     VotoOpcaoEnum, CategoriaIndicadorEnum, PeriodicidadeIndicadorEnum, UnidadeMedidaEnum,
-    EspectroPoliticoEnum
+    EspectroPoliticoEnum, TipoPresencaEnum
 )
 from etl.config import PROCESSED_DATA_DIR, RAW_DATA_DIR, BCB_SERIES, CEAP_ANO_INICIO, CEAP_ANO_FIM, REFERENCE_DATA_DIR
 from etl.extractors.ceap_bulk_extractor import CeapBulkExtractor
@@ -50,6 +50,8 @@ from etl.parsers.nomes import (
     destinos_por_autor, indexar_parlamentares, propor_mapa, resolver_mapa, ufs_parlamentares,
 )
 from etl.parsers.valores import truncar
+from app.core.enum_migrations import garantir_valores_tipo_presenca
+from etl.vinculos import normalizar, mandato_na_data, mandato_no_mes, indice_unico, chaves_ambiguas
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("DBLoader")
@@ -196,6 +198,8 @@ class DatabaseLoader:
         with engine.begin() as conn:
             for ddl in EMENDAS_CEAP_DDL:
                 conn.execute(text(ddl))
+            # create_all não altera ENUMs já existentes; ADD VALUE precisa de commit próprio.
+            garantir_valores_tipo_presenca(conn)
 
     def load_all(self) -> Dict[str, int]:
         """Executa a carga completa respeitando todas as dependências de chaves estrangeiras."""
@@ -236,6 +240,11 @@ class DatabaseLoader:
 
             # 4.5 Financiamento de Campanha (Doações TSE)
             self._load_doacoes_campanha(session, president_map, deputy_map, senator_map)
+
+            # 4.6 Presença/participação e remuneração (fontes oficiais). Recarga
+            # completa a cada execução: _purge_synthetic_data esvaziou as tabelas.
+            self._load_presencas(session, deputy_map, senator_map)
+            self._load_remuneracoes(session, senator_map)
 
             # 5. Proposições Legislativas
             prop_map = self._load_propositions(session, deputy_map, senator_map)
@@ -279,6 +288,9 @@ class DatabaseLoader:
             "doacoes_campanha": session.query(DoacaoCampanha).delete(synchronize_session=False),
             "emendas_parlamentares": session.query(EmendaParlamentar).delete(synchronize_session=False),
             "certidoes_judiciais": session.query(CertidaoJudicial).delete(synchronize_session=False),
+            # Presença e remuneração: esvaziadas aqui e recarregadas por completo em
+            # _load_presencas/_load_remuneracoes a partir dos JSON oficiais processados
+            # (registros_presenca não tem coluna de fonte para uma limpeza seletiva).
             "registros_presenca": session.query(AttendanceRecord).delete(synchronize_session=False),
             "remuneracoes_politicos": session.query(PoliticianRemuneration).delete(synchronize_session=False),
             "declaracoes_patrimonio": session.query(PoliticianAssetDeclaration).delete(synchronize_session=False),
@@ -1907,6 +1919,156 @@ class DatabaseLoader:
         session.flush()
         logger.info(f"-> {total} receitas de campanha (TSE) inseridas.")
 
+    # ------------------------------------------------------------------
+    # Presença / participação e remuneração (fontes oficiais)
+    # ------------------------------------------------------------------
+    def _intervalos_mandato(self, session: Session, politician_ids) -> Dict[Any, list]:
+        """politico_id -> [(mandato_id, inicio, fim)] para resolver o mandato na data."""
+        ids = list({pid for pid in politician_ids if pid})
+        intervalos: Dict[Any, list] = {}
+        if not ids:
+            return intervalos
+        for m in session.query(Mandate).filter(Mandate.politician_id.in_(ids)).all():
+            intervalos.setdefault(m.politician_id, []).append((m.id, m.start_date, m.end_date))
+        return intervalos
+
+    def _load_presencas(self, session: Session, deputy_map: Dict[int, Any], senator_map: Dict[int, Any]) -> int:
+        """Carrega presença (Câmara) e participação em votações nominais (Senado).
+
+        Lê presenca_camara.json / presenca_senado.json gerados por
+        etl/extractors/presenca_extractor.py. mandatoId é obrigatório: registros
+        sem mandato vigente na data são descartados e contados no log.
+        """
+        logger.info("4.6 Carregando presença (Câmara) e participação em votações (Senado)...")
+        total = 0
+
+        cam_file = self.data_dir / "presenca_camara.json"
+        if cam_file.exists():
+            dados = json.loads(cam_file.read_text(encoding="utf-8"))
+            # Fallback para quem não está em ObterDeputados (só lista os em exercício):
+            # nome parlamentar + UF contra deputados_camara.json, descartando ambíguos.
+            pares = []
+            dep_file = self.data_dir / "deputados_camara.json"
+            if dep_file.exists():
+                for d in json.loads(dep_file.read_text(encoding="utf-8")):
+                    pares.append(((normalizar(d.get("nome_eleitoral")), d.get("uf")), d["camara_id"]))
+            por_nome_uf = indice_unico(pares)
+            ambiguos = chaves_ambiguas(pares)
+            if ambiguos:
+                logger.warning(f"-> Nomes parlamentares ambíguos ignorados no vínculo: {ambiguos}")
+
+            mandatos = self._intervalos_mandato(session, deputy_map.values())
+            stats = {"inseridos": 0, "sem_politico": 0, "sem_mandato": 0, "duplicados": 0}
+            vistos = set()
+            linhas = []
+            for r in dados.get("registros", []):
+                cid = r.get("camara_id") or por_nome_uf.get((normalizar(r.get("nome_parlamentar")), r.get("uf")))
+                pol_id = deputy_map.get(cid) if cid else None
+                if not pol_id:
+                    stats["sem_politico"] += 1
+                    continue
+                dia = date.fromisoformat(r["data"])
+                mandato_id = mandato_na_data(mandatos.get(pol_id, []), dia)
+                if not mandato_id:
+                    stats["sem_mandato"] += 1
+                    continue
+                if (pol_id, dia) in vistos:
+                    stats["duplicados"] += 1
+                    continue
+                vistos.add((pol_id, dia))
+                linhas.append({
+                    "politician_id": pol_id, "mandate_id": mandato_id,
+                    "legislative_house": CasaLegislativaEnum.CAMARA_DOS_DEPUTADOS,
+                    "session_date": dia, "attendance_status": TipoPresencaEnum(r["status"]),
+                    "justification": r.get("justificativa"),
+                })
+            session.bulk_insert_mappings(AttendanceRecord, linhas)
+            stats["inseridos"] = len(linhas)
+            total += len(linhas)
+            logger.info(f"-> Câmara (presença em plenário): {stats}")
+        else:
+            logger.warning("presenca_camara.json não encontrado. Rode etl/extractors/presenca_extractor.py.")
+
+        sen_file = self.data_dir / "presenca_senado.json"
+        if sen_file.exists():
+            dados = json.loads(sen_file.read_text(encoding="utf-8"))
+            mandatos = self._intervalos_mandato(session, senator_map.values())
+            stats = {"inseridos": 0, "sem_politico": 0, "sem_mandato": 0}
+            linhas = []
+            for r in dados.get("registros", []):
+                pol_id = senator_map.get(r.get("senado_id"))
+                if not pol_id:
+                    stats["sem_politico"] += 1
+                    continue
+                dia = date.fromisoformat(r["data"])
+                mandato_id = mandato_na_data(mandatos.get(pol_id, []), dia)
+                if not mandato_id:
+                    stats["sem_mandato"] += 1
+                    continue
+                linhas.append({
+                    "politician_id": pol_id, "mandate_id": mandato_id,
+                    "legislative_house": CasaLegislativaEnum.SENADO_FEDERAL,
+                    "session_date": dia, "attendance_status": TipoPresencaEnum(r["status"]),
+                    "justification": r.get("justificativa"),
+                })
+            session.bulk_insert_mappings(AttendanceRecord, linhas)
+            stats["inseridos"] = len(linhas)
+            total += len(linhas)
+            logger.info(f"-> Senado (participação em votações nominais, senador x sessão): {stats}")
+        else:
+            logger.warning("presenca_senado.json não encontrado. Rode etl/extractors/presenca_extractor.py.")
+
+        session.flush()
+        return total
+
+    def _load_remuneracoes(self, session: Session, senator_map: Dict[int, Any]) -> int:
+        """Carrega a folha nominal dos senadores (remuneracao_senado.json).
+
+        Deputados: a Câmara só publica folha anonimizada, então nada é gravado
+        aqui; a API expõe o subsídio de referência (app/core/subsidios.py).
+        CEAP nunca é somada: cotaParlamentarCeap fica 0.
+        """
+        logger.info("4.7 Carregando remuneração nominal (Senado Federal)...")
+        arq = self.data_dir / "remuneracao_senado.json"
+        if not arq.exists():
+            logger.warning("remuneracao_senado.json não encontrado. Rode etl/extractors/remuneracao_extractor.py.")
+            return 0
+        dados = json.loads(arq.read_text(encoding="utf-8"))
+        fonte = "Senado Federal - folha de pagamento (Dados Abertos)"
+        mandatos = self._intervalos_mandato(session, senator_map.values())
+        stats = {"inseridos": 0, "sem_politico": 0, "sem_mandato": 0, "duplicados": 0}
+        vistos = set()
+        linhas = []
+        for r in dados.get("registros", []):
+            pol_id = senator_map.get(r.get("senado_id"))
+            if not pol_id:
+                stats["sem_politico"] += 1
+                continue
+            ano, mes = int(r["ano"]), int(r["mes"])
+            mandato_id = mandato_no_mes(mandatos.get(pol_id, []), ano, mes)
+            if not mandato_id:
+                stats["sem_mandato"] += 1
+                continue
+            if (pol_id, ano, mes) in vistos:  # unique (politicoId, ano, mes)
+                stats["duplicados"] += 1
+                continue
+            vistos.add((pol_id, ano, mes))
+            linhas.append({
+                "politician_id": pol_id, "mandate_id": mandato_id,
+                "reference_year": ano, "reference_month": mes,
+                "gross_salary": Decimal(r["salario_bruto"]),
+                "net_salary": Decimal(r["salario_liquido"]),
+                "parliamentary_quota_ceap": Decimal("0.00"),
+                "housing_allowance": Decimal("0.00"),
+                "other_benefits": Decimal(r.get("outros_beneficios") or "0"),
+                "data_source": fonte,
+            })
+        session.bulk_insert_mappings(PoliticianRemuneration, linhas)
+        stats["inseridos"] = len(linhas)
+        session.flush()
+        logger.info(f"-> Remuneração Senado (soma das folhas por mês): {stats}")
+        return len(linhas)
+
     def _get_table_counts(self, session: Session) -> Dict[str, int]:
         """Consulta e retorna a quantidade de linhas em cada tabela do PostgreSQL."""
         tables = [
@@ -1918,6 +2080,8 @@ class DatabaseLoader:
             ("emendas_parlamentares", "Emendas Parlamentares (Trilha do Dinheiro)"),
             ("certidoes_judiciais", "Certidões Judiciais e Ficha Limpa"),
             ("doacoes_campanha", "Financiamento de Campanha (Doações TSE)"),
+            ("registros_presenca", "Presença (Câmara) / Participação em Votações (Senado)"),
+            ("remuneracoes_politicos", "Remuneração Nominal (Folha do Senado)"),
             ("mandatos", "Mandatos Eletivos"),
             ("membros_gabinete", "Membros de Gabinete (Fazenda/Planejamento)"),
             ("proposicoes", "Proposições Legislativas"),
