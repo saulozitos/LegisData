@@ -312,7 +312,14 @@ def _enrich_judicial_records(pol: Politician, certidoes_db: List[CertidaoJudicia
     orgaos_declarados = []
     for c in certidoes_db:
         status_c = c.status or ""
-        if "positiva" in status_c.lower() or "declarada" in status_c.lower():
+        # Registro de candidatura do TSE: só conta como ocorrência se a candidatura foi
+        # considerada INAPTA e o TSE informou fundamento (guardado em `details`).
+        registro_tse_com_motivo = (
+            (c.court_agency or "").startswith("TSE (registro")
+            and status_c.upper().startswith("INAPTO")
+            and bool(c.details)
+        )
+        if "positiva" in status_c.lower() or "declarada" in status_c.lower() or registro_tse_com_motivo:
             orgaos_declarados.append(c.court_agency)
         certidoes_lista.append({
             "id": str(c.id),

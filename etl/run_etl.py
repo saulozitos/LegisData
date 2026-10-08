@@ -24,6 +24,7 @@ from etl.pipelines.presidents_economic_sync import PresidentsEconomicSyncPipelin
 from etl.extractors.camara_extractor import CamaraExtractor
 from etl.extractors.senado_extractor import SenadoExtractor
 from etl.extractors.tse_extractor import TSEExtractor
+from etl.extractors.tse_oficial_extractor import TSEOficialExtractor
 from etl.extractors.orcamento_extractor import OrcamentoExtractor
 from etl.extractors.composicao_extractor import save_composicao_congresso
 from etl.extractors.salario_inflacao_extractor import SalarioInflacaoExtractor
@@ -60,6 +61,11 @@ def main():
         help="Executa apenas a extração de filiações partidárias do TSE"
     )
     parser.add_argument(
+        "--tse-oficial",
+        action="store_true",
+        help="Baixa candidaturas, bens e receitas oficiais do TSE (arquivos grandes: 200-475 MB por eleição)"
+    )
+    parser.add_argument(
         "--orcamento",
         action="store_true",
         help="Executa a modelagem de repasses orçamentários por UF"
@@ -84,7 +90,7 @@ def main():
     use_cache = not args.no_cache
 
     # Modo seletivo ou completo
-    specific_run = args.economic or args.camara or args.senado or args.tse or args.orcamento or args.composicao or args.renda or args.load_db
+    specific_run = args.economic or args.camara or args.senado or args.tse or args.tse_oficial or args.orcamento or args.composicao or args.renda or args.load_db
     run_economic = args.economic or not specific_run
     run_camara = args.camara or not specific_run
     run_senado = args.senado or not specific_run
@@ -113,6 +119,11 @@ def main():
         print("\n>>> [ETAPA 4/7] EXTRAÇÃO DE FILIAÇÕES PARTIDÁRIAS DO TSE <<<")
         tse_extractor = TSEExtractor()
         tse_extractor.run()
+
+    # Opcional e explícito: downloads grandes. Não roda na esteira completa por padrão.
+    if args.tse_oficial:
+        print("\n>>> [TSE OFICIAL] CANDIDATURAS, BENS DECLARADOS E RECEITAS DE CAMPANHA <<<")
+        print(TSEOficialExtractor().run())
 
     if run_orcamento:
         print("\n>>> [ETAPA 5/7] REPASSES FEDERAIS E ORÇAMENTO POR UF <<<")

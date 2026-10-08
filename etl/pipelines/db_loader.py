@@ -221,10 +221,10 @@ class DatabaseLoader:
             self._load_emendas_parlamentares(session, deputy_map, senator_map)
 
             # 4.4 Certidões Judiciais e Ficha Limpa
-            self._load_certidoes_judiciais(session)
+            self._load_certidoes_judiciais(session, president_map, deputy_map, senator_map)
 
             # 4.5 Financiamento de Campanha (Doações TSE)
-            self._load_doacoes_campanha(session)
+            self._load_doacoes_campanha(session, president_map, deputy_map, senator_map)
 
             # 5. Proposições Legislativas
             prop_map = self._load_propositions(session, deputy_map, senator_map)
@@ -1532,6 +1532,32 @@ class DatabaseLoader:
 
         session.flush()
 
+    def _resolver_politico_tse(self, session: Session, item: Dict[str, Any],
+                               deputy_map: Dict[int, Any], senator_map: Dict[int, Any]):
+        """Resolve o político a partir dos IDs gravados pelo TSEOficialExtractor.
+
+        Deputados: camara_id (vínculo feito por CPF no extrator). Senadores: senado_id.
+        Presidentes: nome civil normalizado exato. Não há correspondência por substring.
+        """
+        cid = item.get("camara_id")
+        sid = item.get("senado_id")
+        if cid and cid in deputy_map:
+            return deputy_map[cid]
+        if sid and sid in senator_map:
+            return senator_map[sid]
+        alvo = item.get("nome_civil_normalizado")
+        if alvo:
+            if not hasattr(self, "_civil_idx"):
+                idx: Dict[str, list] = {}
+                for p in session.query(Politician).all():
+                    k = " ".join(unicodedata.normalize("NFD", p.civil_name or "").encode("ascii", "ignore").decode().upper().split())
+                    idx.setdefault(k, []).append(p.id)
+                self._civil_idx = idx
+            ids = self._civil_idx.get(alvo, [])
+            if len(ids) == 1:
+                return ids[0]
+        return None
+
     def _load_politician_assets(
         self,
         session: Session,
@@ -1539,10 +1565,10 @@ class DatabaseLoader:
         deputy_map: Dict[int, Any],
         senator_map: Dict[int, Any]
     ):
-        """Carrega declarações de bens a partir de declaracoes_patrimonio.json.
+        """Carrega o total de bens declarados ao TSE por eleição.
 
-        O arquivo anterior (gerado por hash do nome) foi removido; enquanto o
-        extrator oficial do TSE (bem_candidato_AAAA.zip) não gerar o arquivo, a carga é pulada.
+        Arquivo gerado por etl/extractors/tse_oficial_extractor.py a partir de
+        bem_candidato_AAAA.zip (TSE). Sem o arquivo, a carga é pulada.
         """
         logger.info("Carregando Declarações de Patrimônio Eleitoral (TSE DivulgaCand)...")
         asset_file = self.data_dir / "declaracoes_patrimonio.json"
@@ -1553,40 +1579,21 @@ class DatabaseLoader:
         with open(asset_file, "r", encoding="utf-8") as f:
             declaracoes = json.load(f)
 
-        # Mapeamento auxiliar de políticos por nome normalizado
-        politicos_db = session.query(Politician).all()
-        nome_map = {}
-        for pol in politicos_db:
-            if pol.electoral_name:
-                nome_map[_normalize_name_tokens(pol.electoral_name)] = pol.id
-            if pol.civil_name:
-                nome_map[_normalize_name_tokens(pol.civil_name)] = pol.id
-
         existing_assets = {
             (d.politician_id, d.election_year): d
             for d in session.query(PoliticianAssetDeclaration).all()
         }
         seen_keys = set()
         total_inseridos = 0
+        sem_vinculo = 0
 
         for item in declaracoes:
-            pol_id = None
-            cid = item.get("camara_id")
-            sid = item.get("senado_id")
-            if cid and cid in deputy_map:
-                pol_id = deputy_map[cid]
-            elif sid and sid in senator_map:
-                pol_id = senator_map[sid]
-
+            pol_id = self._resolver_politico_tse(session, item, deputy_map, senator_map)
             if not pol_id:
-                nome_e = _normalize_name_tokens(item.get("nome_eleitoral", ""))
-                nome_c = _normalize_name_tokens(item.get("nome_civil", ""))
-                pol_id = nome_map.get(nome_e) or nome_map.get(nome_c)
-
-            if not pol_id:
+                sem_vinculo += 1
                 continue
 
-            ano = int(item.get("ano_eleicao", 2022))
+            ano = int(item["ano_eleicao"])
             pair_key = (pol_id, ano)
             if pair_key in seen_keys:
                 continue
@@ -1611,7 +1618,7 @@ class DatabaseLoader:
                 total_inseridos += 1
 
         session.flush()
-        logger.info(f"-> {total_inseridos} novas declarações de patrimônio inseridas ({len(seen_keys)} total processadas).")
+        logger.info(f"-> {total_inseridos} novas declarações de patrimônio inseridas ({len(seen_keys)} processadas, {sem_vinculo} sem vínculo).")
 
     def _load_ceap_expenses(self, session: Session, deputy_map: Dict[int, Any]):
         """Carrega despesas reais da CEAP a partir da API de Dados Abertos da Câmara.
@@ -1678,24 +1685,87 @@ class DatabaseLoader:
         """
         logger.info("Emendas parlamentares: nenhuma fonte oficial integrada ainda; carga ignorada.")
 
-    def _load_certidoes_judiciais(self, session: Session):
-        """Certidões judiciais: não são mais geradas.
+    def _load_certidoes_judiciais(self, session: Session, president_map: Dict[str, Any],
+                                  deputy_map: Dict[int, Any], senator_map: Dict[int, Any]):
+        """Registra a situação do registro de candidatura no TSE (fato oficial).
 
-        O JusticaExtractor produzia "Nada Consta"/"Positiva" a partir de uma lista de
-        nomes e inventava números e códigos de autenticidade. Isso foi removido: o
-        status de certidão só pode vir de documento oficial (ex.: certidões juntadas ao
-        registro de candidatura no TSE), integrado em PR próprio.
+        Fonte: consulta_cand_AAAA.zip e motivo_cassacao_AAAA.zip (via tse_candidaturas.json).
+        NÃO é uma certidão de antecedentes e NÃO é um rótulo de "ficha limpa":
+        guardamos apenas a situação informada pelo TSE e, quando houver, o motivo de
+        indeferimento/cassação com o número do processo.
         """
-        logger.info("Certidões judiciais: nenhuma fonte oficial integrada ainda; carga ignorada.")
+        arq = self.data_dir / "tse_candidaturas.json"
+        if not arq.exists():
+            logger.info("Situação de candidatura: tse_candidaturas.json ausente; carga ignorada.")
+            return
+        candidaturas = json.loads(arq.read_text(encoding="utf-8"))
+        total = 0
+        for c in candidaturas:
+            pol_id = self._resolver_politico_tse(session, c, deputy_map, senator_map)
+            if not pol_id:
+                continue
+            motivos = c.get("motivos_indeferimento_cassacao") or []
+            fundamentos = "; ".join(sorted({m.get("motivo") for m in motivos if m.get("motivo")}))
+            # O arquivo motivo_cassacao lista FUNDAMENTOS LEGAIS citados em julgamentos
+            # ligados à candidatura; isso não significa, por si só, condenação.
+            detalhes = (
+                f"Fundamentos legais registrados pelo TSE: {fundamentos}. "
+                "Informação do registro de candidatura; não indica, por si só, condenação."
+            ) if fundamentos else None
+            numero = next((m.get("numero_processo") for m in motivos if m.get("numero_processo")), None)
+            situacao = c.get("situacao_candidatura") or "Não informada"
+            status = f"{situacao} ({c.get('situacao_turno')})" if c.get("situacao_turno") else situacao
+            session.add(CertidaoJudicial(
+                politician_id=pol_id,
+                court_agency="TSE (registro de candidatura)",
+                certificate_type=f"Candidatura {c['ano_eleicao']} - {c.get('cargo_tse') or ''}"[:50],
+                status=status[:50],
+                details=detalhes,
+                process_number=numero,
+                issue_date=None,
+                proof_url=c.get("fonte_url"),
+                auth_code=None,
+            ))
+            # Só sinaliza quando o próprio TSE considerou a candidatura INAPTA.
+            if motivos and (c.get("situacao_candidatura") or "").upper().startswith("INAPTO"):
+                session.query(Politician).filter(Politician.id == pol_id).update(
+                    {Politician.possui_processos_declarados: True}, synchronize_session=False
+                )
+            total += 1
+        session.flush()
+        logger.info(f"-> {total} registros de situação de candidatura (TSE) inseridos.")
 
-    def _load_doacoes_campanha(self, session: Session):
-        """Doações de campanha: sem carga até existir fonte oficial integrada.
+    def _load_doacoes_campanha(self, session: Session, president_map: Dict[str, Any],
+                               deputy_map: Dict[int, Any], senator_map: Dict[int, Any]):
+        """Carrega receitas de campanha da prestação de contas FINAL do TSE.
 
-        O TseDoacoesExtractor gerava doadores e valores aleatórios (incluindo nomes de
-        pessoas físicas e CNPJs fictícios). Foi removido. A carga real a partir dos
-        arquivos de prestação de contas do TSE é feita em PR próprio.
+        Fonte: prestacao_de_contas_eleitorais_candidatos_AAAA.zip (via tse_receitas_campanha.json).
+        Pessoas físicas aparecem só pelo nome (o CPF não é armazenado); CNPJs são mantidos.
         """
-        logger.info("Doações de campanha: nenhuma fonte oficial integrada ainda; carga ignorada.")
+        arq = self.data_dir / "tse_receitas_campanha.json"
+        if not arq.exists():
+            logger.info("Doações de campanha: tse_receitas_campanha.json ausente; carga ignorada.")
+            return
+        receitas = json.loads(arq.read_text(encoding="utf-8"))
+        total = 0
+        for r in receitas:
+            pol_id = self._resolver_politico_tse(session, r, deputy_map, senator_map)
+            if not pol_id:
+                continue
+            tipo = r.get("fonte_recurso") or r.get("origem_receita")
+            session.add(DoacaoCampanha(
+                politician_id=pol_id,
+                election_year=int(r["ano_eleicao"]),
+                donor_name=(r.get("nome_doador") or "Não informado")[:255],
+                donor_cpf_cnpj=r.get("cnpj_doador"),
+                amount_donated=Decimal(str(r["valor"])),
+                donation_type=(f"{r.get('origem_receita') or ''} / {tipo or ''}".strip(" /"))[:100] or None,
+            ))
+            total += 1
+            if total % 5000 == 0:
+                session.flush()
+        session.flush()
+        logger.info(f"-> {total} receitas de campanha (TSE) inseridas.")
 
     def _get_table_counts(self, session: Session) -> Dict[str, int]:
         """Consulta e retorna a quantidade de linhas em cada tabela do PostgreSQL."""
