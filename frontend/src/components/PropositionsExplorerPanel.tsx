@@ -48,6 +48,7 @@ const SECTOR_BADGE_STYLES: Record<string, { bg: string; text: string; border: st
 };
 
 function getSectorStyle(sector: string) {
+  if (!sector) return { bg: "bg-slate-800", text: "text-slate-300", border: "border-slate-700" };
   for (const [key, val] of Object.entries(SECTOR_BADGE_STYLES)) {
     if (sector.toLowerCase().includes(key.toLowerCase())) {
       return val;

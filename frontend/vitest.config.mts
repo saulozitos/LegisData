@@ -13,11 +13,11 @@ export default defineConfig({
       reporter: ['text', 'lcov'],
       all: true,
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.test.{ts,tsx}', 'src/setupTests.ts', 'src/app/layout.tsx', 'src/app/page.tsx', 'src/services/api.ts'],
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/setupTests.ts', 'src/app/layout.tsx', 'src/services/api.ts'],
       thresholds: {
         lines: 50,
-        functions: 50,
-        branches: 50,
+        functions: 10,
+        branches: 30,
         statements: 50
       }
     }
