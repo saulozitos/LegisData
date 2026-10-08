@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from "react";
 import Header from "@/components/Header";
 import PresidentTimeline from "@/components/PresidentTimeline";
-import PerformanceKpis from "@/components/PerformanceKpis";
 import MacroeconomicChart from "@/components/MacroeconomicChart";
 import LegislativePanel from "@/components/LegislativePanel";
 import PartyFidelityPanel from "@/components/PartyFidelityPanel";
@@ -298,13 +297,6 @@ export default function DashboardPage() {
                     annualData={annualSummaries}
                     mandateId={globalMandate}
                     allPerformances={performances}
-                  />
-                </section>
-                <section className="pt-6 border-t border-slate-800/80">
-                  <PerformanceKpis
-                    performance={selectedPerformance}
-                    presidentMeta={selectedPresidentMeta}
-                    annualData={annualSummaries}
                   />
                 </section>
                 <section className="pt-6 border-t border-slate-800/80">

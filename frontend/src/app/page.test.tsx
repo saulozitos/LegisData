@@ -5,7 +5,7 @@ import Home from './page';
 
 vi.mock('@/components/Header', () => ({ default: () => <div data-testid="Header" /> }));
 vi.mock('@/components/PresidentTimeline', () => ({ default: () => <div data-testid="PresidentTimeline" /> }));
-vi.mock('@/components/PerformanceKpis', () => ({ default: () => <div data-testid="PerformanceKpis" /> }));
+vi.mock('@/components/ExecutivoPanel', () => ({ default: () => <div data-testid="ExecutivoPanel" /> }));
 vi.mock('@/components/MacroeconomicChart', () => ({ default: () => <div data-testid="MacroeconomicChart" /> }));
 vi.mock('@/components/LegislativePanel', () => ({ default: () => <div data-testid="LegislativePanel" /> }));
 vi.mock('@/components/PartyFidelityPanel', () => ({ default: () => <div data-testid="PartyFidelityPanel" /> }));

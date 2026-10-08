@@ -35,6 +35,7 @@ import {
   Info,
   Minus,
   Briefcase,
+  Award,
 } from "lucide-react";
 import { getPresidentPhotoUrl } from "@/components/PresidentTimeline";
 
@@ -560,20 +561,72 @@ export default function ExecutivoPanel({
         </div>
       )}
 
-      {/* ── Marcos e Contexto ── */}
-      {meta?.marcos_economicos && meta.marcos_economicos.length > 0 && (
-        <div className="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-5">
-          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-3">
-            📌 Marcos do Mandato
-          </p>
-          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {meta.marcos_economicos.map((marco, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-slate-400">
-                <span className="text-slate-600 mt-0.5 flex-shrink-0">▸</span>
-                {marco}
-              </li>
-            ))}
-          </ul>
+      {/* ── Contexto Político-Econômico: Ministros & Marcos ── */}
+      {((meta?.ministros_fazenda_chave && meta.ministros_fazenda_chave.length > 0) ||
+        (p.ministros_fazenda_principais && p.ministros_fazenda_principais.length > 0) ||
+        (meta?.marcos_economicos && meta.marcos_economicos.length > 0)) && (
+        <div className="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-5 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Ministros da Fazenda / Economia */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Award className="w-4 h-4 text-emerald-400" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                  Ministros da Fazenda / Economia no Período
+                </h4>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {meta?.ministros_fazenda_chave && meta.ministros_fazenda_chave.length > 0 ? (
+                  meta.ministros_fazenda_chave.map((min, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/60 text-xs font-medium text-slate-200"
+                    >
+                      <span>{min.nome}</span>
+                      {min.papel && (
+                        <span className="text-[10px] text-emerald-400 font-bold">
+                          ({min.papel})
+                        </span>
+                      )}
+                    </span>
+                  ))
+                ) : p.ministros_fazenda_principais && p.ministros_fazenda_principais.length > 0 ? (
+                  p.ministros_fazenda_principais.map((min, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/60 text-xs font-medium text-slate-200"
+                    >
+                      {min}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-slate-500">
+                    Informação não disponível para este mandato.
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Marcos e Políticas do Mandato */}
+            {meta?.marcos_economicos && meta.marcos_economicos.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-sm">📌</span>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                    Marcos Estruturantes do Mandato
+                  </h4>
+                </div>
+                <ul className="space-y-2">
+                  {meta.marcos_economicos.map((marco, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs sm:text-sm text-slate-400">
+                      <span className="text-emerald-400 mt-0.5 flex-shrink-0">▸</span>
+                      <span>{marco}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
