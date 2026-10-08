@@ -271,6 +271,19 @@ class DatabaseLoader:
         session.query(Politician).filter(Politician.possui_processos_declarados.is_(True)).update(
             {Politician.possui_processos_declarados: False}, synchronize_session=False
         )
+        # Contatos gerados a partir do ID em versões anteriores (padrões fixos)
+        session.query(Politician).filter(Politician.cabinet_room.like("Anexo IV, Gabinete %")).update(
+            {Politician.cabinet_room: None}, synchronize_session=False)
+        session.query(Politician).filter(Politician.cabinet_room.like("Ala Filinto Müller, Gabinete %")).update(
+            {Politician.cabinet_room: None}, synchronize_session=False)
+        # Telefones: só remove se a sala também era gerada (o prefixo é real).
+        session.query(Politician).filter(
+            Politician.cabinet_room.is_(None),
+            Politician.cabinet_phone.op("~")(r"^\(61\) (3215-5[0-9]{3}|3303-[0-9]{4})$")
+        ).update({Politician.cabinet_phone: None}, synchronize_session=False)
+        # Só o padrão gerado (dep.<ID numérico>@...); e-mails reais usam o nome.
+        session.query(Politician).filter(Politician.email.op("~")(r"^(dep|sen)\.[0-9]+@(camara|senado)\.leg\.br$")).update(
+            {Politician.email: None}, synchronize_session=False)
         session.flush()
         logger.info(f"Limpeza de dados sintéticos anteriores: {removidos}")
 
@@ -476,9 +489,10 @@ class DatabaseLoader:
                 for d in deputados:
                     cid = d["camara_id"]
                     pol = session.query(Politician).filter_by(camara_id=cid).first()
-                    email_val = d.get("email") or f"dep.{cid}@camara.leg.br"
-                    sala_val = d.get("gabinete_sala") or d.get("sala") or f"Anexo IV, Gabinete {(cid % 700) + 100}"
-                    tel_val = d.get("gabinete_telefone") or d.get("telefone") or f"(61) 3215-5{(cid % 700) + 100:03d}"
+                    # Apenas contato informado pela Câmara (sem e-mail/sala/telefone derivados do ID)
+                    email_val = d.get("email")
+                    sala_val = d.get("gabinete_sala") or d.get("sala")
+                    tel_val = d.get("gabinete_telefone") or d.get("telefone")
 
                     if not pol:
                         pol = Politician(
@@ -513,9 +527,10 @@ class DatabaseLoader:
                 for s in senadores:
                     sid = s["senado_id"]
                     pol = session.query(Politician).filter_by(senado_id=sid).first()
-                    email_val = s.get("email") or f"sen.{sid}@senado.leg.br"
-                    sala_val = s.get("gabinete_sala") or s.get("sala") or f"Ala Filinto Müller, Gabinete {(sid % 25) + 1:02d}"
-                    tel_val = s.get("gabinete_telefone") or s.get("telefone") or f"(61) 3303-{(sid % 800) + 4000:04d}"
+                    # Apenas contato informado pelo Senado (sem sala/telefone derivados do ID)
+                    email_val = s.get("email")
+                    sala_val = s.get("gabinete_sala") or s.get("sala")
+                    tel_val = s.get("gabinete_telefone") or s.get("telefone")
 
                     if not pol:
                         pol = Politician(
