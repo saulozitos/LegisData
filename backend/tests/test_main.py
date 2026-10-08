@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 from app.main import app, startup_db_migrations
 from app.core.schema_patches import EMENDAS_CEAP_DDL
+from app.core.enum_migrations import NOVOS_VALORES_TIPO_PRESENCA
 from unittest.mock import patch, MagicMock
 
 client = TestClient(app)
@@ -19,8 +20,9 @@ def test_startup_db_migrations():
         mock_db = MagicMock()
         mock_session.return_value.__enter__.return_value = mock_db
         startup_db_migrations()
-        assert mock_db.execute.call_count == 5 + len(EMENDAS_CEAP_DDL)
-        mock_db.commit.assert_called_once()
+        assert mock_db.execute.call_count == 5 + len(EMENDAS_CEAP_DDL) + len(NOVOS_VALORES_TIPO_PRESENCA)
+        # um commit para os valores de ENUM (precisam de transação própria) e outro para o DDL
+        assert mock_db.commit.call_count == 2
         
     with patch("app.core.database.SessionLocal") as mock_session:
         # Error case
