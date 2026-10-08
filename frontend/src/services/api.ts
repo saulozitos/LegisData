@@ -1164,6 +1164,7 @@ export interface PropositionNominalVotesSplitResponse {
     autor_nome?: string;
     status: string;
     data_apresentacao: string;
+    url_oficial?: string | null;
   } | null;
   sessao: {
     id: string;
