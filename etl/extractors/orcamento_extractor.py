@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 """
+ATENÇÃO: este módulo NÃO extrai dados — ele MODELA repasses (volume fixo por
+mandato x peso populacional/FPE x pesos fixos por área). A saída é exibida como
+estimativa (`dados_estimados`). Substituir por Tesouro Transparente / Portal da
+Transparência (transferências por UF) é trabalho futuro.
+
 Extrator de Execução Orçamentária e Repasses Federais por Estado (UF)
 Fontes de dados: Portal da Transparência do Governo Federal / Tesouro Nacional (Siga Brasil / SIAFI)
 Áreas temáticas: Saúde, Educação, Infraestrutura e Segurança Pública

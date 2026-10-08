@@ -136,7 +136,10 @@ export default function FederalTransfersPanel({ mandateId }: FederalTransfersPan
               </h2>
             </div>
             <p className="text-xs text-slate-400">
-              Execução orçamentária da União transferida para os 26 Estados e o Distrito Federal nas áreas prioritárias de desenvolvimento.
+              Distribuição estimada de repasses da União para os 26 Estados e o Distrito Federal nas áreas prioritárias.
+            </p>
+            <p className="text-[11px] text-amber-300/90 mt-1">
+              Atenção: valores estimados por modelo (população, FPE e pesos fixos por área). Não são a execução orçamentária oficial.
             </p>
           </div>
 

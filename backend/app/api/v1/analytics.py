@@ -410,6 +410,9 @@ def compare_mandates(
 
     top_uf_m1 = max(by_uf, key=lambda x: x["m1_per_capita"]) if by_uf else None
     top_uf_m2 = max(by_uf, key=lambda x: x["m2_per_capita"]) if by_uf else None
+    # ATENÇÃO: repasses_federais_uf.json é gerado por modelo (OrcamentoExtractor:
+    # volume fixo x peso populacional/FPE x pesos fixos por área), não por execução
+    # orçamentária real. Por isso a resposta leva `dados_estimados: True`.
     termometro_repasses = {
         "m1_lider_per_capita": {
             "uf": top_uf_m1["uf"] if top_uf_m1 else "DF",
@@ -462,6 +465,8 @@ def compare_mandates(
             "delta_estabilidade": round(score_m2["subscore_estabilidade"] - score_m1["subscore_estabilidade"], 1),
         },
         "termometro_repasses_apoio": termometro_repasses,
+        "repasses_dados_estimados": True,
+        "repasses_aviso": "Valores de repasses estimados por modelo (população/FPE e pesos fixos por área); não são a execução orçamentária oficial.",
         "normalized_trajectory": normalized_trajectory,
         "repasses_comparison": {
             "by_area": by_area,
@@ -710,7 +715,7 @@ def get_federal_transfers(
 
     return {
         "mandato_id": mandate_id,
-        "periodo": "Execução Orçamentária Federal",
+        "periodo": "Estimativa por modelo (não é a execução orçamentária oficial)",
         "total_repassado_brl": round(total_brl, 2),
         "areas_resumo": areas_sum,
         "regioes_resumo": regioes_sum,

@@ -1,7 +1,13 @@
 """
 Extrator de Indicadores de Segurança Pública (IPEA / Fórum Brasileiro de Segurança Pública - FBSP)
 Dados históricos oficiais: Atlas da Violência e Anuário Brasileiro de Segurança Pública.
-Série histórica: 1995 a 2026 (Taxa de Homicídios e Taxa de Feminicídios por 100 mil habitantes).
+Série histórica: 1995 a 2024 (Taxa de Homicídios e Taxa de Feminicídios por 100 mil habitantes).
+
+ATENÇÃO: os valores foram digitados manualmente e precisam ser conferidos contra o
+IpeaData / Atlas da Violência (série a série) — ver TODO abaixo. Anos que as fontes
+ainda não publicaram (2025, 2026) foram removidos: eram projeções exibidas como dado.
+Feminicídio só passou a ser tipificado em 2015 (Lei 13.104/2015); valores anteriores
+são estimativas retrospectivas e são marcados como tal na saída.
 """
 
 import json
@@ -58,8 +64,6 @@ class SegurancaExtractor:
             2022: 21.7,
             2023: 20.9,
             2024: 19.4,
-            2025: 18.8,
-            2026: 18.2,
         }
 
         # Feminicídios tipificados a partir da Lei 13.104/2015 (com estimativas históricas retrospectivas de gênero IPEA/FBSP)
@@ -94,8 +98,6 @@ class SegurancaExtractor:
             2022: 1.40,
             2023: 1.42,
             2024: 1.38,
-            2025: 1.34,
-            2026: 1.30,
         }
 
     def get_annual_homicide_rates(self) -> Dict[int, float]:
@@ -121,7 +123,8 @@ class SegurancaExtractor:
                 "ano": ano,
                 "taxa_homicidios": self.homicidios_brasil.get(ano),
                 "taxa_feminicidios": self.feminicidios_brasil.get(ano),
-                "fonte": "IPEA / Atlas da Violência / FBSP"
+                "feminicidio_estimado": ano < 2015,
+                "fonte": "IPEA / Atlas da Violência / FBSP (valores curados manualmente; pendente de conferência)"
             })
 
         df = pd.DataFrame(records)

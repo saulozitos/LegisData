@@ -106,6 +106,8 @@ class StateTransferItem(BaseModel):
 
 
 class FederalTransfersResponse(BaseModel):
+    # Os valores vêm de repasses_federais_uf.json, gerado por modelo (OrcamentoExtractor).
+    dados_estimados: bool = True
     mandato_id: str
     periodo: str
     total_repassado_brl: float
