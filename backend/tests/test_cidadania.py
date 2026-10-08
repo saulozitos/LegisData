@@ -5,7 +5,7 @@ from app.main import app
 client = TestClient(app)
 
 @patch("app.api.v1.cidadania.get_consultas_publicas")
-def test_listar_consultas(mock_get_consultas):
+def test_listar_consultas(mock_get_consultas, monkeypatch):
     mock_get_consultas.return_value = [
         {
             "id_externo": "123",
@@ -46,7 +46,19 @@ def test_listar_consultas(mock_get_consultas):
     assert len(data) == 1
     assert data[0]["casa"] == "Câmara"
 
-    # Test force refresh
+    # force_refresh público foi removido: o parâmetro na URL é ignorado
     response = client.get("/api/v1/cidadania/consultas?force_refresh=true")
     assert response.status_code == 200
+    mock_get_consultas.assert_called_with(force_refresh=False)
+
+    # Sem ADMIN_TOKEN configurado, nem o header força a renovação
+    monkeypatch.delenv("ADMIN_TOKEN", raising=False)
+    client.get("/api/v1/cidadania/consultas", headers={"X-Admin-Token": "qualquer"})
+    mock_get_consultas.assert_called_with(force_refresh=False)
+
+    # Com ADMIN_TOKEN, só o token correto força a renovação
+    monkeypatch.setenv("ADMIN_TOKEN", "token-de-teste")
+    client.get("/api/v1/cidadania/consultas", headers={"X-Admin-Token": "errado"})
+    mock_get_consultas.assert_called_with(force_refresh=False)
+    client.get("/api/v1/cidadania/consultas", headers={"X-Admin-Token": "token-de-teste"})
     mock_get_consultas.assert_called_with(force_refresh=True)
