@@ -25,10 +25,18 @@ ENV INTERNAL_BACKEND_URL=http://backend:8000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
+# Criação de grupo e usuário não-root para execução segura no Alpine
+RUN addgroup -g 1001 -S appuser && \
+    adduser -u 1001 -S appuser -G appuser
+
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
+
+RUN chown -R appuser:appuser /app
+
+USER appuser
 
 EXPOSE 3000
 

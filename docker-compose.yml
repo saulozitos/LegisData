@@ -5,10 +5,11 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-politica_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-politica_secret_123}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}
       POSTGRES_DB: ${POSTGRES_DB:-politica_db}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Exposição estritamente em localhost para auditoria de segurança (evita acesso externo)
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -27,14 +28,14 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-politica_user}:${POSTGRES_PASSWORD:-politica_secret_123}@postgres:5432/${POSTGRES_DB:-politica_db}
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-politica_user}:${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}@postgres:5432/${POSTGRES_DB:-politica_db}
       ENVIRONMENT: ${ENVIRONMENT:-production}
     ports:
-      - "8000:8000"
+      # Restringido estritamente ao loopback local (127.0.0.1)
+      - "127.0.0.1:8000:8000"
     volumes:
-      - ./backend:/app
-      - ./etl/data:/etl_data
-      - ./etl/data:/etl/data
+      # Apenas dados do ETL em modo somente leitura (sem montagem de código do disco)
+      - ./etl/data:/etl_data:ro
 
   frontend:
     build:
@@ -49,7 +50,7 @@ services:
       - INTERNAL_BACKEND_URL=http://backend:8000
       - PORT=3000
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
 
 volumes:
   postgres_data:

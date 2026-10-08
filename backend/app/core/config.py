@@ -1,7 +1,8 @@
 import os
 from pathlib import Path
-from pydantic_settings import BaseSettings
 from typing import List
+
+from pydantic_settings import BaseSettings
 
 
 def get_processed_data_dir() -> Path:
@@ -33,17 +34,31 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "politica_user")
-    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "politica_secret_123")
     POSTGRES_SERVER: str = os.getenv("POSTGRES_SERVER", "localhost")
     POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "politica_db")
-
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL",
-        f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_SERVER}:{POSTGRES_PORT}/{POSTGRES_DB}"
-    )
+    POSTGRES_PASSWORD: str = ""
+    DATABASE_URL: str = ""
 
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        db_url = self.DATABASE_URL or os.getenv("DATABASE_URL")
+        pwd = self.POSTGRES_PASSWORD or os.getenv("POSTGRES_PASSWORD")
+
+        # Falha estrita (crash) para mitigar vulnerabilidade de segurança: nenhuma senha padrão
+        if not db_url and not pwd:
+            raise RuntimeError(
+                "Falha de segurança crítica: Nenhuma senha de banco (POSTGRES_PASSWORD) ou DATABASE_URL foi configurada no ambiente. "
+                "Defina POSTGRES_PASSWORD no arquivo .env para iniciar a aplicação."
+            )
+
+        if not db_url:
+            db_url = f"postgresql://{self.POSTGRES_USER}:{pwd}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+
+        self.POSTGRES_PASSWORD = pwd or ""
+        self.DATABASE_URL = db_url
 
     @property
     def sync_database_url(self) -> str:
@@ -60,7 +75,17 @@ class Settings(BaseSettings):
             url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
         # Em produção (Supabase, Neon, Render), exigir conexões seguras com sslmode=require
-        is_cloud_db = any(host in url for host in ["supabase.co", "neon.tech", "aws", "rds", "railway.app", "render.com"])
+        is_cloud_db = any(
+            host in url
+            for host in [
+                "supabase.co",
+                "neon.tech",
+                "aws",
+                "rds",
+                "railway.app",
+                "render.com",
+            ]
+        )
         if (self.ENVIRONMENT == "production" or is_cloud_db) and "sslmode" not in url:
             sep = "&" if "?" in url else "?"
             url = f"{url}{sep}sslmode=require"
@@ -83,10 +108,12 @@ class Settings(BaseSettings):
                     origins.append(clean)
         return origins
 
+    API_PORT: int = 8000
+
     class Config:
-        env_file = ".env"
+        env_file = (".env", "../.env")
         case_sensitive = True
+        extra = "ignore"
 
 
 settings = Settings()
-

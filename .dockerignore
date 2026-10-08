@@ -1,0 +1,56 @@
+# Git
+.git
+.gitignore
+.github
+.dockerignore
+
+# Environment & Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Python
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Node & Frontend
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database & Local Storage
+postgres_data/
+*.sqlite3
+etl/data/checkpoint_*.json
+
+# Logs & System
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# IDE & AI Assistant
+.gemini*
+.dev*
+scratch/
