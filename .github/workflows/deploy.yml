@@ -13,6 +13,7 @@ jobs:
   deploy:
     name: Deploy to Server
     runs-on: ubuntu-latest
+    if: "${{ secrets.DEPLOY_HOST != '' }}"
 
     steps:
       - name: Checkout Código
