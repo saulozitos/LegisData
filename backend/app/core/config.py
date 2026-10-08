@@ -1,7 +1,14 @@
 import os
+import logging
 from pathlib import Path
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
+
+logger = logging.getLogger(__name__)
+
+# Senha usada SOMENTE como fallback em desenvolvimento local (nunca em produção).
+_DEV_FALLBACK_PASSWORD = "troque-esta-senha"
 
 
 def get_processed_data_dir() -> Path:
@@ -33,17 +40,42 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "politica_user")
-    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "politica_secret_123")
+    # Sem valor padrão: deve vir do ambiente/.env (ou via DATABASE_URL completa).
+    POSTGRES_PASSWORD: Optional[str] = os.getenv("POSTGRES_PASSWORD") or None
     POSTGRES_SERVER: str = os.getenv("POSTGRES_SERVER", "localhost")
     POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "politica_db")
 
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL",
-        f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_SERVER}:{POSTGRES_PORT}/{POSTGRES_DB}"
-    )
+    # Se não definida, é montada a partir das variáveis POSTGRES_* (ver _validar_credenciais_banco).
+    DATABASE_URL: Optional[str] = os.getenv("DATABASE_URL") or None
 
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+
+    @model_validator(mode="after")
+    def _validar_credenciais_banco(self) -> "Settings":
+        """
+        Garante que nenhuma senha padrão seja usada em produção.
+        - production: exige DATABASE_URL ou POSTGRES_PASSWORD; caso contrário, falha na inicialização.
+        - demais ambientes: usa a senha de exemplo do .env.example, emitindo um warning.
+        """
+        if not self.DATABASE_URL:
+            password = self.POSTGRES_PASSWORD
+            if not password:
+                if self.ENVIRONMENT == "production":
+                    raise RuntimeError(
+                        "Configuração inválida: em ENVIRONMENT=production defina DATABASE_URL "
+                        "ou POSTGRES_PASSWORD (não há senha padrão)."
+                    )
+                logger.warning(
+                    "POSTGRES_PASSWORD não definida; usando a senha de exemplo do .env.example "
+                    "(aceitável apenas em desenvolvimento local)."
+                )
+                password = _DEV_FALLBACK_PASSWORD
+            self.DATABASE_URL = (
+                f"postgresql://{self.POSTGRES_USER}:{password}"
+                f"@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            )
+        return self
 
     @property
     def sync_database_url(self) -> str:
