@@ -619,6 +619,8 @@ model DespesaCota {
   cnpjCpfFornecedor   String?   @db.VarChar(30)
   dataEmissao         DateTime? @db.Date
   documentoUrl        String?   @db.Text
+  fonteUrl            String?   @db.Text
+  idDocumentoFonte    String?   @db.VarChar(100)
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
@@ -636,11 +638,17 @@ model EmendaParlamentar {
   politicoId          String    @db.Uuid
   ano                 Int
   codigoEmenda        String?   @db.VarChar(50)
-  tipoEmenda          String    @db.VarChar(50)
+  tipoEmenda          String    @db.VarChar(100)
   valorEmpenhado      Decimal   @db.Decimal(15, 2)
+  valorLiquidado      Decimal?  @db.Decimal(15, 2)
   valorPago           Decimal   @db.Decimal(15, 2)
   localidadeDestino   String    @db.VarChar(150)
+  municipioIbge       String?   @db.VarChar(10)
+  uf                  String?   @db.VarChar(30)
   funcao              String?   @db.VarChar(100)
+  codigoAutorSiafi    String?   @db.VarChar(20)
+  nomeAutorFonte      String?   @db.VarChar(255)
+  fonteUrl            String?   @db.Text
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 

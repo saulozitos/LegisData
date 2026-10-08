@@ -33,6 +33,10 @@ def startup_db_migrations():
             db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "dataEmissao" VARCHAR(50);'))
             db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "linkComprovacao" VARCHAR(500);'))
             db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "codigoAutenticidade" VARCHAR(100);'))
+            # Procedência e campos oficiais de emendas (Portal da Transparência) e CEAP
+            from app.core.schema_patches import EMENDAS_CEAP_DDL
+            for ddl in EMENDAS_CEAP_DDL:
+                db.execute(text(ddl))
             db.execute(text('''
                 CREATE TABLE IF NOT EXISTS processos_judiciais (
                     id UUID PRIMARY KEY,

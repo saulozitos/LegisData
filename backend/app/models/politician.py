@@ -256,6 +256,9 @@ class DespesaCota(TimeStampedModel):
     supplier_cnpj_cpf: Mapped[Optional[str]] = mapped_column("cnpjCpfFornecedor", String(30), nullable=True)
     issue_date: Mapped[Optional[date]] = mapped_column("dataEmissao", Date, nullable=True)
     document_url: Mapped[Optional[str]] = mapped_column("documentoUrl", Text, nullable=True)
+    # Procedência: arquivo/API oficial de onde a linha veio e o id do lançamento nele
+    source_url: Mapped[Optional[str]] = mapped_column("fonteUrl", Text, nullable=True)
+    source_document_id: Mapped[Optional[str]] = mapped_column("idDocumentoFonte", String(100), nullable=True)
 
     politician: Mapped["Politician"] = relationship("Politician", back_populates="despesas_cota")
 
@@ -274,11 +277,20 @@ class EmendaParlamentar(TimeStampedModel):
     politician_id: Mapped[uuid.UUID] = mapped_column("politicoId", UUID(as_uuid=True), ForeignKey("politicos.id", ondelete="CASCADE"), nullable=False, index=True)
     year: Mapped[int] = mapped_column("ano", Integer, nullable=False, index=True)
     amendment_code: Mapped[Optional[str]] = mapped_column("codigoEmenda", String(50), nullable=True)
-    amendment_type: Mapped[str] = mapped_column("tipoEmenda", String(50), nullable=False)
+    # 100: o Portal da Transparência usa rótulos como
+    # "Emenda Individual - Transferências com Finalidade Definida" (58 caracteres)
+    amendment_type: Mapped[str] = mapped_column("tipoEmenda", String(100), nullable=False)
     committed_value: Mapped[Decimal] = mapped_column("valorEmpenhado", Numeric(15, 2), nullable=False)
+    liquidated_value: Mapped[Optional[Decimal]] = mapped_column("valorLiquidado", Numeric(15, 2), nullable=True)
     paid_value: Mapped[Decimal] = mapped_column("valorPago", Numeric(15, 2), nullable=False)
     destination_locality: Mapped[str] = mapped_column("localidadeDestino", String(150), nullable=False)
+    destination_ibge_code: Mapped[Optional[str]] = mapped_column("municipioIbge", String(10), nullable=True)
+    destination_state: Mapped[Optional[str]] = mapped_column("uf", String(30), nullable=True)
     function_area: Mapped[Optional[str]] = mapped_column("funcao", String(100), nullable=True)
+    # Procedência: código/nome do autor como publicado (SIAFI) e arquivo oficial
+    author_siafi_code: Mapped[Optional[str]] = mapped_column("codigoAutorSiafi", String(20), nullable=True)
+    author_name_source: Mapped[Optional[str]] = mapped_column("nomeAutorFonte", String(255), nullable=True)
+    source_url: Mapped[Optional[str]] = mapped_column("fonteUrl", Text, nullable=True)
 
     politician: Mapped["Politician"] = relationship("Politician", back_populates="emendas")
 
