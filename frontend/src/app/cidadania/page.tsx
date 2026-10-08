@@ -449,7 +449,7 @@ export default function CidadaniaPage() {
                         <div className="flex items-center justify-between text-xs">
                           <span className="font-semibold text-slate-300 flex items-center gap-1.5">
                             <Users className="w-3.5 h-3.5 text-purple-400" />
-                            {isAberta ? "Placar Parcial em Tempo Real:" : "Placar Final Apurado:"}
+                            {isAberta ? "Placar parcial (lido do portal oficial):" : "Placar apurado (portal oficial):"}
                           </span>
                           <span className="text-[11px] text-slate-400 font-mono">
                             {(item.total_votos ?? 0).toLocaleString("pt-BR")} votos computados

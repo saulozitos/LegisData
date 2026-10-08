@@ -12,7 +12,9 @@ CACHE_TTL_SECONDS = 3600
 _cache_data: Optional[List[Dict[str, Any]]] = None
 _cache_timestamp: float = 0.0
 
-# Destaques cívicos nacionais com dados oficiais verificados (e-Cidadania e e-Democracia)
+# Destaques curados manualmente (e-Cidadania e e-Democracia).
+# As contagens de votos NÃO são mais digitadas aqui: elas só aparecem quando lidas
+# ao vivo do portal (fetch_senado_consultas). Sem leitura, o placar fica indisponível.
 DESTAQUES_CONSULTAS = [
     # --- CONSULTAS ATIVAS (VOTAÇÃO ABERTA AGORA) ---
     {
@@ -318,8 +320,13 @@ def get_consultas_publicas(force_refresh: bool = False) -> List[Dict[str, Any]]:
     if not force_refresh and _cache_data is not None and (now - _cache_timestamp) < CACHE_TTL_SECONDS:
         return _cache_data
 
-    # 1. Carrega destaques com consultas populares estruturadas
-    destaques = [_calcular_totais_e_percentuais(dict(d)) for d in DESTAQUES_CONSULTAS]
+    # 1. Carrega destaques curados SEM as contagens digitadas à mão
+    destaques = []
+    for d in DESTAQUES_CONSULTAS:
+        item = dict(d)
+        item["votos_sim"] = None
+        item["votos_nao"] = None
+        destaques.append(_calcular_totais_e_percentuais(item))
 
     # 2. Busca consultas em tempo real nas duas casas legislativas
     senado_itens = fetch_senado_consultas(limit=6)
