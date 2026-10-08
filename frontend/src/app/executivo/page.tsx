@@ -478,7 +478,7 @@ export default function ExecutivoDashboard() {
                       <XAxis dataKey="label" stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} interval="preserveStartEnd" />
                       <YAxis yAxisId="left" stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => `R$${v}`} />
                       <YAxis yAxisId="right" orientation="right" stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
-                      <Tooltip {...TOOLTIP_STYLE} formatter={(val, name) => [name.includes("Câmbio") ? `R$ ${(val as number).toFixed(2)}` : `${(val as number).toFixed(2)}%`, name]} />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={(val: any, name: any) => [String(name).includes("Câmbio") ? `R$ ${Number(val || 0).toFixed(2)}` : `${Number(val || 0).toFixed(2)}%`, String(name)]} />
                       <Legend wrapperStyle={{ fontSize: "12px", paddingTop: "8px" }} />
                       <Line yAxisId="left" type="monotone" dataKey="cambio_usd_brl" name="Câmbio USD/BRL" stroke="#38bdf8" strokeWidth={2.5} dot={false} />
                       <Line yAxisId="right" type="monotone" dataKey="selic_meta" name="Selic Meta (%)" stroke="#a78bfa" strokeWidth={2.5} dot={false} strokeDasharray="4 2" />

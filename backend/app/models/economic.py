@@ -1,12 +1,19 @@
+import enum
 import uuid
 from datetime import date
 from decimal import Decimal
 from typing import List, Optional
-import enum
 
 from sqlalchemy import (
-    String, Text, Integer, Numeric, Date,
-    ForeignKey, UniqueConstraint, Index, Enum
+    Date,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -49,8 +56,12 @@ class EconomicIndicatorSeries(TimeStampedModel):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     series_code: Mapped[str] = mapped_column("codigoSerie", String(50), unique=True, nullable=False)
     name: Mapped[str] = mapped_column("nome", String(200), nullable=False)
-    category: Mapped[CategoriaIndicadorEnum] = mapped_column("categoria", Enum(CategoriaIndicadorEnum), nullable=False, index=True)
-    frequency: Mapped[PeriodicidadeIndicadorEnum] = mapped_column("periodicidade", Enum(PeriodicidadeIndicadorEnum), nullable=False)
+    category: Mapped[CategoriaIndicadorEnum] = mapped_column(
+        "categoria", Enum(CategoriaIndicadorEnum), nullable=False, index=True
+    )
+    frequency: Mapped[PeriodicidadeIndicadorEnum] = mapped_column(
+        "periodicidade", Enum(PeriodicidadeIndicadorEnum), nullable=False
+    )
     unit: Mapped[UnidadeMedidaEnum] = mapped_column("unidade", Enum(UnidadeMedidaEnum), nullable=False)
     source_agency: Mapped[str] = mapped_column("orgaoFonte", String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column("descricao", Text, nullable=True)
@@ -64,7 +75,12 @@ class EconomicIndicatorValue(Base):
     __tablename__ = "pontos_dados_indicadores"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    series_id: Mapped[uuid.UUID] = mapped_column("serieId", UUID(as_uuid=True), ForeignKey("series_indicadores.id", ondelete="CASCADE"), nullable=False)
+    series_id: Mapped[uuid.UUID] = mapped_column(
+        "serieId",
+        UUID(as_uuid=True),
+        ForeignKey("series_indicadores.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     reference_date: Mapped[date] = mapped_column("dataReferencia", Date, nullable=False)
     reference_year: Mapped[int] = mapped_column("ano", Integer, nullable=False)
     reference_month: Mapped[Optional[int]] = mapped_column("mes", Integer, nullable=True)
@@ -93,25 +109,43 @@ class AnnualMacroeconomicSummary(TimeStampedModel):
     gdp_per_capita_brl: Mapped[Optional[Decimal]] = mapped_column("pibPerCapitaBrl", Numeric(12, 2), nullable=True)
     selic_average_year: Mapped[Optional[Decimal]] = mapped_column("selicMediaAno", Numeric(6, 2), nullable=True)
     usd_brl_average: Mapped[Optional[Decimal]] = mapped_column("cambioDolarMedioBrl", Numeric(18, 4), nullable=True)
-    basic_basket_avg_brl: Mapped[Optional[Decimal]] = mapped_column("cestaBasicaMediaBrl", Numeric(10, 2), nullable=True)
+    basic_basket_avg_brl: Mapped[Optional[Decimal]] = mapped_column(
+        "cestaBasicaMediaBrl", Numeric(10, 2), nullable=True
+    )
     gasoline_avg_brl: Mapped[Optional[Decimal]] = mapped_column("gasolinaPrecoMedioBrl", Numeric(8, 3), nullable=True)
     beef_avg_brl: Mapped[Optional[Decimal]] = mapped_column("carneBovinaPrecoMedioBrl", Numeric(8, 2), nullable=True)
     net_debt_pct_gdp: Mapped[Optional[Decimal]] = mapped_column("dividaLiquidaPctPib", Numeric(6, 2), nullable=True)
     unemployment_avg: Mapped[Optional[Decimal]] = mapped_column("desempregoMedio", Numeric(5, 2), nullable=True)
-    minimum_wage_nominal_brl: Mapped[Optional[Decimal]] = mapped_column("salarioMinimoNominalBrl", Numeric(10, 2), nullable=True)
-    dominant_president_name: Mapped[Optional[str]] = mapped_column("presidenteDominanteNome", String(150), nullable=True)
+    minimum_wage_nominal_brl: Mapped[Optional[Decimal]] = mapped_column(
+        "salarioMinimoNominalBrl", Numeric(10, 2), nullable=True
+    )
+    dominant_president_name: Mapped[Optional[str]] = mapped_column(
+        "presidenteDominanteNome", String(150), nullable=True
+    )
     ibovespa_close: Mapped[Optional[Decimal]] = mapped_column("ibovespaFechamentoAno", Numeric(12, 2), nullable=True)
 
     # Indicadores Socioambientais e Macroeconômicos Expandidos
-    crescimento_pib_percentual: Mapped[Optional[Decimal]] = mapped_column("crescimentoPibPercentual", Numeric(6, 2), nullable=True)
+    crescimento_pib_percentual: Mapped[Optional[Decimal]] = mapped_column(
+        "crescimentoPibPercentual", Numeric(6, 2), nullable=True
+    )
     inflacao_anual_ipca: Mapped[Optional[Decimal]] = mapped_column("inflacaoAnualIpca", Numeric(14, 4), nullable=True)
-    inflacao_acumulada_mandato: Mapped[Optional[Decimal]] = mapped_column("inflacaoAcumuladaMandato", Numeric(14, 4), nullable=True)
-    taxa_desemprego_anual: Mapped[Optional[Decimal]] = mapped_column("taxaDesempregoAnual", Numeric(5, 2), nullable=True)
-    taxa_desmatamento_amazonia: Mapped[Optional[Decimal]] = mapped_column("taxaDesmatamentoAmazonia", Numeric(10, 2), nullable=True)
-    inseguranca_alimentar_pct: Mapped[Optional[Decimal]] = mapped_column("insegurancaAlimentarPct", Numeric(5, 2), nullable=True)
+    inflacao_acumulada_mandato: Mapped[Optional[Decimal]] = mapped_column(
+        "inflacaoAcumuladaMandato", Numeric(14, 4), nullable=True
+    )
+    taxa_desemprego_anual: Mapped[Optional[Decimal]] = mapped_column(
+        "taxaDesempregoAnual", Numeric(5, 2), nullable=True
+    )
+    taxa_desmatamento_amazonia: Mapped[Optional[Decimal]] = mapped_column(
+        "taxaDesmatamentoAmazonia", Numeric(10, 2), nullable=True
+    )
+    inseguranca_alimentar_pct: Mapped[Optional[Decimal]] = mapped_column(
+        "insegurancaAlimentarPct", Numeric(5, 2), nullable=True
+    )
 
     # Indicadores Expandidos de Câmbio, Renda e Segurança Pública
-    cotacao_dolar_fechamento: Mapped[Optional[Decimal]] = mapped_column("cotacaoDolarFechamento", Numeric(12, 4), nullable=True)
+    cotacao_dolar_fechamento: Mapped[Optional[Decimal]] = mapped_column(
+        "cotacaoDolarFechamento", Numeric(12, 4), nullable=True
+    )
     salario_minimo: Mapped[Optional[Decimal]] = mapped_column("salarioMinimo", Numeric(10, 2), nullable=True)
     taxa_homicidios: Mapped[Optional[Decimal]] = mapped_column("taxaHomicidios", Numeric(6, 2), nullable=True)
     taxa_feminicidios: Mapped[Optional[Decimal]] = mapped_column("taxaFeminicidios", Numeric(6, 2), nullable=True)
@@ -123,12 +157,22 @@ class AnnualSocialIndicator(TimeStampedModel):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     year: Mapped[int] = mapped_column("ano", Integer, unique=True, nullable=False, index=True)
     illiteracy_rate_pct: Mapped[Optional[Decimal]] = mapped_column("taxaAnalfabetismoPct", Numeric(5, 2), nullable=True)
-    extreme_poverty_pct: Mapped[Optional[Decimal]] = mapped_column("populacaoExtremaPobrezaPct", Numeric(5, 2), nullable=True)
-    extreme_poverty_millions: Mapped[Optional[Decimal]] = mapped_column("populacaoExtremaPobrezaMilhoes", Numeric(6, 2), nullable=True)
-    food_insecurity_pct: Mapped[Optional[Decimal]] = mapped_column("populacaoInsegurancaAlimentarPct", Numeric(5, 2), nullable=True)
-    food_insecurity_millions: Mapped[Optional[Decimal]] = mapped_column("populacaoInsegurancaAlimentarMilhoes", Numeric(6, 2), nullable=True)
+    extreme_poverty_pct: Mapped[Optional[Decimal]] = mapped_column(
+        "populacaoExtremaPobrezaPct", Numeric(5, 2), nullable=True
+    )
+    extreme_poverty_millions: Mapped[Optional[Decimal]] = mapped_column(
+        "populacaoExtremaPobrezaMilhoes", Numeric(6, 2), nullable=True
+    )
+    food_insecurity_pct: Mapped[Optional[Decimal]] = mapped_column(
+        "populacaoInsegurancaAlimentarPct", Numeric(5, 2), nullable=True
+    )
+    food_insecurity_millions: Mapped[Optional[Decimal]] = mapped_column(
+        "populacaoInsegurancaAlimentarMilhoes", Numeric(6, 2), nullable=True
+    )
     gini_index: Mapped[Optional[Decimal]] = mapped_column("indiceGini", Numeric(5, 3), nullable=True)
-    data_source: Mapped[str] = mapped_column("fonteDados", String(100), default="IBGE / IPEA / FAO / Penssan", nullable=False)
+    data_source: Mapped[str] = mapped_column(
+        "fonteDados", String(100), default="IBGE / IPEA / FAO / Penssan", nullable=False
+    )
 
 
 class StateSocialIndicator(TimeStampedModel):
@@ -141,7 +185,9 @@ class StateSocialIndicator(TimeStampedModel):
     region: Mapped[str] = mapped_column("regiao", String(30), nullable=False)
     illiteracy_rate_pct: Mapped[Optional[Decimal]] = mapped_column("taxaAnalfabetismoPct", Numeric(5, 2), nullable=True)
     extreme_poverty_pct: Mapped[Optional[Decimal]] = mapped_column("extremaPobrezaPct", Numeric(5, 2), nullable=True)
-    food_insecurity_pct: Mapped[Optional[Decimal]] = mapped_column("insegurancaAlimentarPct", Numeric(5, 2), nullable=True)
+    food_insecurity_pct: Mapped[Optional[Decimal]] = mapped_column(
+        "insegurancaAlimentarPct", Numeric(5, 2), nullable=True
+    )
     gini_index: Mapped[Optional[Decimal]] = mapped_column("indiceGini", Numeric(5, 3), nullable=True)
 
     __table_args__ = (

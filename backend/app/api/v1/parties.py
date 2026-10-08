@@ -1,14 +1,10 @@
-import uuid
-from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, or_
+from typing import Any, Dict, List
 
 from app.core.database import get_db
-from app.models import (
-    PoliticalParty, Mandate, PartyAffiliation,
-    CargoPoliticoEnum, EspectroPoliticoEnum
-)
+from app.models import CargoPoliticoEnum, Mandate, PartyAffiliation, PoliticalParty
+from fastapi import APIRouter, Depends
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 
@@ -79,22 +75,27 @@ def list_parties(db: Session = Depends(get_db)):
         cor = PARTY_COLORS.get(sigla_upper, "#64748b")
         espectro = p.political_spectrum.value if p.political_spectrum else "CENTRO"
 
-        result.append({
-            "id": str(p.id),
-            "sigla": p.acronym,
-            "nome_completo": p.full_name,
-            "numero_eleitoral": p.electoral_number,
-            "espectro_politico": espectro,
-            "ideologia": p.ideology or "Centrismo Democrático",
-            "lema": p.motto or "Pelo desenvolvimento e equilíbrio nacional",
-            "logo_url": p.logo_url,
-            "total_deputados": total_dep,
-            "total_senadores": total_sen,
-            "total_parlamentares": total_parl,
-            "total_filiados_ativos": total_fil,
-            "cor_hex": cor,
-        })
+        result.append(
+            {
+                "id": str(p.id),
+                "sigla": p.acronym,
+                "nome_completo": p.full_name,
+                "numero_eleitoral": p.electoral_number,
+                "espectro_politico": espectro,
+                "ideologia": p.ideology or "Centrismo Democrático",
+                "lema": p.motto or "Pelo desenvolvimento e equilíbrio nacional",
+                "logo_url": p.logo_url,
+                "total_deputados": total_dep,
+                "total_senadores": total_sen,
+                "total_parlamentares": total_parl,
+                "total_filiados_ativos": total_fil,
+                "cor_hex": cor,
+            }
+        )
 
     # Ordenar por bancada parlamentar (maiores primeiro) e depois por número eleitoral
-    result.sort(key=lambda x: (x["total_parlamentares"], x["total_filiados_ativos"]), reverse=True)
+    result.sort(
+        key=lambda x: (x["total_parlamentares"], x["total_filiados_ativos"]),
+        reverse=True,
+    )
     return result

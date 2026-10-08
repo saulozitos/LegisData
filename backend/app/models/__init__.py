@@ -1,25 +1,50 @@
-from .base import Base, TimeStampedModel
-from .executivo import PresidentialMandate, MandateIndicator
-from .politician import (
-    Politician, PoliticalParty, PartyAffiliation, Mandate,
-    CabinetMember, PoliticianRemuneration, PoliticianAssetDeclaration,
-    DespesaCota, EmendaParlamentar, CertidaoJudicial, DoacaoCampanha,
-    ProcessoJudicial,
-    CargoPoliticoEnum, TipoEsferaEnum, StatusMandatoEnum, MotivoDesfiliacaoEnum,
-    EspectroPoliticoEnum
-)
-from .legislative import (
-    Proposition, VotingSession, ParliamentaryVote, AttendanceRecord,
-    TipoProposicaoEnum, StatusTramitacaoEnum, CasaLegislativaEnum,
-    VotoOpcaoEnum, TipoPresencaEnum
-)
-from .economic import (
-    EconomicIndicatorSeries, EconomicIndicatorValue, AnnualMacroeconomicSummary,
-    CategoriaIndicadorEnum, PeriodicidadeIndicadorEnum, UnidadeMedidaEnum,
-    AnnualSocialIndicator, StateSocialIndicator, StatePresidentialElectionResult
-)
 from .analytics import (
-    MandateEconomicPerformance, PolicyEconomicImpact, FederalTransferByState
+    FederalTransferByState,
+    MandateEconomicPerformance,
+    PolicyEconomicImpact,
+)
+from .base import Base, TimeStampedModel
+from .economic import (
+    AnnualMacroeconomicSummary,
+    AnnualSocialIndicator,
+    CategoriaIndicadorEnum,
+    EconomicIndicatorSeries,
+    EconomicIndicatorValue,
+    PeriodicidadeIndicadorEnum,
+    StatePresidentialElectionResult,
+    StateSocialIndicator,
+    UnidadeMedidaEnum,
+)
+from .executivo import MandateIndicator, PresidentialMandate
+from .legislative import (
+    AttendanceRecord,
+    CasaLegislativaEnum,
+    ParliamentaryVote,
+    Proposition,
+    StatusTramitacaoEnum,
+    TipoPresencaEnum,
+    TipoProposicaoEnum,
+    VotingSession,
+    VotoOpcaoEnum,
+)
+from .politician import (
+    CabinetMember,
+    CargoPoliticoEnum,
+    CertidaoJudicial,
+    DespesaCota,
+    DoacaoCampanha,
+    EmendaParlamentar,
+    EspectroPoliticoEnum,
+    Mandate,
+    MotivoDesfiliacaoEnum,
+    PartyAffiliation,
+    PoliticalParty,
+    Politician,
+    PoliticianAssetDeclaration,
+    PoliticianRemuneration,
+    ProcessoJudicial,
+    StatusMandatoEnum,
+    TipoEsferaEnum,
 )
 
 __all__ = [

@@ -1,0 +1,36 @@
+[tool.black]
+line-length = 120
+target-version = ["py311"]
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | venv
+  | \.next
+  | node_modules
+  | etl/data
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 120
+skip = [".venv", "venv", ".next", "node_modules", "etl/data"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+explicit_package_bases = true
+follow_imports = "silent"
+disable_error_code = [
+    "var-annotated",
+    "name-defined",
+    "operator",
+    "index",
+    "arg-type",
+    "attr-defined",
+    "union-attr",
+    "assignment",
+    "return-value"
+]
+exclude = ["venv", "\\.venv", "node_modules", "\\.next", "etl/data"]

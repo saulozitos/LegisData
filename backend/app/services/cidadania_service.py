@@ -1,7 +1,8 @@
-import time
 import logging
 import re
-from typing import List, Dict, Any, Optional
+import time
+from typing import Any, Dict, List, Optional
+
 import requests
 
 logger = logging.getLogger("cidadania_service")
@@ -28,7 +29,7 @@ DESTAQUES_CONSULTAS = [
         "tema": "Tributação & Defesa",
         "status": "Votação Popular Aberta Agora",
         "autor": "Senado Federal",
-        "destaque": True
+        "destaque": True,
     },
     {
         "id_externo": "174362",
@@ -43,7 +44,7 @@ DESTAQUES_CONSULTAS = [
         "tema": "Trabalho & Direitos",
         "status": "Votação Popular Aberta Agora",
         "autor": "Senado Federal",
-        "destaque": True
+        "destaque": True,
     },
     {
         "id_externo": "170300",
@@ -58,7 +59,7 @@ DESTAQUES_CONSULTAS = [
         "tema": "Direitos & Sociedade",
         "status": "Votação Popular Aberta Agora",
         "autor": "Senado Federal",
-        "destaque": True
+        "destaque": True,
     },
     {
         "id_externo": "2435000",
@@ -73,7 +74,7 @@ DESTAQUES_CONSULTAS = [
         "tema": "Trabalho & Economia",
         "status": "Votação Popular Aberta Agora",
         "autor": "Deputada Erika Hilton (PSOL/SP) e bancadas",
-        "destaque": True
+        "destaque": True,
     },
     # --- CONSULTAS HISTÓRICAS CONCLUÍDAS / PROMULGADAS ---
     {
@@ -89,7 +90,7 @@ DESTAQUES_CONSULTAS = [
         "tema": "Tecnologia & Direitos",
         "status": "Consulta Encerrada — Em Tramitação no Senado",
         "autor": "Senador Rodrigo Pacheco (PSD/MG)",
-        "destaque": True
+        "destaque": True,
     },
     {
         "id_externo": "2192459",
@@ -104,7 +105,7 @@ DESTAQUES_CONSULTAS = [
         "tema": "Economia & Tributação",
         "status": "Consulta Concluída (Promulgada como EC 132/2023)",
         "autor": "Deputado Baleia Rossi (MDB/SP)",
-        "destaque": True
+        "destaque": True,
     },
     {
         "id_externo": "142498",
@@ -119,7 +120,7 @@ DESTAQUES_CONSULTAS = [
         "tema": "Comunicação & Cidadania",
         "status": "Consulta Encerrada — Aguardando Deliberação",
         "autor": "Senador Alessandro Vieira (MDB/SE)",
-        "destaque": True
+        "destaque": True,
     },
     {
         "id_externo": "153922",
@@ -134,8 +135,8 @@ DESTAQUES_CONSULTAS = [
         "tema": "Poder Judiciário & Instituições",
         "status": "Consulta Encerrada — Em Tramitação na Câmara",
         "autor": "Senador Oriovisto Guimarães (PODEMOS/PR)",
-        "destaque": False
-    }
+        "destaque": False,
+    },
 ]
 
 
@@ -163,7 +164,7 @@ def fetch_senado_consultas(limit: int = 6) -> List[Dict[str, Any]]:
     """
     headers = {
         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     }
     resultados = []
 
@@ -172,9 +173,9 @@ def fetch_senado_consultas(limit: int = 6) -> List[Dict[str, Any]]:
         response = requests.get(url_principal, headers=headers, timeout=6)
         if response.status_code == 200:
             pattern = (
-                r'<div class=[\"\']col-sm-12 resumo-materia[\"\']>[\s\S]*?'
-                r'<header>[\s\S]*?<a href=[\"\']visualizacaomateria\?id=(\d+)[\"\'][^>]*>(.*?)</a>[\s\S]*?</header>[\s\S]*?'
-                r'<section>[\s\S]*?<a[^>]*>(.*?)</a>'
+                r"<div class=[\"\']col-sm-12 resumo-materia[\"\']>[\s\S]*?"
+                r"<header>[\s\S]*?<a href=[\"\']visualizacaomateria\?id=(\d+)[\"\'][^>]*>(.*?)</a>[\s\S]*?</header>[\s\S]*?"
+                r"<section>[\s\S]*?<a[^>]*>(.*?)</a>"
             )
             matches = re.findall(pattern, response.text)
             for m_id, sigla, ementa in matches[:limit]:
@@ -190,8 +191,14 @@ def fetch_senado_consultas(limit: int = 6) -> List[Dict[str, Any]]:
                     v_url = f"https://www12.senado.leg.br/ecidadania/visualizacaomateria?id={m_id}"
                     vr = requests.get(v_url, headers=headers, timeout=4)
                     if vr.status_code == 200:
-                        fav_m = re.search(r'class=[\"\']contabilizacao-favor[\"\']>([\d\.]+)<', vr.text)
-                        contra_m = re.search(r'class=[\"\']contabilizacao-contra[\"\']>([\d\.]+)<', vr.text)
+                        fav_m = re.search(
+                            r"class=[\"\']contabilizacao-favor[\"\']>([\d\.]+)<",
+                            vr.text,
+                        )
+                        contra_m = re.search(
+                            r"class=[\"\']contabilizacao-contra[\"\']>([\d\.]+)<",
+                            vr.text,
+                        )
                         if fav_m:
                             votos_sim = int(fav_m.group(1).replace(".", ""))
                         if contra_m:
@@ -213,7 +220,7 @@ def fetch_senado_consultas(limit: int = 6) -> List[Dict[str, Any]]:
                     "status": "Votação Popular Aberta Agora",
                     "autor": "Senado Federal",
                     "data_apresentacao": None,
-                    "destaque": True
+                    "destaque": True,
                 }
                 resultados.append(_calcular_totais_e_percentuais(item))
     except Exception as e:
@@ -225,7 +232,7 @@ def fetch_senado_consultas(limit: int = 6) -> List[Dict[str, Any]]:
             url_api = "https://legis.senado.leg.br/dadosabertos/materia/pesquisa/lista?ano=2024&sigla=PL"
             api_headers = {
                 "Accept": "application/json",
-                "User-Agent": "LegisDataBot/1.0 (https://legisdata.org - Transparência Pública)"
+                "User-Agent": "LegisDataBot/1.0 (https://legisdata.org - Transparência Pública)",
             }
             resp_api = requests.get(url_api, headers=api_headers, timeout=4)
             if resp_api.status_code == 200:
@@ -254,7 +261,7 @@ def fetch_senado_consultas(limit: int = 6) -> List[Dict[str, Any]]:
                         "status": "Em Tramitação Legislativa no Senado",
                         "autor": m.get("Autor"),
                         "data_apresentacao": m.get("Data"),
-                        "destaque": False
+                        "destaque": False,
                     }
                     resultados.append(_calcular_totais_e_percentuais(item))
         except Exception as e:
@@ -271,7 +278,7 @@ def fetch_camara_consultas(limit: int = 6) -> List[Dict[str, Any]]:
     url = f"https://dadosabertos.camara.leg.br/api/v2/proposicoes?siglaTipo=PL,PEC&ordem=DESC&ordenarPor=ano&itens={limit}"
     headers = {
         "Accept": "application/json",
-        "User-Agent": "LegisDataBot/1.0 (https://legisdata.org - Transparência Pública)"
+        "User-Agent": "LegisDataBot/1.0 (https://legisdata.org - Transparência Pública)",
     }
     resultados = []
     try:
@@ -298,8 +305,8 @@ def fetch_camara_consultas(limit: int = 6) -> List[Dict[str, Any]]:
                     "tema": "Câmara dos Deputados",
                     "status": "Em Discussão no Plenário / Comissões",
                     "autor": None,
-                    "data_apresentacao": p.get("dataApresentacao", "")[:10] if p.get("dataApresentacao") else None,
-                    "destaque": False
+                    "data_apresentacao": (p.get("dataApresentacao", "")[:10] if p.get("dataApresentacao") else None),
+                    "destaque": False,
                 }
                 resultados.append(_calcular_totais_e_percentuais(item))
     except Exception as e:

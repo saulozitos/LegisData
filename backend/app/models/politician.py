@@ -1,12 +1,21 @@
+import enum
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional
-import enum
 
 from sqlalchemy import (
-    String, Text, Integer, Numeric, Date, Boolean,
-    ForeignKey, UniqueConstraint, Index, JSON, Enum
+    JSON,
+    Boolean,
+    Date,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -79,21 +88,41 @@ class Politician(TimeStampedModel):
     cabinet_room: Mapped[Optional[str]] = mapped_column("gabineteSala", String(100), nullable=True)
     cabinet_phone: Mapped[Optional[str]] = mapped_column("gabineteTelefone", String(50), nullable=True)
     social_links: Mapped[Optional[dict]] = mapped_column("redesSociais", JSON, nullable=True)
-    possui_processos_declarados: Mapped[bool] = mapped_column("possuiProcessosDeclarados", Boolean, default=False, nullable=False)
+    possui_processos_declarados: Mapped[bool] = mapped_column(
+        "possuiProcessosDeclarados", Boolean, default=False, nullable=False
+    )
 
     # Relationships
-    affiliations: Mapped[List["PartyAffiliation"]] = relationship(back_populates="politician", cascade="all, delete-orphan")
+    affiliations: Mapped[List["PartyAffiliation"]] = relationship(
+        back_populates="politician", cascade="all, delete-orphan"
+    )
     mandates: Mapped[List["Mandate"]] = relationship(back_populates="politician", cascade="all, delete-orphan")
-    remunerations: Mapped[List["PoliticianRemuneration"]] = relationship(back_populates="politician", cascade="all, delete-orphan")
+    remunerations: Mapped[List["PoliticianRemuneration"]] = relationship(
+        back_populates="politician", cascade="all, delete-orphan"
+    )
     propositions: Mapped[List["Proposition"]] = relationship("Proposition", back_populates="author_politician")
     votes: Mapped[List["ParliamentaryVote"]] = relationship("ParliamentaryVote", back_populates="politician")
     attendances: Mapped[List["AttendanceRecord"]] = relationship("AttendanceRecord", back_populates="politician")
-    asset_declarations: Mapped[List["PoliticianAssetDeclaration"]] = relationship("PoliticianAssetDeclaration", back_populates="politician", cascade="all, delete-orphan")
-    despesas_cota: Mapped[List["DespesaCota"]] = relationship("DespesaCota", back_populates="politician", cascade="all, delete-orphan")
-    emendas: Mapped[List["EmendaParlamentar"]] = relationship("EmendaParlamentar", back_populates="politician", cascade="all, delete-orphan")
-    certidoes_judiciais: Mapped[List["CertidaoJudicial"]] = relationship("CertidaoJudicial", back_populates="politician", cascade="all, delete-orphan")
-    doacoes_campanha: Mapped[List["DoacaoCampanha"]] = relationship("DoacaoCampanha", back_populates="politician", cascade="all, delete-orphan")
-    processos_judiciais: Mapped[List["ProcessoJudicial"]] = relationship("ProcessoJudicial", back_populates="politician", cascade="all, delete-orphan")
+    asset_declarations: Mapped[List["PoliticianAssetDeclaration"]] = relationship(
+        "PoliticianAssetDeclaration",
+        back_populates="politician",
+        cascade="all, delete-orphan",
+    )
+    despesas_cota: Mapped[List["DespesaCota"]] = relationship(
+        "DespesaCota", back_populates="politician", cascade="all, delete-orphan"
+    )
+    emendas: Mapped[List["EmendaParlamentar"]] = relationship(
+        "EmendaParlamentar", back_populates="politician", cascade="all, delete-orphan"
+    )
+    certidoes_judiciais: Mapped[List["CertidaoJudicial"]] = relationship(
+        "CertidaoJudicial", back_populates="politician", cascade="all, delete-orphan"
+    )
+    doacoes_campanha: Mapped[List["DoacaoCampanha"]] = relationship(
+        "DoacaoCampanha", back_populates="politician", cascade="all, delete-orphan"
+    )
+    processos_judiciais: Mapped[List["ProcessoJudicial"]] = relationship(
+        "ProcessoJudicial", back_populates="politician", cascade="all, delete-orphan"
+    )
 
 
 class PoliticalParty(TimeStampedModel):
@@ -106,7 +135,10 @@ class PoliticalParty(TimeStampedModel):
     foundation_date: Mapped[Optional[date]] = mapped_column("dataFundacao", Date, nullable=True)
     dissolution_date: Mapped[Optional[date]] = mapped_column("dataExtincao", Date, nullable=True)
     successor_party_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        "partidoSucessorId", UUID(as_uuid=True), ForeignKey("partidos_politicos.id"), nullable=True
+        "partidoSucessorId",
+        UUID(as_uuid=True),
+        ForeignKey("partidos_politicos.id"),
+        nullable=True,
     )
     logo_url: Mapped[Optional[str]] = mapped_column("logoUrl", Text, nullable=True)
     political_spectrum: Mapped[Optional[EspectroPoliticoEnum]] = mapped_column(
@@ -127,8 +159,18 @@ class PartyAffiliation(Base):
     __tablename__ = "filiacoes_partidarias"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    politician_id: Mapped[uuid.UUID] = mapped_column("politicoId", UUID(as_uuid=True), ForeignKey("politicos.id", ondelete="CASCADE"), nullable=False)
-    party_id: Mapped[uuid.UUID] = mapped_column("partidoId", UUID(as_uuid=True), ForeignKey("partidos_politicos.id"), nullable=False)
+    politician_id: Mapped[uuid.UUID] = mapped_column(
+        "politicoId",
+        UUID(as_uuid=True),
+        ForeignKey("politicos.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    party_id: Mapped[uuid.UUID] = mapped_column(
+        "partidoId",
+        UUID(as_uuid=True),
+        ForeignKey("partidos_politicos.id"),
+        nullable=False,
+    )
     start_date: Mapped[date] = mapped_column("dataFiliacao", Date, nullable=False)
     end_date: Mapped[Optional[date]] = mapped_column("dataDesfiliacao", Date, nullable=True)
     is_current: Mapped[bool] = mapped_column("isAtual", Boolean, default=False, nullable=False)
@@ -153,16 +195,35 @@ class Mandate(TimeStampedModel):
     __tablename__ = "mandatos"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    politician_id: Mapped[uuid.UUID] = mapped_column("politicoId", UUID(as_uuid=True), ForeignKey("politicos.id", ondelete="CASCADE"), nullable=False, index=True)
-    party_id: Mapped[uuid.UUID] = mapped_column("partidoId", UUID(as_uuid=True), ForeignKey("partidos_politicos.id"), nullable=False, index=True)
+    politician_id: Mapped[uuid.UUID] = mapped_column(
+        "politicoId",
+        UUID(as_uuid=True),
+        ForeignKey("politicos.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    party_id: Mapped[uuid.UUID] = mapped_column(
+        "partidoId",
+        UUID(as_uuid=True),
+        ForeignKey("partidos_politicos.id"),
+        nullable=False,
+        index=True,
+    )
     office: Mapped[CargoPoliticoEnum] = mapped_column("cargo", Enum(CargoPoliticoEnum), nullable=False)
-    sphere: Mapped[TipoEsferaEnum] = mapped_column("esfera", Enum(TipoEsferaEnum), default=TipoEsferaEnum.FEDERAL, nullable=False)
+    sphere: Mapped[TipoEsferaEnum] = mapped_column(
+        "esfera", Enum(TipoEsferaEnum), default=TipoEsferaEnum.FEDERAL, nullable=False
+    )
     jurisdiction_state: Mapped[str] = mapped_column("ufJurisdicao", String(2), default="BR", nullable=False)
     election_year: Mapped[int] = mapped_column("anoEleicao", Integer, nullable=False, index=True)
     term_number: Mapped[int] = mapped_column("numeroMandato", Integer, default=1, nullable=False)
     start_date: Mapped[date] = mapped_column("dataInicio", Date, nullable=False)
     end_date: Mapped[Optional[date]] = mapped_column("dataFim", Date, nullable=True)
-    status: Mapped[StatusMandatoEnum] = mapped_column("status", Enum(StatusMandatoEnum), default=StatusMandatoEnum.TITULAR_ATIVO, nullable=False)
+    status: Mapped[StatusMandatoEnum] = mapped_column(
+        "status",
+        Enum(StatusMandatoEnum),
+        default=StatusMandatoEnum.TITULAR_ATIVO,
+        nullable=False,
+    )
     coalition_name: Mapped[Optional[str]] = mapped_column("coligacaoNome", String(255), nullable=True)
     total_votes: Mapped[Optional[int]] = mapped_column("totalVotos", Integer, nullable=True)
     vote_percentage: Mapped[Optional[Decimal]] = mapped_column("percentualVotos", Numeric(5, 2), nullable=True)
@@ -170,9 +231,13 @@ class Mandate(TimeStampedModel):
     # Relationships
     politician: Mapped["Politician"] = relationship(back_populates="mandates")
     party: Mapped["PoliticalParty"] = relationship(back_populates="mandates")
-    remunerations: Mapped[List["PoliticianRemuneration"]] = relationship(back_populates="mandate", cascade="all, delete-orphan")
+    remunerations: Mapped[List["PoliticianRemuneration"]] = relationship(
+        back_populates="mandate", cascade="all, delete-orphan"
+    )
     attendances: Mapped[List["AttendanceRecord"]] = relationship("AttendanceRecord", back_populates="mandate")
-    cabinet_members: Mapped[List["CabinetMember"]] = relationship(back_populates="mandate", cascade="all, delete-orphan")
+    cabinet_members: Mapped[List["CabinetMember"]] = relationship(
+        back_populates="mandate", cascade="all, delete-orphan"
+    )
     economic_performance: Mapped[Optional["MandateEconomicPerformance"]] = relationship(
         "MandateEconomicPerformance", back_populates="mandate", uselist=False
     )
@@ -190,8 +255,15 @@ class CabinetMember(Base):
     __tablename__ = "membros_gabinete"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    mandate_id: Mapped[uuid.UUID] = mapped_column("mandatoId", UUID(as_uuid=True), ForeignKey("mandatos.id", ondelete="CASCADE"), nullable=False)
-    politician_id: Mapped[Optional[uuid.UUID]] = mapped_column("politicoId", UUID(as_uuid=True), ForeignKey("politicos.id"), nullable=True)
+    mandate_id: Mapped[uuid.UUID] = mapped_column(
+        "mandatoId",
+        UUID(as_uuid=True),
+        ForeignKey("mandatos.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    politician_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        "politicoId", UUID(as_uuid=True), ForeignKey("politicos.id"), nullable=True
+    )
     occupant_name: Mapped[str] = mapped_column("nomeOcupante", String(255), nullable=False)
     ministry_name: Mapped[str] = mapped_column("ministerioNome", String(200), nullable=False)
     inauguration_date: Mapped[date] = mapped_column("dataPosse", Date, nullable=False)
@@ -205,13 +277,26 @@ class PoliticianRemuneration(Base):
     __tablename__ = "remuneracoes_politicos"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    politician_id: Mapped[uuid.UUID] = mapped_column("politicoId", UUID(as_uuid=True), ForeignKey("politicos.id", ondelete="CASCADE"), nullable=False, index=True)
-    mandate_id: Mapped[uuid.UUID] = mapped_column("mandatoId", UUID(as_uuid=True), ForeignKey("mandatos.id", ondelete="CASCADE"), nullable=False)
+    politician_id: Mapped[uuid.UUID] = mapped_column(
+        "politicoId",
+        UUID(as_uuid=True),
+        ForeignKey("politicos.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    mandate_id: Mapped[uuid.UUID] = mapped_column(
+        "mandatoId",
+        UUID(as_uuid=True),
+        ForeignKey("mandatos.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     reference_year: Mapped[int] = mapped_column("anoReferencia", Integer, nullable=False, index=True)
     reference_month: Mapped[int] = mapped_column("mesReferencia", Integer, nullable=False)
     gross_salary: Mapped[Decimal] = mapped_column("salarioBruto", Numeric(12, 2), nullable=False)
     net_salary: Mapped[Decimal] = mapped_column("salarioLiquido", Numeric(12, 2), nullable=False)
-    parliamentary_quota_ceap: Mapped[Decimal] = mapped_column("cotaParlamentarCeap", Numeric(12, 2), default=0.00, nullable=False)
+    parliamentary_quota_ceap: Mapped[Decimal] = mapped_column(
+        "cotaParlamentarCeap", Numeric(12, 2), default=0.00, nullable=False
+    )
     housing_allowance: Mapped[Decimal] = mapped_column("auxilioMoradia", Numeric(12, 2), default=0.00, nullable=False)
     other_benefits: Mapped[Decimal] = mapped_column("outrosBeneficios", Numeric(12, 2), default=0.00, nullable=False)
     data_source: Mapped[str] = mapped_column("fonteDados", String(100), nullable=False)
@@ -221,7 +306,12 @@ class PoliticianRemuneration(Base):
     mandate: Mapped["Mandate"] = relationship(back_populates="remunerations")
 
     __table_args__ = (
-        UniqueConstraint("politicoId", "anoReferencia", "mesReferencia", name="uq_politician_year_month"),
+        UniqueConstraint(
+            "politicoId",
+            "anoReferencia",
+            "mesReferencia",
+            name="uq_politician_year_month",
+        ),
         Index("idx_remuneracoes_politico", "politicoId"),
         Index("idx_remuneracoes_ano", "anoReferencia"),
     )
@@ -231,23 +321,33 @@ class PoliticianAssetDeclaration(TimeStampedModel):
     __tablename__ = "declaracoes_patrimonio"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    politician_id: Mapped[uuid.UUID] = mapped_column("politicoId", UUID(as_uuid=True), ForeignKey("politicos.id", ondelete="CASCADE"), nullable=False, index=True)
+    politician_id: Mapped[uuid.UUID] = mapped_column(
+        "politicoId",
+        UUID(as_uuid=True),
+        ForeignKey("politicos.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     election_year: Mapped[int] = mapped_column("anoEleicao", Integer, nullable=False, index=True)
     declared_value_brl: Mapped[Decimal] = mapped_column("valorDeclaradoBrl", Numeric(15, 2), nullable=False)
     asset_details: Mapped[Optional[str]] = mapped_column("detalhesBens", Text, nullable=True)
 
     politician: Mapped["Politician"] = relationship("Politician", back_populates="asset_declarations")
 
-    __table_args__ = (
-        UniqueConstraint("politicoId", "anoEleicao", name="uq_politician_election_asset"),
-    )
+    __table_args__ = (UniqueConstraint("politicoId", "anoEleicao", name="uq_politician_election_asset"),)
 
 
 class DespesaCota(TimeStampedModel):
     __tablename__ = "despesas_cota_parlamentar"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    politician_id: Mapped[uuid.UUID] = mapped_column("politicoId", UUID(as_uuid=True), ForeignKey("politicos.id", ondelete="CASCADE"), nullable=False, index=True)
+    politician_id: Mapped[uuid.UUID] = mapped_column(
+        "politicoId",
+        UUID(as_uuid=True),
+        ForeignKey("politicos.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     year: Mapped[int] = mapped_column("ano", Integer, nullable=False, index=True)
     month: Mapped[Optional[int]] = mapped_column("mes", Integer, nullable=True)
     expense_type: Mapped[str] = mapped_column("tipoDespesa", String(255), nullable=False, index=True)
@@ -271,7 +371,13 @@ class EmendaParlamentar(TimeStampedModel):
     __tablename__ = "emendas_parlamentares"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    politician_id: Mapped[uuid.UUID] = mapped_column("politicoId", UUID(as_uuid=True), ForeignKey("politicos.id", ondelete="CASCADE"), nullable=False, index=True)
+    politician_id: Mapped[uuid.UUID] = mapped_column(
+        "politicoId",
+        UUID(as_uuid=True),
+        ForeignKey("politicos.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     year: Mapped[int] = mapped_column("ano", Integer, nullable=False, index=True)
     amendment_code: Mapped[Optional[str]] = mapped_column("codigoEmenda", String(50), nullable=True)
     amendment_type: Mapped[str] = mapped_column("tipoEmenda", String(50), nullable=False)
@@ -294,7 +400,13 @@ class CertidaoJudicial(TimeStampedModel):
     __tablename__ = "certidoes_judiciais"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    politician_id: Mapped[uuid.UUID] = mapped_column("politicoId", UUID(as_uuid=True), ForeignKey("politicos.id", ondelete="CASCADE"), nullable=False, index=True)
+    politician_id: Mapped[uuid.UUID] = mapped_column(
+        "politicoId",
+        UUID(as_uuid=True),
+        ForeignKey("politicos.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     court_agency: Mapped[str] = mapped_column("orgao", String(100), nullable=False)
     certificate_type: Mapped[str] = mapped_column("tipoCertidao", String(50), nullable=False)
     status: Mapped[str] = mapped_column("statusFicha", String(50), nullable=False)
@@ -316,7 +428,13 @@ class DoacaoCampanha(TimeStampedModel):
     __tablename__ = "doacoes_campanha"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    politician_id: Mapped[uuid.UUID] = mapped_column("politicoId", UUID(as_uuid=True), ForeignKey("politicos.id", ondelete="CASCADE"), nullable=False, index=True)
+    politician_id: Mapped[uuid.UUID] = mapped_column(
+        "politicoId",
+        UUID(as_uuid=True),
+        ForeignKey("politicos.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     election_year: Mapped[int] = mapped_column("anoEleicao", Integer, nullable=False, index=True)
     donor_name: Mapped[str] = mapped_column("nomeDoador", String(255), nullable=False)
     donor_cpf_cnpj: Mapped[Optional[str]] = mapped_column("cpfCnpjDoador", String(30), nullable=True)
@@ -336,7 +454,13 @@ class ProcessoJudicial(TimeStampedModel):
     __tablename__ = "processos_judiciais"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    politician_id: Mapped[uuid.UUID] = mapped_column("politicoId", UUID(as_uuid=True), ForeignKey("politicos.id", ondelete="CASCADE"), nullable=False, index=True)
+    politician_id: Mapped[uuid.UUID] = mapped_column(
+        "politicoId",
+        UUID(as_uuid=True),
+        ForeignKey("politicos.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     process_number: Mapped[str] = mapped_column("numeroProcesso", String(100), nullable=False)
     court_agency: Mapped[str] = mapped_column("tribunal", String(100), nullable=False)
     process_date: Mapped[str] = mapped_column("dataProcesso", String(50), nullable=False)
@@ -353,6 +477,3 @@ class ProcessoJudicial(TimeStampedModel):
         Index("idx_processo_politico", "politicoId"),
         Index("idx_processo_numero", "numeroProcesso"),
     )
-
-
-

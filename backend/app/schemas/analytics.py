@@ -1,5 +1,6 @@
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
 
 
 class MandatePerformanceSchema(BaseModel):
@@ -45,7 +46,7 @@ class MinimumWageVoteRecord(BaseModel):
     partido_sigla: str
     uf: str
     cargo: str
-    voto: str # SIM, NAO, ABSTENCAO, OBSTRUCAO, AUSENTE
+    voto: str  # SIM, NAO, ABSTENCAO, OBSTRUCAO, AUSENTE
     foto_url: Optional[str] = None
 
 
@@ -76,7 +77,7 @@ class PartySeat(BaseModel):
     partido: str
     cadeiras: int
     percentual: float
-    alinhamento: str # "BASE_GOVERNO", "INDEPENDENTE_CENTRO", "OPOSICAO"
+    alinhamento: str  # "BASE_GOVERNO", "INDEPENDENTE_CENTRO", "OPOSICAO"
     cor_hex: str
 
 

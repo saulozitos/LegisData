@@ -1,7 +1,8 @@
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
-from datetime import date
 import uuid
+from datetime import date
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel
 
 
 class PoliticianBase(BaseModel):

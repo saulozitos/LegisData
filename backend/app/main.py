@@ -1,13 +1,13 @@
+from app.api.v1.router import api_router
+from app.core.config import settings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.core.config import settings
-from app.api.v1.router import api_router
 
 app = FastAPI(
     title="LegisData API",
     version="1.0.0",
     description="LegisData API - Plataforma Open-Source de Transparência, Atuação Parlamentar e Inteligência Macroeconômica (1992 - Presente)",
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
 )
 
 # CORS Middleware: suporta origens locais, variáveis de ambiente e domínios dinâmicos da Vercel (*.vercel.app)
@@ -28,12 +28,15 @@ def startup_db_migrations():
     try:
         from app.core.database import SessionLocal
         from sqlalchemy import text
+
         with SessionLocal() as db:
             db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "numeroProcesso" VARCHAR(100);'))
             db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "dataEmissao" VARCHAR(50);'))
             db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "linkComprovacao" VARCHAR(500);'))
-            db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "codigoAutenticidade" VARCHAR(100);'))
-            db.execute(text('''
+            db.execute(
+                text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "codigoAutenticidade" VARCHAR(100);')
+            )
+            db.execute(text("""
                 CREATE TABLE IF NOT EXISTS processos_judiciais (
                     id UUID PRIMARY KEY,
                     "politicoId" UUID NOT NULL REFERENCES politicos(id) ON DELETE CASCADE,
@@ -51,10 +54,11 @@ def startup_db_migrations():
                 );
                 CREATE INDEX IF NOT EXISTS idx_processo_politico ON processos_judiciais ("politicoId");
                 CREATE INDEX IF NOT EXISTS idx_processo_numero ON processos_judiciais ("numeroProcesso");
-            '''))
+            """))
             db.commit()
     except Exception as e:
         import logging
+
         logging.getLogger("uvicorn").warning(f"DB auto-migration warning: {e}")
 
 
@@ -64,5 +68,5 @@ def root():
         "status": "online",
         "service": settings.PROJECT_NAME,
         "docs_url": "/docs",
-        "periodo_coberto": "Governo Itamar Franco (1992) ao Governo Atual"
+        "periodo_coberto": "Governo Itamar Franco (1992) ao Governo Atual",
     }

@@ -1,11 +1,19 @@
+import enum
 import uuid
 from datetime import date, datetime
 from typing import List, Optional
-import enum
 
 from sqlalchemy import (
-    String, Text, Integer, Date, DateTime, Boolean,
-    ForeignKey, UniqueConstraint, Index, Enum
+    Boolean,
+    Date,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -73,7 +81,10 @@ class Proposition(TimeStampedModel):
     presentation_date: Mapped[date] = mapped_column("dataApresentacao", Date, nullable=False)
     sanction_date: Mapped[Optional[date]] = mapped_column("dataSancaoPromulgacao", Date, nullable=True)
     status: Mapped[StatusTramitacaoEnum] = mapped_column(
-        "statusTramitacao", Enum(StatusTramitacaoEnum), default=StatusTramitacaoEnum.EM_TRAMITACAO, nullable=False
+        "statusTramitacao",
+        Enum(StatusTramitacaoEnum),
+        default=StatusTramitacaoEnum.EM_TRAMITACAO,
+        nullable=False,
     )
     full_text_url: Mapped[Optional[str]] = mapped_column("urlTextoOriginal", Text, nullable=True)
     is_structural_reform: Mapped[bool] = mapped_column("isReformaEstrutural", Boolean, default=False, nullable=False)
@@ -81,16 +92,22 @@ class Proposition(TimeStampedModel):
     author_politician_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         "autorPoliticoId", UUID(as_uuid=True), ForeignKey("politicos.id"), nullable=True
     )
-    is_executive_initiative: Mapped[bool] = mapped_column("iniciativaPoderExecutivo", Boolean, default=False, nullable=False)
+    is_executive_initiative: Mapped[bool] = mapped_column(
+        "iniciativaPoderExecutivo", Boolean, default=False, nullable=False
+    )
     impact_axis: Mapped[Optional[str]] = mapped_column("eixoImpacto", String(100), nullable=True, index=True)
     impact_tags: Mapped[Optional[str]] = mapped_column("eixosImpacto", String(255), nullable=True)
     official_url: Mapped[Optional[str]] = mapped_column("urlOficial", Text, nullable=True)
 
     # Relationships
     author_politician: Mapped[Optional["Politician"]] = relationship("Politician", back_populates="propositions")
-    voting_sessions: Mapped[List["VotingSession"]] = relationship(back_populates="proposition", cascade="all, delete-orphan")
+    voting_sessions: Mapped[List["VotingSession"]] = relationship(
+        back_populates="proposition", cascade="all, delete-orphan"
+    )
     economic_impacts: Mapped[List["PolicyEconomicImpact"]] = relationship(
-        "PolicyEconomicImpact", back_populates="proposition", cascade="all, delete-orphan"
+        "PolicyEconomicImpact",
+        back_populates="proposition",
+        cascade="all, delete-orphan",
     )
 
     __table_args__ = (
@@ -106,8 +123,15 @@ class VotingSession(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     external_id: Mapped[Optional[str]] = mapped_column("idExterno", String(100), unique=True, nullable=True)
-    proposition_id: Mapped[uuid.UUID] = mapped_column("proposicaoId", UUID(as_uuid=True), ForeignKey("proposicoes.id", ondelete="CASCADE"), nullable=False)
-    legislative_house: Mapped[CasaLegislativaEnum] = mapped_column("casaLegislativa", Enum(CasaLegislativaEnum), nullable=False)
+    proposition_id: Mapped[uuid.UUID] = mapped_column(
+        "proposicaoId",
+        UUID(as_uuid=True),
+        ForeignKey("proposicoes.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    legislative_house: Mapped[CasaLegislativaEnum] = mapped_column(
+        "casaLegislativa", Enum(CasaLegislativaEnum), nullable=False
+    )
     session_datetime: Mapped[datetime] = mapped_column("dataHoraVotacao", DateTime(timezone=True), nullable=False)
     agenda_title: Mapped[str] = mapped_column("tituloPauta", String(255), nullable=False)
     detailed_description: Mapped[Optional[str]] = mapped_column("descricaoDetalhada", Text, nullable=True)
@@ -120,16 +144,35 @@ class VotingSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     proposition: Mapped["Proposition"] = relationship(back_populates="voting_sessions")
-    votes: Mapped[List["ParliamentaryVote"]] = relationship(back_populates="voting_session", cascade="all, delete-orphan")
+    votes: Mapped[List["ParliamentaryVote"]] = relationship(
+        back_populates="voting_session", cascade="all, delete-orphan"
+    )
 
 
 class ParliamentaryVote(Base):
     __tablename__ = "votos_parlamentares"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    voting_session_id: Mapped[uuid.UUID] = mapped_column("sessaoVotacaoId", UUID(as_uuid=True), ForeignKey("sessoes_votacao.id", ondelete="CASCADE"), nullable=False)
-    politician_id: Mapped[uuid.UUID] = mapped_column("politicoId", UUID(as_uuid=True), ForeignKey("politicos.id", ondelete="CASCADE"), nullable=False, index=True)
-    party_id: Mapped[Optional[uuid.UUID]] = mapped_column("partidoId", UUID(as_uuid=True), ForeignKey("partidos_politicos.id"), nullable=True, index=True)
+    voting_session_id: Mapped[uuid.UUID] = mapped_column(
+        "sessaoVotacaoId",
+        UUID(as_uuid=True),
+        ForeignKey("sessoes_votacao.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    politician_id: Mapped[uuid.UUID] = mapped_column(
+        "politicoId",
+        UUID(as_uuid=True),
+        ForeignKey("politicos.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    party_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        "partidoId",
+        UUID(as_uuid=True),
+        ForeignKey("partidos_politicos.id"),
+        nullable=True,
+        index=True,
+    )
     vote_choice: Mapped[VotoOpcaoEnum] = mapped_column("voto", Enum(VotoOpcaoEnum), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
@@ -149,9 +192,21 @@ class AttendanceRecord(Base):
     __tablename__ = "registros_presenca"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    politician_id: Mapped[uuid.UUID] = mapped_column("politicoId", UUID(as_uuid=True), ForeignKey("politicos.id", ondelete="CASCADE"), nullable=False)
-    mandate_id: Mapped[uuid.UUID] = mapped_column("mandatoId", UUID(as_uuid=True), ForeignKey("mandatos.id", ondelete="CASCADE"), nullable=False)
-    legislative_house: Mapped[CasaLegislativaEnum] = mapped_column("casaLegislativa", Enum(CasaLegislativaEnum), nullable=False)
+    politician_id: Mapped[uuid.UUID] = mapped_column(
+        "politicoId",
+        UUID(as_uuid=True),
+        ForeignKey("politicos.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    mandate_id: Mapped[uuid.UUID] = mapped_column(
+        "mandatoId",
+        UUID(as_uuid=True),
+        ForeignKey("mandatos.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    legislative_house: Mapped[CasaLegislativaEnum] = mapped_column(
+        "casaLegislativa", Enum(CasaLegislativaEnum), nullable=False
+    )
     session_date: Mapped[date] = mapped_column("dataSessao", Date, nullable=False)
     attendance_status: Mapped[TipoPresencaEnum] = mapped_column("tipoPresenca", Enum(TipoPresencaEnum), nullable=False)
     justification: Mapped[Optional[str]] = mapped_column("justificativa", Text, nullable=True)
@@ -160,6 +215,4 @@ class AttendanceRecord(Base):
     politician: Mapped["Politician"] = relationship("Politician", back_populates="attendances")
     mandate: Mapped["Mandate"] = relationship("Mandate", back_populates="attendances")
 
-    __table_args__ = (
-        Index("idx_attendance_politician_date", "politicoId", "dataSessao"),
-    )
+    __table_args__ = (Index("idx_attendance_politician_date", "politicoId", "dataSessao"),)

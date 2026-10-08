@@ -1,7 +1,8 @@
 from typing import List, Optional
+
+from app.services.cidadania_service import get_consultas_publicas
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
-from app.services.cidadania_service import get_consultas_publicas
 
 router = APIRouter()
 
@@ -12,8 +13,13 @@ class ConsultaPublicaItem(BaseModel):
     sigla_projeto: str = Field(..., description="Identificação oficial do projeto (ex.: PL 2630/2020)")
     ementa: str = Field(..., description="Resumo explicativo do projeto de lei ou PEC")
     link_oficial_votacao: str = Field(..., description="URL oficial nos portais e-Cidadania ou e-Democracia")
-    link_tramitacao_oficial: Optional[str] = Field(None, description="URL da ficha de tramitação legislativa oficial permanente")
-    em_votacao_aberta: bool = Field(True, description="Indica se a consulta/votação está aberta atualmente para participação popular")
+    link_tramitacao_oficial: Optional[str] = Field(
+        None, description="URL da ficha de tramitação legislativa oficial permanente"
+    )
+    em_votacao_aberta: bool = Field(
+        True,
+        description="Indica se a consulta/votação está aberta atualmente para participação popular",
+    )
     votos_sim: Optional[int] = Field(None, description="Total de votos favoráveis registrados na consulta popular")
     votos_nao: Optional[int] = Field(None, description="Total de votos contrários registrados na consulta popular")
     total_votos: Optional[int] = Field(None, description="Soma de votos sim e não")
@@ -41,11 +47,11 @@ class ConsultasResponse(BaseModel):
         "Retorna proposições legislativas abertas para participação popular e votação direta "
         "nos portais oficiais do Senado Federal (e-Cidadania) e da Câmara dos Deputados (e-Democracia). "
         "Resultados cacheados em memória por 1 hora para resiliência e proteção das APIs governamentais."
-    )
+    ),
 )
 def listar_consultas(
     casa: Optional[str] = Query(None, description="Filtrar por casa legislativa: 'Senado' ou 'Câmara'"),
-    force_refresh: bool = Query(False, description="Forçar renovação imediata do cache")
+    force_refresh: bool = Query(False, description="Forçar renovação imediata do cache"),
 ):
     consultas = get_consultas_publicas(force_refresh=force_refresh)
 

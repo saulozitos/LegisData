@@ -1,24 +1,23 @@
 import json
 import math
-from pathlib import Path
-from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, HTTPException, Query, Depends
-from sqlalchemy.orm import Session
-import pandas as pd
+from typing import Any, Dict, List, Optional
 
-from app.core.database import get_db
-from app.schemas.analytics import (
-    WageDisparityResponse,
-    CongressCompositionResponse,
-    FederalTransfersResponse
-)
-from app.models import (
-    FederalTransferByState,
-    AnnualSocialIndicator,
-    StateSocialIndicator,
-    StatePresidentialElectionResult
-)
+import pandas as pd
 from app.core.config import PROCESSED_DATA_DIR
+from app.core.database import get_db
+from app.models import (
+    AnnualSocialIndicator,
+    FederalTransferByState,
+    StatePresidentialElectionResult,
+    StateSocialIndicator,
+)
+from app.schemas.analytics import (
+    CongressCompositionResponse,
+    FederalTransfersResponse,
+    WageDisparityResponse,
+)
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 DATA_DIR = PROCESSED_DATA_DIR
@@ -60,7 +59,9 @@ def _calculate_mandate_prosperity_score(m: Dict[str, Any]) -> Dict[str, Any]:
     Fome/Insegurança Alimentar, Desemprego e Sustentabilidade Ambiental.
     """
     pib = float(m.get("pib_medio_anual_pct") or 0.0)
-    ipca_anual = float(m.get("ipca_pos_real_pct") if m.get("ipca_pos_real_pct") is not None else m.get("ipca_acumulado_pct", 0.0))
+    ipca_anual = float(
+        m.get("ipca_pos_real_pct") if m.get("ipca_pos_real_pct") is not None else m.get("ipca_acumulado_pct", 0.0)
+    )
     anos = len(m.get("valores_anuais", [])) or 4
     ipca_medio = ipca_anual / max(anos, 1)
 
@@ -124,8 +125,10 @@ def _calculate_mandate_prosperity_score(m: Dict[str, Any]) -> Dict[str, Any]:
         "subscore_social": sc_soc,
         "subscore_estabilidade": sc_est,
         "classificacao": classif,
-        "destaque_positivo": destaque_pos[0] if destaque_pos else "Estabilidade institucional no período",
-        "destaque_atencao": destaque_atencao[0] if destaque_atencao else "Desafios de produtividade e contas públicas"
+        "destaque_positivo": (destaque_pos[0] if destaque_pos else "Estabilidade institucional no período"),
+        "destaque_atencao": (
+            destaque_atencao[0] if destaque_atencao else "Desafios de produtividade e contas públicas"
+        ),
     }
 
 
@@ -151,7 +154,7 @@ def get_mandates_economic_performance():
 @router.get("/compare-mandates", response_model=Dict[str, Any])
 def compare_mandates(
     mandate1: str = Query(..., description="ID do primeiro mandato a confrontar (ex: fhc-1995)"),
-    mandate2: str = Query(..., description="ID do segundo mandato a confrontar (ex: lula-2003)")
+    mandate2: str = Query(..., description="ID do segundo mandato a confrontar (ex: lula-2003)"),
 ):
     """
     Confronto direto e analítico de dois mandatos presidenciais com:
@@ -172,7 +175,10 @@ def compare_mandates(
     m2 = next((m for m in mandates_list if m["id_mandato"] == mandate2), None)
 
     if not m1 or not m2:
-        raise HTTPException(status_code=404, detail=f"Mandato(s) não encontrado(s): {mandate1 if not m1 else mandate2}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Mandato(s) não encontrado(s): {mandate1 if not m1 else mandate2}",
+        )
 
     # Carregar dados macroeconômicos anuais para trajetória
     macro_csv = DATA_DIR / "resumo_macroeconomico_anual.csv"
@@ -241,35 +247,36 @@ def compare_mandates(
         sg1 = seg_map.get(y1, {}) if y1 else {}
         sg2 = seg_map.get(y2, {}) if y2 else {}
 
-        normalized_trajectory.append({
-            "label": f"Ano {i + 1}",
-            "year_index": i + 1,
-            "m1_calendar_year": y1,
-            "m1_pib": _clean_val(row1.get("pib_crescimento_real_pct")),
-            "m1_ipca": _clean_val(row1.get("ipca_acumulado_ano_pct")),
-            "m1_usd": _clean_val(row1.get("cambio_dolar_medio")),
-            "m1_salario_minimo": _clean_val(row1.get("salario_minimo")),
-            "m1_extrema_pobreza": _clean_val(soc1.get("extrema_pobreza_pct")),
-            "m1_analfabetismo": _clean_val(soc1.get("analfabetismo")),
-            "m1_inseguranca_alimentar": _clean_val(soc1.get("inseguranca_alimentar_pct")),
-            "m1_gini": _clean_val(soc1.get("gini")),
-            "m1_homicidios": _clean_val(sg1.get("taxa_homicidios")),
-            "m1_feminicidios": _clean_val(sg1.get("taxa_feminicidios")),
-            "m1_desmatamento": _clean_val(row1.get("taxa_desmatamento_amazonia")),
-
-            "m2_calendar_year": y2,
-            "m2_pib": _clean_val(row2.get("pib_crescimento_real_pct")),
-            "m2_ipca": _clean_val(row2.get("ipca_acumulado_ano_pct")),
-            "m2_usd": _clean_val(row2.get("cambio_dolar_medio")),
-            "m2_salario_minimo": _clean_val(row2.get("salario_minimo")),
-            "m2_extrema_pobreza": _clean_val(soc2.get("extrema_pobreza_pct")),
-            "m2_analfabetismo": _clean_val(soc2.get("analfabetismo")),
-            "m2_inseguranca_alimentar": _clean_val(soc2.get("inseguranca_alimentar_pct")),
-            "m2_gini": _clean_val(soc2.get("gini")),
-            "m2_homicidios": _clean_val(sg2.get("taxa_homicidios")),
-            "m2_feminicidios": _clean_val(sg2.get("taxa_feminicidios")),
-            "m2_desmatamento": _clean_val(row2.get("taxa_desmatamento_amazonia")),
-        })
+        normalized_trajectory.append(
+            {
+                "label": f"Ano {i + 1}",
+                "year_index": i + 1,
+                "m1_calendar_year": y1,
+                "m1_pib": _clean_val(row1.get("pib_crescimento_real_pct")),
+                "m1_ipca": _clean_val(row1.get("ipca_acumulado_ano_pct")),
+                "m1_usd": _clean_val(row1.get("cambio_dolar_medio")),
+                "m1_salario_minimo": _clean_val(row1.get("salario_minimo")),
+                "m1_extrema_pobreza": _clean_val(soc1.get("extrema_pobreza_pct")),
+                "m1_analfabetismo": _clean_val(soc1.get("analfabetismo")),
+                "m1_inseguranca_alimentar": _clean_val(soc1.get("inseguranca_alimentar_pct")),
+                "m1_gini": _clean_val(soc1.get("gini")),
+                "m1_homicidios": _clean_val(sg1.get("taxa_homicidios")),
+                "m1_feminicidios": _clean_val(sg1.get("taxa_feminicidios")),
+                "m1_desmatamento": _clean_val(row1.get("taxa_desmatamento_amazonia")),
+                "m2_calendar_year": y2,
+                "m2_pib": _clean_val(row2.get("pib_crescimento_real_pct")),
+                "m2_ipca": _clean_val(row2.get("ipca_acumulado_ano_pct")),
+                "m2_usd": _clean_val(row2.get("cambio_dolar_medio")),
+                "m2_salario_minimo": _clean_val(row2.get("salario_minimo")),
+                "m2_extrema_pobreza": _clean_val(soc2.get("extrema_pobreza_pct")),
+                "m2_analfabetismo": _clean_val(soc2.get("analfabetismo")),
+                "m2_inseguranca_alimentar": _clean_val(soc2.get("inseguranca_alimentar_pct")),
+                "m2_gini": _clean_val(soc2.get("gini")),
+                "m2_homicidios": _clean_val(sg2.get("taxa_homicidios")),
+                "m2_feminicidios": _clean_val(sg2.get("taxa_feminicidios")),
+                "m2_desmatamento": _clean_val(row2.get("taxa_desmatamento_amazonia")),
+            }
+        )
 
     # Cálculo dos Deltas (M2 em relação a M1)
     # 1. IPCA acumulado
@@ -359,7 +366,7 @@ def compare_mandates(
             "m1_total": round(v1, 2),
             "m2_total": round(v2, 2),
             "diff_brl": diff,
-            "growth_pct": growth
+            "growth_pct": growth,
         }
 
     all_ufs = sorted(list(set(r["uf"] for r in repasses_list)))
@@ -385,22 +392,24 @@ def compare_mandates(
                 "m1": round(av1, 2),
                 "m2": round(av2, 2),
                 "diff": round(av2 - av1, 2),
-                "growth_pct": round(((av2 - av1) / av1) * 100, 2) if av1 > 0 else 0.0
+                "growth_pct": round(((av2 - av1) / av1) * 100, 2) if av1 > 0 else 0.0,
             }
 
-        by_uf.append({
-            "uf": uf,
-            "estado_nome": estado_nome,
-            "regiao": regiao,
-            "m1_total": round(tot1, 2),
-            "m2_total": round(tot2, 2),
-            "diff_brl": round(tot2 - tot1, 2),
-            "growth_pct": growth_uf,
-            "m1_per_capita": round(pc1, 2),
-            "m2_per_capita": round(pc2, 2),
-            "diff_per_capita": diff_pc,
-            "areas": areas_breakdown
-        })
+        by_uf.append(
+            {
+                "uf": uf,
+                "estado_nome": estado_nome,
+                "regiao": regiao,
+                "m1_total": round(tot1, 2),
+                "m2_total": round(tot2, 2),
+                "diff_brl": round(tot2 - tot1, 2),
+                "growth_pct": growth_uf,
+                "m1_per_capita": round(pc1, 2),
+                "m2_per_capita": round(pc2, 2),
+                "diff_per_capita": diff_pc,
+                "areas": areas_breakdown,
+            }
+        )
 
     tot_geral_1 = sum(item["m1_total"] for item in by_area.values())
     tot_geral_2 = sum(item["m2_total"] for item in by_area.values())
@@ -414,14 +423,14 @@ def compare_mandates(
         "m1_lider_per_capita": {
             "uf": top_uf_m1["uf"] if top_uf_m1 else "DF",
             "estado": top_uf_m1["estado_nome"] if top_uf_m1 else "Distrito Federal",
-            "valor_per_capita": top_uf_m1["m1_per_capita"] if top_uf_m1 else 0.0
+            "valor_per_capita": top_uf_m1["m1_per_capita"] if top_uf_m1 else 0.0,
         },
         "m2_lider_per_capita": {
             "uf": top_uf_m2["uf"] if top_uf_m2 else "DF",
             "estado": top_uf_m2["estado_nome"] if top_uf_m2 else "Distrito Federal",
-            "valor_per_capita": top_uf_m2["m2_per_capita"] if top_uf_m2 else 0.0
+            "valor_per_capita": top_uf_m2["m2_per_capita"] if top_uf_m2 else 0.0,
         },
-        "diagnostico": "Estados com menor contingente populacional e áreas prioritárias (Norte/Centro-Oeste) absorvem maior volume de repasses federais per capita vinculados aos pisos constitucionais de Saúde e Educação."
+        "diagnostico": "Estados com menor contingente populacional e áreas prioritárias (Norte/Centro-Oeste) absorvem maior volume de repasses federais per capita vinculados aos pisos constitucionais de Saúde e Educação.",
     }
 
     m1_enriched = dict(m1)
@@ -470,9 +479,11 @@ def compare_mandates(
                 "m1_total_geral": round(tot_geral_1, 2),
                 "m2_total_geral": round(tot_geral_2, 2),
                 "diff_total_brl": round(tot_geral_2 - tot_geral_1, 2),
-                "growth_total_pct": round(((tot_geral_2 - tot_geral_1) / tot_geral_1) * 100, 2) if tot_geral_1 > 0 else 0.0
-            }
-        }
+                "growth_total_pct": (
+                    round(((tot_geral_2 - tot_geral_1) / tot_geral_1) * 100, 2) if tot_geral_1 > 0 else 0.0
+                ),
+            },
+        },
     }
 
 
@@ -485,7 +496,8 @@ def get_party_fidelity(db: Session = Depends(get_db)):
     - Resumo e métricas gerais de infidelidade partidária.
     """
     from collections import defaultdict
-    from app.models import Politician, PoliticalParty, PartyAffiliation
+
+    from app.models import PartyAffiliation, PoliticalParty, Politician
 
     party_objs = db.query(PoliticalParty).all()
     party_map = {p.id: {"sigla": p.acronym, "nome": p.full_name} for p in party_objs}
@@ -501,7 +513,7 @@ def get_party_fidelity(db: Session = Depends(get_db)):
         return {
             "party_balance": [],
             "top_nomads": [],
-            "summary": {"total_parlamentares": len(raw_affs), "total_nomades": 0}
+            "summary": {"total_parlamentares": len(raw_affs), "total_nomades": 0},
         }
 
     by_pol = defaultdict(list)
@@ -517,7 +529,10 @@ def get_party_fidelity(db: Session = Depends(get_db)):
     for pid, p_affs in by_pol.items():
         sorted_affs = sorted(p_affs, key=lambda x: x.start_date)
         first_aff = sorted_affs[0]
-        curr_aff = next((x for x in reversed(sorted_affs) if x.end_date is None or x.is_current), sorted_affs[-1])
+        curr_aff = next(
+            (x for x in reversed(sorted_affs) if x.end_date is None or x.is_current),
+            sorted_affs[-1],
+        )
 
         first_sigla = party_map.get(first_aff.party_id, {}).get("sigla", "OUTROS")
         curr_sigla = party_map.get(curr_aff.party_id, {}).get("sigla", "OUTROS")
@@ -535,27 +550,31 @@ def get_party_fidelity(db: Session = Depends(get_db)):
                 history_list = []
                 for x in sorted_affs:
                     sigla_x = party_map.get(x.party_id, {}).get("sigla", "S.PART.")
-                    history_list.append({
-                        "partido": sigla_x,
-                        "data_filiacao": x.start_date.isoformat(),
-                        "data_desfiliacao": x.end_date.isoformat() if x.end_date else None,
-                        "motivo": x.disaffiliation_reason.value if x.disaffiliation_reason else None,
-                        "is_atual": bool(x.is_current or (x.end_date is None))
-                    })
+                    history_list.append(
+                        {
+                            "partido": sigla_x,
+                            "data_filiacao": x.start_date.isoformat(),
+                            "data_desfiliacao": (x.end_date.isoformat() if x.end_date else None),
+                            "motivo": (x.disaffiliation_reason.value if x.disaffiliation_reason else None),
+                            "is_atual": bool(x.is_current or (x.end_date is None)),
+                        }
+                    )
 
-                nomads.append({
-                    "id": str(pol.id),
-                    "nome_eleitoral": pol.electoral_name,
-                    "nome_civil": pol.civil_name,
-                    "cargo": "SENADOR" if pol.senado_id else "DEPUTADO FEDERAL",
-                    "uf": pol.birthplace_state or (sorted_affs[-1].state or "DF"),
-                    "foto_url": pol.photo_url,
-                    "partido_atual": curr_sigla,
-                    "total_trocas": len(sorted_affs) - 1,
-                    "total_partidos": len(set(x["partido"] for x in history_list)),
-                    "siglas_sequencia": [x["partido"] for x in history_list],
-                    "historico": history_list
-                })
+                nomads.append(
+                    {
+                        "id": str(pol.id),
+                        "nome_eleitoral": pol.electoral_name,
+                        "nome_civil": pol.civil_name,
+                        "cargo": "SENADOR" if pol.senado_id else "DEPUTADO FEDERAL",
+                        "uf": pol.birthplace_state or (sorted_affs[-1].state or "DF"),
+                        "foto_url": pol.photo_url,
+                        "partido_atual": curr_sigla,
+                        "total_trocas": len(sorted_affs) - 1,
+                        "total_partidos": len(set(x["partido"] for x in history_list)),
+                        "siglas_sequencia": [x["partido"] for x in history_list],
+                        "historico": history_list,
+                    }
+                )
 
     nomads.sort(key=lambda x: (x["total_trocas"], x["total_partidos"]), reverse=True)
 
@@ -567,33 +586,35 @@ def get_party_fidelity(db: Session = Depends(get_db)):
         c = current_seats[p]
         i = initial_seats[p]
         g = gains[p]
-        l = losses[p]
-        net = g - l
-        party_balance.append({
-            "partido": p,
-            "bancada_atual": c,
-            "bancada_inicial": i,
-            "ganhos": g,
-            "perdas": l,
-            "saldo_liquido": net
-        })
+        loss = losses[p]
+        net = g - loss
+        party_balance.append(
+            {
+                "partido": p,
+                "bancada_atual": c,
+                "bancada_inicial": i,
+                "ganhos": g,
+                "perdas": loss,
+                "saldo_liquido": net,
+            }
+        )
 
     party_balance.sort(key=lambda x: x["saldo_liquido"], reverse=True)
 
     summary = {
         "total_parlamentares": len(by_pol),
         "total_nomades": len(nomads),
-        "taxa_migracao_pct": round((len(nomads) / len(by_pol)) * 100, 1) if by_pol else 0,
+        "taxa_migracao_pct": (round((len(nomads) / len(by_pol)) * 100, 1) if by_pol else 0),
         "partido_maior_ganho": party_balance[0]["partido"] if party_balance else None,
         "saldo_maior_ganho": party_balance[0]["saldo_liquido"] if party_balance else 0,
         "partido_maior_perda": party_balance[-1]["partido"] if party_balance else None,
-        "saldo_maior_perda": party_balance[-1]["saldo_liquido"] if party_balance else 0
+        "saldo_maior_perda": party_balance[-1]["saldo_liquido"] if party_balance else 0,
     }
 
     return {
         "party_balance": party_balance,
         "top_nomads": nomads[:35],
-        "summary": summary
+        "summary": summary,
     }
 
 
@@ -609,20 +630,24 @@ def get_wage_disparity():
     file_path = DATA_DIR / "salario_vs_inflacao.json"
     if not file_path.exists():
         try:
-            from etl.extractors.salario_inflacao_extractor import SalarioInflacaoExtractor
+            from etl.extractors.salario_inflacao_extractor import (
+                SalarioInflacaoExtractor,
+            )
+
             extractor = SalarioInflacaoExtractor()
             return extractor.run()
         except ImportError:
-            raise HTTPException(status_code=404, detail="Dados de disparidade salarial não encontrados. Execute o pipeline de ETL.")
+            raise HTTPException(
+                status_code=404,
+                detail="Dados de disparidade salarial não encontrados. Execute o pipeline de ETL.",
+            )
 
     with open(file_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
 @router.get("/congress-composition", response_model=CongressCompositionResponse)
-def get_congress_composition(
-    mandate_id: str = Query("lula-2023", description="ID do mandato presidencial")
-):
+def get_congress_composition(mandate_id: str = Query("lula-2023", description="ID do mandato presidencial")):
     """
     Retorna a composição do Congresso Nacional durante o mandato:
     - Presidentes da Câmara e do Senado (com nomes, partidos e fotos)
@@ -632,11 +657,18 @@ def get_congress_composition(
     file_path = DATA_DIR / "composicao_congresso.json"
     if not file_path.exists():
         try:
-            from etl.extractors.composicao_extractor import save_composicao_congresso, COMPOSICAO_CONGRESSO_HISTORICO
+            from etl.extractors.composicao_extractor import (
+                COMPOSICAO_CONGRESSO_HISTORICO,
+                save_composicao_congresso,
+            )
+
             save_composicao_congresso()
             composicoes = COMPOSICAO_CONGRESSO_HISTORICO
         except ImportError:
-            raise HTTPException(status_code=404, detail="Dados de composição do Congresso não encontrados. Execute o pipeline de ETL.")
+            raise HTTPException(
+                status_code=404,
+                detail="Dados de composição do Congresso não encontrados. Execute o pipeline de ETL.",
+            )
     else:
         with open(file_path, "r", encoding="utf-8") as f:
             composicoes = json.load(f)
@@ -651,8 +683,11 @@ def get_congress_composition(
 @router.get("/federal-transfers", response_model=FederalTransfersResponse)
 def get_federal_transfers(
     mandate_id: str = Query("lula-2023", description="ID do mandato presidencial"),
-    area: Optional[str] = Query(None, description="Filtrar por área (Saúde, Educação, Infraestrutura, Segurança Pública)"),
-    db: Session = Depends(get_db)
+    area: Optional[str] = Query(
+        None,
+        description="Filtrar por área (Saúde, Educação, Infraestrutura, Segurança Pública)",
+    ),
+    db: Session = Depends(get_db),
 ):
     """
     Retorna a execução orçamentária e repasses federais por Estado (UF) no mandato:
@@ -681,7 +716,7 @@ def get_federal_transfers(
                         "area_tematica": r["area_tematica"],
                         "valor_pago_brl": float(r["valor_pago_brl"]),
                         "populacao_estimada": int(r.get("populacao_estimada") or 0),
-                        "valor_per_capita_brl": float(r.get("valor_per_capita_brl") or 0.0)
+                        "valor_per_capita_brl": float(r.get("valor_per_capita_brl") or 0.0),
                     }
                     for r in filtered
                 ]
@@ -696,7 +731,7 @@ def get_federal_transfers(
                 "area_tematica": r.area_tematica,
                 "valor_pago_brl": float(r.valor_pago_brl),
                 "populacao_estimada": r.populacao_estimada or 0,
-                "valor_per_capita_brl": float(r.valor_per_capita_brl or 0.0)
+                "valor_per_capita_brl": float(r.valor_per_capita_brl or 0.0),
             }
             for r in records
         ]
@@ -714,7 +749,7 @@ def get_federal_transfers(
         "total_repassado_brl": round(total_brl, 2),
         "areas_resumo": areas_sum,
         "regioes_resumo": regioes_sum,
-        "por_uf": items
+        "por_uf": items,
     }
 
 
@@ -730,13 +765,15 @@ def get_social_indicators(db: Session = Depends(get_db)):
         return [
             {
                 "ano": r.year,
-                "analfabetismo_pct": float(r.illiteracy_rate_pct) if r.illiteracy_rate_pct else None,
-                "extrema_pobreza_pct": float(r.extreme_poverty_pct) if r.extreme_poverty_pct else None,
-                "extrema_pobreza_milhoes": float(r.extreme_poverty_millions) if r.extreme_poverty_millions else None,
-                "inseguranca_alimentar_pct": float(r.food_insecurity_pct) if r.food_insecurity_pct else None,
-                "inseguranca_alimentar_milhoes": float(r.food_insecurity_millions) if r.food_insecurity_millions else None,
+                "analfabetismo_pct": (float(r.illiteracy_rate_pct) if r.illiteracy_rate_pct else None),
+                "extrema_pobreza_pct": (float(r.extreme_poverty_pct) if r.extreme_poverty_pct else None),
+                "extrema_pobreza_milhoes": (float(r.extreme_poverty_millions) if r.extreme_poverty_millions else None),
+                "inseguranca_alimentar_pct": (float(r.food_insecurity_pct) if r.food_insecurity_pct else None),
+                "inseguranca_alimentar_milhoes": (
+                    float(r.food_insecurity_millions) if r.food_insecurity_millions else None
+                ),
                 "gini": float(r.gini_index) if r.gini_index else None,
-                "fonte": r.data_source
+                "fonte": r.data_source,
             }
             for r in records
         ]
@@ -765,11 +802,13 @@ def get_social_classes_distribution():
             "faixa_salarios_minimos_max": None,
             "renda_familiar_min_brl": round(20 * salario_minimo_ref, 2),
             "renda_familiar_max_brl": None,
-            "faixa_renda_formatada": f"Acima de R$ {20 * salario_minimo_ref:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+            "faixa_renda_formatada": f"Acima de R$ {20 * salario_minimo_ref:,.2f}".replace(",", "X")
+            .replace(".", ",")
+            .replace("X", "."),
             "percentual_populacao": 2.8,
             "descricao": "Alta renda e topo da pirâmide. Proprietários de empresas, altos executivos, juízes e servidores do topo do funcionalismo.",
             "cor": "#10b981",
-            "destaque": "Topo 3%"
+            "destaque": "Topo 3%",
         },
         {
             "classe": "Classe B",
@@ -778,11 +817,15 @@ def get_social_classes_distribution():
             "faixa_salarios_minimos_max": 20.0,
             "renda_familiar_min_brl": round(10 * salario_minimo_ref, 2),
             "renda_familiar_max_brl": round(20 * salario_minimo_ref, 2),
-            "faixa_renda_formatada": f"R$ {10 * salario_minimo_ref:,.2f} a R$ {20 * salario_minimo_ref:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+            "faixa_renda_formatada": f"R$ {10 * salario_minimo_ref:,.2f} a R$ {20 * salario_minimo_ref:,.2f}".replace(
+                ",", "X"
+            )
+            .replace(".", ",")
+            .replace("X", "."),
             "percentual_populacao": 13.2,
             "descricao": "Classe média alta. Profissionais liberais consolidados, média gerência, professores universitários e empresários médios.",
             "cor": "#3b82f6",
-            "destaque": "Média Alta"
+            "destaque": "Média Alta",
         },
         {
             "classe": "Classe C",
@@ -791,11 +834,15 @@ def get_social_classes_distribution():
             "faixa_salarios_minimos_max": 10.0,
             "renda_familiar_min_brl": round(4 * salario_minimo_ref, 2),
             "renda_familiar_max_brl": round(10 * salario_minimo_ref, 2),
-            "faixa_renda_formatada": f"R$ {4 * salario_minimo_ref:,.2f} a R$ {10 * salario_minimo_ref:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+            "faixa_renda_formatada": f"R$ {4 * salario_minimo_ref:,.2f} a R$ {10 * salario_minimo_ref:,.2f}".replace(
+                ",", "X"
+            )
+            .replace(".", ",")
+            .replace("X", "."),
             "percentual_populacao": 31.0,
             "descricao": "Classe média tradicional / baixa. Pequenos comerciantes, técnicos especializados, professores do ensino básico e servidores médios.",
             "cor": "#f59e0b",
-            "destaque": "Média Tradicional"
+            "destaque": "Média Tradicional",
         },
         {
             "classe": "Classe D",
@@ -804,11 +851,15 @@ def get_social_classes_distribution():
             "faixa_salarios_minimos_max": 4.0,
             "renda_familiar_min_brl": round(2 * salario_minimo_ref, 2),
             "renda_familiar_max_brl": round(4 * salario_minimo_ref, 2),
-            "faixa_renda_formatada": f"R$ {2 * salario_minimo_ref:,.2f} a R$ {4 * salario_minimo_ref:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+            "faixa_renda_formatada": f"R$ {2 * salario_minimo_ref:,.2f} a R$ {4 * salario_minimo_ref:,.2f}".replace(
+                ",", "X"
+            )
+            .replace(".", ",")
+            .replace("X", "."),
             "percentual_populacao": 29.5,
             "descricao": "Trabalhadores formais e autônomos de serviços essenciais, operários, comércio e transporte.",
             "cor": "#f97316",
-            "destaque": "Maior Grupo Formal"
+            "destaque": "Maior Grupo Formal",
         },
         {
             "classe": "Classe E",
@@ -817,12 +868,14 @@ def get_social_classes_distribution():
             "faixa_salarios_minimos_max": 2.0,
             "renda_familiar_min_brl": 0.0,
             "renda_familiar_max_brl": round(2 * salario_minimo_ref, 2),
-            "faixa_renda_formatada": f"Até R$ {2 * salario_minimo_ref:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+            "faixa_renda_formatada": f"Até R$ {2 * salario_minimo_ref:,.2f}".replace(",", "X")
+            .replace(".", ",")
+            .replace("X", "."),
             "percentual_populacao": 23.5,
             "descricao": "Base da pirâmide e vulnerabilidade extrema. Dependentes de programas sociais, diaristas, desempregados e informais.",
             "cor": "#ef4444",
-            "destaque": "Vulnerabilidade"
-        }
+            "destaque": "Vulnerabilidade",
+        },
     ]
 
     return {
@@ -831,16 +884,19 @@ def get_social_classes_distribution():
         "fonte": "Critério Brasil / FGV Social / IBGE PNAD Contínua",
         "resumo_populacional": {
             "maioria_populacao_acumulada_d_e_pct": 53.0,
-            "texto_educativo": "Mais de 53% das famílias brasileiras sobrevivem com renda total de até 4 salários mínimos (Classes D e E). Apenas 2,8% pertencem à Classe A (acima de 20 salários mínimos), o que frequentemente distorce a percepção sobre o que é a 'classe média' no país."
+            "texto_educativo": "Mais de 53% das famílias brasileiras sobrevivem com renda total de até 4 salários mínimos (Classes D e E). Apenas 2,8% pertencem à Classe A (acima de 20 salários mínimos), o que frequentemente distorce a percepção sobre o que é a 'classe média' no país.",
         },
-        "classes": classes
+        "classes": classes,
     }
 
 
 @router.get("/social-elections")
 def get_social_elections_correlation(
-    ano: Optional[int] = Query(2022, description="Ano eleitoral de referência (1994, 1998, 2002, 2006, 2010, 2014, 2018, 2022)"),
-    db: Session = Depends(get_db)
+    ano: Optional[int] = Query(
+        2022,
+        description="Ano eleitoral de referência (1994, 1998, 2002, 2006, 2010, 2014, 2018, 2022)",
+    ),
+    db: Session = Depends(get_db),
 ):
     """
     Cruza os indicadores sociais por Estado (UF) com os resultados eleitorais presidenciais (TSE).
@@ -855,17 +911,9 @@ def get_social_elections_correlation(
         .all()
     )
 
-    sociais_db = (
-        db.query(StateSocialIndicator)
-        .filter(StateSocialIndicator.year == selected_year)
-        .all()
-    )
+    sociais_db = db.query(StateSocialIndicator).filter(StateSocialIndicator.year == selected_year).all()
     if not sociais_db:
-        sociais_db = (
-            db.query(StateSocialIndicator)
-            .filter(StateSocialIndicator.year == 2022)
-            .all()
-        )
+        sociais_db = db.query(StateSocialIndicator).filter(StateSocialIndicator.year == 2022).all()
 
     sociais_map = {s.uf: s for s in sociais_db}
 
@@ -874,22 +922,26 @@ def get_social_elections_correlation(
         uf = el.uf
         soc = sociais_map.get(uf)
 
-        merged.append({
-            "uf": uf,
-            "estado_nome": el.state_name,
-            "regiao": el.region,
-            "ano_eleicao": el.election_year,
-            "vencedor_nome": el.winner_candidate_name,
-            "vencedor_partido": el.winner_party_acronym,
-            "vencedor_votos_pct": float(el.winner_votes_pct),
-            "segundo_nome": el.runner_up_candidate_name,
-            "segundo_partido": el.runner_up_party_acronym,
-            "segundo_votos_pct": float(el.runner_up_votes_pct),
-            "taxa_analfabetismo_pct": float(soc.illiteracy_rate_pct) if soc and soc.illiteracy_rate_pct else None,
-            "extrema_pobreza_pct": float(soc.extreme_poverty_pct) if soc and soc.extreme_poverty_pct else None,
-            "inseguranca_alimentar_pct": float(soc.food_insecurity_pct) if soc and soc.food_insecurity_pct else None,
-            "indice_gini": float(soc.gini_index) if soc and soc.gini_index else None
-        })
+        merged.append(
+            {
+                "uf": uf,
+                "estado_nome": el.state_name,
+                "regiao": el.region,
+                "ano_eleicao": el.election_year,
+                "vencedor_nome": el.winner_candidate_name,
+                "vencedor_partido": el.winner_party_acronym,
+                "vencedor_votos_pct": float(el.winner_votes_pct),
+                "segundo_nome": el.runner_up_candidate_name,
+                "segundo_partido": el.runner_up_party_acronym,
+                "segundo_votos_pct": float(el.runner_up_votes_pct),
+                "taxa_analfabetismo_pct": (float(soc.illiteracy_rate_pct) if soc and soc.illiteracy_rate_pct else None),
+                "extrema_pobreza_pct": (float(soc.extreme_poverty_pct) if soc and soc.extreme_poverty_pct else None),
+                "inseguranca_alimentar_pct": (
+                    float(soc.food_insecurity_pct) if soc and soc.food_insecurity_pct else None
+                ),
+                "indice_gini": (float(soc.gini_index) if soc and soc.gini_index else None),
+            }
+        )
 
     # Ordenar por extrema pobreza decrescente
     merged.sort(key=lambda x: (x["extrema_pobreza_pct"] or 0), reverse=True)
@@ -904,33 +956,31 @@ def get_social_elections_correlation(
                 "total_ufs": 0,
                 "soma_pobreza": 0.0,
                 "soma_analfabetismo": 0.0,
-                "vencedores": {}
+                "vencedores": {},
             }
         regioes_agg[reg]["total_ufs"] += 1
-        regioes_agg[reg]["soma_pobreza"] += (item["extrema_pobreza_pct"] or 0.0)
-        regioes_agg[reg]["soma_analfabetismo"] += (item["taxa_analfabetismo_pct"] or 0.0)
+        regioes_agg[reg]["soma_pobreza"] += item["extrema_pobreza_pct"] or 0.0
+        regioes_agg[reg]["soma_analfabetismo"] += item["taxa_analfabetismo_pct"] or 0.0
         venc = f"{item['vencedor_nome']} ({item['vencedor_partido']})"
         regioes_agg[reg]["vencedores"][venc] = regioes_agg[reg]["vencedores"].get(venc, 0) + 1
 
     regioes_summary = []
     for reg, d in regioes_agg.items():
         n = d["total_ufs"] or 1
-        regioes_summary.append({
-            "regiao": reg,
-            "total_estados": n,
-            "media_extrema_pobreza_pct": round(d["soma_pobreza"] / n, 2),
-            "media_analfabetismo_pct": round(d["soma_analfabetismo"] / n, 2),
-            "vencedores_contagem": d["vencedores"]
-        })
+        regioes_summary.append(
+            {
+                "regiao": reg,
+                "total_estados": n,
+                "media_extrema_pobreza_pct": round(d["soma_pobreza"] / n, 2),
+                "media_analfabetismo_pct": round(d["soma_analfabetismo"] / n, 2),
+                "vencedores_contagem": d["vencedores"],
+            }
+        )
 
     return {
         "ano_eleicao": selected_year,
         "total_estados": len(merged),
         "anos_disponiveis": valid_years,
         "regioes_resumo": regioes_summary,
-        "estados": merged
+        "estados": merged,
     }
-
-
-
-

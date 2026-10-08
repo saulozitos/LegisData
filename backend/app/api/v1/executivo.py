@@ -1,12 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy import func
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from app.core.database import get_db
-from app.models.executivo import PresidentialMandate, MandateIndicator
+from app.models.executivo import MandateIndicator, PresidentialMandate
 from app.schemas.executivo import PresidentialMandateResponse
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 

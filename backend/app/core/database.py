@@ -1,7 +1,8 @@
 from typing import Generator
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+
 from app.core.config import settings
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 # Engine síncrono para operações de dados e migrações
 engine = create_engine(
@@ -10,7 +11,7 @@ engine = create_engine(
     pool_size=20,
     max_overflow=40,
     pool_timeout=30,
-    pool_recycle=1800
+    pool_recycle=1800,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

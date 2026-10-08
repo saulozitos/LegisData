@@ -2,10 +2,7 @@ import uuid
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import (
-    String, Text, Integer, Numeric,
-    ForeignKey, Index
-)
+from sqlalchemy import ForeignKey, Index, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -17,7 +14,11 @@ class MandateEconomicPerformance(TimeStampedModel):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     mandate_id: Mapped[uuid.UUID] = mapped_column(
-        "mandatoId", UUID(as_uuid=True), ForeignKey("mandatos.id", ondelete="CASCADE"), unique=True, nullable=False
+        "mandatoId",
+        UUID(as_uuid=True),
+        ForeignKey("mandatos.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
     )
     ipca_accumulated: Mapped[Decimal] = mapped_column("ipcaAcumuladoMandato", Numeric(14, 4), nullable=False)
     gdp_accumulated_growth: Mapped[Decimal] = mapped_column("pibCrescimentoAcumulado", Numeric(8, 4), nullable=False)
@@ -28,12 +29,24 @@ class MandateEconomicPerformance(TimeStampedModel):
     initial_usd_brl: Mapped[Optional[Decimal]] = mapped_column("cambioInicialUsdBrl", Numeric(18, 4), nullable=True)
     final_usd_brl: Mapped[Optional[Decimal]] = mapped_column("cambioFinalUsdBrl", Numeric(18, 4), nullable=True)
     usd_variation_pct: Mapped[Optional[Decimal]] = mapped_column("cambioVariacaoPct", Numeric(14, 2), nullable=True)
-    initial_min_wage_brl: Mapped[Optional[Decimal]] = mapped_column("salarioMinimoInicialBrl", Numeric(12, 2), nullable=True)
-    final_min_wage_brl: Mapped[Optional[Decimal]] = mapped_column("salarioMinimoFinalBrl", Numeric(12, 2), nullable=True)
-    initial_min_wage_usd: Mapped[Optional[Decimal]] = mapped_column("salarioMinimoInicialUsd", Numeric(10, 2), nullable=True)
-    final_min_wage_usd: Mapped[Optional[Decimal]] = mapped_column("salarioMinimoFinalUsd", Numeric(10, 2), nullable=True)
-    initial_unemployment_rate: Mapped[Optional[Decimal]] = mapped_column("taxaDesempregoInicial", Numeric(5, 2), nullable=True)
-    final_unemployment_rate: Mapped[Optional[Decimal]] = mapped_column("taxaDesempregoFinal", Numeric(5, 2), nullable=True)
+    initial_min_wage_brl: Mapped[Optional[Decimal]] = mapped_column(
+        "salarioMinimoInicialBrl", Numeric(12, 2), nullable=True
+    )
+    final_min_wage_brl: Mapped[Optional[Decimal]] = mapped_column(
+        "salarioMinimoFinalBrl", Numeric(12, 2), nullable=True
+    )
+    initial_min_wage_usd: Mapped[Optional[Decimal]] = mapped_column(
+        "salarioMinimoInicialUsd", Numeric(10, 2), nullable=True
+    )
+    final_min_wage_usd: Mapped[Optional[Decimal]] = mapped_column(
+        "salarioMinimoFinalUsd", Numeric(10, 2), nullable=True
+    )
+    initial_unemployment_rate: Mapped[Optional[Decimal]] = mapped_column(
+        "taxaDesempregoInicial", Numeric(5, 2), nullable=True
+    )
+    final_unemployment_rate: Mapped[Optional[Decimal]] = mapped_column(
+        "taxaDesempregoFinal", Numeric(5, 2), nullable=True
+    )
     analytical_summary: Mapped[Optional[str]] = mapped_column("resumoAnalitico", Text, nullable=True)
 
     # Relationships
@@ -60,7 +73,10 @@ class PolicyEconomicImpact(TimeStampedModel):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     proposition_id: Mapped[uuid.UUID] = mapped_column(
-        "proposicaoId", UUID(as_uuid=True), ForeignKey("proposicoes.id", ondelete="CASCADE"), nullable=False
+        "proposicaoId",
+        UUID(as_uuid=True),
+        ForeignKey("proposicoes.id", ondelete="CASCADE"),
+        nullable=False,
     )
     evaluation_window_months: Mapped[int] = mapped_column("janelaMesesAvaliacao", Integer, default=12, nullable=False)
     ipca_window_delta: Mapped[Optional[Decimal]] = mapped_column("variacaoIpcaJanela", Numeric(8, 4), nullable=True)
@@ -73,6 +89,4 @@ class PolicyEconomicImpact(TimeStampedModel):
     # Relationships
     proposition: Mapped["Proposition"] = relationship("Proposition", back_populates="economic_impacts")
 
-    __table_args__ = (
-        Index("idx_impact_proposition", "proposicaoId"),
-    )
+    __table_args__ = (Index("idx_impact_proposition", "proposicaoId"),)
