@@ -3,7 +3,7 @@
 # recentes compatíveis com Python 3.11 (imagem Docker e CI).
 # Recomendado: gerar um lockfile com hashes para builds reprodutíveis, ex.:
 #   pip-compile --generate-hashes -o requirements.lock requirements.in
-pandas~=3.0.6
+pandas~=2.3.3
 requests~=2.34.2
 # numpy 2.5+ exige Python >= 3.12
 numpy~=2.4.6
@@ -11,5 +11,5 @@ python-dateutil~=2.9.0
 urllib3~=2.8.0
 tqdm~=4.70.1
 pydantic~=2.13.5
-sqlalchemy~=2.1.4
+sqlalchemy~=2.0.54
 psycopg2-binary~=2.9.13
