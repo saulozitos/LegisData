@@ -39,6 +39,22 @@ export interface PresidenteHistorico {
   marcos_economicos: string[];
 }
 
+export interface ScoreProsperidadeData {
+  score_geral: number;
+  subscore_economico: number;
+  subscore_social: number;
+  subscore_estabilidade: number;
+  classificacao: string;
+  destaque_positivo: string;
+  destaque_atencao: string;
+}
+
+export interface TermometroRepassesData {
+  m1_lider_per_capita: { uf: string; estado: string; valor_per_capita: number };
+  m2_lider_per_capita: { uf: string; estado: string; valor_per_capita: number };
+  diagnostico: string;
+}
+
 export interface MandatoPerformance {
   id_mandato: string;
   presidente: string;
@@ -78,6 +94,7 @@ export interface MandatoPerformance {
   valores_anuais?: Array<ResumoMacroeconomicoAnual>;
   ministros_fazenda_principais: string[];
   marcos_economicos_principais: string[];
+  score_prosperidade?: ScoreProsperidadeData;
 }
 
 export interface ResumoMacroeconomicoAnual {
@@ -243,6 +260,15 @@ export interface CompareMandatesResponse {
   deltas: CompareDeltas;
   normalized_trajectory: TrajectoryPoint[];
   repasses_comparison?: RepassesComparison;
+  scores_prosperidade?: {
+    mandate1: ScoreProsperidadeData;
+    mandate2: ScoreProsperidadeData;
+    delta_score_geral: number;
+    delta_economico: number;
+    delta_social: number;
+    delta_estabilidade: number;
+  };
+  termometro_repasses_apoio?: TermometroRepassesData;
 }
 
 async function fetchJson<T>(endpoint: string, fallbackData: T): Promise<T> {
@@ -804,6 +830,59 @@ export interface RelevanciaLegislativaData {
   diagnostico: string;
 }
 
+export interface RoiCidadaoData {
+  score: string;
+  nota: number;
+  custo_total_operacional: number;
+  custo_por_projeto_impacto: number;
+  projetos_estruturantes: number;
+  diagnostico: string;
+}
+
+export interface ConcentracaoCeapData {
+  indice_hhi: number;
+  nivel_risco: "ALERTA" | "MODERADO" | "BAIXO";
+  percentual_maior_fornecedor: number;
+  maior_fornecedor: string | null;
+  cnpj_maior_fornecedor: string | null;
+  diagnostico: string;
+}
+
+export interface EnriquecimentoPatrimonialData {
+  delta_patrimonio: number;
+  salario_acumulado_estimado: number;
+  razao_patrimonio_renda: number;
+  compatibilidade: "COMPATÍVEL" | "MODERADO" | "ATÍPICO";
+  diagnostico: string;
+}
+
+export interface EstabilidadePartidariaData {
+  total_trocas: number;
+  anos_medio_por_partido: number;
+  classificacao: string;
+  taxa_governismo_pct: number;
+  diagnostico: string;
+}
+
+export interface EficienciaEmendasData {
+  taxa_conversao_pct: number;
+  total_empenhado: number;
+  total_pago: number;
+  percentual_pix: number;
+  municipio_predileto: string | null;
+  concentracao_municipio_predileto_pct: number;
+  classificacao: string;
+  diagnostico: string;
+}
+
+export interface IndicesInteligenciaData {
+  roi_cidadao: RoiCidadaoData;
+  concentracao_ceap: ConcentracaoCeapData;
+  enriquecimento_patrimonial: EnriquecimentoPatrimonialData;
+  estabilidade_partidaria: EstabilidadePartidariaData;
+  eficiencia_emendas: EficienciaEmendasData;
+}
+
 export interface PoliticoDossier {
   perfil: {
     id: string;
@@ -865,6 +944,7 @@ export interface PoliticoDossier {
     amostra_faltas: FaltaRegistro[];
   };
   evolucao_patrimonial?: EvolucaoPatrimonial;
+  indices_inteligencia?: IndicesInteligenciaData;
 }
 
 export interface IndicadorSocialAnual {

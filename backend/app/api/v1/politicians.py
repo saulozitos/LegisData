@@ -1065,6 +1065,172 @@ def get_politician_dossier(
         ]
     }
 
+    # L. Algoritmos de Inteligência Cívica e Indicadores Avançados
+    # 1. ROI do Cidadão (Custo por Impacto Legislativo)
+    total_gasto_mandato = float(custos_ceap.get("gasto_total_recente", 0.0))
+    qtd_meses_mandatos = max(len(mandatos_list) * 48, 12)
+    salario_acumulado_estimado = float(sal_liquido_atual) * qtd_meses_mandatos
+    custo_total_operacional = total_gasto_mandato + salario_acumulado_estimado
+
+    proj_impacto = int(relevancia_legislativa.get("projetos_impacto", 0))
+    custo_por_projeto = round(custo_total_operacional / max(proj_impacto, 1), 2) if proj_impacto > 0 else round(custo_total_operacional, 2)
+
+    fator_presenca = min(taxa_presenca, 100.0) * 0.30
+    fator_projetos = min(proj_impacto * 10.0, 100.0) * 0.40
+    fator_custo = max(0.0, min(100.0, 100.0 - (custo_por_projeto / 50000.0) * 20.0)) * 0.30
+    nota_roi = round(fator_presenca + fator_projetos + fator_custo, 1)
+
+    if nota_roi >= 85:
+        score_roi = "A+"
+        diag_roi = "Alta eficiência legislativa com forte entrega de matérias estruturantes e assiduidade destacada."
+    elif nota_roi >= 70:
+        score_roi = "A"
+        diag_roi = "Bom custo-benefício para o cidadão, com produção legislativa consistente."
+    elif nota_roi >= 55:
+        score_roi = "B"
+        diag_roi = "Produção legislativa e assiduidade em nível regular."
+    elif nota_roi >= 40:
+        score_roi = "C"
+        diag_roi = "Custo operacional elevado em relação ao volume de matérias estruturantes apresentadas."
+    else:
+        score_roi = "D"
+        diag_roi = "Baixo retorno legislativo em proporção ao custo operacional do mandato."
+
+    roi_cidadao = {
+        "score": score_roi,
+        "nota": nota_roi,
+        "custo_total_operacional": round(custo_total_operacional, 2),
+        "custo_por_projeto_impacto": custo_por_projeto,
+        "projetos_estruturantes": proj_impacto,
+        "diagnostico": diag_roi
+    }
+
+    # 2. Concentração de Fornecedores da CEAP (Índice HHI)
+    maiores_forn = custos_ceap.get("maiores_fornecedores", [])
+    total_gasto_ceap = float(custos_ceap.get("gasto_total_recente", 0.0))
+    if total_gasto_ceap > 0 and maiores_forn:
+        hhi = sum(((f["total_recebido"] / total_gasto_ceap * 100.0) ** 2) for f in maiores_forn)
+        top1_forn = maiores_forn[0]
+        top1_pct = round(top1_forn["total_recebido"] / total_gasto_ceap * 100.0, 1)
+
+        if hhi >= 3500 or top1_pct >= 45.0:
+            nivel_risco_ceap = "ALERTA"
+            diag_hhi = f"Alerta de Risco: O fornecedor '{top1_forn['nome_fornecedor']}' concentrou {top1_pct}% de todas as despesas da cota parlamentar."
+        elif hhi >= 1800 or top1_pct >= 25.0:
+            nivel_risco_ceap = "MODERADO"
+            diag_hhi = f"Concentração moderada de recursos em credores principais ({top1_pct}% com '{top1_forn['nome_fornecedor']}')."
+        else:
+            nivel_risco_ceap = "BAIXO"
+            diag_hhi = "Gastos bem distribuídos entre múltiplos fornecedores sem dependência hegemônica."
+    else:
+        hhi = 0.0
+        top1_pct = 0.0
+        top1_forn = None
+        nivel_risco_ceap = "BAIXO"
+        diag_hhi = "Sem despesas concentradas registradas."
+
+    concentracao_ceap = {
+        "indice_hhi": round(hhi, 1),
+        "nivel_risco": nivel_risco_ceap,
+        "percentual_maior_fornecedor": top1_pct,
+        "maior_fornecedor": top1_forn["nome_fornecedor"] if top1_forn else None,
+        "cnpj_maior_fornecedor": top1_forn["cnpj_cpf"] if top1_forn else None,
+        "diagnostico": diag_hhi
+    }
+
+    # 3. Enriquecimento Patrimonial vs. Renda Oficial
+    val_patrimonio_inicial = float(patrimonio_resumo.get("primeiro_valor", 0.0) or 0.0)
+    val_patrimonio_final = float(patrimonio_resumo.get("ultimo_valor", 0.0) or 0.0)
+    delta_patrimonio = val_patrimonio_final - val_patrimonio_inicial
+
+    if salario_acumulado_estimado > 0:
+        razao_patrimonio_renda = round(delta_patrimonio / salario_acumulado_estimado, 2)
+    else:
+        razao_patrimonio_renda = 0.0
+
+    if delta_patrimonio <= 0 or razao_patrimonio_renda <= 0.8:
+        compat_patrimonial = "COMPATÍVEL"
+        diag_patrimonio = "Crescimento patrimonial compatível ou inferior ao somatório dos subsídios líquidos oficiais do mandato."
+    elif razao_patrimonio_renda <= 2.0:
+        compat_patrimonial = "MODERADO"
+        diag_patrimonio = "Evolução patrimonial compatível com rendimentos oficiais acrescidos de valorização imobiliária ou investimentos."
+    else:
+        compat_patrimonial = "ATÍPICO"
+        diag_patrimonio = f"Alerta de Variação Atípica: O patrimônio líquido cresceu {razao_patrimonio_renda}x mais do que o total de salários recebidos no período público."
+
+    enriquecimento_patrimonial = {
+        "delta_patrimonio": round(delta_patrimonio, 2),
+        "salario_acumulado_estimado": round(salario_acumulado_estimado, 2),
+        "razao_patrimonio_renda": razao_patrimonio_renda,
+        "compatibilidade": compat_patrimonial,
+        "diagnostico": diag_patrimonio
+    }
+
+    # 4. Estabilidade Partidária & Coerência Ideológica
+    total_filiacoes = len(filiacoes_list)
+    trocas_partidarias = max(0, total_filiacoes - 1)
+    anos_totais = max(1, (mandatos_list[-1]["ano_fim"] - mandatos_list[0]["ano_inicio"]) if mandatos_list else 4)
+    media_anos_partido = round(anos_totais / max(total_filiacoes, 1), 1)
+
+    if trocas_partidarias <= 1:
+        classif_fidelidade = "ALTA_FIDELIDADE"
+        diag_fidelidade = f"Fidelidade partidária exemplar ({trocas_partidarias} troca de legenda ao longo da trajetória pública)."
+    elif trocas_partidarias <= 3:
+        classif_fidelidade = "MODERADA"
+        diag_fidelidade = f"Trajetória com movimentações pontuais de legenda ({trocas_partidarias} trocas), comum em janelas partidárias."
+    else:
+        classif_fidelidade = "ALTA_ROTATIVIDADE"
+        diag_fidelidade = f"Alta rotatividade partidária ({trocas_partidarias} trocas de partido), indicando pragmatismo eleitoral frequente."
+
+    estabilidade_partidaria = {
+        "total_trocas": trocas_partidarias,
+        "anos_medio_por_partido": media_anos_partido,
+        "classificacao": classif_fidelidade,
+        "taxa_governismo_pct": basometro.get("taxa_governismo_pct", 50.0),
+        "diagnostico": diag_fidelidade
+    }
+
+    # 5. Eficiência e Alocação de Emendas Parlamentares
+    tot_emp_emendas = float(emendas_parlamentares.get("total_empenhado", 0.0))
+    tot_pago_emendas = float(emendas_parlamentares.get("total_pago", 0.0))
+    taxa_exec_emendas = round((tot_pago_emendas / tot_emp_emendas * 100.0), 1) if tot_emp_emendas > 0 else 0.0
+
+    destinos = emendas_parlamentares.get("destinos_principais", [])
+    top1_dest = destinos[0] if destinos else None
+
+    dist_tipos = emendas_parlamentares.get("distribuicao_por_tipo", [])
+    pix_item = next((t for t in dist_tipos if "PIX" in t.get("tipo", "").upper() or "ESPECIAL" in t.get("tipo", "").upper()), None)
+    pct_pix = pix_item.get("percentual", 0.0) if pix_item else 0.0
+
+    if taxa_exec_emendas >= 85.0:
+        classif_emendas = "ALTA_EFICIÊNCIA"
+        diag_emendas = f"Excelente índice de liberação: {taxa_exec_emendas}% dos recursos empenhados foram efetivamente pagos aos destinos."
+    elif taxa_exec_emendas >= 60.0:
+        classif_emendas = "MÉDIA_EFICIÊNCIA"
+        diag_emendas = f"Execução intermediária ({taxa_exec_emendas}% pago), com parcela significativa de restos a pagar."
+    else:
+        classif_emendas = "BAIXA_EFICIÊNCIA"
+        diag_emendas = f"Baixa conversão orçamentária: apenas {taxa_exec_emendas}% dos recursos alocados foram efetivamente liquidados."
+
+    eficiencia_emendas = {
+        "taxa_conversao_pct": taxa_exec_emendas,
+        "total_empenhado": tot_emp_emendas,
+        "total_pago": tot_pago_emendas,
+        "percentual_pix": pct_pix,
+        "municipio_predileto": top1_dest["localidade"] if top1_dest else None,
+        "concentracao_municipio_predileto_pct": top1_dest["percentual"] if top1_dest else 0.0,
+        "classificacao": classif_emendas,
+        "diagnostico": diag_emendas
+    }
+
+    indices_inteligencia = {
+        "roi_cidadao": roi_cidadao,
+        "concentracao_ceap": concentracao_ceap,
+        "enriquecimento_patrimonial": enriquecimento_patrimonial,
+        "estabilidade_partidaria": estabilidade_partidaria,
+        "eficiencia_emendas": eficiencia_emendas
+    }
+
     return {
         "perfil": {
             "id": str(pol.id),
@@ -1121,7 +1287,8 @@ def get_politician_dossier(
         "evolucao_patrimonial": {
             "resumo": patrimonio_resumo,
             "historico": patrimonio_historico
-        }
+        },
+        "indices_inteligencia": indices_inteligencia
     }
 
 

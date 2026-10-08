@@ -46,6 +46,8 @@ import {
   Coins,
   CheckCircle2,
   AlertTriangle,
+  Gauge,
+  Compass,
 } from "lucide-react";
 
 type ChartMetricType =
@@ -138,6 +140,8 @@ export default function ComparadorPage() {
   const deltas = compareData?.deltas;
   const trajectory = compareData?.normalized_trajectory || [];
   const repassesComp = compareData?.repasses_comparison;
+  const scoresProsperidade = compareData?.scores_prosperidade;
+  const termometroRepasses = compareData?.termometro_repasses_apoio;
 
   const p1 = m1 ? presidentMap[m1.id_mandato] : null;
   const p2 = m2 ? presidentMap[m2.id_mandato] : null;
@@ -469,6 +473,281 @@ export default function ComparadorPage() {
             </div>
           </div>
         </div>
+
+        {/* ======================================================== */}
+        {/* SCORE SINTÉTICO DE PROSPERIDADE PRESIDENCIAL (0 A 100) */}
+        {/* ======================================================== */}
+        {scoresProsperidade && m1 && m2 && (
+          <div className="bg-gradient-to-br from-slate-900/90 via-slate-950/90 to-cyan-950/20 border border-cyan-500/30 rounded-2xl p-6 backdrop-blur-md shadow-xl shadow-cyan-950/10 space-y-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <span className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                  <Gauge className="w-5 h-5" />
+                </span>
+                <div>
+                  <h2 className="text-base sm:text-lg font-black text-slate-100 flex items-center gap-2">
+                    Score Sintético de Prosperidade Presidencial
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                      Algoritmo Multicritério
+                    </span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Índice sintético (0 a 100) ponderado: <strong>35% Economia</strong> (PIB e IPCA) • <strong>35% Social & Renda</strong> (Salário Mínimo e Fome) • <strong>30% Estabilidade & Sustentabilidade</strong> (Emprego e Desmatamento)
+                  </p>
+                </div>
+              </div>
+
+              {/* Tag com Diferença / Vencedor Relativo */}
+              <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-800 rounded-xl px-3.5 py-1.5">
+                <span className="text-xs text-slate-400">Diferença Geral:</span>
+                <span className={`text-xs font-mono font-black ${
+                  scoresProsperidade.delta_score_geral >= 0 ? "text-amber-400" : "text-cyan-400"
+                }`}>
+                  {scoresProsperidade.delta_score_geral >= 0
+                    ? `+${scoresProsperidade.delta_score_geral.toFixed(1)} pts (${m2.presidente.split(" ")[0]})`
+                    : `+${Math.abs(scoresProsperidade.delta_score_geral).toFixed(1)} pts (${m1.presidente.split(" ")[0]})`}
+                </span>
+              </div>
+            </div>
+
+            {/* Grid dos Dois Scores Lado a Lado */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Score Mandato 1 */}
+              <div className="bg-slate-950/80 border border-cyan-500/30 rounded-2xl p-5 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+                  <div className="flex items-center gap-3">
+                    <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-slate-800 border border-cyan-500/40">
+                      <img
+                        src={getPresidentPhotoUrl(m1.id_mandato, p1?.foto_url)}
+                        alt={m1.presidente}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover object-top"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-100">{m1.presidente}</h3>
+                      <p className="text-[11px] text-slate-400 font-mono">{m1.anos_cobertos} • {m1.partido}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-black font-mono text-cyan-400">
+                      {scoresProsperidade.mandate1.score_geral.toFixed(1)}
+                      <span className="text-xs text-slate-500 font-normal"> /100</span>
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                      {scoresProsperidade.mandate1.classificacao}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Pilares com Barras de Progresso */}
+                <div className="space-y-3">
+                  {/* Pilar Econômico */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-300 font-medium flex items-center gap-1.5">
+                        <TrendingUp className="w-3.5 h-3.5 text-cyan-400" />
+                        Pilar Econômico (35%)
+                      </span>
+                      <span className="font-mono font-bold text-cyan-300">
+                        {scoresProsperidade.mandate1.subscore_economico.toFixed(1)} pts
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
+                      <div
+                        className="bg-cyan-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, Math.max(0, scoresProsperidade.mandate1.subscore_economico))}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-slate-500 block">
+                      PIB médio: {m1.pib_medio_anual_pct}% a.a. • Inflação acumulada: {m1.ipca_acumulado_pct}%
+                    </span>
+                  </div>
+
+                  {/* Pilar Social & Renda */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-300 font-medium flex items-center gap-1.5">
+                        <HeartHandshake className="w-3.5 h-3.5 text-emerald-400" />
+                        Pilar Social & Renda (35%)
+                      </span>
+                      <span className="font-mono font-bold text-emerald-400">
+                        {scoresProsperidade.mandate1.subscore_social.toFixed(1)} pts
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
+                      <div
+                        className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, Math.max(0, scoresProsperidade.mandate1.subscore_social))}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-slate-500 block">
+                      Salário Mínimo: R$ {m1.salario_minimo_final_brl || "N/D"} (US$ {m1.salario_minimo_final_usd || "N/D"})
+                    </span>
+                  </div>
+
+                  {/* Pilar Estabilidade & Ambiental */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-300 font-medium flex items-center gap-1.5">
+                        <Trees className="w-3.5 h-3.5 text-teal-400" />
+                        Estabilidade & Sustentabilidade (30%)
+                      </span>
+                      <span className="font-mono font-bold text-teal-300">
+                        {scoresProsperidade.mandate1.subscore_estabilidade.toFixed(1)} pts
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
+                      <div
+                        className="bg-teal-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, Math.max(0, scoresProsperidade.mandate1.subscore_estabilidade))}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-slate-500 block">
+                      Desmatamento médio: {m1.desmatamento_medio_anual_km2 ? `${m1.desmatamento_medio_anual_km2.toLocaleString("pt-BR")} km²/ano` : "N/D"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Tags de Destaques e Atenção */}
+                <div className="pt-2 border-t border-slate-900 space-y-2">
+                  {scoresProsperidade.mandate1.destaque_positivo && (
+                    <div className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
+                      <span>{scoresProsperidade.mandate1.destaque_positivo}</span>
+                    </div>
+                  )}
+                  {scoresProsperidade.mandate1.destaque_atencao && (
+                    <div className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                      <span>{scoresProsperidade.mandate1.destaque_atencao}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Score Mandato 2 */}
+              <div className="bg-slate-950/80 border border-amber-500/30 rounded-2xl p-5 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+                  <div className="flex items-center gap-3">
+                    <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-slate-800 border border-amber-500/40">
+                      <img
+                        src={getPresidentPhotoUrl(m2.id_mandato, p2?.foto_url)}
+                        alt={m2.presidente}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover object-top"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-100">{m2.presidente}</h3>
+                      <p className="text-[11px] text-slate-400 font-mono">{m2.anos_cobertos} • {m2.partido}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-black font-mono text-amber-400">
+                      {scoresProsperidade.mandate2.score_geral.toFixed(1)}
+                      <span className="text-xs text-slate-500 font-normal"> /100</span>
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                      {scoresProsperidade.mandate2.classificacao}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Pilares com Barras de Progresso */}
+                <div className="space-y-3">
+                  {/* Pilar Econômico */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-300 font-medium flex items-center gap-1.5">
+                        <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+                        Pilar Econômico (35%)
+                      </span>
+                      <span className="font-mono font-bold text-amber-300">
+                        {scoresProsperidade.mandate2.subscore_economico.toFixed(1)} pts
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
+                      <div
+                        className="bg-amber-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, Math.max(0, scoresProsperidade.mandate2.subscore_economico))}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-slate-500 block">
+                      PIB médio: {m2.pib_medio_anual_pct}% a.a. • Inflação acumulada: {m2.ipca_acumulado_pct}%
+                    </span>
+                  </div>
+
+                  {/* Pilar Social & Renda */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-300 font-medium flex items-center gap-1.5">
+                        <HeartHandshake className="w-3.5 h-3.5 text-emerald-400" />
+                        Pilar Social & Renda (35%)
+                      </span>
+                      <span className="font-mono font-bold text-emerald-400">
+                        {scoresProsperidade.mandate2.subscore_social.toFixed(1)} pts
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
+                      <div
+                        className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, Math.max(0, scoresProsperidade.mandate2.subscore_social))}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-slate-500 block">
+                      Salário Mínimo: R$ {m2.salario_minimo_final_brl || "N/D"} (US$ {m2.salario_minimo_final_usd || "N/D"})
+                    </span>
+                  </div>
+
+                  {/* Pilar Estabilidade & Ambiental */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-300 font-medium flex items-center gap-1.5">
+                        <Trees className="w-3.5 h-3.5 text-teal-400" />
+                        Estabilidade & Sustentabilidade (30%)
+                      </span>
+                      <span className="font-mono font-bold text-teal-300">
+                        {scoresProsperidade.mandate2.subscore_estabilidade.toFixed(1)} pts
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
+                      <div
+                        className="bg-teal-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, Math.max(0, scoresProsperidade.mandate2.subscore_estabilidade))}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-slate-500 block">
+                      Desmatamento médio: {m2.desmatamento_medio_anual_km2 ? `${m2.desmatamento_medio_anual_km2.toLocaleString("pt-BR")} km²/ano` : "N/D"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Tags de Destaques e Atenção */}
+                <div className="pt-2 border-t border-slate-900 space-y-2">
+                  {scoresProsperidade.mandate2.destaque_positivo && (
+                    <div className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
+                      <span>{scoresProsperidade.mandate2.destaque_positivo}</span>
+                    </div>
+                  )}
+                  {scoresProsperidade.mandate2.destaque_atencao && (
+                    <div className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                      <span>{scoresProsperidade.mandate2.destaque_atencao}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 1. TABELA PRINCIPAL DE CONTRASTE MULTIDIMENSIONAL */}
         {m1 && m2 && deltas && (
@@ -1426,6 +1705,75 @@ export default function ComparadorPage() {
                 </div>
               )}
             </div>
+
+            {/* TERMÔMETRO DE DISTRIBUIÇÃO REGIONAL & PACTO FEDERATIVO */}
+            {termometroRepasses && (
+              <div className="bg-slate-950/70 border border-emerald-500/20 rounded-xl p-5 space-y-4 shadow-sm">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
+                  <Compass className="w-4 h-4 text-emerald-400" />
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-100 flex items-center gap-2">
+                      Termômetro de Repasses & Disparidade Regional Per Capita
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        Equidade Federativa
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Relação de disparidade máxima e mínima de recursos per capita recebidos entre os estados
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Mandato 1 */}
+                  <div className="bg-slate-900/60 border border-cyan-500/20 rounded-lg p-3 space-y-2">
+                    <span className="text-xs font-bold text-cyan-400 block">
+                      {m1?.presidente} ({m1?.anos_cobertos})
+                    </span>
+                    <div className="text-[11px] space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Estado Líder Per Capita:</span>
+                        <strong className="text-emerald-400 font-mono">
+                          {termometroRepasses.m1_lider_per_capita.estado} ({termometroRepasses.m1_lider_per_capita.uf})
+                        </strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Valor Per Capita:</span>
+                        <strong className="text-cyan-300 font-mono">
+                          R$ {termometroRepasses.m1_lider_per_capita.valor_per_capita.toFixed(0)}/hab
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Mandato 2 */}
+                  <div className="bg-slate-900/60 border border-amber-500/20 rounded-lg p-3 space-y-2">
+                    <span className="text-xs font-bold text-amber-400 block">
+                      {m2?.presidente} ({m2?.anos_cobertos})
+                    </span>
+                    <div className="text-[11px] space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Estado Líder Per Capita:</span>
+                        <strong className="text-emerald-400 font-mono">
+                          {termometroRepasses.m2_lider_per_capita.estado} ({termometroRepasses.m2_lider_per_capita.uf})
+                        </strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Valor Per Capita:</span>
+                        <strong className="text-amber-300 font-mono">
+                          R$ {termometroRepasses.m2_lider_per_capita.valor_per_capita.toFixed(0)}/hab
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-900/80 border border-slate-800/90 rounded-lg p-3 text-[11px] text-slate-300 leading-relaxed">
+                  <strong className="text-emerald-400 font-semibold">Análise de Pacto Federativo: </strong>
+                  {termometroRepasses.diagnostico}
+                </div>
+              </div>
+            )}
 
             {/* GRÁFICO COMPARATIVO TOP ESTADOS */}
             {topStatesChartData.length > 0 && (

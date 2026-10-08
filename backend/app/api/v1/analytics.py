@@ -53,18 +53,99 @@ def _get_mandate_years(m: dict) -> List[int]:
     return years if years else [start_yr]
 
 
+def _calculate_mandate_prosperity_score(m: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Calcula o Score Sintético de Prosperidade Presidencial (0 a 100).
+    Baseado em pilares multicritério: Crescimento do PIB real, Inflação IPCA, Poder de Compra do Salário Mínimo,
+    Fome/Insegurança Alimentar, Desemprego e Sustentabilidade Ambiental.
+    """
+    pib = float(m.get("pib_medio_anual_pct") or 0.0)
+    ipca_anual = float(m.get("ipca_pos_real_pct") if m.get("ipca_pos_real_pct") is not None else m.get("ipca_acumulado_pct", 0.0))
+    anos = len(m.get("valores_anuais", [])) or 4
+    ipca_medio = ipca_anual / max(anos, 1)
+
+    # 1. Dimensão Econômica (35%)
+    sc_pib = max(10.0, min(100.0, 50.0 + pib * 10.0))
+    sc_ipca = max(10.0, min(100.0, 100.0 - ipca_medio * 4.0))
+    sc_econ = round(sc_pib * 0.5 + sc_ipca * 0.5, 1)
+
+    # 2. Dimensão Social e Renda (35%)
+    sm_ini = float(m.get("salario_minimo_inicial_usd") or 50.0)
+    sm_fim = float(m.get("salario_minimo_final_usd") or 50.0)
+    sm_var = ((sm_fim - sm_ini) / sm_ini) * 100.0 if sm_ini > 0 else 0.0
+    sc_sm = max(15.0, min(100.0, 50.0 + sm_var * 0.4))
+    fome = float(m.get("fome_media_pct") or 10.0)
+    sc_fome = max(15.0, min(100.0, 100.0 - fome * 4.5))
+    sc_soc = round(sc_sm * 0.5 + sc_fome * 0.5, 1)
+
+    # 3. Dimensão Estabilidade e Sustentabilidade (30%)
+    desemp = float(m.get("desemprego_medio_pct") or 8.0)
+    sc_desemp = max(15.0, min(100.0, 100.0 - desemp * 5.0))
+    desmat = float(m.get("desmatamento_medio_anual_km2") or 12000.0)
+    sc_desmat = max(15.0, min(100.0, 100.0 - (desmat / 30000.0) * 60.0))
+    sc_est = round(sc_desemp * 0.5 + sc_desmat * 0.5, 1)
+
+    score_geral = round(sc_econ * 0.35 + sc_soc * 0.35 + sc_est * 0.30, 1)
+
+    if score_geral >= 80:
+        classif = "Alta Prosperidade"
+    elif score_geral >= 68:
+        classif = "Crescimento Consistente"
+    elif score_geral >= 55:
+        classif = "Desempenho Moderado"
+    else:
+        classif = "Cenário Desafiador"
+
+    destaque_pos = []
+    if sc_pib >= 70:
+        destaque_pos.append(f"Crescimento vigoroso do PIB (+{pib:.1f}% a.a.)")
+    if sc_ipca >= 75:
+        destaque_pos.append("Controle inflacionário sólido")
+    if sc_sm >= 70:
+        destaque_pos.append("Forte valorização do Salário Mínimo")
+    if sc_fome >= 75:
+        destaque_pos.append("Redução acentuada da insegurança alimentar")
+    if sc_desmat >= 75:
+        destaque_pos.append("Redução das taxas de desmatamento")
+
+    destaque_atencao = []
+    if sc_ipca < 60:
+        destaque_atencao.append(f"Pressão inflacionária acumulada ({ipca_anual:.1f}%)")
+    if sc_pib < 50:
+        destaque_atencao.append(f"Crescimento econômico modesto ({pib:.1f}% a.a.)")
+    if sc_desemp < 55:
+        destaque_atencao.append("Taxas de desemprego elevadas no ciclo")
+    if sc_desmat < 50:
+        destaque_atencao.append("Pico nas taxas de desmatamento da Amazônia")
+
+    return {
+        "score_geral": score_geral,
+        "subscore_economico": sc_econ,
+        "subscore_social": sc_soc,
+        "subscore_estabilidade": sc_est,
+        "classificacao": classif,
+        "destaque_positivo": destaque_pos[0] if destaque_pos else "Estabilidade institucional no período",
+        "destaque_atencao": destaque_atencao[0] if destaque_atencao else "Desafios de produtividade e contas públicas"
+    }
+
+
 @router.get("/mandates-performance", response_model=List[Dict[str, Any]])
 def get_mandates_economic_performance():
     """
     Retorna a matriz de performance econômica cruzando cada mandato presidencial
-    com a inflação acumulada no período, crescimento real do PIB, variação cambial e evolução do salário mínimo.
+    com inflação acumulada, crescimento real do PIB, variação cambial, evolução do salário mínimo e Score de Prosperidade.
     """
     file_path = DATA_DIR / "indicadores_por_mandato.json"
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Matriz de mandatos não encontrada. Execute o ETL.")
 
     with open(file_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+
+    for m in data:
+        m["score_prosperidade"] = _calculate_mandate_prosperity_score(m)
+
+    return data
 
 
 @router.get("/compare-mandates", response_model=Dict[str, Any])
@@ -324,10 +405,31 @@ def compare_mandates(
     tot_geral_1 = sum(item["m1_total"] for item in by_area.values())
     tot_geral_2 = sum(item["m2_total"] for item in by_area.values())
 
+    score_m1 = _calculate_mandate_prosperity_score(m1)
+    score_m2 = _calculate_mandate_prosperity_score(m2)
+
+    top_uf_m1 = max(by_uf, key=lambda x: x["m1_per_capita"]) if by_uf else None
+    top_uf_m2 = max(by_uf, key=lambda x: x["m2_per_capita"]) if by_uf else None
+    termometro_repasses = {
+        "m1_lider_per_capita": {
+            "uf": top_uf_m1["uf"] if top_uf_m1 else "DF",
+            "estado": top_uf_m1["estado_nome"] if top_uf_m1 else "Distrito Federal",
+            "valor_per_capita": top_uf_m1["m1_per_capita"] if top_uf_m1 else 0.0
+        },
+        "m2_lider_per_capita": {
+            "uf": top_uf_m2["uf"] if top_uf_m2 else "DF",
+            "estado": top_uf_m2["estado_nome"] if top_uf_m2 else "Distrito Federal",
+            "valor_per_capita": top_uf_m2["m2_per_capita"] if top_uf_m2 else 0.0
+        },
+        "diagnostico": "Estados com menor contingente populacional e áreas prioritárias (Norte/Centro-Oeste) absorvem maior volume de repasses federais per capita vinculados aos pisos constitucionais de Saúde e Educação."
+    }
+
     m1_enriched = dict(m1)
     m1_enriched["sociais"] = s1
+    m1_enriched["score_prosperidade"] = score_m1
     m2_enriched = dict(m2)
     m2_enriched["sociais"] = s2
+    m2_enriched["score_prosperidade"] = score_m2
 
     return {
         "mandate1": m1_enriched,
@@ -351,6 +453,15 @@ def compare_mandates(
             "feminicidios_medio_diff": fem_delta,
             "desmatamento_medio_diff": desm_delta,
         },
+        "scores_prosperidade": {
+            "mandate1": score_m1,
+            "mandate2": score_m2,
+            "delta_score_geral": round(score_m2["score_geral"] - score_m1["score_geral"], 1),
+            "delta_economico": round(score_m2["subscore_economico"] - score_m1["subscore_economico"], 1),
+            "delta_social": round(score_m2["subscore_social"] - score_m1["subscore_social"], 1),
+            "delta_estabilidade": round(score_m2["subscore_estabilidade"] - score_m1["subscore_estabilidade"], 1),
+        },
+        "termometro_repasses_apoio": termometro_repasses,
         "normalized_trajectory": normalized_trajectory,
         "repasses_comparison": {
             "by_area": by_area,
