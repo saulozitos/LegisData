@@ -2,6 +2,7 @@
 Configurações Globais do Pipeline de ETL - Política e Economia Brasileira
 """
 
+import os
 from pathlib import Path
 from datetime import date
 
@@ -17,6 +18,14 @@ PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
 # Parâmetros temporais padrão (Início do governo Itamar Franco até o presente)
 DATA_INICIO_PADRAO = "02/10/1992"  # Posse interina de Itamar Franco
 DATA_FIM_PADRAO = date.today().strftime("%d/%m/%Y")
+
+# Anos da Cota Parlamentar (CEAP/CEAPS) carregados pelo db_loader a partir dos
+# arquivos anuais oficiais. Configurável por variável de ambiente.
+CEAP_ANO_INICIO = int(os.getenv("CEAP_ANO_INICIO", "2023"))
+CEAP_ANO_FIM = int(os.getenv("CEAP_ANO_FIM", str(date.today().year)))
+
+# Mapa revisável autor da emenda (Portal da Transparência) -> parlamentar
+REFERENCE_DATA_DIR = DATA_DIR / "reference"
 
 # User-Agent oficial do projeto para consumo de APIs públicas
 DEFAULT_USER_AGENT = "LegisDataBot/1.0 (Transparência Pública; contato@legisdata.org)"

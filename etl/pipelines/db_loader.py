@@ -4,7 +4,9 @@ Lê os arquivos processados (.json e .csv) e executa upsert relacional completo 
 """
 
 import sys
+import csv
 import json
+import uuid
 import logging
 import re
 import unicodedata
@@ -41,8 +43,13 @@ from app.models import (
     VotoOpcaoEnum, CategoriaIndicadorEnum, PeriodicidadeIndicadorEnum, UnidadeMedidaEnum,
     EspectroPoliticoEnum
 )
-from etl.config import PROCESSED_DATA_DIR, RAW_DATA_DIR, BCB_SERIES
-from etl.extractors.ceap_extractor import CeapExtractor
+from etl.config import PROCESSED_DATA_DIR, RAW_DATA_DIR, BCB_SERIES, CEAP_ANO_INICIO, CEAP_ANO_FIM, REFERENCE_DATA_DIR
+from etl.extractors.ceap_bulk_extractor import CeapBulkExtractor
+from etl.parsers.ceap import URL_CAMARA_CEAP_ANO, URL_SENADO_CEAPS_ANO
+from etl.parsers.nomes import (
+    destinos_por_autor, indexar_parlamentares, propor_mapa, resolver_mapa, ufs_parlamentares,
+)
+from etl.parsers.valores import truncar
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("DBLoader")
@@ -185,6 +192,10 @@ class DatabaseLoader:
         """Cria as tabelas caso ainda não existam."""
         logger.info("Verificando e criando tabelas no PostgreSQL via SQLAlchemy...")
         Base.metadata.create_all(bind=engine)
+        from app.core.schema_patches import EMENDAS_CEAP_DDL
+        with engine.begin() as conn:
+            for ddl in EMENDAS_CEAP_DDL:
+                conn.execute(text(ddl))
 
     def load_all(self) -> Dict[str, int]:
         """Executa a carga completa respeitando todas as dependências de chaves estrangeiras."""
@@ -215,7 +226,7 @@ class DatabaseLoader:
             self._load_politician_assets(session, president_map, deputy_map, senator_map)
 
             # 4.2 Despesas da Cota Parlamentar (CEAP)
-            self._load_ceap_expenses(session, deputy_map)
+            self._load_ceap_expenses(session, deputy_map, senator_map)
 
             # 4.3 Trilha do Dinheiro (Emendas Parlamentares)
             self._load_emendas_parlamentares(session, deputy_map, senator_map)
@@ -1620,70 +1631,199 @@ class DatabaseLoader:
         session.flush()
         logger.info(f"-> {total_inseridos} novas declarações de patrimônio inseridas ({len(seen_keys)} processadas, {sem_vinculo} sem vínculo).")
 
-    def _load_ceap_expenses(self, session: Session, deputy_map: Dict[int, Any]):
-        """Carrega despesas reais da CEAP a partir da API de Dados Abertos da Câmara.
+    def _load_ceap_expenses(self, session: Session, deputy_map: Dict[int, Any], senator_map: Dict[int, Any]):
+        """Carrega a Cota Parlamentar a partir dos arquivos anuais oficiais.
 
-        Sem dado oficial, a tabela fica vazia e a API/UI exibem "dados indisponíveis".
-        Não há mais fallback sintético (antes: generate_representative_ceap) nem a
-        inserção do JSON agregado com ano fixo (2024), que misturava 2019-2026.
-        O resumo agregado de despesas_ceap_2019_2026.json continua sendo servido
-        diretamente pela API como consolidado anual.
+        Câmara: https://www.camara.leg.br/cotas/Ano-{ano}.csv.zip (ideCadastro -> camara_id)
+        Senado: https://adm.senado.gov.br/adm-dadosabertos/api/v1/senadores/despesas_ceaps/{ano}
+                (codSenador -> senado_id)
+
+        Anos: CEAP_ANO_INICIO..CEAP_ANO_FIM (etl/config.py; padrão 2023..ano corrente).
+        A cada execução, para cada (casa, ano) cuja fonte foi obtida com sucesso, as
+        linhas desse ano/casa são apagadas e recarregadas — a carga é idempotente e um
+        download com falha NÃO apaga dados já carregados. Deduplicação: ideDocumento
+        (+ parcela/passageiro/trecho/valor) na Câmara e "id" do lançamento no Senado.
+        Despesas de parlamentares fora do cadastro carregado (deputados_camara.json /
+        senadores_senado.json) e linhas de liderança da Câmara (sem ideCadastro) não são
+        atribuídas a ninguém; as contagens são registradas no log.
         """
-        logger.info("Carregando Despesas da Cota Parlamentar (CEAP)...")
-        existing_count = session.query(DespesaCota).count()
-        if existing_count > 100:
-            logger.info(f"-> Tabela de despesas CEAP já possui {existing_count} registros. Mantendo registros existentes.")
-            return
+        logger.info(f"Carregando Despesas da Cota Parlamentar (CEAP) {CEAP_ANO_INICIO}-{CEAP_ANO_FIM}...")
+        extractor = CeapBulkExtractor()
+        vistos = set()
+        resumo = {}
 
-        ceap_ext = CeapExtractor()
-        deputados = session.query(Politician).filter(Politician.camara_id.isnot(None)).all()
-        total_inseridos = 0
-        sem_dados = 0
-        for dep in deputados[:35]:
-            try:
-                despesas = ceap_ext.fetch_deputado_despesas(dep.camara_id, [2023, 2024])
-            except Exception as e:
-                logger.warning(f"Erro ao buscar CEAP da API da Câmara para {dep.electoral_name}: {e}")
-                despesas = []
+        fontes = [("camara", deputy_map, extractor.iter_camara), ("senado", senator_map, extractor.iter_senado)]
+        for ano in range(CEAP_ANO_INICIO, CEAP_ANO_FIM + 1):
+            for casa, id_map, iterador in fontes:
+                if not id_map:
+                    continue
+                stats: Dict[str, int] = {}
+                lote: List[dict] = []
+                try:
+                    registros = list(iterador(ano, stats=stats))
+                except Exception as e:
+                    logger.warning(f"[CEAP {casa} {ano}] fonte indisponível ({e}); dados existentes mantidos.")
+                    resumo[f"{casa}_{ano}"] = "falha"
+                    continue
 
-            if not despesas:
-                sem_dados += 1
-                continue
+                # Fonte obtida: substitui o que veio deste arquivo/API e as linhas sem
+                # procedência (carga antiga pela API por deputado) desse ano/casa.
+                fonte_url = (URL_CAMARA_CEAP_ANO if casa == "camara" else URL_SENADO_CEAPS_ANO).format(ano=ano)
+                coluna_id = Politician.camara_id if casa == "camara" else Politician.senado_id
+                ids_casa = select(Politician.id).where(coluna_id.isnot(None))
+                session.query(DespesaCota).filter(
+                    (DespesaCota.source_url == fonte_url)
+                    | (
+                        DespesaCota.source_url.is_(None)
+                        & (DespesaCota.year == ano)
+                        & DespesaCota.politician_id.in_(ids_casa)
+                    )
+                ).delete(synchronize_session=False)
 
-            for d in despesas:
-                dt_emissao = None
-                if d.get("data_emissao"):
-                    try:
-                        dt_emissao = datetime.strptime(str(d["data_emissao"])[:10], "%Y-%m-%d").date()
-                    except Exception:
-                        pass
-
-                desp_obj = DespesaCota(
-                    politician_id=dep.id,
-                    year=int(d["ano"]),
-                    month=int(d["mes"]) if d.get("mes") else None,
-                    expense_type=d["tipo_despesa"],
-                    net_value=Decimal(str(d["valor_liquido"])),
-                    supplier_name=_mascarar_cpf_no_nome(d["nome_fornecedor"]),
-                    supplier_cnpj_cpf=_mascarar_cpf(d.get("cnpj_cpf_fornecedor")),
-                    issue_date=dt_emissao,
-                    document_url=d.get("documento_url")
+                inseridos = sem_politico = duplicados = 0
+                for r in registros:
+                    pol_id = id_map.get(r["parlamentar_id"])
+                    if pol_id is None:
+                        sem_politico += 1
+                        continue
+                    if r["chave"] is not None:
+                        if r["chave"] in vistos:
+                            duplicados += 1
+                            continue
+                        vistos.add(r["chave"])
+                    lote.append({
+                        "id": uuid.uuid4(),
+                        "politician_id": pol_id,
+                        "year": r["ano"],
+                        "month": r["mes"],
+                        "expense_type": truncar(r["tipo_despesa"], 255),
+                        "net_value": r["valor_liquido"],
+                        "supplier_name": truncar(_mascarar_cpf_no_nome(r["fornecedor"]), 255),
+                        "supplier_cnpj_cpf": truncar(_mascarar_cpf(r["cnpj_cpf"]), 30),
+                        "issue_date": r["data_emissao"],
+                        "document_url": r["url_documento"],
+                        "source_url": r["fonte_url"],
+                        "source_document_id": truncar(r["id_documento"], 100),
+                    })
+                    if len(lote) >= 5000:
+                        session.bulk_insert_mappings(DespesaCota, lote)
+                        inseridos += len(lote)
+                        lote = []
+                if lote:
+                    session.bulk_insert_mappings(DespesaCota, lote)
+                    inseridos += len(lote)
+                session.flush()
+                resumo[f"{casa}_{ano}"] = inseridos
+                logger.info(
+                    f"[CEAP {casa} {ano}] {inseridos:,} inseridas; {sem_politico:,} de parlamentares fora do cadastro; "
+                    f"{duplicados:,} duplicadas; brutas={stats}"
                 )
-                session.add(desp_obj)
-                total_inseridos += 1
-
-        session.flush()
-        logger.info(f"-> {total_inseridos} registros de despesas da CEAP inseridos ({sem_dados} deputados sem dados oficiais retornados).")
+        logger.info(f"-> CEAP carregada: {resumo}")
 
     def _load_emendas_parlamentares(self, session: Session, deputy_map: Dict[int, Any], senator_map: Dict[int, Any]):
-        """Emendas parlamentares: sem carga até existir fonte oficial integrada.
+        """Emendas parlamentares individuais do Portal da Transparência (CGU).
 
-        Os dados anteriores (emendas_parlamentares_2019_2026.json e EmendasExtractor)
-        eram gerados por fórmula (teto x peso x taxa de execução, cidades e códigos
-        inventados) e foram removidos. A integração com o arquivo oficial do Portal da
-        Transparência (download-de-dados/emendas-parlamentares) é feita em PR próprio.
+        Entrada: emendas_parlamentares_cgu.json (etl/extractors/emendas_cgu_extractor.py)
+        e o mapa autor->parlamentar etl/data/reference/emendas_autor_map.csv
+        (etl/scripts/build_emendas_autor_map.py).
+
+        O arquivo oficial identifica o autor pelo código/nome SIAFI, não pelo id da
+        Câmara/Senado. Uma linha do mapa só é usada se:
+          * revisado=sim (vínculo conferido por uma pessoa), ou
+          * o vínculo é a correspondência EXATA e ÚNICA do nome normalizado com o nome
+            eleitoral/civil de um parlamentar, recalculada agora, e a UF predominante
+            dos destinos não diverge da UF do parlamentar.
+        Sem o CSV, a mesma regra automática é aplicada em memória. Emendas sem vínculo
+        não são carregadas (contagem no log). Emendas de bancada/comissão/relator já
+        foram excluídas na extração por não terem autor individual.
+
+        A tabela é esvaziada por _purge_synthetic_data() no início de load_all e
+        recarregada integralmente aqui a cada execução.
         """
-        logger.info("Emendas parlamentares: nenhuma fonte oficial integrada ainda; carga ignorada.")
+        logger.info("Carregando Emendas Parlamentares (Portal da Transparência)...")
+        arquivo = self.data_dir / "emendas_parlamentares_cgu.json"
+        if not arquivo.exists():
+            logger.info(f"-> {arquivo.name} não encontrado; rode etl/extractors/emendas_cgu_extractor.py. Carga ignorada.")
+            return
+        with open(arquivo, "r", encoding="utf-8") as f:
+            registros = json.load(f)
+
+        deputados = self._read_json_list("deputados_camara.json")
+        senadores = self._read_json_list("senadores_senado.json")
+        indice = indexar_parlamentares(deputados, senadores)
+        ufs = ufs_parlamentares(deputados, senadores)
+        destinos = destinos_por_autor(registros)
+
+        mapa_csv = REFERENCE_DATA_DIR / "emendas_autor_map.csv"
+        if mapa_csv.exists():
+            with open(mapa_csv, "r", encoding="utf-8", newline="") as f:
+                linhas_mapa = list(csv.DictReader(f, delimiter=";"))
+            origem_mapa = mapa_csv.name
+        else:
+            autores = {(r["codigo_autor_siafi"], r["nome_autor"]) for r in registros}
+            linhas_mapa = propor_mapa(autores, indice, ufs, destinos)
+            origem_mapa = "proposta automática em memória (CSV ausente)"
+        vinculos, stats_mapa = resolver_mapa(linhas_mapa, indice, ufs, destinos)
+        logger.info(f"-> Mapa de autores ({origem_mapa}): {stats_mapa}")
+
+        inseridos = sem_vinculo = sem_politico = sem_valor = 0
+        autores_sem_vinculo = set()
+        lote: List[dict] = []
+        for r in registros:
+            chave = vinculos.get((r["codigo_autor_siafi"], r["nome_autor"]))
+            if chave is None:
+                sem_vinculo += 1
+                autores_sem_vinculo.add((r["codigo_autor_siafi"], r["nome_autor"]))
+                continue
+            casa, pid = chave
+            pol_id = (deputy_map if casa == "camara" else senator_map).get(pid)
+            if pol_id is None:
+                sem_politico += 1
+                continue
+            empenhado = Decimal(r["valor_empenhado"]) if r.get("valor_empenhado") is not None else None
+            pago = Decimal(r["valor_pago"]) if r.get("valor_pago") is not None else None
+            if empenhado is None or pago is None:
+                # Colunas obrigatórias: sem valor oficial a linha não é carregada (não vira zero)
+                sem_valor += 1
+                continue
+            lote.append({
+                "id": uuid.uuid4(),
+                "politician_id": pol_id,
+                "year": int(r["ano"]),
+                "amendment_code": truncar(r.get("codigo_emenda"), 50),
+                "amendment_type": truncar(r["tipo_emenda"], 100),
+                "committed_value": empenhado,
+                "liquidated_value": Decimal(r["valor_liquidado"]) if r.get("valor_liquidado") is not None else None,
+                "paid_value": pago,
+                "destination_locality": truncar(r.get("localidade_destino") or "Não informada na fonte", 150),
+                "destination_ibge_code": truncar(r.get("municipio_ibge"), 10),
+                "destination_state": truncar(r.get("uf"), 30),
+                "function_area": truncar(r.get("funcao"), 100),
+                "author_siafi_code": truncar(r.get("codigo_autor_siafi"), 20),
+                "author_name_source": truncar(r.get("nome_autor"), 255),
+                "source_url": r.get("fonte_url"),
+            })
+            if len(lote) >= 5000:
+                session.bulk_insert_mappings(EmendaParlamentar, lote)
+                inseridos += len(lote)
+                lote = []
+        if lote:
+            session.bulk_insert_mappings(EmendaParlamentar, lote)
+            inseridos += len(lote)
+        session.flush()
+        logger.info(
+            f"-> {inseridos:,} linhas de emendas inseridas; {sem_vinculo:,} sem vínculo autor->parlamentar "
+            f"({len(autores_sem_vinculo):,} autores); {sem_politico:,} de parlamentares fora do cadastro; "
+            f"{sem_valor:,} sem valor."
+        )
+
+    def _read_json_list(self, nome: str) -> List[dict]:
+        caminho = self.data_dir / nome
+        if not caminho.exists():
+            return []
+        with open(caminho, "r", encoding="utf-8") as f:
+            dados = json.load(f)
+        return dados if isinstance(dados, list) else []
 
     def _load_certidoes_judiciais(self, session: Session, president_map: Dict[str, Any],
                                   deputy_map: Dict[int, Any], senator_map: Dict[int, Any]):

@@ -6,6 +6,7 @@ Uso:
     python3 etl/run_etl.py --camara     # Executa apenas a extração da Câmara dos Deputados
     python3 etl/run_etl.py --load-db    # Executa apenas a carga no PostgreSQL
     python3 etl/run_etl.py --economic   # Executa apenas BCB/IBGE e Presidentes
+    python3 etl/run_etl.py --emendas    # Baixa/processa emendas do Portal da Transparência
 """
 
 import sys
@@ -29,6 +30,7 @@ from etl.extractors.orcamento_extractor import OrcamentoExtractor
 from etl.extractors.composicao_extractor import save_composicao_congresso
 from etl.extractors.salario_inflacao_extractor import SalarioInflacaoExtractor
 from etl.pipelines.db_loader import DatabaseLoader
+from etl.extractors.emendas_cgu_extractor import EmendasCguExtractor
 
 
 def main():
@@ -81,6 +83,11 @@ def main():
         help="Executa a análise de salário mínimo vs salário parlamentar vs inflação"
     )
     parser.add_argument(
+        "--emendas",
+        action="store_true",
+        help="Baixa e processa as emendas parlamentares do Portal da Transparência (CGU)"
+    )
+    parser.add_argument(
         "--load-db",
         action="store_true",
         help="Executa apenas a carga e upsert no PostgreSQL"
@@ -90,7 +97,7 @@ def main():
     use_cache = not args.no_cache
 
     # Modo seletivo ou completo
-    specific_run = args.economic or args.camara or args.senado or args.tse or args.tse_oficial or args.orcamento or args.composicao or args.renda or args.load_db
+    specific_run = args.economic or args.camara or args.senado or args.tse or args.tse_oficial or args.orcamento or args.composicao or args.renda or args.emendas or args.load_db
     run_economic = args.economic or not specific_run
     run_camara = args.camara or not specific_run
     run_senado = args.senado or not specific_run
@@ -98,6 +105,7 @@ def main():
     run_orcamento = args.orcamento or not specific_run
     run_composicao = args.composicao or not specific_run
     run_renda = args.renda or not specific_run
+    run_emendas = args.emendas or not specific_run
     run_load = args.load_db or not specific_run
 
     if run_economic:
@@ -138,6 +146,10 @@ def main():
         print("\n>>> [ETAPA 7/7] SALÁRIO MÍNIMO VS SUBSÍDIO PARLAMENTAR VS INFLAÇÃO <<<")
         renda_extractor = SalarioInflacaoExtractor()
         renda_extractor.run()
+
+    if run_emendas:
+        print("\n>>> [EMENDAS] PORTAL DA TRANSPARÊNCIA (CGU) <<<")
+        EmendasCguExtractor().run(use_cache=use_cache)
 
     if run_load:
         print("\n>>> [CARGA] CARGA E UPSERT RELACIONAL NO POSTGRESQL <<<")
