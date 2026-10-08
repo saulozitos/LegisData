@@ -1,10 +1,15 @@
 # Dependências do Pipeline de Ingestão e ETL (Python)
-pandas>=2.0.0
-requests>=2.31.0
-numpy>=1.24.0
-python-dateutil>=2.8.2
-urllib3>=2.0.0
-tqdm>=4.66.0
-pydantic>=2.5.0
-sqlalchemy>=2.0.0
-psycopg2-binary>=2.9.9
+# Versões fixadas com "~=" (atualizações apenas de patch) nas versões estáveis mais
+# recentes compatíveis com Python 3.11 (imagem Docker e CI).
+# Recomendado: gerar um lockfile com hashes para builds reprodutíveis, ex.:
+#   pip-compile --generate-hashes -o requirements.lock requirements.in
+pandas~=3.0.6
+requests~=2.34.2
+# numpy 2.5+ exige Python >= 3.12
+numpy~=2.4.6
+python-dateutil~=2.9.0
+urllib3~=2.8.0
+tqdm~=4.70.1
+pydantic~=2.13.5
+sqlalchemy~=2.1.4
+psycopg2-binary~=2.9.13
