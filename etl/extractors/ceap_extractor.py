@@ -60,39 +60,3 @@ class CeapExtractor:
                 break
 
         return despesas
-
-    def generate_representative_ceap(self, politician_name: str, uf: str = "DF") -> List[Dict[str, Any]]:
-        """
-        Gera amostra fidedigna baseada nas médias oficiais de CEAP (2023-2025)
-        com fornecedores típicos do Congresso Nacional.
-        """
-        fornecedores_tipicos = [
-            ("TAM LINHAS AEREAS S/A (LATAM)", "02.012.862/0001-60", "PASSAGEM AÉREA", 2450.80),
-            ("GOL LINHAS AEREAS S.A.", "07.575.651/0001-59", "PASSAGEM AÉREA", 1890.40),
-            ("AUTO POSTO DA TORRE LTDA", "00.097.626/0001-08", "COMBUSTÍVEIS E LUBRIFICANTES", 450.00),
-            ("POSTO GAS BRASIL EIXO MONUMENTAL", "03.456.789/0001-12", "COMBUSTÍVEIS E LUBRIFICANTES", 380.00),
-            ("GRAFICA E EDITORA ALVORADA LTDA", "04.567.890/0001-23", "DIVULGAÇÃO DA ATIVIDADE PARLAMENTAR", 8500.00),
-            ("AGÊNCIA DIGITAL BRASÍLIA COMUNICAÇÃO", "09.876.543/0001-45", "DIVULGAÇÃO DA ATIVIDADE PARLAMENTAR", 6200.00),
-            ("LOCALIZA RENT A CAR S.A.", "16.670.085/0001-55", "LOCAÇÃO DE VEÍCULOS AUTOMOTORES", 4200.00),
-            ("TELEFÔNICA BRASIL S.A. (VIVO)", "02.558.157/0001-62", "TELEFONIA", 480.00),
-            ("CONSULTORIA ESTRATÉGICA PARLAMENTAR", "12.345.678/0001-99", "CONSULTORIAS E PESQUISAS", 5000.00),
-            ("HOTEL NACIONAL DE BRASÍLIA", "00.234.567/0001-88", "HOSPEDAGEM", 1250.00),
-        ]
-
-        gastos = []
-        for ano in [2023, 2024, 2025]:
-            for mes in [2, 4, 6, 8, 10, 12]:
-                for f_nome, f_cnpj, tipo, base_val in fornecedores_tipicos[:6]:
-                    # Pequena variação para não ficar idêntico
-                    val = round(base_val * (0.9 + (mes * 0.03)), 2)
-                    gastos.append({
-                        "ano": ano,
-                        "mes": mes,
-                        "tipo_despesa": tipo,
-                        "valor_liquido": val,
-                        "nome_fornecedor": f_nome,
-                        "cnpj_cpf_fornecedor": f_cnpj,
-                        "data_emissao": f"{ano}-{mes:02d}-15",
-                        "documento_url": f"https://www.camara.leg.br/cota-parlamentar/documento/{ano}-{mes:02d}-{abs(hash(f_nome)) % 100000}"
-                    })
-        return gastos

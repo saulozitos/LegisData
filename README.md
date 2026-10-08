@@ -71,7 +71,7 @@ Todos os dados são coletados de forma rastreável por extratores dedicados (`Us
 
 ### 💰 1. Quem Paga a Conta? (Financiadores de Campanha)
 - **Modelagem Relacional:** Tabela `doacoes_campanha` (`DoacaoCampanha` no SQLAlchemy / Prisma) com `politico_id`, `ano_eleicao`, `nome_doador`, `cpf_cnpj_doador`, `valor_doado` e `tipo_receita`.
-- **Pipeline de Ingestão:** `etl/extractors/tse_doacoes_extractor.py` integrado à esteira do `db_loader.py`.
+- **Pipeline de Ingestão:** em reconstrução a partir dos arquivos oficiais de prestação de contas do TSE (`cdn.tse.jus.br/estatistica/sead/odsele/prestacao_contas/`).
 - **Interface no Dossiê (Raio-X):**
   - Card executivo exibindo a receita total de campanha e a quantidade de doadores.
   - Ranking e visualização gráfica dos **Top 5 Maiores Doadores** com percentual de concentração e tipo de receita (Fundo Eleitoral - FEFC, doações PF, recursos próprios).

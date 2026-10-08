@@ -1,6 +1,6 @@
 """
 Pipeline de Extração e Consolidação Histórica de CEAP e Emendas (Lula 1 até Bolsonaro / Presente)
-Abrange desde a instituição dos dados abertos da Cota Parlamentar (2008) e histórico de emendas (2003-2026).
+Abrange desde a instituição dos dados abertos da Cota Parlamentar (2008). Emendas não são geradas aqui.
 """
 
 import os
@@ -140,119 +140,6 @@ def process_camara_ceap_year(ano: int, ceap_resumo: Dict[str, Any]) -> int:
     return records_count
 
 
-def build_historical_emendas(parlamentares: List[Dict[str, Any]], anos: List[int]) -> List[Dict[str, Any]]:
-    """Gera o portfólio completo de emendas orçamentárias desde Lula 1 (2003) até os dias atuais (2026)."""
-    logger.info(f"-> Gerando portfólio histórico de Emendas ({min(anos)} a {max(anos)})...")
-    
-    cidades_uf = {
-        "RJ": ["Rio de Janeiro/RJ", "São Gonçalo/RJ", "Duque de Caxias/RJ", "Nova Iguaçu/RJ", "Niterói/RJ", "Belford Roxo/RJ", "Campos dos Goytacazes/RJ"],
-        "SP": ["São Paulo/SP", "Guarulhos/SP", "Campinas/SP", "São Bernardo do Campo/SP", "Santo André/SP", "Osasco/SP", "Ribeirão Preto/SP", "Sorocaba/SP"],
-        "MG": ["Belo Horizonte/MG", "Uberlândia/MG", "Contagem/MG", "Juiz de Fora/MG", "Betim/MG", "Montes Claros/MG", "Ribeirão das Neves/MG"],
-        "BA": ["Salvador/BA", "Feira de Santana/BA", "Vitória da Conquista/BA", "Camaçari/BA", "Juazeiro/BA", "Itabuna/BA"],
-        "PR": ["Curitiba/PR", "Londrina/PR", "Maringá/PR", "Ponta Grossa/PR", "Cascavel/PR", "São José dos Pinhais/PR"],
-        "RS": ["Porto Alegre/RS", "Caxias do Sul/RS", "Canoas/RS", "Pelotas/RS", "Santa Maria/RS", "Gravataí/RS"],
-        "PE": ["Recife/PE", "Jaboatão dos Guararapes/PE", "Olinda/PE", "Caruaru/PE", "Petrolina/PE", "Paulista/PE"],
-        "CE": ["Fortaleza/CE", "Caucaia/CE", "Juazeiro do Norte/CE", "Maracanaú/CE", "Sobral/CE", "Crato/CE"],
-        "PA": ["Belém/PA", "Ananindeua/PA", "Santarém/PA", "Marabá/PA", "Parauapebas/PA"],
-        "SC": ["Florianópolis/SC", "Joinville/SC", "Blumenau/SC", "São José/SC", "Chapecó/SC", "Itajaí/SC"],
-        "GO": ["Goiânia/GO", "Aparecida de Goiânia/GO", "Anápolis/GO", "Rio Verde/GO", "Águas Lindas de Goiás/GO"],
-        "MA": ["São Luís/MA", "Imperatriz/MA", "São José de Ribamar/MA", "Timon/MA", "Caxias/MA"],
-        "AM": ["Manaus/AM", "Parintins/AM", "Itacoatiara/AM", "Manacapuru/AM", "Coari/AM"],
-        "ES": ["Vitória/ES", "Vila Velha/ES", "Serra/ES", "Cariacica/ES", "Cachoeiro de Itapemirim/ES"],
-        "PB": ["João Pessoa/PB", "Campina Grande/PB", "Santa Rita/PB", "Patos/PB", "Bayeux/PB"],
-        "RN": ["Natal/RN", "Mossoró/RN", "Parnamirim/RN", "São Gonçalo do Amarante/RN"],
-        "MT": ["Cuiabá/MT", "Várzea Grande/MT", "Rondonópolis/MT", "Sinop/MT"],
-        "AL": ["Maceió/AL", "Arapiraca/AL", "Rio Largo/AL", "Palmeira dos Índios/AL"],
-        "PI": ["Teresina/PI", "Parnaíba/PI", "Picos/PI", "Piripiri/PI"],
-        "DF": ["Brasília/DF", "Ceilândia/DF", "Taguatinga/DF", "Samambaia/DF", "Gama/DF"],
-        "MS": ["Campo Grande/MS", "Dourados/MS", "Três Lagoas/MS", "Corumbá/MS"],
-        "SE": ["Aracaju/SE", "Nossa Senhora do Socorro/SE", "Lagarto/SE", "Itabaiana/SE"],
-        "RO": ["Porto Velho/RO", "Ji-Paraná/RO", "Ariquemes/RO", "Vilhena/RO"],
-        "TO": ["Palmas/TO", "Araguaína/TO", "Gurupi/TO", "Porto Nacional/TO"],
-        "AC": ["Rio Branco/AC", "Cruzeiro do Sul/AC", "Sena Madureira/AC"],
-        "AP": ["Macapá/AP", "Santana/AP", "Laranjal do Jari/AP"],
-        "RR": ["Boa Vista/RR", "Rorainópolis/RR", "Caracaraí/RR"]
-    }
-    
-    # Tetos da LOA / Emendas por época
-    tetos_anuais = {
-        # Lula 1
-        2003: 4000000.0, 2004: 4500000.0, 2005: 5000000.0, 2006: 6000000.0,
-        # Lula 2
-        2007: 7500000.0, 2008: 8000000.0, 2009: 10000000.0, 2010: 11000000.0,
-        # Dilma 1
-        2011: 12000000.0, 2012: 12500000.0, 2013: 13000000.0, 2014: 14000000.0,
-        # Dilma 2 / Temer (Orçamento Impositivo EC 86/2015)
-        2015: 14700000.0, 2016: 15300000.0, 2017: 15000000.0, 2018: 14800000.0,
-        # Bolsonaro (EC 100/2019 e EC 105/2019 PIX)
-        2019: 15400000.0, 2020: 15900000.0, 2021: 16200000.0, 2022: 17600000.0,
-        # Lula 3
-        2023: 32000000.0, 2024: 37500000.0, 2025: 39200000.0, 2026: 41000000.0
-    }
-    
-    taxa_execucao = {
-        # Execução discricionária pré-2015
-        2003: 0.58, 2004: 0.62, 2005: 0.65, 2006: 0.69,
-        2007: 0.68, 2008: 0.71, 2009: 0.74, 2010: 0.72,
-        2011: 0.70, 2012: 0.73, 2013: 0.75, 2014: 0.78,
-        # Orçamento impositivo EC 86/2015
-        2015: 0.88, 2016: 0.89, 2017: 0.91, 2018: 0.92,
-        # Bolsonaro
-        2019: 0.94, 2020: 0.96, 2021: 0.95, 2022: 0.93,
-        # Lula 3
-        2023: 0.91, 2024: 0.86, 2025: 0.72, 2026: 0.45
-    }
-    
-    distribuicao_areas = [
-        ("INDIVIDUAL - ESPECIAL (PIX)", "Saúde Pública (Atenção Primária / SUS)", 0.35),
-        ("INDIVIDUAL - FINALIDADE DEFINIDA", "Infraestrutura Urbana e Pavimentação", 0.25),
-        ("INDIVIDUAL - FINALIDADE DEFINIDA", "Educação Básica e Creches", 0.15),
-        ("BANCADA ESTADUAL", "Equipamentos Hospitalares e UTIs", 0.15),
-        ("COMISSÃO", "Assistência Social e Segurança Pública", 0.10)
-    ]
-    
-    todas_emendas = []
-    
-    for pol in parlamentares:
-        uf = pol.get("uf", "DF") or "DF"
-        nome = pol.get("nome_eleitoral", "")
-        pol_id = pol.get("camara_id") or pol.get("senado_id") or abs(hash(nome)) % 100000
-        cargo = pol.get("cargo", "DEPUTADO")
-        cidades = cidades_uf.get(uf, [f"Capital/{uf}", f"Região Metropolitana/{uf}", f"Interior/{uf}"])
-        
-        for ano in anos:
-            teto = tetos_anuais.get(ano, 15000000.0)
-            taxa = taxa_execucao.get(ano, 0.80)
-            
-            idx = 1
-            for tipo, area, peso in distribuicao_areas:
-                # Antes de 2019 não havia PIX (EC 105/2019)
-                tipo_ajustado = tipo
-                if ano < 2019 and "PIX" in tipo:
-                    tipo_ajustado = "INDIVIDUAL - TRANSFERÊNCIA DIRETA"
-                    
-                val_emp = round(teto * peso, 2)
-                val_pago = round(val_emp * taxa, 2)
-                cidade_dest = cidades[(idx - 1) % len(cidades)]
-                cod = f"{ano}.{pol_id}.{idx:04d}"
-                
-                todas_emendas.append({
-                    "politician_name": nome,
-                    "uf": uf,
-                    "cargo": cargo,
-                    "ano": ano,
-                    "codigo_emenda": cod,
-                    "tipo_emenda": tipo_ajustado,
-                    "valor_empenhado": val_emp,
-                    "valor_pago": val_pago,
-                    "localidade_destino": cidade_dest,
-                    "funcao": area
-                })
-                idx += 1
-                
-    return todas_emendas
-
-
 def main():
     start_time = time.time()
     logger.info("=" * 80)
@@ -340,34 +227,13 @@ def main():
         
     logger.info(f"-> Base CEAP salva com sucesso! ({out_ceap.stat().st_size / (1024*1024):.2f} MB, {len(ceap_resumo)} parlamentares)")
 
-    # 6. Compilação de Emendas Parlamentares (2003 a 2026)
-    with open(DATA_DIR / "senadores_senado.json", "r", encoding="utf-8") as f:
-        senadores = json.load(f)
-    with open(DATA_DIR / "deputados_camara.json", "r", encoding="utf-8") as f:
-        deputados = json.load(f)
-        
-    todos_parlamentares = []
-    for s in senadores:
-        todos_parlamentares.append({"nome_eleitoral": s["nome_eleitoral"], "uf": s["uf"], "senado_id": s.get("senado_id"), "cargo": "SENADOR"})
-    for d in deputados:
-        todos_parlamentares.append({"nome_eleitoral": d["nome_eleitoral"], "uf": d["uf"], "camara_id": d.get("camara_id"), "cargo": "DEPUTADO"})
-
-    anos_emendas = list(range(2003, 2027))
-    t_em_start = time.time()
-    emendas_data = build_historical_emendas(todos_parlamentares, anos_emendas)
-    t_em_end = time.time()
-    
-    out_emendas = DATA_DIR / "emendas_parlamentares_2019_2026.json"
-    with open(out_emendas, "w", encoding="utf-8") as f:
-        json.dump(emendas_data, f, ensure_ascii=False)
-        
-    logger.info(f"-> Emendas salvas com sucesso! ({out_emendas.stat().st_size / (1024*1024):.2f} MB, {len(emendas_data):,} registros)")
+    # 6. Emendas parlamentares: removido. O antigo histórico 2003-2026 era gerado por
+    #    fórmula. A fonte oficial (Portal da Transparência) é integrada em PR próprio.
 
     total_duration = time.time() - start_time
     logger.info("=" * 80)
     logger.info(f"SINCRONIZAÇÃO COMPLETA CONCLUÍDA EM {total_duration:.2f} SEGUNDOS!")
     logger.info(f"Total CEAP registros históricos adicionados: {total_sen_registros + total_cam_registros:,}")
-    logger.info(f"Total Emendas históricas: {len(emendas_data):,}")
     logger.info("=" * 80)
 
 
