@@ -18,7 +18,7 @@ async def seed_data():
         inicio=date(2019, 1, 1),
         fim=date(2022, 12, 31),
         partido="PL",
-        foto_url="https://upload.wikimedia.org/wikipedia/commons/3/36/Jair_Bolsonaro_in_2020.jpg"
+        foto_url="https://ui-avatars.com/api/?name=Jair+Bolsonaro&background=0D8ABC&color=fff&size=256"
     )
     
     mandate2 = PresidentialMandate(
@@ -26,7 +26,7 @@ async def seed_data():
         inicio=date(2023, 1, 1),
         fim=None,
         partido="PT",
-        foto_url="https://upload.wikimedia.org/wikipedia/commons/c/c5/Luiz_In%C3%A1cio_Lula_da_Silva_in_2023.jpg"
+        foto_url="https://ui-avatars.com/api/?name=Luiz+Inacio+Lula+da+Silva&background=c62828&color=fff&size=256"
     )
 
     db.add(mandate1)
