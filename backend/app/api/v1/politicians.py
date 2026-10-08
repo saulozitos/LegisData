@@ -20,6 +20,7 @@ from app.models import (
     ProcessoJudicial
 )
 from app.core.config import PROCESSED_DATA_DIR
+from app.core.subsidios import subsidio_vigente, historico_subsidios
 
 
 def _mascarar_cpf(doc):
@@ -56,6 +57,75 @@ AVISO_EMENDAS = (
     "(ou revisão manual). Emendas de bancada, comissão e relator não têm autor "
     "individual e não são atribuídas a parlamentares."
 )
+
+
+# Metodologia de assiduidade por casa. Senado: a API não tem lista de presença
+# por sessão, então medimos participação em votações nominais (não "presença").
+METODOLOGIA_ASSIDUIDADE = {
+    "CAMARA_DOS_DEPUTADOS": {
+        "metodologia": "PRESENCA_PLENARIO_CAMARA",
+        "rotulo": "Presença em plenário",
+        "descricao": (
+            "Registro oficial diário de presença nos dias com sessão deliberativa no plenário, "
+            "com a justificativa informada pela Câmara."
+        ),
+        "fonte": "Câmara dos Deputados - SitCamaraWS ListarPresencasDia",
+        "fonte_url": "https://www.camara.leg.br/SitCamaraWS/sessoesreunioes.asmx/ListarPresencasDia",
+        "status_positivos": ("PRESENTE",),
+    },
+    "SENADO_FEDERAL": {
+        "metodologia": "PARTICIPACAO_VOTACOES_NOMINAIS_SENADO",
+        "rotulo": "Participação em votações nominais",
+        "descricao": (
+            "Sessões com votação nominal em que o senador registrou voto em ao menos uma votação. "
+            "Não é presença em sessão: o Senado não publica lista de presença por sessão nos dados abertos. "
+            "Ausências trazem a sigla oficial (licença, missão, atividade parlamentar etc.)."
+        ),
+        "fonte": "Senado Federal - Dados Abertos /votacao",
+        "fonte_url": "https://legis.senado.leg.br/dadosabertos/votacao",
+        "status_positivos": ("PARTICIPOU_VOTACAO",),
+    },
+}
+TIPOS_AUSENCIA_JUSTIFICADA = (
+    TipoPresencaEnum.AUSENCIA_JUSTIFICADA, TipoPresencaEnum.LICENCA_MEDICA, TipoPresencaEnum.MISSAO_OFICIAL,
+)
+TIPOS_NAO_FALTA = (
+    TipoPresencaEnum.PRESENTE, TipoPresencaEnum.PARTICIPOU_VOTACAO, TipoPresencaEnum.PRESENTE_SEM_VOTO,
+)
+
+
+def _metodologia_remuneracao(cargo: Optional[str], tem_folha: bool) -> Dict[str, Any]:
+    if cargo == "SENADOR":
+        return {
+            "historico": "Folha nominal do Senado (soma das folhas do mês, ex.: Normal + Suplementar/13º).",
+            "fonte_url": "https://adm.senado.gov.br/adm-dadosabertos/api/v1/servidores/remuneracoes/{ano}/{mes}",
+            "historico_disponivel": tem_folha,
+        }
+    if cargo == "DEPUTADO_FEDERAL":
+        return {
+            "historico": (
+                "A Câmara publica a folha mensal anonimizada ('Deputado NNNN'); não há contracheque "
+                "individual atribuível. Exibimos só o subsídio constitucional de referência."
+            ),
+            "fonte_url": "https://www2.camara.leg.br/transparencia/recursos-humanos/remuneracao",
+            "historico_disponivel": tem_folha,
+        }
+    return {"historico": None, "fonte_url": None, "historico_disponivel": tem_folha}
+
+
+def _media_ceap_mensal(db: Session, politician_id) -> Optional[float]:
+    """Média mensal das despesas CEAP reais (meses com despesa). Sem despesas -> None."""
+    total, meses = (
+        db.query(
+            func.sum(DespesaCota.net_value),
+            func.count(func.distinct(DespesaCota.year * 100 + func.coalesce(DespesaCota.month, 0))),
+        )
+        .filter(DespesaCota.politician_id == politician_id)
+        .one()
+    )
+    if not total or not meses:
+        return None
+    return round(float(total) / int(meses), 2)
 
 
 SIMBOLICO_KEYWORDS = [
@@ -440,7 +510,7 @@ def get_politician_dossier(
             "uf": aff.state
         })
 
-    # C. Remunerações (Salário, CEAP, Benefícios)
+    # C. Remunerações (folha nominal oficial; CEAP NÃO é remuneração e tem aba própria)
     remuns_db = (
         db.query(PoliticianRemuneration)
         .filter(PoliticianRemuneration.politician_id == pol.id)
@@ -449,16 +519,16 @@ def get_politician_dossier(
     )
 
     remuneracao_historico = []
+    # Totais do ano mais recente com folha registrada (antes: ano fixo 2023).
+    ano_totais = remuns_db[0].reference_year if remuns_db else None
     total_bruto_ano = Decimal("0.00")
     total_liquido_ano = Decimal("0.00")
-    total_ceap_ano = Decimal("0.00")
     total_beneficios_ano = Decimal("0.00")
 
     for r in remuns_db:
-        if r.reference_year == 2023:
+        if r.reference_year == ano_totais:
             total_bruto_ano += r.gross_salary
             total_liquido_ano += r.net_salary
-            total_ceap_ano += r.parliamentary_quota_ceap
             total_beneficios_ano += (r.housing_allowance + r.other_benefits)
 
         remuneracao_historico.append({
@@ -466,14 +536,11 @@ def get_politician_dossier(
             "mes": r.reference_month,
             "salario_bruto": float(r.gross_salary),
             "salario_liquido": float(r.net_salary),
-            "cota_ceap": float(r.parliamentary_quota_ceap),
             "auxilio_moradia": float(r.housing_allowance),
             "outros_beneficios": float(r.other_benefits),
             "fonte": r.data_source
         })
 
-    qtd_meses = len([r for r in remuns_db if r.reference_year == 2023]) or 1
-    media_ceap = (total_ceap_ano / Decimal(str(qtd_meses))).quantize(Decimal("0.01"))
     # Sem registro oficial de remuneração, não exibimos valor presumido.
     sal_bruto_atual = float(remuns_db[0].gross_salary) if remuns_db else None
     sal_liquido_atual = float(remuns_db[0].net_salary) if remuns_db else None
@@ -662,28 +729,65 @@ def get_politician_dossier(
         "partido_sigla": partido_atual_sigla
     }
 
-    # F. Contabilização de Presenças e Faltas (Assiduidade)
+    # F. Presença (Câmara) e participação em votações nominais (Senado).
+    # São métricas DIFERENTES e vêm separadas por casa, cada uma com sua metodologia.
     attendances_query = db.query(AttendanceRecord).filter(AttendanceRecord.politician_id == pol.id)
-    total_sessoes = attendances_query.count()
+    contagem_por_casa: Dict[str, Dict[str, int]] = {}
+    periodo_por_casa: Dict[str, tuple] = {}
+    for casa_enum, status_enum, qtd, d_min, d_max in (
+        db.query(
+            AttendanceRecord.legislative_house, AttendanceRecord.attendance_status,
+            func.count(AttendanceRecord.id), func.min(AttendanceRecord.session_date),
+            func.max(AttendanceRecord.session_date),
+        )
+        .filter(AttendanceRecord.politician_id == pol.id)
+        .group_by(AttendanceRecord.legislative_house, AttendanceRecord.attendance_status)
+        .all()
+    ):
+        contagem_por_casa.setdefault(casa_enum.value, {})[status_enum.value] = int(qtd)
+        ini, fim = periodo_por_casa.get(casa_enum.value, (d_min, d_max))
+        periodo_por_casa[casa_enum.value] = (min(ini, d_min), max(fim, d_max))
 
-    presencas_count = attendances_query.filter(AttendanceRecord.attendance_status == TipoPresencaEnum.PRESENTE).count()
-    faltas_justif_count = attendances_query.filter(
-        AttendanceRecord.attendance_status.in_([
-            TipoPresencaEnum.AUSENCIA_JUSTIFICADA,
-            TipoPresencaEnum.LICENCA_MEDICA,
-            TipoPresencaEnum.MISSAO_OFICIAL
-        ])
-    ).count()
-    faltas_injustif_count = attendances_query.filter(
-        AttendanceRecord.attendance_status == TipoPresencaEnum.AUSENCIA_NAO_JUSTIFICADA
-    ).count()
-
-    # Sem registros de presença não há taxa (antes: 100% presumido).
-    taxa_presenca = round((presencas_count / total_sessoes * 100), 1) if total_sessoes > 0 else None
+    assiduidade_por_casa = []
+    for casa, cont in contagem_por_casa.items():
+        meta = METODOLOGIA_ASSIDUIDADE.get(casa, METODOLOGIA_ASSIDUIDADE["CAMARA_DOS_DEPUTADOS"])
+        total_casa = sum(cont.values())
+        positivos = sum(cont.get(s, 0) for s in meta["status_positivos"])
+        ini, fim = periodo_por_casa[casa]
+        assiduidade_por_casa.append({
+            "casa": casa,
+            "metodologia": meta["metodologia"],
+            "rotulo": meta["rotulo"],
+            "descricao": meta["descricao"],
+            "fonte": meta["fonte"],
+            "fonte_url": meta["fonte_url"],
+            "periodo_inicio": ini.isoformat() if ini else None,
+            "periodo_fim": fim.isoformat() if fim else None,
+            "total_sessoes": total_casa,
+            "total_presencas": positivos,
+            "presente_sem_voto": cont.get(TipoPresencaEnum.PRESENTE_SEM_VOTO.value, 0),
+            "faltas_justificadas": sum(cont.get(s.value, 0) for s in TIPOS_AUSENCIA_JUSTIFICADA),
+            "faltas_nao_justificadas": cont.get(TipoPresencaEnum.AUSENCIA_NAO_JUSTIFICADA.value, 0),
+            "taxa_pct": round(positivos / total_casa * 100, 1) if total_casa else None,
+        })
+    assiduidade_por_casa.sort(key=lambda c: c["total_sessoes"], reverse=True)
+    # Campos de topo (compatíveis com a UI) = casa com mais registros.
+    principal = assiduidade_por_casa[0] if assiduidade_por_casa else None
+    total_sessoes = principal["total_sessoes"] if principal else 0
+    presencas_count = principal["total_presencas"] if principal else 0
+    faltas_justif_count = principal["faltas_justificadas"] if principal else 0
+    faltas_injustif_count = principal["faltas_nao_justificadas"] if principal else 0
+    # Sem registros não há taxa (antes: 100% presumido).
+    taxa_principal = principal["taxa_pct"] if principal else None
+    # Índices que falam em "presença" usam só a presença em plenário da Câmara;
+    # participação em votações do Senado não é presença.
+    taxa_presenca = next(
+        (c["taxa_pct"] for c in assiduidade_por_casa if c["metodologia"] == "PRESENCA_PLENARIO_CAMARA"), None
+    )
 
     amostra_faltas = (
         attendances_query
-        .filter(AttendanceRecord.attendance_status != TipoPresencaEnum.PRESENTE)
+        .filter(AttendanceRecord.attendance_status.notin_(TIPOS_NAO_FALTA))
         .order_by(desc(AttendanceRecord.session_date))
         .limit(10)
         .all()
@@ -1174,12 +1278,20 @@ def get_politician_dossier(
             "resumo": {
                 "salario_bruto_atual": sal_bruto_atual,
                 "salario_liquido_atual": sal_liquido_atual,
-                "media_ceap_mensal": float(media_ceap),
-                "total_bruto_2023": float(total_bruto_ano),
-                "total_ceap_2023": float(total_ceap_ano),
-                "total_beneficios_2023": float(total_beneficios_ano)
+                # Média mensal da CEAP vem das despesas reais (aba CEAP), nunca da folha.
+                "media_ceap_mensal": _media_ceap_mensal(db, pol.id),
+                "ano_totais": ano_totais,
+                "total_bruto_ano": float(total_bruto_ano) if ano_totais else None,
+                "total_liquido_ano": float(total_liquido_ano) if ano_totais else None,
+                "total_beneficios_ano": float(total_beneficios_ano) if ano_totais else None
             },
-            "historico": remuneracao_historico[:12]
+            "historico": remuneracao_historico[:12],
+            "metodologia": _metodologia_remuneracao(cargo_atual, bool(remuns_db)),
+            # Valor legal do cargo (decreto legislativo), separado do histórico individual.
+            "subsidio_referencia": (
+                {**subsidio_vigente(cargo_atual), "historico": historico_subsidios(cargo_atual)}
+                if subsidio_vigente(cargo_atual) else None
+            )
         },
         "custos_ceap": custos_ceap,
         "emendas_parlamentares": emendas_parlamentares,
@@ -1192,11 +1304,14 @@ def get_politician_dossier(
         "historico_votos": historico_votos,
         "alinhamento_tematico": alinhamento_tematico_list,
         "assiduidade": {
+            "metodologia": principal["metodologia"] if principal else None,
+            "rotulo": principal["rotulo"] if principal else None,
             "total_sessoes": total_sessoes,
             "total_presencas": presencas_count,
             "faltas_justificadas": faltas_justif_count,
             "faltas_nao_justificadas": faltas_injustif_count,
-            "taxa_presenca_pct": taxa_presenca,
+            "taxa_presenca_pct": taxa_principal,
+            "por_casa": assiduidade_por_casa,
             "amostra_faltas": faltas_registros
         },
         "evolucao_patrimonial": {
