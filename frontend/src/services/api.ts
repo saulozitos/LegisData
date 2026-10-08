@@ -777,12 +777,31 @@ export interface CertidaoItem {
   tipo_certidao: string;
   status_ficha: string;
   detalhes: string | null;
+  numero_processo?: string | null;
+  data_emissao?: string | null;
+  link_comprovacao?: string | null;
+  codigo_autenticidade?: string | null;
+  tipo?: string;
+  status?: string;
+}
+
+export interface ProcessoDetalhadoItem {
+  numero_processo: string;
+  tribunal: string;
+  data_processo: string;
+  classe_assunto: string;
+  descricao: string;
+  situacao_juridica: string;
+  link_comprovacao: string;
+  status_resumo: string;
 }
 
 export interface FichaLimpaData {
   possui_processos_declarados: boolean;
   status_geral: string;
   orgaos_declarados: string[];
+  link_tse_divulgacand?: string;
+  processos_detalhados?: ProcessoDetalhadoItem[];
   certidoes: CertidaoItem[];
 }
 

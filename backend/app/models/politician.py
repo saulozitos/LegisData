@@ -298,6 +298,10 @@ class CertidaoJudicial(TimeStampedModel):
     certificate_type: Mapped[str] = mapped_column("tipoCertidao", String(50), nullable=False)
     status: Mapped[str] = mapped_column("statusFicha", String(50), nullable=False)
     details: Mapped[Optional[str]] = mapped_column("detalhes", Text, nullable=True)
+    process_number: Mapped[Optional[str]] = mapped_column("numeroProcesso", String(100), nullable=True)
+    issue_date: Mapped[Optional[str]] = mapped_column("dataEmissao", String(50), nullable=True)
+    proof_url: Mapped[Optional[str]] = mapped_column("linkComprovacao", String(500), nullable=True)
+    auth_code: Mapped[Optional[str]] = mapped_column("codigoAutenticidade", String(100), nullable=True)
 
     politician: Mapped["Politician"] = relationship("Politician", back_populates="certidoes_judiciais")
 

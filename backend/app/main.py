@@ -23,6 +23,22 @@ app.add_middleware(
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 
+@app.on_event("startup")
+def startup_db_migrations():
+    try:
+        from app.core.database import SessionLocal
+        from sqlalchemy import text
+        with SessionLocal() as db:
+            db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "numeroProcesso" VARCHAR(100);'))
+            db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "dataEmissao" VARCHAR(50);'))
+            db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "linkComprovacao" VARCHAR(500);'))
+            db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "codigoAutenticidade" VARCHAR(100);'))
+            db.commit()
+    except Exception as e:
+        import logging
+        logging.getLogger("uvicorn").warning(f"DB certidoes columns auto-migration warning: {e}")
+
+
 @app.get("/", tags=["Health Check"])
 def root():
     return {
