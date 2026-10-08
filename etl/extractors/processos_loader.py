@@ -286,7 +286,10 @@ def populate_processos_judiciais(db: Session) -> int:
 
 
 if __name__ == "__main__":
-    from backend.app.core.database import SessionLocal
+    try:
+        from backend.app.core.database import SessionLocal
+    except ModuleNotFoundError:
+        from app.core.database import SessionLocal
     with SessionLocal() as session:
         inseridos = populate_processos_judiciais(session)
         print(f"Total de processos judiciais persistidos no PostgreSQL: {inseridos}")
