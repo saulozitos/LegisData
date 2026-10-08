@@ -48,3 +48,9 @@ Thumbs.db
 # Downloads brutos do TSE/Câmara (arquivos grandes; regenerados pelo ETL)
 etl/data/raw/tse/
 etl/data/raw/camara/
+# Dados brutos grandes baixados pelo ETL de emendas/CEAP (reprodutíveis a partir das fontes oficiais)
+etl/data/raw/*.zip
+etl/data/raw/*.part
+etl/data/raw/*.meta.json
+etl/data/raw/ceaps_senado_*.json
+etl/data/processed/emendas_parlamentares_cgu.json
