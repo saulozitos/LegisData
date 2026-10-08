@@ -179,7 +179,7 @@ def search_politicians(
     party: Optional[str] = Query(None, description="Filtro por sigla do partido"),
     partido: Optional[str] = Query(None, description="Alias para party"),
     uf: Optional[str] = Query(None, description="Filtro por UF de jurisdição"),
-    limit: int = Query(50, ge=1, le=800, description="Quantidade máxima de registros"),
+    limit: int = Query(50, ge=1, le=500, description="Quantidade máxima de registros"),
     offset: int = Query(0, ge=0, description="Deslocamento para paginação"),
     db: Session = Depends(get_db)
 ):
@@ -244,46 +244,72 @@ def search_politicians(
     total_count = query.count()
     politicians = query.order_by(Politician.electoral_name.asc()).offset(offset).limit(limit).all()
 
+    # Carrega mandatos (+ partido) e filiações atuais de todos os políticos da página em
+    # 2 consultas, evitando N+1. A seleção em memória preserva a semântica anterior:
+    #   1) mandato mais recente que atende aos filtros de cargo/partido;
+    #   2) fallback: mandato mais recente de qualquer tipo;
+    #   3) se não houver partido no mandato: partido da filiação atual.
+    page_ids = [pol.id for pol in politicians]
+
+    office_enum = None
+    if office:
+        try:
+            office_enum = CargoPoliticoEnum[office.upper()]
+        except KeyError:
+            office_enum = None
+
+    mandate_columns = [Mandate, PoliticalParty]
+    if target_party:
+        # Mesma comparação ILIKE (sem curingas) usada antes no filtro por partido do mandato.
+        mandate_columns.append(
+            PoliticalParty.acronym.ilike(_escape_like(target_party), escape="\\").label("party_match")
+        )
+
+    mandates_by_pol: Dict[Any, List[Any]] = {}
+    current_party_by_pol: Dict[Any, PoliticalParty] = {}
+    if page_ids:
+        mandate_rows = (
+            db.query(*mandate_columns)
+            .outerjoin(PoliticalParty, Mandate.party_id == PoliticalParty.id)
+            .filter(Mandate.politician_id.in_(page_ids))
+            .order_by(Mandate.politician_id, desc(Mandate.start_date))
+            .all()
+        )
+        for row in mandate_rows:
+            mandates_by_pol.setdefault(row[0].politician_id, []).append(row)
+
+        affiliation_rows = (
+            db.query(PartyAffiliation.politician_id, PoliticalParty)
+            .join(PoliticalParty, PartyAffiliation.party_id == PoliticalParty.id)
+            .filter(PartyAffiliation.politician_id.in_(page_ids), PartyAffiliation.is_current.is_(True))
+            .all()
+        )
+        for aff_politician_id, aff_party in affiliation_rows:
+            # Equivalente ao `.first()` anterior: mantém a primeira filiação atual retornada.
+            current_party_by_pol.setdefault(aff_politician_id, aff_party)
+
     results = []
     for pol in politicians:
-        # Obter mandato filtrado ou mais recente
-        latest_mandate_q = (
-            db.query(Mandate, PoliticalParty)
-            .outerjoin(PoliticalParty, Mandate.party_id == PoliticalParty.id)
-            .filter(Mandate.politician_id == pol.id)
-        )
-        if office:
-            try:
-                c_enum = CargoPoliticoEnum[office.upper()]
-                latest_mandate_q = latest_mandate_q.filter(Mandate.office == c_enum)
-            except KeyError:
-                pass
-        if target_party:
-            latest_mandate_q = latest_mandate_q.filter(PoliticalParty.acronym.ilike(_escape_like(target_party), escape="\\"))
+        pol_mandates = mandates_by_pol.get(pol.id, [])
 
-        latest_mandate = latest_mandate_q.order_by(desc(Mandate.start_date)).first()
-        if not latest_mandate:
-            latest_mandate = (
-                db.query(Mandate, PoliticalParty)
-                .outerjoin(PoliticalParty, Mandate.party_id == PoliticalParty.id)
-                .filter(Mandate.politician_id == pol.id)
-                .order_by(desc(Mandate.start_date))
-                .first()
-            )
+        # Obter mandato filtrado ou mais recente (lista já ordenada por data de início desc)
+        latest_mandate = None
+        for row in pol_mandates:
+            if office_enum is not None and row[0].office != office_enum:
+                continue
+            if target_party and not row[2]:
+                continue
+            latest_mandate = row
+            break
+        if latest_mandate is None and pol_mandates:
+            latest_mandate = pol_mandates[0]
 
         mandate_obj = latest_mandate[0] if latest_mandate else None
         party_obj = latest_mandate[1] if latest_mandate else None
 
         # Obter partido da filiação atual caso não tenha no mandato
         if not party_obj:
-            current_aff = (
-                db.query(PartyAffiliation, PoliticalParty)
-                .join(PoliticalParty, PartyAffiliation.party_id == PoliticalParty.id)
-                .filter(PartyAffiliation.politician_id == pol.id, PartyAffiliation.is_current.is_(True))
-                .first()
-            )
-            if current_aff:
-                party_obj = current_aff[1]
+            party_obj = current_party_by_pol.get(pol.id)
 
         results.append({
             "id": str(pol.id),
