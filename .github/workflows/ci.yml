@@ -8,6 +8,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -19,10 +22,10 @@ jobs:
 
     steps:
       - name: Checkout Código
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Configurar Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
           python-version: "3.11"
           cache: "pip"
@@ -31,13 +34,29 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
-          pip install httpx
+          pip install flake8 black isort bandit
+
+      - name: Checagem de Formatação (black & isort)
+        run: |
+          black --check backend/app
+          isort --check-only backend/app
+
+      - name: Análise Estática de Código (flake8)
+        run: |
+          flake8 backend/app --config=.flake8
+
+      - name: Auditoria de Segurança Estática (bandit)
+        run: |
+          bandit -r backend/app -lll
 
       - name: Validar Sintaxe e Compilação Python
         run: |
           python -m compileall backend/app backend/tests
 
       - name: Executar Testes Automatizados e Coverage (pytest)
+        env:
+          POSTGRES_PASSWORD: test_ci_db_pass_123
+          ENVIRONMENT: test
         run: |
           PYTHONPATH=backend pytest --cov=backend/app --cov-fail-under=50 backend/tests/
 
@@ -47,10 +66,10 @@ jobs:
 
     steps:
       - name: Checkout Código
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Configurar Node.js 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
         with:
           node-version: 20
           cache: "npm"

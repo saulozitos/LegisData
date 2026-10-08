@@ -6,40 +6,25 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     name: Deploy to Server
-    runs-on: [self-hosted]
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Update and Deploy
-        run: |
-          set -e
+      - name: Checkout Código
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-          # O diretório da aplicação é definido de forma privada no servidor
-          TARGET_DIR="${DEPLOY_DIR:?Variavel DEPLOY_DIR nao configurada no servidor}"
-          cd "$TARGET_DIR"
-
-          echo "===> Atualizando aplicacao..."
-          git fetch origin main
-
-          CHANGED_FILES=$(git diff --name-only HEAD origin/main || true)
-          git reset --hard origin/main
-
-          # Rebuild do backend apenas quando dependencias mudarem
-          if echo "$CHANGED_FILES" | grep -E -q "^backend/(Dockerfile|requirements.txt)"; then
-            echo "===> Reconstruindo imagem do backend..."
-            docker compose up -d --build backend
-          else
-            echo "===> Reiniciando backend..."
-            docker compose restart backend
-          fi
-
-          # Rebuild do frontend quando houver alteracoes no frontend
-          if echo "$CHANGED_FILES" | grep -q "^frontend/"; then
-            echo "===> Reconstruindo imagem do frontend..."
-            docker compose up -d --build frontend
-          fi
-
-          echo "===> Deploy finalizado com sucesso."
-          docker compose ps
+      - name: Executar Deploy via SSH Seguro
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd "${DEPLOY_DIR:-/opt/legisdata}"
+            docker-compose up -d --build
