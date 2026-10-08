@@ -50,7 +50,7 @@ services:
       - INTERNAL_BACKEND_URL=http://backend:8000
       - PORT=3000
     ports:
-      - "127.0.0.1:3000:3000"
+      - "3000:3000"
 
 volumes:
   postgres_data:
