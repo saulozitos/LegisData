@@ -13,13 +13,13 @@ jobs:
   deploy:
     name: Deploy to Server
     runs-on: ubuntu-latest
-    if: "${{ secrets.DEPLOY_HOST != '' }}"
 
     steps:
       - name: Checkout Código
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Executar Deploy via SSH Seguro
+        if: ${{ secrets.DEPLOY_HOST != '' }}
         uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         env:
           DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
