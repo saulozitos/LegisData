@@ -1,7 +1,7 @@
 import os
 import logging
 from pathlib import Path
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 from typing import List, Optional
 
@@ -50,6 +50,24 @@ class Settings(BaseSettings):
     DATABASE_URL: Optional[str] = os.getenv("DATABASE_URL") or None
 
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+    # Regex opcional de origens adicionais (ex.: previews da Vercel do próprio projeto:
+    # ^https://legisdata(-[a-z0-9-]+)?\.vercel\.app$). Sem valor = desabilitado.
+    CORS_ORIGIN_REGEX: Optional[str] = os.getenv("CORS_ORIGIN_REGEX") or None
+
+    # Em produção /docs, /redoc e o schema OpenAPI ficam desabilitados, salvo ENABLE_DOCS=true.
+    ENABLE_DOCS: bool = os.getenv("ENABLE_DOCS", "false").strip().lower() in ("1", "true", "yes")
+
+    @property
+    def docs_enabled(self) -> bool:
+        return self.ENVIRONMENT != "production" or self.ENABLE_DOCS
+
+    @field_validator("POSTGRES_PASSWORD", "DATABASE_URL", "CORS_ORIGIN_REGEX", mode="before")
+    @classmethod
+    def _vazio_como_none(cls, value):
+        """Trata variáveis definidas porém vazias (ex.: `CORS_ORIGIN_REGEX=` no .env) como ausentes."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @model_validator(mode="after")
     def _validar_credenciais_banco(self) -> "Settings":
