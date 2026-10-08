@@ -786,13 +786,20 @@ class DatabaseLoader:
                 return None
 
             # 1. Correspondência exata bruta
+            # Se for lista com múltiplos autores (separados por vírgula ou ponto-e-vírgula), focar no PRIMEIRO signatário
+            primeiro_autor = re.split(r"[,;]", autor_nome_raw)[0].strip()
+
             if autor_nome_raw in name_to_pol_id:
                 return name_to_pol_id[autor_nome_raw]
+            if primeiro_autor in name_to_pol_id:
+                return name_to_pol_id[primeiro_autor]
             if autor_nome_raw in civil_to_pol_id:
                 return civil_to_pol_id[autor_nome_raw]
+            if primeiro_autor in civil_to_pol_id:
+                return civil_to_pol_id[primeiro_autor]
 
-            # 2. Normalização fonética/alfabética (sem acentos, sem títulos honoríficos, sem UF/partido)
-            norm_str = _normalize_name_tokens(autor_nome_raw)
+            # 2. Normalização fonética/alfabética no primeiro autor
+            norm_str = _normalize_name_tokens(primeiro_autor)
             if not norm_str or norm_str in ["poder executivo", "comissao parlamentares", "comissao", "mesa diretora"]:
                 return None
 
@@ -801,13 +808,15 @@ class DatabaseLoader:
             if norm_str in norm_civil_map:
                 return norm_civil_map[norm_str]
 
-            # 3. Cruzamento baseado em tokens de nomes (primeiro + último nome ou subconjunto)
+            # 3. Cruzamento baseado em tokens estritos do primeiro autor (nunca na lista inteira de coautores!)
             auth_tokens = set(norm_str.split())
             if len(auth_tokens) >= 2:
                 for pol_id, elec_toks, civ_toks in pol_token_list:
-                    if elec_toks and (auth_tokens == elec_toks or elec_toks.issubset(auth_tokens)):
+                    if elec_toks and auth_tokens == elec_toks:
                         return pol_id
-                    if civ_toks and auth_tokens.issubset(civ_toks):
+                    if civ_toks and auth_tokens == civ_toks:
+                        return pol_id
+                    if elec_toks and elec_toks.issubset(auth_tokens) and len(auth_tokens - elec_toks) <= 1:
                         return pol_id
 
             return None

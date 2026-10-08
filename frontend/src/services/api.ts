@@ -1090,6 +1090,10 @@ export interface AuthorProductivityItem {
   cargo: string;
   foto_url?: string | null;
   total_proposicoes: number;
+  proposicoes_aprovadas?: number;
+  proposicoes_estruturantes?: number;
+  score_produtividade?: number;
+  classificacao_efetividade?: string;
   principal_setor: string;
   total_principal_setor: number;
   distribuicao_setores: SetorDistribuicaoItem[];
@@ -1186,12 +1190,14 @@ export interface PropositionNominalVotesSplitResponse {
 export async function getAuthorsProductivityRanking(
   limit: number = 20,
   partido?: string,
-  setor?: string
+  setor?: string,
+  criterio: "efetividade" | "volume" | string = "efetividade"
 ): Promise<AuthorProductivityItem[]> {
   const q = new URLSearchParams();
   q.append("limit", String(limit));
   if (partido && partido.toUpperCase() !== "TODOS") q.append("partido", partido.trim());
   if (setor && setor.toUpperCase() !== "TODOS") q.append("setor", setor.trim());
+  if (criterio) q.append("criterio", criterio.trim());
   return fetchJson<AuthorProductivityItem[]>(`/legislative/ranking/authors?${q.toString()}`, []);
 }
 

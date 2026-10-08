@@ -3,12 +3,13 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, String, cast, desc, or_
+from sqlalchemy import func, String, cast, desc, or_, case
 
 from app.core.database import get_db
 from app.models import (
     Proposition, VotingSession, ParliamentaryVote,
-    VotoOpcaoEnum, CasaLegislativaEnum, Politician, PoliticalParty, Mandate, PartyAffiliation
+    VotoOpcaoEnum, CasaLegislativaEnum, Politician, PoliticalParty, Mandate, PartyAffiliation,
+    StatusTramitacaoEnum, TipoProposicaoEnum
 )
 from app.core.config import PROCESSED_DATA_DIR
 
@@ -354,17 +355,22 @@ def get_authors_productivity_ranking(
     limit: int = 20,
     partido: Optional[str] = None,
     setor: Optional[str] = None,
+    criterio: str = Query("efetividade", description="Modo de classificação: 'efetividade' (Score IPLE) ou 'volume' (Total bruto de proposições)"),
     db: Session = Depends(get_db)
 ):
     """
-    Retorna o ranking de deputados/senadores ordenados pela quantidade total de projetos propostos no mandato,
-    indicando o principal setor de atuação e a distribuição temática de cada parlamentar.
-    Permite filtrar por partido e por setor/tema.
+    Retorna o ranking de produtividade parlamentar com dupla metodologia:
+    - Efetividade (Score IPLE): Pondera leis aprovadas (+15 pts), reformas estruturantes/PECs (+4 pts) e volume moderado,
+      coibindo o 'spam legislativo' de matérias cosméticas ou sem tramitação.
+    - Volume: Ordenação puramente quantitativa por total de proposições protocoladas.
+    Permite filtrar por partido, setor/tema e critério de ordenação.
     """
     query = (
         db.query(
             Proposition.author_politician_id,
-            func.count(Proposition.id).label("total_props")
+            func.count(Proposition.id).label("total_props"),
+            func.sum(case((Proposition.status.in_([StatusTramitacaoEnum.APROVADA_E_SANCIONADA, StatusTramitacaoEnum.APROVADA_E_PROMULGADA]), 1), else_=0)).label("aprovadas"),
+            func.sum(case((Proposition.is_structural_reform.is_(True), 1), (Proposition.proposition_type.in_([TipoProposicaoEnum.PEC, TipoProposicaoEnum.PLP]), 1), else_=0)).label("estruturantes")
         )
         .filter(Proposition.author_politician_id.isnot(None))
     )
@@ -402,18 +408,47 @@ def get_authors_productivity_ranking(
         else:
             query = query.filter(Proposition.author_politician_id == uuid.uuid4())
 
-    author_counts = (
-        query
-        .group_by(Proposition.author_politician_id)
-        .order_by(desc("total_props"))
-        .limit(limit)
-        .all()
-    )
+    all_authors = query.group_by(Proposition.author_politician_id).all()
 
-    if not author_counts:
+    if not all_authors:
         return []
 
-    politician_ids = [aid for aid, _ in author_counts]
+    # Calcular Score IPLE para cada parlamentar
+    scored_authors = []
+    for aid, total, apr, est in all_authors:
+        total_val = int(total or 0)
+        apr_val = int(apr or 0)
+        est_val = int(est or 0)
+        # Fórmula IPLE: Leis aprovadas (15 pts) + Matérias estruturantes (4 pts) + Volume com teto de 50 (0.6 pt)
+        score = min(100.0, round((apr_val * 15.0) + (est_val * 4.0) + (min(total_val, 50) * 0.6), 1))
+
+        if apr_val >= 2:
+            diag = "Alta Eficácia Legislativa"
+        elif apr_val >= 1:
+            diag = "Média Eficácia"
+        elif total_val >= 30 and apr_val == 0:
+            diag = "Volume Alto sem Leis Aprovadas"
+        else:
+            diag = "Em Tramitação"
+
+        scored_authors.append({
+            "author_id": aid,
+            "total_props": total_val,
+            "aprovadas": apr_val,
+            "estruturantes": est_val,
+            "score": score,
+            "diagnostico": diag
+        })
+
+    # Ordenação por critério
+    if criterio and criterio.lower() == "volume":
+        scored_authors.sort(key=lambda x: (x["total_props"], x["score"]), reverse=True)
+    else:
+        # Default: Efetividade (Score IPLE)
+        scored_authors.sort(key=lambda x: (x["score"], x["aprovadas"], x["estruturantes"], x["total_props"]), reverse=True)
+
+    author_counts = scored_authors[:limit]
+    politician_ids = [a["author_id"] for a in author_counts]
     politicians = {p.id: p for p in db.query(Politician).filter(Politician.id.in_(politician_ids)).all()}
 
     # Buscar mandatos e partidos
@@ -450,7 +485,8 @@ def get_authors_productivity_ranking(
         sectors_by_author[aid].append((st or "Geral", cnt))
 
     ranking = []
-    for idx, (pol_id, total_props) in enumerate(author_counts, start=1):
+    for idx, item in enumerate(author_counts, start=1):
+        pol_id = item["author_id"]
         pol = politicians.get(pol_id)
         if not pol:
             continue
@@ -465,13 +501,13 @@ def get_authors_productivity_ranking(
 
         author_sectors = sectors_by_author.get(pol_id, [])
         principal_setor = author_sectors[0][0] if author_sectors else "Economia & Finanças"
-        total_principal = author_sectors[0][1] if author_sectors else total_props
+        total_principal = author_sectors[0][1] if author_sectors else item["total_props"]
 
         distribuicao = [
             {
                 "setor": st,
                 "total": cnt,
-                "percentual": round((cnt / total_props) * 100, 1)
+                "percentual": round((cnt / item["total_props"]) * 100, 1) if item["total_props"] > 0 else 0
             }
             for st, cnt in author_sectors
         ]
@@ -486,7 +522,11 @@ def get_authors_productivity_ranking(
             "uf": uf,
             "cargo": cargo,
             "foto_url": pol.photo_url,
-            "total_proposicoes": total_props,
+            "total_proposicoes": item["total_props"],
+            "proposicoes_aprovadas": item["aprovadas"],
+            "proposicoes_estruturantes": item["estruturantes"],
+            "score_produtividade": item["score"],
+            "classificacao_efetividade": item["diagnostico"],
             "principal_setor": principal_setor,
             "total_principal_setor": total_principal,
             "distribuicao_setores": distribuicao

@@ -33,7 +33,8 @@ import {
   Building,
   Check,
   Ban,
-  Tag
+  Tag,
+  AlertTriangle
 } from "lucide-react";
 
 // Mapeamento de cores para os setores temáticos
@@ -105,11 +106,12 @@ export default function PropositionsExplorerPanel({
   onSelectPolitician,
   onSelectParty,
 }: PropositionsExplorerPanelProps = {}) {
-  // 1. Estados do Ranking de Produtividade (Filtros por Partido e Setor)
+  // 1. Estados do Ranking de Produtividade (Filtros por Partido, Setor e Critério IPLE)
   const [ranking, setRanking] = useState<AuthorProductivityItem[]>([]);
   const [isLoadingRanking, setIsLoadingRanking] = useState<boolean>(true);
   const [rankingParty, setRankingParty] = useState<string>("Todos");
   const [rankingSector, setRankingSector] = useState<string>("Todos");
+  const [rankingCriterio, setRankingCriterio] = useState<"efetividade" | "volume">("efetividade");
 
   // 2. Estados do Mural Geral de Votações
   const [propositionsData, setPropositionsData] = useState<LegislativeExplorerResponse | null>(null);
@@ -138,7 +140,7 @@ export default function PropositionsExplorerPanel({
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Carregar Ranking de Autores (Top 20) com filtros de Partido e Setor
+  // Carregar Ranking de Autores (Top 20) com filtros de Partido, Setor e Critério (IPLE vs Volume)
   useEffect(() => {
     async function fetchRanking() {
       setIsLoadingRanking(true);
@@ -146,7 +148,8 @@ export default function PropositionsExplorerPanel({
         const data = await getAuthorsProductivityRanking(
           20,
           rankingParty !== "Todos" ? rankingParty : undefined,
-          rankingSector !== "Todos" ? rankingSector : undefined
+          rankingSector !== "Todos" ? rankingSector : undefined,
+          rankingCriterio
         );
         setRanking(data);
       } catch (err) {
@@ -156,7 +159,7 @@ export default function PropositionsExplorerPanel({
       }
     }
     fetchRanking();
-  }, [rankingParty, rankingSector]);
+  }, [rankingParty, rankingSector, rankingCriterio]);
 
   // Carregar Proposições com filtros e paginação
   useEffect(() => {
@@ -270,20 +273,57 @@ export default function PropositionsExplorerPanel({
               <Trophy className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2 flex-wrap">
                 Ranking de Produtividade Parlamentar
                 <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
                   {ranking.length > 0 ? `Top ${ranking.length}` : "Filtro ativo"}
                 </span>
+                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${
+                  rankingCriterio === "efetividade"
+                    ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                    : "bg-slate-800 text-slate-300 border-slate-700"
+                }`}>
+                  {rankingCriterio === "efetividade" ? "Score IPLE Ativo" : "Volume Bruto"}
+                </span>
               </h3>
-              <p className="text-xs text-slate-400">
-                Parlamentares com maior volume de propostas legislativas protocoladas no mandato atual.
+              <p className="text-xs text-slate-400 mt-0.5">
+                {rankingCriterio === "efetividade"
+                  ? "Classificação ponderada pelo Índice IPLE: prioriza leis aprovadas (+15 pts) e reformas estruturantes (+4 pts), coibindo 'spam legislativo'."
+                  : "Classificação por volume bruto de propostas protocoladas no mandato atual."}
               </p>
             </div>
           </div>
 
-          {/* BARRA SUPERIOR DE FILTROS DINÂMICOS: PARTIDO E SETOR */}
+          {/* BARRA SUPERIOR DE FILTROS DINÂMICOS: CRITÉRIO, PARTIDO E SETOR */}
           <div className="flex flex-wrap items-center gap-2.5 bg-slate-950/80 p-2 rounded-2xl border border-slate-800/90 shadow-inner">
+            {/* Toggle de Critério IPLE vs Volume */}
+            <div className="inline-flex p-1 bg-slate-900 border border-slate-800 rounded-xl text-xs font-semibold">
+              <button
+                onClick={() => setRankingCriterio("efetividade")}
+                className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                  rankingCriterio === "efetividade"
+                    ? "bg-gradient-to-r from-amber-500/30 to-emerald-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+                title="Pondera relevância e aprovações de leis (desestimula spam)"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Efetividade (IPLE)</span>
+              </button>
+              <button
+                onClick={() => setRankingCriterio("volume")}
+                className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                  rankingCriterio === "volume"
+                    ? "bg-slate-800 text-white border border-slate-700 shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+                title="Contagem bruta de projetos protocolados"
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                <span>Volume Bruto</span>
+              </button>
+            </div>
+
             {/* 1. Combobox / Select de Partido */}
             <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5">
               <Users className="w-3.5 h-3.5 text-slate-400" />
@@ -325,11 +365,12 @@ export default function PropositionsExplorerPanel({
             </div>
 
             {/* Botão de Limpar caso algum filtro esteja ativo */}
-            {(rankingParty !== "Todos" || rankingSector !== "Todos") && (
+            {(rankingParty !== "Todos" || rankingSector !== "Todos" || rankingCriterio !== "efetividade") && (
               <button
                 onClick={() => {
                   setRankingParty("Todos");
                   setRankingSector("Todos");
+                  setRankingCriterio("efetividade");
                 }}
                 className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-medium transition-colors flex items-center gap-1"
                 title="Limpar filtros do ranking"
@@ -455,20 +496,67 @@ export default function PropositionsExplorerPanel({
                     </div>
 
                     <div className="text-right">
-                      <span className="text-lg font-black text-indigo-400 tracking-tight">
-                        {autor.total_proposicoes}
-                      </span>
-                      <span className="block text-[10px] text-slate-500 uppercase tracking-wider font-semibold">
-                        projetos
-                      </span>
+                      {rankingCriterio === "efetividade" ? (
+                        <div>
+                          <span className="text-base font-black text-amber-400 tracking-tight flex items-center justify-end gap-1">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                            {autor.score_produtividade !== undefined ? autor.score_produtividade.toFixed(1) : "0.0"}
+                          </span>
+                          <span className="block text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                            Score IPLE
+                          </span>
+                          <span className="text-[10px] text-slate-500">
+                            {autor.total_proposicoes} {autor.total_proposicoes === 1 ? "projeto" : "projetos"}
+                          </span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="text-lg font-black text-indigo-400 tracking-tight">
+                            {autor.total_proposicoes}
+                          </span>
+                          <span className="block text-[10px] text-slate-500 uppercase tracking-wider font-semibold">
+                            projetos
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  {/* Barra de volume proporcional */}
+                  {/* Badges de Eficácia & Alerta de Volume */}
+                  <div className="flex items-center gap-1.5 flex-wrap my-2">
+                    {autor.proposicoes_estruturantes !== undefined && autor.proposicoes_estruturantes > 0 && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                        {autor.proposicoes_estruturantes} Estruturantes
+                      </span>
+                    )}
+                    {autor.proposicoes_aprovadas !== undefined && autor.proposicoes_aprovadas > 0 && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        {autor.proposicoes_aprovadas} Aprovadas
+                      </span>
+                    )}
+                    {autor.classificacao_efetividade === "Volume Alto sem Leis Aprovadas" && (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1" title="Parlamentar protocolou grande volume de projetos mas nenhuma lei foi aprovada no período">
+                        <AlertTriangle className="w-2.5 h-2.5 text-amber-400" />
+                        Volume s/ Leis
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Barra proporcional */}
                   <div className="w-full bg-slate-950/80 rounded-full h-1.5 overflow-hidden mb-3 border border-slate-800">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-all duration-700"
-                      style={{ width: `${Math.min(100, Math.max(12, (autor.total_proposicoes / maxProjetos) * 100))}%` }}
+                      className={`h-full rounded-full transition-all duration-700 ${
+                        rankingCriterio === "efetividade"
+                          ? "bg-gradient-to-r from-amber-500 via-orange-400 to-emerald-400"
+                          : "bg-gradient-to-r from-indigo-500 to-cyan-400"
+                      }`}
+                      style={{
+                        width: `${
+                          rankingCriterio === "efetividade"
+                            ? Math.min(100, Math.max(10, autor.score_produtividade ?? 0))
+                            : Math.min(100, Math.max(10, (autor.total_proposicoes / maxProjetos) * 100))
+                        }%`
+                      }}
                     />
                   </div>
 
