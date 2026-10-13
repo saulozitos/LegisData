@@ -98,11 +98,12 @@ class RemuneracaoExtractor:
         http: Optional[HttpClient] = None,
         workers: int = 1,
         hoje: Optional[date] = None,
+        intervalo: float = 0.2,
     ):
         self.processed_dir = Path(processed_dir)
         self.hoje = hoje or date.today()
-        # O portal da Câmara responde 429 a rajadas: 1 requisição/s, uma por vez, com backoff longo.
-        self.http = http or PoliteHttpClient()
+        # O portal da Câmara responde 429 a rajadas: respeitamos limite e aplicamos backoff se houver 429.
+        self.http = http or PoliteHttpClient(base_interval=intervalo)
         self.workers = max(1, workers)
         self._presenca = PresencaExtractor(raw_dir, processed_dir, http=self.http, workers=workers, hoje=self.hoje)
         self.raw_dir = Path(raw_dir) / "remuneracao"
@@ -165,13 +166,22 @@ class RemuneracaoExtractor:
             except HttpError as exc:
                 return t, {}, str(exc)
 
+        total_t = len(tarefas)
+        concluidos = 0
         with ThreadPoolExecutor(max_workers=self.workers) as pool:
             for fut in as_completed([pool.submit(trabalho, t) for t in tarefas]):
                 (cid, nome, ano), meses, erro = fut.result()
+                concluidos += 1
                 if erro:
                     falhas.append(f"{cid}/{ano}: {erro}")
                 for mes, valor in sorted(meses.items()):
                     registros.append({"camara_id": cid, "nome": nome, "ano": ano, "mes": mes, "salario_bruto": valor})
+                if concluidos % 100 == 0 or concluidos == total_t:
+                    pct = (concluidos / max(1, total_t)) * 100.0
+                    print(
+                        f"[REMUNERAÇÃO CÂMARA] Progresso: {concluidos}/{total_t} ({pct:5.1f}%) | Registros: {len(registros)} | Falhas: {len(falhas)}",
+                        flush=True,
+                    )
 
         # Líquido do mês mais recente de cada deputado (uma página detalhada por deputado)
         ultimo: Dict[int, Dict[str, Any]] = {}
@@ -228,12 +238,13 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Extrai a remuneração mensal dos deputados (portal da Câmara).")
     parser.add_argument("--no-cache", action="store_true")
-    parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--workers", type=int, default=3)
+    parser.add_argument("--intervalo", type=float, default=0.15)
     parser.add_argument(
         "--todos", action="store_true", help="Todos os deputados das legislaturas (não só os conhecidos)"
     )
     args = parser.parse_args()
-    res = RemuneracaoExtractor(workers=args.workers).run(
+    res = RemuneracaoExtractor(workers=args.workers, intervalo=args.intervalo).run(
         usar_cache=not args.no_cache, ids_permitidos=None if args.todos else ids_deputados_conhecidos()
     )
     print(len(res["registros"]), "registros;", len(res["cobertura"]["falhas"]), "falhas")

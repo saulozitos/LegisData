@@ -66,6 +66,26 @@ export default function PoliticianHome({ onSelectPolitician }: PoliticianHomePro
   );
   const hasMore = filteredHomePoliticians.length > visiblePoliticians.length;
 
+  const sentinelRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!hasMore || isHomeLoading) return;
+    if (typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisible((prev) => ({ key: prev.key, count: prev.count + PAGE_SIZE }));
+        }
+      },
+      { rootMargin: "300px" }
+    );
+    const el = sentinelRef.current;
+    if (el) observer.observe(el);
+    return () => {
+      if (el) observer.unobserve(el);
+    };
+  }, [hasMore, isHomeLoading, filtersKey]);
+
   // Agrupamento por partido quando 'TODOS' estiver selecionado
   const groupedPoliticians = useMemo(() => {
     const groups: Record<string, typeof homePoliticians> = {};
@@ -418,7 +438,8 @@ export default function PoliticianHome({ onSelectPolitician }: PoliticianHomePro
           )}
 
           {hasMore && !isHomeLoading && (
-            <div className="flex justify-center pt-2">
+            <div className="flex flex-col items-center gap-2 pt-2">
+              <div ref={sentinelRef} className="h-1 w-full pointer-events-none" aria-hidden="true" />
               <button
                 type="button"
                 onClick={() => setVisible({ key: filtersKey, count: visibleCount + PAGE_SIZE })}

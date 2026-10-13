@@ -71,9 +71,7 @@ def run_db_migrations() -> None:
         ):
             db.execute(text(f"ALTER TABLE IF EXISTS repasses_federais_uf ADD COLUMN IF NOT EXISTS {coluna} {tipo};"))
         db.execute(text('ALTER TABLE sessoes_votacao ADD COLUMN IF NOT EXISTS "orientacoesBancadas" TEXT;'))
-        db.execute(
-            text(
-                """
+        db.execute(text("""
             CREATE TABLE IF NOT EXISTS processos_judiciais (
                 id UUID PRIMARY KEY,
                 "politicoId" UUID NOT NULL REFERENCES politicos(id) ON DELETE CASCADE,
@@ -91,9 +89,7 @@ def run_db_migrations() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_processo_politico ON processos_judiciais ("politicoId");
             CREATE INDEX IF NOT EXISTS idx_processo_numero ON processos_judiciais ("numeroProcesso");
-        """
-            )
-        )
+        """))
         db.commit()
 
 

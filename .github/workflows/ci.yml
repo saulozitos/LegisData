@@ -8,6 +8,7 @@ on:
     branches:
       - main
 
+# Padrão seguro para a raiz: tudo apenas leitura (Princípio do Menor Privilégio)
 permissions:
   contents: read
 
@@ -69,6 +70,38 @@ jobs:
         run: |
           PYTHONPATH=backend pytest --cov=backend/app --cov-branch --cov-fail-under=85 backend/tests/
 
+  etl-checks:
+    name: ETL Pipelines Tests & Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout Código
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Instalar Dependências do ETL
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install -r etl/requirements.txt -r etl/requirements-dev.txt
+
+      - name: Validar Compilação do ETL
+        run: |
+          python -m compileall etl/
+
+      - name: Executar Testes Automatizados do ETL (pytest)
+        env:
+          POSTGRES_PASSWORD: test_ci_db_pass_123
+          ENVIRONMENT: test
+        run: |
+          PYTHONPATH=backend:. pytest -q etl/tests/
+
   frontend-checks:
     name: Frontend Build, Lint & Typecheck
     runs-on: ubuntu-latest
@@ -116,3 +149,41 @@ jobs:
         working-directory: frontend
         run: |
           npm run test:coverage
+
+  security-scan:
+    name: Security Vulnerability Scan (Trivy & CodeQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Permissão de escrita de segurança isolada exclusivamente para este job
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout Código
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Executar Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: "fs"
+          ignore-unfixed: true
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+
+      - name: Upload dos resultados do Trivy para o GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-results.sarif"
+          category: "trivy"
+
+      - name: Inicializar CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: "python, javascript-typescript"
+
+      - name: Analisar Código com CodeQL
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "codeql"

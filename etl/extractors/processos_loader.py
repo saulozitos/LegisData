@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from etl.utils.bootstrap import ensure_backend_on_path
+from etl.utils.datajud_client import DataJudClient, parse_cnj_parts
 from etl.utils.names import normalize_name_tokens
 
 ensure_backend_on_path()
@@ -245,23 +246,72 @@ def chave_registro(electoral_name: Optional[str], civil_name: Optional[str]) -> 
     return None
 
 
-def populate_processos_judiciais(db: Session, allow_unverified: bool = False) -> int:
+def carregar_processos_enriquecidos_datajud(
+    client: Optional[DataJudClient] = None,
+) -> Dict[str, List[Dict[str, Any]]]:
     """
-    Sincroniza `processos_judiciais` com o acervo manual. Sem `allow_unverified=True` nada é gravado.
+    Consulta a API oficial do DataJud (CNJ) com cache local para os processos
+    com numeração CNJ e enriquece os registros com metadados oficiais da TPU.
     """
-    if not allow_unverified:
+    client = client or DataJudClient()
+    acervo_enriquecido: Dict[str, List[Dict[str, Any]]] = {}
+
+    for pol_chave, procs in REGISTROS_PROCESSUAIS_NOTORIOS.items():
+        lista_pol = []
+        for reg in procs:
+            item = dict(reg)
+            cnj = parse_cnj_parts(item.get("numero_processo", ""))
+            if cnj:
+                src = client.consultar_processo(cnj["limpo"])
+                if src:
+                    resumo = client.consolidar_resumo_processo(src)
+                    item["tribunal"] = f"{resumo.get('tribunal', item['tribunal'])} (CNJ / DataJud)"
+                    item["classe_assunto"] = resumo.get("classe_assunto", item["classe_assunto"])
+                    item["data_processo"] = resumo.get("data_processo", item["data_processo"])
+                    item["situacao_juridica"] = (
+                        f"Oficial DataJud: {resumo.get('ultimo_movimento', 'Movimentação')} ({resumo.get('data_ultimo_movimento', '')}). "
+                        f"Total de {resumo.get('total_movimentacoes', 0)} movimentações registradas na base nacional."
+                    )
+                    item["status_resumo"] = f"{resumo.get('classe_tpu_nome', 'Processo')} (DataJud)"
+                    item["is_verified_datajud"] = True
+                    item["fonte"] = "CNJ / DataJud (Base Nacional de Dados do Poder Judiciário)"
+            lista_pol.append(item)
+        acervo_enriquecido[pol_chave] = lista_pol
+    return acervo_enriquecido
+
+
+def populate_processos_judiciais(
+    db: Session,
+    allow_unverified: bool = False,
+    use_datajud: bool = False,
+    client: Optional[DataJudClient] = None,
+) -> int:
+    """
+    Sincroniza `processos_judiciais` com o acervo.
+    - Se `use_datajud=True`: carrega dados oficiais validados pelo CNJ / DataJud.
+    - Se `allow_unverified=True`: autoriza também a carga de processos sem validação automatizada (ex: STF).
+    - Se ambos falsos: nada é gravado.
+    """
+    if not allow_unverified and not use_datajud:
         logger.warning(
-            "Carga de processos judiciais ignorada: o acervo é transcrição manual não verificada. "
-            "Use --allow-unverified-legal para autorizar explicitamente."
+            "Carga de processos judiciais ignorada: use --allow-unverified-legal para acervo manual "
+            "ou --use-datajud para carregar dados oficiais validados pelo CNJ."
         )
         return 0
 
+    acervo = carregar_processos_enriquecidos_datajud(client) if use_datajud else REGISTROS_PROCESSUAIS_NOTORIOS
     pols = db.query(Politician).all()
     total_inseridos = 0
 
     for pol in pols:
         chave = chave_registro(pol.electoral_name, pol.civil_name)
-        registros = REGISTROS_PROCESSUAIS_NOTORIOS.get(chave, []) if chave else []
+        registros = acervo.get(chave, []) if chave else []
+        if not registros:
+            continue
+
+        if not allow_unverified:
+            registros = [r for r in registros if r.get("is_verified_datajud")]
+
         if not registros:
             continue
 
@@ -298,9 +348,18 @@ if __name__ == "__main__":
         action="store_true",
         help="Autoriza gravar o acervo manual NÃO verificado contra os tribunais.",
     )
+    parser.add_argument(
+        "--use-datajud",
+        action="store_true",
+        help="Consulta e valida processos oficialmente através da API do DataJud / CNJ.",
+    )
     cli_args = parser.parse_args()
     from app.core.database import SessionLocal
 
     with SessionLocal() as session:
-        inseridos = populate_processos_judiciais(session, allow_unverified=cli_args.allow_unverified_legal)
+        inseridos = populate_processos_judiciais(
+            session,
+            allow_unverified=cli_args.allow_unverified_legal,
+            use_datajud=cli_args.use_datajud,
+        )
         print(f"Total de processos judiciais persistidos no PostgreSQL: {inseridos}")

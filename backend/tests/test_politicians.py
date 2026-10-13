@@ -176,6 +176,15 @@ def test_search_row_uses_current_party_and_real_photo_fallbacks(client, seed):
     assert rows["Lula da Fonte"]["foto_url"].endswith("/222.jpg")  # homônimo parcial NÃO herda a foto do presidente
 
 
+def test_senator_photo_url_is_canonical_https(client, db):
+    from app.models.politician import Politician
+    senador = Politician(civil_name="Izalci Lucas", electoral_name="Izalci Lucas", senado_id=4770, photo_url="http://www.senado.leg.br/senadores/img/fotos-oficiais/senador4770.jpg")
+    db.add(senador)
+    db.commit()
+    res = client.get(f"{BASE}/{senador.id}").json()
+    assert res["perfil"]["foto_url"] == "https://legis.senado.leg.br/senadores/fotos-oficiais/4770"
+
+
 # ---------------------------------------------------------------------------
 # Resolução de político
 # ---------------------------------------------------------------------------
@@ -457,3 +466,11 @@ def test_dossier_trajectory_is_most_recent_first_and_current_party_comes_from_af
     assert [m["ano_eleicao"] for m in body["trajetoria_mandatos"]] == [2022, 2006]
     assert body["perfil"]["partido_atual"] == "PT" and body["perfil"]["cargo_atual"] == "DEPUTADO_FEDERAL"
     assert body["filiacoes_partidarias"][0]["is_atual"] is True
+
+
+def test_search_politicians_filters_active_by_presidential_mandate(client, seed, db):
+    # fulano had mandates in 2006 and 2022 (covers lula-2023)
+    resp = client.get(BASE, params={"mandate_id": "lula-2023"})
+    assert resp.status_code == 200
+    ids = [p["id"] for p in resp.json()["politicos"]]
+    assert str(seed.fulano.id) in ids

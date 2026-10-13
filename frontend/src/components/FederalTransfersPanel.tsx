@@ -71,9 +71,9 @@ export default function FederalTransfersPanel({ mandateId }: FederalTransfersPan
     uf: string;
     nome: string;
     regiao: string;
-    populacao: number;
+    populacao: number | null;
     total_brl: number;
-    per_capita: number;
+    per_capita: number | null;
   }>();
 
   (data?.por_uf ?? []).forEach((item) => {
@@ -82,14 +82,16 @@ export default function FederalTransfersPanel({ mandateId }: FederalTransfersPan
         uf: item.uf,
         nome: item.estado_nome,
         regiao: item.regiao,
-        populacao: item.populacao_estimada,
+        populacao: item.populacao_estimada ?? null,
         total_brl: item.valor_pago_brl,
-        per_capita: item.valor_per_capita_brl
+        per_capita: item.valor_per_capita_brl ?? null
       });
     } else {
       const existing = ufMap.get(item.uf)!;
       existing.total_brl += item.valor_pago_brl;
-      existing.per_capita = existing.populacao > 0 ? existing.total_brl / existing.populacao : 0;
+      existing.per_capita = (existing.populacao != null && existing.populacao > 0)
+        ? existing.total_brl / existing.populacao
+        : null;
     }
   });
 
@@ -108,7 +110,7 @@ export default function FederalTransfersPanel({ mandateId }: FederalTransfersPan
   // Ordenação
   ufsList.sort((a, b) => {
     if (sortBy === "total") return b.total_brl - a.total_brl;
-    return b.per_capita - a.per_capita;
+    return (b.per_capita ?? 0) - (a.per_capita ?? 0);
   });
 
   const top10ChartData = ufsList.slice(0, 10);
@@ -297,13 +299,13 @@ export default function FederalTransfersPanel({ mandateId }: FederalTransfersPan
                     </span>
                   </td>
                   <td className="py-2.5 px-4 text-right text-slate-400 font-mono">
-                    {u.populacao.toLocaleString("pt-BR")}
+                    {u.populacao != null ? u.populacao.toLocaleString("pt-BR") : "Dado indisponível"}
                   </td>
                   <td className="py-2.5 px-4 text-right font-mono font-bold text-emerald-400">
                     R$ {u.total_brl.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                   <td className="py-2.5 px-4 text-right font-mono text-cyan-300 font-bold">
-                    R$ {u.per_capita.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {u.per_capita != null ? `R$ ${u.per_capita.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Dado indisponível"}
                   </td>
                 </tr>
               ))}

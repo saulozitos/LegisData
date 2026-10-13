@@ -542,8 +542,8 @@ export interface StateTransferItem {
   regiao: string;
   area_tematica: string;
   valor_pago_brl: number;
-  populacao_estimada: number;
-  valor_per_capita_brl: number;
+  populacao_estimada: number | null;
+  valor_per_capita_brl: number | null;
 }
 
 export interface FederalTransfersResponse {
@@ -616,6 +616,8 @@ export interface PropositionVotesResponse {
     data_hora: string;
     casa: string;
     aprovada: boolean;
+    is_votacao_secreta?: boolean;
+    placar?: { SIM: number; NAO: number; ABSTENCAO: number; TOTAL: number };
   } | null;
   sessoes_disponiveis?: Array<{
     id: string;
@@ -623,8 +625,14 @@ export interface PropositionVotesResponse {
     data_hora: string;
     casa: string;
     aprovada: boolean;
+    is_votacao_secreta?: boolean;
   }>;
+  is_votacao_secreta?: boolean;
+  aviso?: string;
+  placar?: { SIM: number; NAO: number; ABSTENCAO: number; TOTAL: number };
   total: number;
+  total_correspondente?: number;
+  truncado?: boolean;
   votos: VotoNominalItem[];
 }
 
@@ -1148,16 +1156,21 @@ export async function searchPoliticians(
   party?: string,
   uf?: string,
   limit: number = 80,
+  mandateIdOrSignal?: string | AbortSignal,
   signal?: AbortSignal
 ): Promise<PoliticoSearchResponse> {
+  const actualSignal = mandateIdOrSignal instanceof AbortSignal ? mandateIdOrSignal : signal;
+  const mandateId = typeof mandateIdOrSignal === "string" ? mandateIdOrSignal : undefined;
+
   const params = new URLSearchParams();
   if (search) params.append("search", search);
   if (office) params.append("office", office);
   if (party) params.append("party", party);
   if (uf) params.append("uf", uf);
+  if (mandateId) params.append("mandate_id", mandateId);
   params.append("limit", limit.toString());
 
-  return fetchJson<PoliticoSearchResponse>(`/politicians?${params.toString()}`, signal);
+  return fetchJson<PoliticoSearchResponse>(`/politicians?${params.toString()}`, actualSignal);
 }
 
 export async function getPoliticianDossier(politicianId: string, signal?: AbortSignal): Promise<PoliticoDossier> {
@@ -1548,4 +1561,127 @@ export interface MandateSummary {
 
 export async function getMandateSummary(mandateId: string, signal?: AbortSignal): Promise<MandateSummary> {
   return fetchJson<MandateSummary>(`/executivo/mandates/${encodeURIComponent(mandateId)}/summary`, signal);
+}
+
+// ─── Emendas Orçamentárias (APIs Oficiais e Tradução Humanizada) ───────────────
+
+export interface DicionarioEmendas {
+  termos_orcamentarios: Record<string, { termo_tecnico: string; traducao: string; explicacao: string }>;
+  linha_do_tempo: Array<{ etapa: number; nome: string; status: string; descricao: string }>;
+  areas_tematicas: Record<string, { icone: string; rotulo: string }>;
+}
+
+export interface EmendasResumoResponse {
+  estatisticas_gerais: {
+    total_emendas: number;
+    total_reservado_empenhado_brl: number;
+    total_entregue_pago_brl: number;
+    taxa_execucao_pago_pct: number;
+  };
+  por_tipo_autor: Record<
+    string,
+    {
+      total_empenhado: number;
+      total_pago: number;
+      quantidade: number;
+      categoria: string;
+      icone: string;
+      descricao: string;
+    }
+  >;
+  por_area_tematica: Array<{
+    area: string;
+    rotulo: string;
+    icone: string;
+    total_empenhado: number;
+    total_pago: number;
+    quantidade: number;
+  }>;
+  por_ano: Record<string, { total_empenhado: number; total_pago: number; quantidade: number }>;
+  top_ufs: Array<{ uf: string; total_empenhado: number; total_pago: number; quantidade: number }>;
+  dicionario: DicionarioEmendas;
+}
+
+export interface EmendasLocalidadeResponse {
+  localidade_pesquisada: string;
+  total_emendas_encontradas: number;
+  total_reservado_empenhado_brl: number;
+  total_entregue_pago_brl: number;
+  taxa_execucao_pct: number;
+  divisao_por_area: Array<{
+    area: string;
+    rotulo: string;
+    icone: string;
+    total_empenhado: number;
+    total_pago: number;
+    quantidade: number;
+  }>;
+  emendas: Array<{
+    codigo_emenda: string;
+    ano: number;
+    area_tematica: string;
+    area_rotulo: string;
+    area_icone: string;
+    valor_reservado_empenhado: number;
+    valor_entregue_pago: number;
+    estagio: string;
+    tipo_recurso: string;
+    autor: {
+      tipo_autor: string;
+      categoria: string;
+      nome_tecnico: string;
+      nome_amigavel: string;
+      descricao_amigavel: string;
+      icone: string;
+    };
+  }>;
+  dicionario: DicionarioEmendas;
+}
+
+export interface EmendasAutorResponse {
+  autor_pesquisado: string;
+  perfil_autor: {
+    tipo_autor: string;
+    categoria: string;
+    nome_tecnico: string;
+    nome_amigavel: string;
+    descricao_amigavel: string;
+    icone: string;
+  };
+  total_emendas_enviadas: number;
+  total_reservado_empenhado_brl: number;
+  total_entregue_pago_brl: number;
+  taxa_execucao_pct: number;
+  top_destinos: Array<{ localidade: string; total_empenhado: number; total_pago: number; quantidade: number }>;
+  por_area_tematica: Array<{
+    area: string;
+    rotulo: string;
+    icone: string;
+    total_empenhado: number;
+    total_pago: number;
+    quantidade: number;
+  }>;
+  emendas: Array<{
+    codigo_emenda: string;
+    ano: number;
+    localidade_destino: string;
+    area_tematica: string;
+    area_rotulo: string;
+    area_icone: string;
+    valor_reservado_empenhado: number;
+    valor_entregue_pago: number;
+    estagio: string;
+  }>;
+}
+
+export async function getEmendasResumo(signal?: AbortSignal): Promise<EmendasResumoResponse> {
+  return fetchJson<EmendasResumoResponse>("/emendas/resumo", signal);
+}
+
+export async function getEmendasPorLocalidade(localidade: string, limit = 50, signal?: AbortSignal): Promise<EmendasLocalidadeResponse> {
+  return fetchJson<EmendasLocalidadeResponse>(`/emendas/localidade/${encodeURIComponent(localidade)}?limit=${limit}`, signal);
+}
+
+export async function getEmendasPorAutor(autor: string, limit = 50, signal?: AbortSignal): Promise<EmendasAutorResponse> {
+  return fetchJson<EmendasAutorResponse>(`/emendas/autor/${encodeURIComponent(autor)}?limit=${limit}`, signal);
 }

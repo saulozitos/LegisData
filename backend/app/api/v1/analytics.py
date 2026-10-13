@@ -642,14 +642,16 @@ def get_congress_composition(mandate_id: str = Query("lula-2023", description="I
 
 
 def _transfer_item_from_row(r: Dict[str, Any]) -> Dict[str, Any]:
+    pop = r.get("populacao_estimada")
+    vpc = r.get("valor_per_capita_brl")
     return {
         "uf": r["uf"],
         "estado_nome": r["estado_nome"],
         "regiao": r["regiao"],
         "area_tematica": r["area_tematica"],
         "valor_pago_brl": float(r["valor_pago_brl"]),
-        "populacao_estimada": int(r.get("populacao_estimada") or 0),
-        "valor_per_capita_brl": float(r.get("valor_per_capita_brl") or 0.0),
+        "populacao_estimada": int(pop) if pop is not None else None,
+        "valor_per_capita_brl": float(vpc) if vpc is not None else None,
     }
 
 

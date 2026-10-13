@@ -46,6 +46,7 @@ vi.mock('@/components/PartyMembersModal', () => ({
     ) : null,
 }));
 vi.mock('@/components/VotingCalendarPanel', () => ({ default: () => <div data-testid="VotingCalendarPanel" /> }));
+vi.mock('@/components/EmendasExplorerPanel', () => ({ default: () => <div data-testid="EmendasExplorerPanel" /> }));
 vi.mock('@/services/api', () => ({
   getPresidentes: vi.fn(),
   getMandatesPerformance: vi.fn(),

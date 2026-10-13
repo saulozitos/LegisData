@@ -56,7 +56,7 @@ export default function CongressCompositionPanel({
 
   // Carregar parlamentares da bancada selecionada
   const members = useApi(
-    `party-members:${selectedParty}:${activeHouse}`,
+    `party-members:${selectedParty}:${activeHouse}:${mandateId}`,
     (signal) =>
       searchPoliticians(
         undefined,
@@ -64,11 +64,16 @@ export default function CongressCompositionPanel({
         selectedParty ?? undefined,
         undefined,
         200,
+        mandateId,
         signal
       ),
     Boolean(selectedParty)
   );
-  const partyPoliticians = useMemo(() => members.data?.politicos ?? [], [members.data]);
+
+  const partyPoliticians = useMemo(() => {
+    return members.data?.politicos ?? [];
+  }, [members.data]);
+
   const loadingParty = members.loading;
 
   const handlePartyClick = (partido: string) => {
@@ -81,7 +86,7 @@ export default function CongressCompositionPanel({
     setPartySearch("");
   };
 
-  // Filtragem interna de parlamentares no modal
+  // Filtragem interna de parlamentares no modal (por nome, UF ou sigla de partido)
   const filteredPoliticians = useMemo(() => {
     if (!partySearch.trim()) return partyPoliticians;
     const s = partySearch.toLowerCase();
@@ -89,7 +94,8 @@ export default function CongressCompositionPanel({
       (p) =>
         p.nome_eleitoral.toLowerCase().includes(s) ||
         p.nome_civil.toLowerCase().includes(s) ||
-        p.uf.toLowerCase().includes(s)
+        p.uf.toLowerCase().includes(s) ||
+        p.partido_sigla.toLowerCase().includes(s)
     );
   }, [partyPoliticians, partySearch]);
 
@@ -296,20 +302,37 @@ export default function CongressCompositionPanel({
         <div
           role="img"
           aria-label={`Gráfico de barras com o tamanho das bancadas partidárias na ${activeHouse === "camara" ? "Câmara" : "Senado"}`}
-          className="h-96 w-full"
+          style={{ height: `${Math.max(420, currentHouse.bancadas.length * 28)}px` }}
+          className="w-full"
         >
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={currentHouse.bancadas}
               layout="vertical"
               margin={{ top: 10, right: 30, left: 90, bottom: 0 }}
+              className="cursor-pointer"
+              onClick={(state) => {
+                if (!state) return;
+                const activeState = state as unknown as {
+                  activeLabel?: string | number;
+                  activeTooltipIndex?: number;
+                  activePayload?: Array<{ payload?: PartySeat }>;
+                };
+                const seat = activeState.activePayload?.[0]?.payload;
+                const idx = typeof activeState.activeTooltipIndex === "number" ? activeState.activeTooltipIndex : undefined;
+                const sigla =
+                  seat?.partido ||
+                  (typeof activeState.activeLabel === "string" ? activeState.activeLabel : undefined) ||
+                  (idx !== undefined && currentHouse.bancadas[idx] ? currentHouse.bancadas[idx].partido : undefined);
+                if (sigla) handlePartyClick(sigla);
+              }}
             >
               <XAxis type="number" stroke="#64748b" tick={{ fontSize: 11 }} />
               <YAxis
                 type="category"
                 dataKey="partido"
                 stroke="#94a3b8"
-                tick={{ fontSize: 11 }}
+                tick={{ fontSize: 11, cursor: "pointer" }}
                 width={85}
               />
               <Tooltip
@@ -329,9 +352,18 @@ export default function CongressCompositionPanel({
                 dataKey="cadeiras"
                 radius={[0, 6, 6, 0]}
                 className="cursor-pointer"
-                onClick={(entry) => {
-                  const bar = entry as unknown as { partido?: string; payload?: { partido?: string } };
-                  const sigla = bar?.partido || bar?.payload?.partido;
+                onClick={(entry: unknown) => {
+                  const bar = entry as {
+                    partido?: string;
+                    payload?: { partido?: string };
+                    activePayload?: Array<{ payload?: { partido?: string } }>;
+                    activeLabel?: string;
+                  } | undefined;
+                  const sigla =
+                    bar?.partido ||
+                    bar?.payload?.partido ||
+                    bar?.activePayload?.[0]?.payload?.partido ||
+                    bar?.activeLabel;
                   if (sigla) handlePartyClick(sigla);
                 }}
               >
@@ -401,11 +433,11 @@ export default function CongressCompositionPanel({
             </div>
 
             <h3 id="party-modal-title" className="text-xl sm:text-2xl font-black text-white">
-              Parlamentares do {selectedParty} no(a) {activeHouse === "camara" ? "Câmara dos Deputados" : "Senado Federal"}
+              {`Parlamentares do ${selectedParty} no(a) ${activeHouse === "camara" ? "Câmara dos Deputados" : "Senado Federal"}`}
             </h3>
 
             <p className="text-xs sm:text-sm text-slate-400">
-              Lista nominal dos {activeHouse === "camara" ? "deputados federais" : "senadores"} filiados à legenda.
+              {`Lista nominal dos ${activeHouse === "camara" ? "deputados federais" : "senadores"} filiados à legenda.`}
             </p>
 
             {/* Campo de Busca Rápida Dentro do Modal */}
@@ -449,7 +481,9 @@ export default function CongressCompositionPanel({
               <Users className="w-8 h-8 text-slate-400 mx-auto" aria-hidden="true" />
               <p className="text-sm font-semibold text-slate-300">Nenhum parlamentar encontrado</p>
               <p className="text-xs text-slate-400">
-                {partySearch ? "Tente outro termo de busca." : `Nenhum membro registrado para o ${selectedParty} nesta Casa.`}
+                {partySearch
+                  ? "Tente outro termo de busca."
+                  : `Nenhum membro registrado para o ${selectedParty} nesta Casa.`}
               </p>
             </div>
           ) : (

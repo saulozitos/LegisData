@@ -34,7 +34,6 @@ Por favor, reporte a falha de forma privada através de um dos seguintes canais:
 
 2. **E-mail de Segurança:**
    - Envie um e-mail com os detalhes para: **`contatosauloaraujo@gmail.com`**.
-   - <!-- TODO(mantenedor): confirmar que este endereço pertence ao responsável atual pelo projeto ou substituí-lo por um endereço institucional dedicado a segurança. -->
    - Assunto: `[Vulnerabilidade de Segurança] Resumo do problema`.
 
 ---

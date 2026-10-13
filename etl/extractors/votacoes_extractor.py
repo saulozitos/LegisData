@@ -195,7 +195,7 @@ class VotacoesCamaraExtractor:
         return destino
 
     # ------------------------------------------------------------------ extração de um ano
-    def extrair_ano(self, ano: int, force: bool = False) -> Optional[Dict[str, Any]]:
+    def extrair_ano(self, ano: int, force: bool = False, incluir_comissoes: bool = False) -> Optional[Dict[str, Any]]:
         arq_votacoes = self.baixar_csv("votacoes", ano, force)
         arq_votos = self.baixar_csv("votacoesVotos", ano, force)
         if not arq_votacoes or not arq_votos:
@@ -204,10 +204,11 @@ class VotacoesCamaraExtractor:
         arq_objetos = self.baixar_csv("votacoesObjetos", ano, force)
         arq_orient = self.baixar_csv("votacoesOrientacoes", ano, force)
 
-        # 1. Votações de plenário
+        # 1. Votações de plenário e opcionalmente comissões
         votacoes: Dict[str, Dict[str, str]] = {}
         for row in _ler_csv(arq_votacoes):
-            if (row.get("siglaOrgao") or "").upper() == "PLEN" and row.get("id"):
+            sigla = (row.get("siglaOrgao") or "").strip().upper()
+            if row.get("id") and (sigla == "PLEN" or (incluir_comissoes and sigla)):
                 votacoes[row["id"]] = row
 
         # 2. Votos nominais (somente das votações de plenário)
@@ -265,11 +266,15 @@ class VotacoesCamaraExtractor:
             totais = Counter(item[1] for item in votos[vid])
             ori = orientacoes.get(vid, {})
             aprov = (v.get("aprovacao") or "").strip()
+            orgao = (v.get("siglaOrgao") or "PLEN").strip().upper()
+            desc_prefix = f"[{orgao}] " if orgao != "PLEN" else ""
             sessoes.append(
                 {
                     "id": vid,
+                    "orgao": orgao,
+                    "is_comissao": orgao != "PLEN",
                     "data_hora": _data_hora(v.get("dataHoraRegistro"), v.get("data")),
-                    "descricao": (v.get("descricao") or "")[:2000],
+                    "descricao": desc_prefix + (v.get("descricao") or "")[:2000],
                     "aprovada": {"1": True, "0": False}.get(aprov),
                     "proposicao": escolhida,
                     "orientacao_governo": orientacao_do_governo(ori),
@@ -637,6 +642,7 @@ def extrair_parlamentares_historicos(
             codigo = _inteiro(ident.get("CodigoParlamentar"))
             if codigo is None:
                 continue
+            foto_url = f"https://legis.senado.leg.br/senadores/fotos-oficiais/{codigo}" if codigo else ident.get("UrlFotoParlamentar")
             reg = senadores.setdefault(
                 codigo,
                 {
@@ -644,7 +650,7 @@ def extrair_parlamentares_historicos(
                     "nome_eleitoral": ident.get("NomeParlamentar"),
                     "nome_civil": ident.get("NomeCompletoParlamentar") or ident.get("NomeParlamentar"),
                     "partido_sigla": ident.get("SiglaPartidoParlamentar"),
-                    "foto_url": ident.get("UrlFotoParlamentar"),
+                    "foto_url": foto_url,
                     "mandatos": [],
                 },
             )

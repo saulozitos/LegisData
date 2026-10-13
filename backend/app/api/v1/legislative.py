@@ -115,12 +115,30 @@ def _build_house_placar(sessions: List[VotingSession], tallies: Dict[uuid.UUID, 
         return dict(EMPTY_PLACAR), None, []
 
     def total_of(s: VotingSession) -> int:
-        return tallies.get(s.id, EMPTY_PLACAR)["TOTAL"]
+        t = tallies.get(s.id)
+        if t and t.get("TOTAL", 0) > 0:
+            return t["TOTAL"]
+        return (
+            (s.votes_yes_count or 0)
+            + (s.votes_no_count or 0)
+            + (s.votes_abstain_count or 0)
+            + (s.votes_obstruction_count or 0)
+        )
 
     ordered = sorted(sessions, key=lambda s: (total_of(s), 1 if s.is_approved else 0, s.session_datetime), reverse=True)
     details = []
     for s in ordered:
-        placar = tallies.get(s.id, dict(EMPTY_PLACAR))
+        placar = tallies.get(s.id)
+        if (not placar or placar.get("TOTAL", 0) == 0) and (s.votes_yes_count or s.votes_no_count or s.is_secret_vote):
+            abst = (s.votes_abstain_count or 0) + (s.votes_obstruction_count or 0)
+            placar = {
+                "SIM": s.votes_yes_count or 0,
+                "NAO": s.votes_no_count or 0,
+                "ABSTENCAO": abst,
+                "TOTAL": (s.votes_yes_count or 0) + (s.votes_no_count or 0) + abst,
+                "OBSTRUCAO": s.votes_obstruction_count or 0,
+                "AUSENTE": 0,
+            }
         details.append(
             {
                 "sessao_id": str(s.id),
@@ -129,7 +147,8 @@ def _build_house_placar(sessions: List[VotingSession], tallies: Dict[uuid.UUID, 
                 "titulo": s.agenda_title,
                 "descricao": s.detailed_description or s.agenda_title,
                 "aprovada": s.is_approved,
-                "placar": placar,
+                "is_votacao_secreta": s.is_secret_vote,
+                "placar": placar or dict(EMPTY_PLACAR),
             }
         )
 
@@ -140,6 +159,7 @@ def _build_house_placar(sessions: List[VotingSession], tallies: Dict[uuid.UUID, 
         "titulo": best.agenda_title,
         "descricao": best.detailed_description or best.agenda_title,
         "aprovada": best.is_approved,
+        "is_votacao_secreta": best.is_secret_vote,
     }
     return details[0]["placar"], best_session, details
 
@@ -416,6 +436,7 @@ def get_proposition_nominal_votes(
             "data_hora": s.session_datetime.isoformat(),
             "casa": s.legislative_house.value,
             "aprovada": s.is_approved,
+            "is_votacao_secreta": s.is_secret_vote,
         }
         for s in all_house_sessions
     ]
@@ -435,8 +456,50 @@ def get_proposition_nominal_votes(
         tallies = _session_tallies(db, VotingSession.id.in_([s.id for s in all_house_sessions]))
         selected_session = max(
             all_house_sessions,
-            key=lambda s: (tallies.get(s.id, EMPTY_PLACAR)["TOTAL"], s.session_datetime),
+            key=lambda s: (
+                tallies.get(s.id, EMPTY_PLACAR)["TOTAL"] or ((s.votes_yes_count or 0) + (s.votes_no_count or 0)),
+                s.session_datetime,
+            ),
         )
+
+    if selected_session.is_secret_vote:
+        abst = (selected_session.votes_abstain_count or 0) + (selected_session.votes_obstruction_count or 0)
+        placar_secreto = {
+            "SIM": selected_session.votes_yes_count or 0,
+            "NAO": selected_session.votes_no_count or 0,
+            "ABSTENCAO": abst,
+            "TOTAL": (selected_session.votes_yes_count or 0) + (selected_session.votes_no_count or 0) + abst,
+            "OBSTRUCAO": selected_session.votes_obstruction_count or 0,
+            "AUSENTE": 0,
+        }
+        return {
+            "proposicao": {
+                "id": str(prop.id),
+                "titulo": prop.title,
+                "numero": prop.number,
+                "ano": prop.year,
+                "autor_nome": prop.author_name or ("Poder Executivo" if prop.is_executive_initiative else None),
+                "area_tematica": prop.thematic_area,
+            },
+            "sessao_ativa": {
+                "id": str(selected_session.id),
+                "titulo": selected_session.agenda_title,
+                "descricao": selected_session.detailed_description or selected_session.agenda_title,
+                "data_hora": selected_session.session_datetime.isoformat(),
+                "casa": selected_session.legislative_house.value,
+                "aprovada": selected_session.is_approved,
+                "is_votacao_secreta": True,
+                "placar": placar_secreto,
+            },
+            "sessoes_disponiveis": sessoes_disponiveis,
+            "is_votacao_secreta": True,
+            "aviso": "Votação secreta: conforme o Regimento Interno do Senado Federal, os votos individuais não são divulgados nominalmente. O resultado oficial acima reflete a apuração agregada da urna.",
+            "placar": placar_secreto,
+            "total": placar_secreto["TOTAL"],
+            "total_correspondente": placar_secreto["TOTAL"],
+            "truncado": False,
+            "votos": [],
+        }
 
     votes_query = (
         db.query(ParliamentaryVote, Politician, PoliticalParty, VotingSession)

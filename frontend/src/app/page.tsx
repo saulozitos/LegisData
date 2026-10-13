@@ -30,6 +30,7 @@ import {
   Layers,
   Compass,
   CalendarDays,
+  Coins,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -42,6 +43,7 @@ const PartyFidelityPanel = dynamic(() => import("@/components/PartyFidelityPanel
 const WageDisparityPanel = dynamic(() => import("@/components/WageDisparityPanel"), { loading: panelLoading });
 const CongressCompositionPanel = dynamic(() => import("@/components/CongressCompositionPanel"), { loading: panelLoading });
 const FederalTransfersPanel = dynamic(() => import("@/components/FederalTransfersPanel"), { loading: panelLoading });
+const EmendasExplorerPanel = dynamic(() => import("@/components/EmendasExplorerPanel"), { loading: panelLoading });
 const PoliticianProfile = dynamic(() => import("@/components/PoliticianProfile"), { loading: panelLoading });
 const SocialClassesExplainer = dynamic(() => import("@/components/SocialClassesExplainer"), { loading: panelLoading });
 const DeepBrazilPanel = dynamic(() => import("@/components/DeepBrazilPanel"), { loading: panelLoading });
@@ -56,6 +58,7 @@ type TabType =
   | "composicao"
   | "partidos"
   | "orcamento"
+  | "emendas"
   | "fidelidade"
   | "legislativo"
   | "produtividade"
@@ -69,6 +72,7 @@ const TABS: Array<{ id: TabType; label: string; icon: LucideIcon; active: string
   { id: "composicao", label: "Composição de Governo", icon: Landmark, active: "bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20" },
   { id: "partidos", label: "Partidos", icon: Compass, active: "bg-violet-500 text-white shadow-md shadow-violet-500/20" },
   { id: "orcamento", label: "Orçamento Federal por UF", icon: Building2, active: "bg-emerald-400 text-slate-950 shadow-md shadow-emerald-400/20" },
+  { id: "emendas", label: "Emendas Orçamentárias", icon: Coins, active: "bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20" },
   { id: "fidelidade", label: "Fidelidade Partidária (TSE)", icon: Users2, active: "bg-purple-500 text-slate-950 shadow-md shadow-purple-500/20" },
   { id: "legislativo", label: "Monitor do Congresso", icon: ScrollText, active: "bg-blue-500 text-slate-950 shadow-md shadow-blue-500/20" },
   { id: "produtividade", label: "Produtividade & Votações", icon: Layers, active: "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" },
@@ -267,7 +271,6 @@ export default function DashboardPage() {
                   <CongressCompositionPanel
                     mandateId={effectiveMandateId}
                     onSelectPolitician={openPolitician}
-                    onSelectParty={handleOpenPartyMembers}
                   />
                 </section>
               )}
@@ -281,6 +284,12 @@ export default function DashboardPage() {
               {activeTab === "orcamento" && effectiveMandateId && (
                 <section>
                   <FederalTransfersPanel mandateId={effectiveMandateId} />
+                </section>
+              )}
+
+              {activeTab === "emendas" && (
+                <section>
+                  <EmendasExplorerPanel onSelectPolitician={openPolitician} />
                 </section>
               )}
 

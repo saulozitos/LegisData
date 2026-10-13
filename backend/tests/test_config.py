@@ -17,7 +17,8 @@ def test_missing_database_credentials_abort_startup(monkeypatch):
         Settings(_env_file=None, POSTGRES_PASSWORD="", DATABASE_URL="")
 
 
-def test_password_is_url_encoded_when_building_the_url():
+def test_password_is_url_encoded_when_building_the_url(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     s = make_settings(POSTGRES_PASSWORD="p@ss:w/rd#1", POSTGRES_SERVER="db", DATABASE_URL="")
     url = make_url(s.sync_database_url)
     assert url.password == "p@ss:w/rd#1"

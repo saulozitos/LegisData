@@ -1,3 +1,4 @@
+import uuid
 from datetime import date, datetime, timezone
 
 import pytest
@@ -377,3 +378,33 @@ def test_ranking_authors_criteria_and_validation(client, seed):
     assert (
         client.get(f"{BASE}/ranking/authors", params={"setor": "economia"}).json()[0]["principal_setor"] == "Economia"
     )
+
+
+def test_senado_secret_vote_returns_totals_without_individual_voters(client, seed, db):
+    prop = seed.proposition
+    secret_sess = VotingSession(
+        id=uuid.uuid4(),
+        proposition_id=prop.id,
+        legislative_house=CasaLegislativaEnum.SENADO_FEDERAL,
+        session_datetime=datetime(2023, 7, 10, 14, 0, tzinfo=timezone.utc),
+        agenda_title="Votação secreta de autoridade",
+        is_secret_vote=True,
+        is_approved=True,
+        votes_yes_count=45,
+        votes_no_count=10,
+        votes_abstain_count=2,
+        votes_obstruction_count=0,
+        external_id="sess-secreta-123",
+    )
+    db.add(secret_sess)
+    db.commit()
+
+    resp = client.get(f"{BASE}/propositions/{prop.id}/votes", params={"session_id": str(secret_sess.id)})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["is_votacao_secreta"] is True
+    assert data["votos"] == []
+    assert data["placar"]["SIM"] == 45
+    assert data["placar"]["NAO"] == 10
+    assert data["placar"]["ABSTENCAO"] == 2
+    assert "Votação secreta" in data["aviso"]

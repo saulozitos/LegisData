@@ -102,8 +102,8 @@ class StateTransferItem(BaseModel):
     regiao: str
     area_tematica: str
     valor_pago_brl: float
-    populacao_estimada: int
-    valor_per_capita_brl: float
+    populacao_estimada: Optional[int] = None
+    valor_per_capita_brl: Optional[float] = None
 
 
 class FederalTransfersResponse(BaseModel):

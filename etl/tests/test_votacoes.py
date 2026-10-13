@@ -818,3 +818,10 @@ def test_orientacao_do_governo_aceita_grafias_da_camara_e_recusa_conflito():
     assert f({"GOV.": "Sim", "Governo": "Não"}) is None  # conflito: não escolhe
     assert f({"PT": "Sim", "Minoria": "Não"}) is None and f({}) is None
     assert f({"Governo": "Talvez"}) is None
+
+
+def test_camara_extrai_comissoes_quando_solicitado(extrator_camara):
+    dados = extrator_camara.extrair_ano(2023, incluir_comissoes=True)
+    assert dados["casa"] == "CAMARA"
+    # Com incluir_comissoes=True, V4 (CCJC) é avaliado no pipeline em vez de descartado no filtro de órgão
+    assert dados["descartes"]["sem_proposicao_suportada"] == 2

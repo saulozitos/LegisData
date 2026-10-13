@@ -37,20 +37,6 @@
           "cor_hex": "#2563eb"
         },
         {
-          "partido": "PDS",
-          "cadeiras": 42,
-          "percentual": 8.3,
-          "alinhamento": "INDEPENDENTE_CENTRO",
-          "cor_hex": "#475569"
-        },
-        {
-          "partido": "PSDB",
-          "cadeiras": 37,
-          "percentual": 7.4,
-          "alinhamento": "BASE_GOVERNO",
-          "cor_hex": "#0284c7"
-        },
-        {
           "partido": "PDT",
           "cadeiras": 46,
           "percentual": 9.1,
@@ -58,11 +44,18 @@
           "cor_hex": "#dc2626"
         },
         {
-          "partido": "PT",
-          "cadeiras": 35,
-          "percentual": 7.0,
-          "alinhamento": "OPOSICAO",
-          "cor_hex": "#ef4444"
+          "partido": "PDS",
+          "cadeiras": 42,
+          "percentual": 8.3,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#475569"
+        },
+        {
+          "partido": "PRN",
+          "cadeiras": 40,
+          "percentual": 8.0,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#0284c7"
         },
         {
           "partido": "PTB",
@@ -72,22 +65,92 @@
           "cor_hex": "#9333ea"
         },
         {
-          "partido": "Outros",
-          "cadeiras": 108,
-          "percentual": 21.4,
+          "partido": "PSDB",
+          "cadeiras": 37,
+          "percentual": 7.4,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#0284c7"
+        },
+        {
+          "partido": "PT",
+          "cadeiras": 35,
+          "percentual": 7.0,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#ef4444"
+        },
+        {
+          "partido": "PDC",
+          "cadeiras": 22,
+          "percentual": 4.4,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#0284c7"
+        },
+        {
+          "partido": "PL",
+          "cadeiras": 16,
+          "percentual": 3.2,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#1e3a8a"
+        },
+        {
+          "partido": "PSB",
+          "cadeiras": 11,
+          "percentual": 2.2,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#f97316"
+        },
+        {
+          "partido": "PSC",
+          "cadeiras": 6,
+          "percentual": 1.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#0284c7"
+        },
+        {
+          "partido": "PCdoB",
+          "cadeiras": 5,
+          "percentual": 1.0,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#b91c1c"
+        },
+        {
+          "partido": "PPS",
+          "cadeiras": 3,
+          "percentual": 0.6,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#f97316"
+        },
+        {
+          "partido": "PTR",
+          "cadeiras": 2,
+          "percentual": 0.4,
           "alinhamento": "INDEPENDENTE_CENTRO",
           "cor_hex": "#64748b"
+        },
+        {
+          "partido": "PST",
+          "cadeiras": 2,
+          "percentual": 0.4,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#64748b"
+        },
+        {
+          "partido": "PMN",
+          "cadeiras": 1,
+          "percentual": 0.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#dc2626"
         }
       ],
       "governabilidade": {
-        "base_aliada_cadeiras": 272,
-        "base_aliada_pct": 54.1,
-        "centro_cadeiras": 196,
-        "centro_pct": 39.0,
-        "oposicao_cadeiras": 35,
-        "oposicao_pct": 7.0,
+        "base_aliada_cadeiras": 310,
+        "base_aliada_pct": 61.6,
+        "centro_cadeiras": 139,
+        "centro_pct": 27.6,
+        "oposicao_cadeiras": 54,
+        "oposicao_pct": 10.7,
         "maioria_simples_atingida": true,
-        "maioria_pec_atingida": false
+        "maioria_pec_atingida": true
       },
       "verificacao_tse": {
         "status": "nao_aplicavel",
@@ -102,14 +165,14 @@
           "partido": "PMDB",
           "uf": "CE",
           "periodo": "1991 - 1993",
-          "foto_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c9/Mauro_Benevides.jpg/440px-Mauro_Benevides.jpg"
+          "foto_url": "https://upload.wikimedia.org/wikipedia/commons/4/4b/Mauro_Benevides.jpg"
         },
         {
           "nome": "Humberto Lucena",
           "partido": "PMDB",
           "uf": "PB",
           "periodo": "1993 - 1995",
-          "foto_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Humberto_Lucena.jpg/440px-Humberto_Lucena.jpg"
+          "foto_url": "https://upload.wikimedia.org/wikipedia/commons/3/36/Humberto_Lucena.jpg"
         }
       ],
       "bancadas": [
@@ -142,6 +205,27 @@
           "cor_hex": "#475569"
         },
         {
+          "partido": "PRN",
+          "cadeiras": 5,
+          "percentual": 6.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#0284c7"
+        },
+        {
+          "partido": "PDC",
+          "cadeiras": 3,
+          "percentual": 3.7,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#0284c7"
+        },
+        {
+          "partido": "PDT",
+          "cadeiras": 3,
+          "percentual": 3.7,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#dc2626"
+        },
+        {
           "partido": "PT",
           "cadeiras": 2,
           "percentual": 2.5,
@@ -149,20 +233,41 @@
           "cor_hex": "#ef4444"
         },
         {
-          "partido": "Outros",
-          "cadeiras": 16,
-          "percentual": 19.8,
+          "partido": "PL",
+          "cadeiras": 2,
+          "percentual": 2.5,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#1e3a8a"
+        },
+        {
+          "partido": "PSB",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#f97316"
+        },
+        {
+          "partido": "PSC",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#0284c7"
+        },
+        {
+          "partido": "PTR",
+          "cadeiras": 1,
+          "percentual": 1.2,
           "alinhamento": "INDEPENDENTE_CENTRO",
           "cor_hex": "#64748b"
         }
       ],
       "governabilidade": {
-        "base_aliada_cadeiras": 55,
-        "base_aliada_pct": 67.9,
-        "centro_cadeiras": 24,
-        "centro_pct": 29.6,
-        "oposicao_cadeiras": 2,
-        "oposicao_pct": 2.5,
+        "base_aliada_cadeiras": 60,
+        "base_aliada_pct": 74.1,
+        "centro_cadeiras": 18,
+        "centro_pct": 22.2,
+        "oposicao_cadeiras": 3,
+        "oposicao_pct": 3.7,
         "maioria_simples_atingida": true,
         "maioria_pec_atingida": true
       },
@@ -212,24 +317,31 @@
         },
         {
           "partido": "PSDB",
-          "cadeiras": 62,
-          "percentual": 12.1,
+          "cadeiras": 63,
+          "percentual": 12.3,
           "alinhamento": "BASE_GOVERNO",
           "cor_hex": "#0284c7"
         },
         {
-          "partido": "PPR/PPB",
-          "cadeiras": 52,
-          "percentual": 10.1,
+          "partido": "PPR",
+          "cadeiras": 51,
+          "percentual": 9.9,
           "alinhamento": "BASE_GOVERNO",
           "cor_hex": "#3b82f6"
         },
         {
           "partido": "PT",
-          "cadeiras": 49,
-          "percentual": 9.6,
+          "cadeiras": 50,
+          "percentual": 9.7,
           "alinhamento": "OPOSICAO",
           "cor_hex": "#ef4444"
+        },
+        {
+          "partido": "PP",
+          "cadeiras": 34,
+          "percentual": 6.6,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#3b82f6"
         },
         {
           "partido": "PDT",
@@ -240,26 +352,89 @@
         },
         {
           "partido": "PTB",
-          "cadeiras": 31,
-          "percentual": 6.0,
+          "cadeiras": 32,
+          "percentual": 6.2,
           "alinhamento": "BASE_GOVERNO",
           "cor_hex": "#9333ea"
         },
         {
-          "partido": "Outros",
-          "cadeiras": 89,
-          "percentual": 17.3,
+          "partido": "PSB",
+          "cadeiras": 15,
+          "percentual": 2.9,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#f97316"
+        },
+        {
+          "partido": "PL",
+          "cadeiras": 13,
+          "percentual": 2.5,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#1e3a8a"
+        },
+        {
+          "partido": "PCdoB",
+          "cadeiras": 10,
+          "percentual": 1.9,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#b91c1c"
+        },
+        {
+          "partido": "PMN",
+          "cadeiras": 4,
+          "percentual": 0.8,
           "alinhamento": "INDEPENDENTE_CENTRO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#dc2626"
+        },
+        {
+          "partido": "PSC",
+          "cadeiras": 3,
+          "percentual": 0.6,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#0284c7"
+        },
+        {
+          "partido": "PSD",
+          "cadeiras": 3,
+          "percentual": 0.6,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#f59e0b"
+        },
+        {
+          "partido": "PPS",
+          "cadeiras": 2,
+          "percentual": 0.4,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#f97316"
+        },
+        {
+          "partido": "PRN",
+          "cadeiras": 1,
+          "percentual": 0.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#0284c7"
+        },
+        {
+          "partido": "PRP",
+          "cadeiras": 1,
+          "percentual": 0.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#0284c7"
+        },
+        {
+          "partido": "PV",
+          "cadeiras": 1,
+          "percentual": 0.2,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#16a34a"
         }
       ],
       "governabilidade": {
-        "base_aliada_cadeiras": 341,
-        "base_aliada_pct": 66.5,
-        "centro_cadeiras": 89,
-        "centro_pct": 17.3,
-        "oposicao_cadeiras": 83,
-        "oposicao_pct": 16.2,
+        "base_aliada_cadeiras": 389,
+        "base_aliada_pct": 75.8,
+        "centro_cadeiras": 12,
+        "centro_pct": 2.3,
+        "oposicao_cadeiras": 112,
+        "oposicao_pct": 21.8,
         "maioria_simples_atingida": true,
         "maioria_pec_atingida": true
       },
@@ -362,29 +537,9 @@
         "conferido": false,
         "divergencias": [
           {
-            "partido": "PSDB",
-            "curado": 62,
-            "tse": 63
-          },
-          {
-            "partido": "PPR/PPB",
-            "curado": 52,
+            "partido": "PCdoB",
+            "curado": 10,
             "tse": 0
-          },
-          {
-            "partido": "PT",
-            "curado": 49,
-            "tse": 50
-          },
-          {
-            "partido": "PTB",
-            "curado": 31,
-            "tse": 32
-          },
-          {
-            "partido": "Outros",
-            "curado": 89,
-            "tse": 138
           }
         ],
         "nota": "O TSE conta o partido no dia da eleição. Trocas partidárias até a posse (e, no Senado, desde a eleição de 4 anos antes) e vagas preenchidas por suplentes explicam as diferenças em relação à bancada curada."
@@ -401,11 +556,11 @@
           "foto_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/73/Jose_Sarney_foto_oficial.jpg/440px-Jose_Sarney_foto_oficial.jpg"
         },
         {
-          "nome": "Antonio Carlos Magalhães (ACM)",
+          "nome": "Antônio Carlos Magalhães",
           "partido": "PFL",
           "uf": "BA",
           "periodo": "1997 - 1999",
-          "foto_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c9/Antonio_Carlos_Magalhaes.jpg/440px-Antonio_Carlos_Magalhaes.jpg"
+          "foto_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/ACM_foto_oficial.jpg/440px-ACM_foto_oficial.jpg"
         }
       ],
       "bancadas": [
@@ -445,20 +600,41 @@
           "cor_hex": "#ef4444"
         },
         {
-          "partido": "Outros",
-          "cadeiras": 8,
-          "percentual": 9.9,
-          "alinhamento": "INDEPENDENTE_CENTRO",
-          "cor_hex": "#64748b"
+          "partido": "PDT",
+          "cadeiras": 4,
+          "percentual": 4.9,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#dc2626"
+        },
+        {
+          "partido": "PSB",
+          "cadeiras": 2,
+          "percentual": 2.5,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#f97316"
+        },
+        {
+          "partido": "PL",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#1e3a8a"
+        },
+        {
+          "partido": "PPS",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#f97316"
         }
       ],
       "governabilidade": {
-        "base_aliada_cadeiras": 68,
-        "base_aliada_pct": 84.0,
-        "centro_cadeiras": 8,
-        "centro_pct": 9.9,
-        "oposicao_cadeiras": 5,
-        "oposicao_pct": 6.2,
+        "base_aliada_cadeiras": 69,
+        "base_aliada_pct": 85.2,
+        "centro_cadeiras": 0,
+        "centro_pct": 0.0,
+        "oposicao_cadeiras": 12,
+        "oposicao_pct": 14.8,
         "maioria_simples_atingida": true,
         "maioria_pec_atingida": true
       },
@@ -471,7 +647,7 @@
   },
   "lula-2003": {
     "mandato_id": "lula-2003",
-    "presidente_republica": "Lula (Lula 1)",
+    "presidente_republica": "Luiz Inácio Lula da Silva (Lula 1)",
     "periodo": "2003 - 2007",
     "camara": {
       "total_cadeiras": 513,
@@ -481,21 +657,21 @@
           "partido": "PT",
           "uf": "SP",
           "periodo": "2003 - 2005",
-          "foto_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b3/Joao_Paulo_Cunha.jpg/440px-Joao_Paulo_Cunha.jpg"
+          "foto_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Joao_Paulo_Cunha.jpg/440px-Joao_Paulo_Cunha.jpg"
         },
         {
           "nome": "Severino Cavalcanti",
           "partido": "PP",
           "uf": "PE",
           "periodo": "2005",
-          "foto_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Severino_Cavalcanti.jpg/440px-Severino_Cavalcanti.jpg"
+          "foto_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Severino_Cavalcanti.jpg/440px-Severino_Cavalcanti.jpg"
         },
         {
           "nome": "Aldo Rebelo",
           "partido": "PCdoB",
           "uf": "SP",
           "periodo": "2005 - 2007",
-          "foto_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Aldo_Rebelo.jpg/440px-Aldo_Rebelo.jpg"
+          "foto_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Aldo_Rebelo_foto_oficial.jpg/440px-Aldo_Rebelo_foto_oficial.jpg"
         }
       ],
       "bancadas": [
@@ -529,8 +705,8 @@
         },
         {
           "partido": "PP",
-          "cadeiras": 49,
-          "percentual": 9.6,
+          "cadeiras": 48,
+          "percentual": 9.4,
           "alinhamento": "BASE_GOVERNO",
           "cor_hex": "#3b82f6"
         },
@@ -549,25 +725,95 @@
           "cor_hex": "#9333ea"
         },
         {
-          "partido": "PCdoB/PSB",
-          "cadeiras": 34,
-          "percentual": 6.6,
+          "partido": "PSB",
+          "cadeiras": 22,
+          "percentual": 4.3,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#ea580c"
+        },
+        {
+          "partido": "PDT",
+          "cadeiras": 21,
+          "percentual": 4.1,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#dc2626"
+        },
+        {
+          "partido": "PPS",
+          "cadeiras": 15,
+          "percentual": 2.9,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#f97316"
+        },
+        {
+          "partido": "PCdoB",
+          "cadeiras": 12,
+          "percentual": 2.3,
           "alinhamento": "BASE_GOVERNO",
           "cor_hex": "#b91c1c"
         },
         {
-          "partido": "Outros",
-          "cadeiras": 58,
-          "percentual": 11.3,
+          "partido": "PRONA",
+          "cadeiras": 6,
+          "percentual": 1.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#eab308"
+        },
+        {
+          "partido": "PV",
+          "cadeiras": 5,
+          "percentual": 1.0,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#16a34a"
+        },
+        {
+          "partido": "PSD",
+          "cadeiras": 4,
+          "percentual": 0.8,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#f59e0b"
+        },
+        {
+          "partido": "PST",
+          "cadeiras": 3,
+          "percentual": 0.6,
           "alinhamento": "INDEPENDENTE_CENTRO",
           "cor_hex": "#64748b"
+        },
+        {
+          "partido": "PHS",
+          "cadeiras": 2,
+          "percentual": 0.4,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#059669"
+        },
+        {
+          "partido": "PMN",
+          "cadeiras": 1,
+          "percentual": 0.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#dc2626"
+        },
+        {
+          "partido": "PSC",
+          "cadeiras": 1,
+          "percentual": 0.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#0284c7"
+        },
+        {
+          "partido": "PTC",
+          "cadeiras": 1,
+          "percentual": 0.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#f59e0b"
         }
       ],
       "governabilidade": {
-        "base_aliada_cadeiras": 256,
-        "base_aliada_pct": 49.9,
-        "centro_cadeiras": 102,
-        "centro_pct": 19.9,
+        "base_aliada_cadeiras": 218,
+        "base_aliada_pct": 42.5,
+        "centro_cadeiras": 140,
+        "centro_pct": 27.3,
         "oposicao_cadeiras": 155,
         "oposicao_pct": 30.2,
         "maioria_simples_atingida": false,
@@ -688,18 +934,23 @@
           },
           {
             "partido": "PP",
-            "curado": 49,
+            "curado": 48,
             "tse": 0
           },
           {
-            "partido": "PCdoB/PSB",
-            "curado": 34,
+            "partido": "PCdoB",
+            "curado": 12,
             "tse": 0
           },
           {
-            "partido": "Outros",
-            "curado": 58,
-            "tse": 140
+            "partido": "PHS",
+            "curado": 2,
+            "tse": 0
+          },
+          {
+            "partido": "PTC",
+            "curado": 1,
+            "tse": 0
           }
         ],
         "nota": "O TSE conta o partido no dia da eleição. Trocas partidárias até a posse (e, no Senado, desde a eleição de 4 anos antes) e vagas preenchidas por suplentes explicam as diferenças em relação à bancada curada."
@@ -756,26 +1007,61 @@
           "partido": "PDT",
           "cadeiras": 5,
           "percentual": 6.2,
-          "alinhamento": "INDEPENDENTE_CENTRO",
+          "alinhamento": "BASE_GOVERNO",
           "cor_hex": "#dc2626"
         },
         {
-          "partido": "Outros",
-          "cadeiras": 13,
-          "percentual": 16.0,
-          "alinhamento": "INDEPENDENTE_CENTRO",
-          "cor_hex": "#64748b"
+          "partido": "PSB",
+          "cadeiras": 4,
+          "percentual": 4.9,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#ea580c"
+        },
+        {
+          "partido": "PL",
+          "cadeiras": 3,
+          "percentual": 3.7,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#1e3a8a"
+        },
+        {
+          "partido": "PTB",
+          "cadeiras": 3,
+          "percentual": 3.7,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#9333ea"
+        },
+        {
+          "partido": "PPS",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#f97316"
+        },
+        {
+          "partido": "PCdoB",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#b91c1c"
+        },
+        {
+          "partido": "PP",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#3b82f6"
         }
       ],
       "governabilidade": {
-        "base_aliada_cadeiras": 41,
-        "base_aliada_pct": 50.6,
-        "centro_cadeiras": 10,
-        "centro_pct": 12.3,
+        "base_aliada_cadeiras": 51,
+        "base_aliada_pct": 63.0,
+        "centro_cadeiras": 0,
+        "centro_pct": 0.0,
         "oposicao_cadeiras": 30,
         "oposicao_pct": 37.0,
         "maioria_simples_atingida": true,
-        "maioria_pec_atingida": false
+        "maioria_pec_atingida": true
       },
       "bancadas_eleitas_tse": [
         {
@@ -861,9 +1147,24 @@
             "tse": 4
           },
           {
-            "partido": "Outros",
-            "curado": 13,
-            "tse": 12
+            "partido": "PL",
+            "curado": 3,
+            "tse": 2
+          },
+          {
+            "partido": "PTB",
+            "curado": 3,
+            "tse": 2
+          },
+          {
+            "partido": "PCdoB",
+            "curado": 1,
+            "tse": 0
+          },
+          {
+            "partido": "PP",
+            "curado": 1,
+            "tse": 0
           }
         ],
         "nota": "O TSE conta o partido no dia da eleição. Trocas partidárias até a posse (e, no Senado, desde a eleição de 4 anos antes) e vagas preenchidas por suplentes explicam as diferenças em relação à bancada curada."
@@ -903,8 +1204,8 @@
         },
         {
           "partido": "PMDB",
-          "cadeiras": 66,
-          "percentual": 12.9,
+          "cadeiras": 65,
+          "percentual": 12.7,
           "alinhamento": "INDEPENDENTE_CENTRO",
           "cor_hex": "#15803d"
         },
@@ -916,24 +1217,24 @@
           "cor_hex": "#0284c7"
         },
         {
-          "partido": "PSD",
-          "cadeiras": 37,
-          "percentual": 7.2,
-          "alinhamento": "INDEPENDENTE_CENTRO",
-          "cor_hex": "#f59e0b"
-        },
-        {
           "partido": "PP",
           "cadeiras": 38,
           "percentual": 7.4,
-          "alinhamento": "INDEPENDENTE_CENTRO",
+          "alinhamento": "BASE_GOVERNO",
           "cor_hex": "#3b82f6"
+        },
+        {
+          "partido": "PSD",
+          "cadeiras": 36,
+          "percentual": 7.0,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#f59e0b"
         },
         {
           "partido": "PR",
           "cadeiras": 34,
           "percentual": 6.6,
-          "alinhamento": "INDEPENDENTE_CENTRO",
+          "alinhamento": "BASE_GOVERNO",
           "cor_hex": "#1e3a8a"
         },
         {
@@ -944,6 +1245,13 @@
           "cor_hex": "#f97316"
         },
         {
+          "partido": "PTB",
+          "cadeiras": 25,
+          "percentual": 4.9,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#9333ea"
+        },
+        {
           "partido": "DEM",
           "cadeiras": 21,
           "percentual": 4.1,
@@ -951,20 +1259,146 @@
           "cor_hex": "#2563eb"
         },
         {
-          "partido": "Outros",
-          "cadeiras": 160,
-          "percentual": 31.2,
+          "partido": "REPUBLICANOS",
+          "cadeiras": 21,
+          "percentual": 4.1,
           "alinhamento": "INDEPENDENTE_CENTRO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#0369a1"
+        },
+        {
+          "partido": "PDT",
+          "cadeiras": 20,
+          "percentual": 3.9,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#dc2626"
+        },
+        {
+          "partido": "SOLIDARIEDADE",
+          "cadeiras": 15,
+          "percentual": 2.9,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#e11d48"
+        },
+        {
+          "partido": "PSC",
+          "cadeiras": 13,
+          "percentual": 2.5,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#0284c7"
+        },
+        {
+          "partido": "PROS",
+          "cadeiras": 11,
+          "percentual": 2.1,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#0ea5e9"
+        },
+        {
+          "partido": "PCdoB",
+          "cadeiras": 10,
+          "percentual": 1.9,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#b91c1c"
+        },
+        {
+          "partido": "PPS",
+          "cadeiras": 10,
+          "percentual": 1.9,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#f97316"
+        },
+        {
+          "partido": "PV",
+          "cadeiras": 8,
+          "percentual": 1.6,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#16a34a"
+        },
+        {
+          "partido": "PSOL",
+          "cadeiras": 5,
+          "percentual": 1.0,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#facc15"
+        },
+        {
+          "partido": "PHS",
+          "cadeiras": 5,
+          "percentual": 1.0,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#059669"
+        },
+        {
+          "partido": "PTN",
+          "cadeiras": 4,
+          "percentual": 0.8,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#06b6d4"
+        },
+        {
+          "partido": "PMN",
+          "cadeiras": 3,
+          "percentual": 0.6,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#dc2626"
+        },
+        {
+          "partido": "PRP",
+          "cadeiras": 3,
+          "percentual": 0.6,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#0284c7"
+        },
+        {
+          "partido": "PATRIOTA",
+          "cadeiras": 2,
+          "percentual": 0.4,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#10b981"
+        },
+        {
+          "partido": "PSDC",
+          "cadeiras": 2,
+          "percentual": 0.4,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#2563eb"
+        },
+        {
+          "partido": "PTC",
+          "cadeiras": 2,
+          "percentual": 0.4,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#f59e0b"
+        },
+        {
+          "partido": "PRTB",
+          "cadeiras": 1,
+          "percentual": 0.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#1e3a8a"
+        },
+        {
+          "partido": "PSL",
+          "cadeiras": 1,
+          "percentual": 0.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#1e3a8a"
+        },
+        {
+          "partido": "PT do B",
+          "cadeiras": 1,
+          "percentual": 0.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#f97316"
         }
       ],
       "governabilidade": {
-        "base_aliada_cadeiras": 136,
-        "base_aliada_pct": 26.5,
-        "centro_cadeiras": 235,
-        "centro_pct": 45.8,
-        "oposicao_cadeiras": 142,
-        "oposicao_pct": 27.7,
+        "base_aliada_cadeiras": 218,
+        "base_aliada_pct": 42.5,
+        "centro_cadeiras": 143,
+        "centro_pct": 27.9,
+        "oposicao_cadeiras": 152,
+        "oposicao_pct": 29.6,
         "maioria_simples_atingida": false,
         "maioria_pec_atingida": false
       },
@@ -1117,19 +1551,19 @@
         "conferido": false,
         "divergencias": [
           {
-            "partido": "PMDB",
-            "curado": 66,
-            "tse": 65
+            "partido": "REPUBLICANOS",
+            "curado": 21,
+            "tse": 0
           },
           {
-            "partido": "PSD",
-            "curado": 37,
-            "tse": 36
+            "partido": "SOLIDARIEDADE",
+            "curado": 15,
+            "tse": 0
           },
           {
-            "partido": "Outros",
-            "curado": 160,
-            "tse": 162
+            "partido": "PCdoB",
+            "curado": 10,
+            "tse": 0
           }
         ],
         "nota": "O TSE conta o partido no dia da eleição. Trocas partidárias até a posse (e, no Senado, desde a eleição de 4 anos antes) e vagas preenchidas por suplentes explicam as diferenças em relação à bancada curada."
@@ -1142,22 +1576,22 @@
           "nome": "Renan Calheiros",
           "partido": "PMDB",
           "uf": "AL",
-          "periodo": "2015 - 2017",
+          "periodo": "2015 - 2016",
           "foto_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Renan_Calheiros.jpg/440px-Renan_Calheiros.jpg"
         }
       ],
       "bancadas": [
         {
           "partido": "PMDB",
-          "cadeiras": 18,
-          "percentual": 22.2,
+          "cadeiras": 19,
+          "percentual": 23.5,
           "alinhamento": "INDEPENDENTE_CENTRO",
           "cor_hex": "#15803d"
         },
         {
           "partido": "PT",
-          "cadeiras": 12,
-          "percentual": 14.8,
+          "cadeiras": 13,
+          "percentual": 16.0,
           "alinhamento": "BASE_GOVERNO",
           "cor_hex": "#ef4444"
         },
@@ -1169,27 +1603,104 @@
           "cor_hex": "#0284c7"
         },
         {
+          "partido": "PSB",
+          "cadeiras": 7,
+          "percentual": 8.6,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#f97316"
+        },
+        {
+          "partido": "PDT",
+          "cadeiras": 6,
+          "percentual": 7.4,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#dc2626"
+        },
+        {
+          "partido": "DEM",
+          "cadeiras": 5,
+          "percentual": 6.2,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#2563eb"
+        },
+        {
           "partido": "PP",
           "cadeiras": 5,
           "percentual": 6.2,
-          "alinhamento": "INDEPENDENTE_CENTRO",
+          "alinhamento": "BASE_GOVERNO",
           "cor_hex": "#3b82f6"
         },
         {
-          "partido": "Outros",
-          "cadeiras": 36,
-          "percentual": 44.4,
+          "partido": "PR",
+          "cadeiras": 5,
+          "percentual": 6.2,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#1e3a8a"
+        },
+        {
+          "partido": "PTB",
+          "cadeiras": 3,
+          "percentual": 3.7,
           "alinhamento": "INDEPENDENTE_CENTRO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#9333ea"
+        },
+        {
+          "partido": "PSD",
+          "cadeiras": 2,
+          "percentual": 2.5,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#f59e0b"
+        },
+        {
+          "partido": "PCdoB",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#b91c1c"
+        },
+        {
+          "partido": "PMN",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#dc2626"
+        },
+        {
+          "partido": "PPS",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#f97316"
+        },
+        {
+          "partido": "REPUBLICANOS",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#0369a1"
+        },
+        {
+          "partido": "PSC",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#0284c7"
+        },
+        {
+          "partido": "PSOL",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#facc15"
         }
       ],
       "governabilidade": {
-        "base_aliada_cadeiras": 20,
-        "base_aliada_pct": 24.7,
-        "centro_cadeiras": 39,
-        "centro_pct": 48.1,
-        "oposicao_cadeiras": 22,
-        "oposicao_pct": 27.2,
+        "base_aliada_cadeiras": 32,
+        "base_aliada_pct": 39.5,
+        "centro_cadeiras": 24,
+        "centro_pct": 29.6,
+        "oposicao_cadeiras": 25,
+        "oposicao_pct": 30.9,
         "maioria_simples_atingida": false,
         "maioria_pec_atingida": false
       },
@@ -1282,19 +1793,14 @@
         "conferido": false,
         "divergencias": [
           {
-            "partido": "PMDB",
-            "curado": 18,
-            "tse": 19
+            "partido": "PCdoB",
+            "curado": 1,
+            "tse": 0
           },
           {
-            "partido": "PT",
-            "curado": 12,
-            "tse": 13
-          },
-          {
-            "partido": "Outros",
-            "curado": 36,
-            "tse": 34
+            "partido": "REPUBLICANOS",
+            "curado": 1,
+            "tse": 0
           }
         ],
         "nota": "O TSE conta o partido no dia da eleição. Trocas partidárias até a posse (e, no Senado, desde a eleição de 4 anos antes) e vagas preenchidas por suplentes explicam as diferenças em relação à bancada curada."
@@ -1326,18 +1832,18 @@
       ],
       "bancadas": [
         {
-          "partido": "PSL",
-          "cadeiras": 52,
-          "percentual": 10.1,
-          "alinhamento": "BASE_GOVERNO",
-          "cor_hex": "#1e3a8a"
-        },
-        {
           "partido": "PT",
           "cadeiras": 56,
           "percentual": 10.9,
           "alinhamento": "OPOSICAO",
           "cor_hex": "#ef4444"
+        },
+        {
+          "partido": "PSL",
+          "cadeiras": 52,
+          "percentual": 10.1,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#1e3a8a"
         },
         {
           "partido": "PP",
@@ -1347,6 +1853,13 @@
           "cor_hex": "#3b82f6"
         },
         {
+          "partido": "PSD",
+          "cadeiras": 35,
+          "percentual": 6.8,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#f59e0b"
+        },
+        {
           "partido": "MDB",
           "cadeiras": 34,
           "percentual": 6.6,
@@ -1354,48 +1867,188 @@
           "cor_hex": "#15803d"
         },
         {
-          "partido": "PSD",
-          "cadeiras": 34,
-          "percentual": 6.6,
-          "alinhamento": "INDEPENDENTE_CENTRO",
-          "cor_hex": "#f59e0b"
-        },
-        {
-          "partido": "PL",
+          "partido": "PR",
           "cadeiras": 33,
           "percentual": 6.4,
           "alinhamento": "BASE_GOVERNO",
-          "cor_hex": "#2563eb"
+          "cor_hex": "#1e3a8a"
         },
         {
-          "partido": "PRB/REP",
+          "partido": "PSB",
+          "cadeiras": 32,
+          "percentual": 6.2,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#ea580c"
+        },
+        {
+          "partido": "PSDB",
           "cadeiras": 30,
           "percentual": 5.8,
-          "alinhamento": "BASE_GOVERNO",
-          "cor_hex": "#0284c7"
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#38bdf8"
         },
         {
           "partido": "DEM",
           "cadeiras": 29,
           "percentual": 5.7,
-          "alinhamento": "INDEPENDENTE_CENTRO",
-          "cor_hex": "#1d4ed8"
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#2563eb"
         },
         {
-          "partido": "Outros",
-          "cadeiras": 208,
-          "percentual": 40.5,
+          "partido": "REPUBLICANOS",
+          "cadeiras": 29,
+          "percentual": 5.7,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#0369a1"
+        },
+        {
+          "partido": "PDT",
+          "cadeiras": 28,
+          "percentual": 5.5,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#dc2626"
+        },
+        {
+          "partido": "SOLIDARIEDADE",
+          "cadeiras": 13,
+          "percentual": 2.5,
           "alinhamento": "INDEPENDENTE_CENTRO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#e11d48"
+        },
+        {
+          "partido": "PODE",
+          "cadeiras": 11,
+          "percentual": 2.1,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#06b6d4"
+        },
+        {
+          "partido": "PTB",
+          "cadeiras": 10,
+          "percentual": 1.9,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#9333ea"
+        },
+        {
+          "partido": "PSOL",
+          "cadeiras": 10,
+          "percentual": 1.9,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#facc15"
+        },
+        {
+          "partido": "PCdoB",
+          "cadeiras": 9,
+          "percentual": 1.8,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#b91c1c"
+        },
+        {
+          "partido": "NOVO",
+          "cadeiras": 8,
+          "percentual": 1.6,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#f97316"
+        },
+        {
+          "partido": "PROS",
+          "cadeiras": 8,
+          "percentual": 1.6,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#0ea5e9"
+        },
+        {
+          "partido": "PPS",
+          "cadeiras": 8,
+          "percentual": 1.6,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#f97316"
+        },
+        {
+          "partido": "PSC",
+          "cadeiras": 7,
+          "percentual": 1.4,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#0284c7"
+        },
+        {
+          "partido": "AVANTE",
+          "cadeiras": 7,
+          "percentual": 1.4,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#f97316"
+        },
+        {
+          "partido": "PHS",
+          "cadeiras": 6,
+          "percentual": 1.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#059669"
+        },
+        {
+          "partido": "PATRIOTA",
+          "cadeiras": 5,
+          "percentual": 1.0,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#10b981"
+        },
+        {
+          "partido": "PV",
+          "cadeiras": 4,
+          "percentual": 0.8,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#16a34a"
+        },
+        {
+          "partido": "PRP",
+          "cadeiras": 4,
+          "percentual": 0.8,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#0284c7"
+        },
+        {
+          "partido": "PMN",
+          "cadeiras": 3,
+          "percentual": 0.6,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#dc2626"
+        },
+        {
+          "partido": "PTC",
+          "cadeiras": 2,
+          "percentual": 0.4,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#f59e0b"
+        },
+        {
+          "partido": "DC",
+          "cadeiras": 1,
+          "percentual": 0.2,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#2563eb"
+        },
+        {
+          "partido": "REDE",
+          "cadeiras": 1,
+          "percentual": 0.2,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#0d9488"
+        },
+        {
+          "partido": "PPL",
+          "cadeiras": 1,
+          "percentual": 0.2,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#dc2626"
         }
       ],
       "governabilidade": {
-        "base_aliada_cadeiras": 248,
-        "base_aliada_pct": 48.3,
-        "centro_cadeiras": 133,
-        "centro_pct": 25.9,
-        "oposicao_cadeiras": 132,
-        "oposicao_pct": 25.7,
+        "base_aliada_cadeiras": 203,
+        "base_aliada_pct": 39.6,
+        "centro_cadeiras": 173,
+        "centro_pct": 33.7,
+        "oposicao_cadeiras": 145,
+        "oposicao_pct": 28.3,
         "maioria_simples_atingida": false,
         "maioria_pec_atingida": false
       },
@@ -1558,24 +2211,14 @@
         "conferido": false,
         "divergencias": [
           {
-            "partido": "PSD",
-            "curado": 34,
-            "tse": 35
-          },
-          {
-            "partido": "PL",
-            "curado": 33,
+            "partido": "REPUBLICANOS",
+            "curado": 29,
             "tse": 0
           },
           {
-            "partido": "PRB/REP",
-            "curado": 30,
+            "partido": "PCdoB",
+            "curado": 9,
             "tse": 0
-          },
-          {
-            "partido": "Outros",
-            "curado": 208,
-            "tse": 270
           }
         ],
         "nota": "O TSE conta o partido no dia da eleição. Trocas partidárias até a posse (e, no Senado, desde a eleição de 4 anos antes) e vagas preenchidas por suplentes explicam as diferenças em relação à bancada curada."
@@ -1589,11 +2232,11 @@
           "partido": "DEM",
           "uf": "AP",
           "periodo": "2019 - 2021",
-          "foto_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/Davi_Alcolumbre_foto_oficial.jpg/440px-Davi_Alcolumbre_foto_oficial.jpg"
+          "foto_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Davi_Alcolumbre_foto_oficial.jpg/440px-Davi_Alcolumbre_foto_oficial.jpg"
         },
         {
           "nome": "Rodrigo Pacheco",
-          "partido": "DEM/PSD",
+          "partido": "DEM",
           "uf": "MG",
           "periodo": "2021 - 2023",
           "foto_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Rodrigo_Pacheco_foto_oficial.jpg/440px-Rodrigo_Pacheco_foto_oficial.jpg"
@@ -1602,24 +2245,31 @@
       "bancadas": [
         {
           "partido": "MDB",
-          "cadeiras": 13,
-          "percentual": 16.0,
+          "cadeiras": 12,
+          "percentual": 14.8,
           "alinhamento": "INDEPENDENTE_CENTRO",
           "cor_hex": "#15803d"
         },
         {
-          "partido": "PODEMOS",
-          "cadeiras": 9,
-          "percentual": 11.1,
+          "partido": "PSDB",
+          "cadeiras": 8,
+          "percentual": 9.9,
           "alinhamento": "INDEPENDENTE_CENTRO",
-          "cor_hex": "#06b6d4"
+          "cor_hex": "#38bdf8"
         },
         {
           "partido": "PSD",
-          "cadeiras": 9,
-          "percentual": 11.1,
+          "cadeiras": 7,
+          "percentual": 8.6,
           "alinhamento": "INDEPENDENTE_CENTRO",
           "cor_hex": "#f59e0b"
+        },
+        {
+          "partido": "DEM",
+          "cadeiras": 7,
+          "percentual": 8.6,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#2563eb"
         },
         {
           "partido": "PP",
@@ -1629,11 +2279,11 @@
           "cor_hex": "#3b82f6"
         },
         {
-          "partido": "PSL/PL",
+          "partido": "PDT",
           "cadeiras": 6,
           "percentual": 7.4,
-          "alinhamento": "BASE_GOVERNO",
-          "cor_hex": "#1e3a8a"
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#dc2626"
         },
         {
           "partido": "PT",
@@ -1643,20 +2293,104 @@
           "cor_hex": "#ef4444"
         },
         {
-          "partido": "Outros",
-          "cadeiras": 32,
-          "percentual": 39.5,
+          "partido": "REDE",
+          "cadeiras": 5,
+          "percentual": 6.2,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#0d9488"
+        },
+        {
+          "partido": "PSB",
+          "cadeiras": 5,
+          "percentual": 6.2,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#ea580c"
+        },
+        {
+          "partido": "PTB",
+          "cadeiras": 4,
+          "percentual": 4.9,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#9333ea"
+        },
+        {
+          "partido": "PSL",
+          "cadeiras": 3,
+          "percentual": 3.7,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#1e3a8a"
+        },
+        {
+          "partido": "PPS",
+          "cadeiras": 2,
+          "percentual": 2.5,
           "alinhamento": "INDEPENDENTE_CENTRO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#f97316"
+        },
+        {
+          "partido": "PHS",
+          "cadeiras": 2,
+          "percentual": 2.5,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#059669"
+        },
+        {
+          "partido": "PR",
+          "cadeiras": 2,
+          "percentual": 2.5,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#1e3a8a"
+        },
+        {
+          "partido": "SOLIDARIEDADE",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#e11d48"
+        },
+        {
+          "partido": "PODE",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#06b6d4"
+        },
+        {
+          "partido": "PSC",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#0284c7"
+        },
+        {
+          "partido": "PRP",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#0284c7"
+        },
+        {
+          "partido": "PROS",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#0ea5e9"
+        },
+        {
+          "partido": "REPUBLICANOS",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#0369a1"
         }
       ],
       "governabilidade": {
-        "base_aliada_cadeiras": 35,
-        "base_aliada_pct": 43.2,
-        "centro_cadeiras": 34,
-        "centro_pct": 42.0,
-        "oposicao_cadeiras": 12,
-        "oposicao_pct": 14.8,
+        "base_aliada_cadeiras": 24,
+        "base_aliada_pct": 29.6,
+        "centro_cadeiras": 35,
+        "centro_pct": 43.2,
+        "oposicao_cadeiras": 22,
+        "oposicao_pct": 27.2,
         "maioria_simples_atingida": false,
         "maioria_pec_atingida": false
       },
@@ -1775,28 +2509,13 @@
         "divergencias": [
           {
             "partido": "MDB",
-            "curado": 13,
+            "curado": 12,
             "tse": 7
           },
           {
-            "partido": "PODEMOS",
-            "curado": 9,
+            "partido": "REPUBLICANOS",
+            "curado": 1,
             "tse": 0
-          },
-          {
-            "partido": "PSD",
-            "curado": 9,
-            "tse": 7
-          },
-          {
-            "partido": "PSL/PL",
-            "curado": 6,
-            "tse": 0
-          },
-          {
-            "partido": "Outros",
-            "curado": 32,
-            "tse": 55
           }
         ],
         "nota": "O TSE conta o partido no dia da eleição. Trocas partidárias até a posse (e, no Senado, desde a eleição de 4 anos antes) e vagas preenchidas por suplentes explicam as diferenças em relação à bancada curada."
@@ -1806,7 +2525,7 @@
   },
   "lula-2023": {
     "mandato_id": "lula-2023",
-    "presidente_republica": "Lula (Lula 3)",
+    "presidente_republica": "Luiz Inácio Lula da Silva (Lula 3)",
     "periodo": "2023 - 2026",
     "camara": {
       "total_cadeiras": 513,
@@ -1870,7 +2589,7 @@
           "cor_hex": "#f59e0b"
         },
         {
-          "partido": "Republicanos",
+          "partido": "REPUBLICANOS",
           "cadeiras": 41,
           "percentual": 8.0,
           "alinhamento": "INDEPENDENTE_CENTRO",
@@ -1905,11 +2624,32 @@
           "cor_hex": "#facc15"
         },
         {
+          "partido": "PODE",
+          "cadeiras": 12,
+          "percentual": 2.3,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#06b6d4"
+        },
+        {
+          "partido": "AVANTE",
+          "cadeiras": 7,
+          "percentual": 1.4,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#f97316"
+        },
+        {
           "partido": "PCdoB",
           "cadeiras": 7,
           "percentual": 1.4,
           "alinhamento": "BASE_GOVERNO",
           "cor_hex": "#b91c1c"
+        },
+        {
+          "partido": "PSC",
+          "cadeiras": 6,
+          "percentual": 1.2,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#0284c7"
         },
         {
           "partido": "PV",
@@ -1926,6 +2666,34 @@
           "cor_hex": "#f97316"
         },
         {
+          "partido": "PATRIOTA",
+          "cadeiras": 4,
+          "percentual": 0.8,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#10b981"
+        },
+        {
+          "partido": "SOLIDARIEDADE",
+          "cadeiras": 4,
+          "percentual": 0.8,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#e11d48"
+        },
+        {
+          "partido": "NOVO",
+          "cadeiras": 3,
+          "percentual": 0.6,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#f97316"
+        },
+        {
+          "partido": "PROS",
+          "cadeiras": 2,
+          "percentual": 0.4,
+          "alinhamento": "INDEPENDENTE_CENTRO",
+          "cor_hex": "#0ea5e9"
+        },
+        {
           "partido": "REDE",
           "cadeiras": 2,
           "percentual": 0.4,
@@ -1933,20 +2701,20 @@
           "cor_hex": "#0d9488"
         },
         {
-          "partido": "Outros",
-          "cadeiras": 39,
-          "percentual": 7.6,
-          "alinhamento": "INDEPENDENTE_CENTRO",
-          "cor_hex": "#64748b"
+          "partido": "PTB",
+          "cadeiras": 1,
+          "percentual": 0.2,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#9333ea"
         }
       ],
       "governabilidade": {
-        "base_aliada_cadeiras": 225,
-        "base_aliada_pct": 43.9,
-        "centro_cadeiras": 160,
-        "centro_pct": 31.2,
-        "oposicao_cadeiras": 128,
-        "oposicao_pct": 24.9,
+        "base_aliada_cadeiras": 210,
+        "base_aliada_pct": 40.9,
+        "centro_cadeiras": 182,
+        "centro_pct": 35.5,
+        "oposicao_cadeiras": 121,
+        "oposicao_pct": 23.6,
         "maioria_simples_atingida": false,
         "maioria_pec_atingida": false
       },
@@ -2094,7 +2862,7 @@
             "tse": 41
           },
           {
-            "partido": "Republicanos",
+            "partido": "REPUBLICANOS",
             "curado": 41,
             "tse": 40
           },
@@ -2114,14 +2882,19 @@
             "tse": 13
           },
           {
+            "partido": "PODE",
+            "curado": 12,
+            "tse": 14
+          },
+          {
             "partido": "PCdoB",
             "curado": 7,
             "tse": 0
           },
           {
-            "partido": "Outros",
-            "curado": 39,
-            "tse": 49
+            "partido": "PROS",
+            "curado": 2,
+            "tse": 3
           }
         ],
         "nota": "O TSE conta o partido no dia da eleição. Trocas partidárias até a posse (e, no Senado, desde a eleição de 4 anos antes) e vagas preenchidas por suplentes explicam as diferenças em relação à bancada curada."
@@ -2189,7 +2962,7 @@
           "cor_hex": "#3b82f6"
         },
         {
-          "partido": "Podemos",
+          "partido": "PODE",
           "cadeiras": 6,
           "percentual": 7.4,
           "alinhamento": "INDEPENDENTE_CENTRO",
@@ -2203,18 +2976,32 @@
           "cor_hex": "#ea580c"
         },
         {
-          "partido": "Republicanos",
+          "partido": "REPUBLICANOS",
           "cadeiras": 4,
           "percentual": 4.9,
           "alinhamento": "INDEPENDENTE_CENTRO",
           "cor_hex": "#0369a1"
         },
         {
-          "partido": "Outros",
-          "cadeiras": 5,
-          "percentual": 6.2,
-          "alinhamento": "INDEPENDENTE_CENTRO",
-          "cor_hex": "#64748b"
+          "partido": "PSDB",
+          "cadeiras": 2,
+          "percentual": 2.5,
+          "alinhamento": "OPOSICAO",
+          "cor_hex": "#38bdf8"
+        },
+        {
+          "partido": "PDT",
+          "cadeiras": 2,
+          "percentual": 2.5,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#dc2626"
+        },
+        {
+          "partido": "REDE",
+          "cadeiras": 1,
+          "percentual": 1.2,
+          "alinhamento": "BASE_GOVERNO",
+          "cor_hex": "#0d9488"
         }
       ],
       "governabilidade": {
@@ -2381,9 +3168,9 @@
             "tse": 8
           },
           {
-            "partido": "Podemos",
+            "partido": "PODE",
             "curado": 6,
-            "tse": 0
+            "tse": 1
           },
           {
             "partido": "PSB",
@@ -2391,14 +3178,19 @@
             "tse": 3
           },
           {
-            "partido": "Republicanos",
+            "partido": "REPUBLICANOS",
             "curado": 4,
             "tse": 2
           },
           {
-            "partido": "Outros",
-            "curado": 5,
-            "tse": 32
+            "partido": "PSDB",
+            "curado": 2,
+            "tse": 4
+          },
+          {
+            "partido": "REDE",
+            "curado": 1,
+            "tse": 5
           }
         ],
         "nota": "O TSE conta o partido no dia da eleição. Trocas partidárias até a posse (e, no Senado, desde a eleição de 4 anos antes) e vagas preenchidas por suplentes explicam as diferenças em relação à bancada curada."
@@ -2570,84 +3362,84 @@
           "cadeiras": 26,
           "percentual": 32.1,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#15803d"
         },
         {
           "partido": "PFL",
           "cadeiras": 16,
           "percentual": 19.8,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#2563eb"
         },
         {
           "partido": "PSDB",
           "cadeiras": 13,
           "percentual": 16.0,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#38bdf8"
         },
         {
           "partido": "PT",
           "cadeiras": 7,
           "percentual": 8.6,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#ef4444"
         },
         {
           "partido": "PDT",
           "cadeiras": 4,
           "percentual": 4.9,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#dc2626"
         },
         {
           "partido": "PP",
           "cadeiras": 4,
           "percentual": 4.9,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#3b82f6"
         },
         {
           "partido": "PTB",
           "cadeiras": 3,
           "percentual": 3.7,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#9333ea"
         },
         {
           "partido": "PPB",
           "cadeiras": 2,
           "percentual": 2.5,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#3b82f6"
         },
         {
           "partido": "PPR",
           "cadeiras": 2,
           "percentual": 2.5,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#3b82f6"
         },
         {
           "partido": "PSB",
           "cadeiras": 2,
           "percentual": 2.5,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#ea580c"
         },
         {
           "partido": "PL",
           "cadeiras": 1,
           "percentual": 1.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#1d4ed8"
         },
         {
           "partido": "PPS",
           "cadeiras": 1,
           "percentual": 1.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#f97316"
         }
       ],
       "governabilidade": {
@@ -2760,70 +3552,70 @@
           "cadeiras": 89,
           "percentual": 17.3,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#15803d"
         },
         {
           "partido": "PT",
           "cadeiras": 83,
           "percentual": 16.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#ef4444"
         },
         {
           "partido": "PSDB",
           "cadeiras": 66,
           "percentual": 12.9,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#38bdf8"
         },
         {
           "partido": "PFL",
           "cadeiras": 65,
           "percentual": 12.7,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#2563eb"
         },
         {
           "partido": "PP",
           "cadeiras": 41,
           "percentual": 8.0,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#3b82f6"
         },
         {
           "partido": "PSB",
           "cadeiras": 27,
           "percentual": 5.3,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#ea580c"
         },
         {
           "partido": "PDT",
           "cadeiras": 24,
           "percentual": 4.7,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#dc2626"
         },
         {
           "partido": "PL",
           "cadeiras": 23,
           "percentual": 4.5,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#1d4ed8"
         },
         {
           "partido": "PPS",
           "cadeiras": 22,
           "percentual": 4.3,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#f97316"
         },
         {
           "partido": "PTB",
           "cadeiras": 22,
           "percentual": 4.3,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#9333ea"
         },
         {
           "partido": "PC do B",
@@ -2837,49 +3629,49 @@
           "cadeiras": 13,
           "percentual": 2.5,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#16a34a"
         },
         {
           "partido": "PSC",
           "cadeiras": 9,
           "percentual": 1.8,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#0284c7"
         },
         {
           "partido": "PMN",
           "cadeiras": 3,
           "percentual": 0.6,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#dc2626"
         },
         {
           "partido": "PSOL",
           "cadeiras": 3,
           "percentual": 0.6,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#facc15"
         },
         {
           "partido": "PTC",
           "cadeiras": 3,
           "percentual": 0.6,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#f59e0b"
         },
         {
           "partido": "PHS",
           "cadeiras": 2,
           "percentual": 0.4,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#059669"
         },
         {
           "partido": "PRONA",
           "cadeiras": 2,
           "percentual": 0.4,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#eab308"
         },
         {
           "partido": "PAN",
@@ -2893,7 +3685,7 @@
           "cadeiras": 1,
           "percentual": 0.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#0369a1"
         },
         {
           "partido": "PT do B",
@@ -3057,63 +3849,63 @@
           "cadeiras": 20,
           "percentual": 24.7,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#2563eb"
         },
         {
           "partido": "PMDB",
           "cadeiras": 13,
           "percentual": 16.0,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#15803d"
         },
         {
           "partido": "PSDB",
           "cadeiras": 13,
           "percentual": 16.0,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#38bdf8"
         },
         {
           "partido": "PT",
           "cadeiras": 12,
           "percentual": 14.8,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#ef4444"
         },
         {
           "partido": "PDT",
           "cadeiras": 5,
           "percentual": 6.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#dc2626"
         },
         {
           "partido": "PTB",
           "cadeiras": 5,
           "percentual": 6.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#9333ea"
         },
         {
           "partido": "PSB",
           "cadeiras": 4,
           "percentual": 4.9,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#ea580c"
         },
         {
           "partido": "PL",
           "cadeiras": 3,
           "percentual": 3.7,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#1d4ed8"
         },
         {
           "partido": "PPS",
           "cadeiras": 2,
           "percentual": 2.5,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#f97316"
         },
         {
           "partido": "PC do B",
@@ -3127,21 +3919,21 @@
           "cadeiras": 1,
           "percentual": 1.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#3b82f6"
         },
         {
           "partido": "PRTB",
           "cadeiras": 1,
           "percentual": 1.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#1e3a8a"
         },
         {
           "partido": "PSD",
           "cadeiras": 1,
           "percentual": 1.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#f59e0b"
         }
       ],
       "governabilidade": {
@@ -3259,70 +4051,70 @@
           "cadeiras": 86,
           "percentual": 16.8,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#ef4444"
         },
         {
           "partido": "PMDB",
           "cadeiras": 78,
           "percentual": 15.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#15803d"
         },
         {
           "partido": "PSDB",
           "cadeiras": 54,
           "percentual": 10.5,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#38bdf8"
         },
         {
           "partido": "PP",
           "cadeiras": 44,
           "percentual": 8.6,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#3b82f6"
         },
         {
           "partido": "DEM",
           "cadeiras": 43,
           "percentual": 8.4,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#2563eb"
         },
         {
           "partido": "PR",
           "cadeiras": 41,
           "percentual": 8.0,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#1e3a8a"
         },
         {
           "partido": "PSB",
           "cadeiras": 35,
           "percentual": 6.8,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#ea580c"
         },
         {
           "partido": "PDT",
           "cadeiras": 27,
           "percentual": 5.3,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#dc2626"
         },
         {
           "partido": "PTB",
           "cadeiras": 22,
           "percentual": 4.3,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#9333ea"
         },
         {
           "partido": "PSC",
           "cadeiras": 17,
           "percentual": 3.3,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#0284c7"
         },
         {
           "partido": "PC do B",
@@ -3336,35 +4128,35 @@
           "cadeiras": 13,
           "percentual": 2.5,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#16a34a"
         },
         {
           "partido": "PPS",
           "cadeiras": 12,
           "percentual": 2.3,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#f97316"
         },
         {
           "partido": "PRB",
           "cadeiras": 8,
           "percentual": 1.6,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#0369a1"
         },
         {
           "partido": "PMN",
           "cadeiras": 4,
           "percentual": 0.8,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#dc2626"
         },
         {
           "partido": "PSOL",
           "cadeiras": 3,
           "percentual": 0.6,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#facc15"
         },
         {
           "partido": "PT do B",
@@ -3378,35 +4170,35 @@
           "cadeiras": 2,
           "percentual": 0.4,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#059669"
         },
         {
           "partido": "PRP",
           "cadeiras": 2,
           "percentual": 0.4,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#0284c7"
         },
         {
           "partido": "PRTB",
           "cadeiras": 2,
           "percentual": 0.4,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#1e3a8a"
         },
         {
           "partido": "PSL",
           "cadeiras": 1,
           "percentual": 0.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#1e3a8a"
         },
         {
           "partido": "PTC",
           "cadeiras": 1,
           "percentual": 0.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#f59e0b"
         }
       ],
       "governabilidade": {
@@ -3561,70 +4353,70 @@
           "cadeiras": 18,
           "percentual": 22.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#15803d"
         },
         {
           "partido": "PT",
           "cadeiras": 13,
           "percentual": 16.0,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#ef4444"
         },
         {
           "partido": "PSDB",
           "cadeiras": 11,
           "percentual": 13.6,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#38bdf8"
         },
         {
           "partido": "PFL",
           "cadeiras": 6,
           "percentual": 7.4,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#2563eb"
         },
         {
           "partido": "PP",
           "cadeiras": 5,
           "percentual": 6.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#3b82f6"
         },
         {
           "partido": "PSB",
           "cadeiras": 5,
           "percentual": 6.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#ea580c"
         },
         {
           "partido": "PR",
           "cadeiras": 4,
           "percentual": 4.9,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#1e3a8a"
         },
         {
           "partido": "PTB",
           "cadeiras": 4,
           "percentual": 4.9,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#9333ea"
         },
         {
           "partido": "PDT",
           "cadeiras": 3,
           "percentual": 3.7,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#dc2626"
         },
         {
           "partido": "DEM",
           "cadeiras": 2,
           "percentual": 2.5,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#2563eb"
         },
         {
           "partido": "PC do B",
@@ -3638,49 +4430,49 @@
           "cadeiras": 2,
           "percentual": 2.5,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#f97316"
         },
         {
           "partido": "PL",
           "cadeiras": 1,
           "percentual": 1.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#1d4ed8"
         },
         {
           "partido": "PMN",
           "cadeiras": 1,
           "percentual": 1.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#dc2626"
         },
         {
           "partido": "PRB",
           "cadeiras": 1,
           "percentual": 1.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#0369a1"
         },
         {
           "partido": "PRTB",
           "cadeiras": 1,
           "percentual": 1.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#1e3a8a"
         },
         {
           "partido": "PSC",
           "cadeiras": 1,
           "percentual": 1.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#0284c7"
         },
         {
           "partido": "PSOL",
           "cadeiras": 1,
           "percentual": 1.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#facc15"
         }
       ],
       "governabilidade": {
@@ -3816,98 +4608,98 @@
           "cadeiras": 69,
           "percentual": 13.5,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#ef4444"
         },
         {
           "partido": "PMDB",
           "cadeiras": 65,
           "percentual": 12.7,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#15803d"
         },
         {
           "partido": "PSDB",
           "cadeiras": 54,
           "percentual": 10.5,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#38bdf8"
         },
         {
           "partido": "PP",
           "cadeiras": 38,
           "percentual": 7.4,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#3b82f6"
         },
         {
           "partido": "PSD",
           "cadeiras": 36,
           "percentual": 7.0,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#f59e0b"
         },
         {
           "partido": "PR",
           "cadeiras": 34,
           "percentual": 6.6,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#1e3a8a"
         },
         {
           "partido": "PSB",
           "cadeiras": 34,
           "percentual": 6.6,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#ea580c"
         },
         {
           "partido": "PTB",
           "cadeiras": 25,
           "percentual": 4.9,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#9333ea"
         },
         {
           "partido": "DEM",
           "cadeiras": 21,
           "percentual": 4.1,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#2563eb"
         },
         {
           "partido": "PRB",
           "cadeiras": 21,
           "percentual": 4.1,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#0369a1"
         },
         {
           "partido": "PDT",
           "cadeiras": 20,
           "percentual": 3.9,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#dc2626"
         },
         {
           "partido": "SD",
           "cadeiras": 15,
           "percentual": 2.9,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#e11d48"
         },
         {
           "partido": "PSC",
           "cadeiras": 13,
           "percentual": 2.5,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#0284c7"
         },
         {
           "partido": "PROS",
           "cadeiras": 11,
           "percentual": 2.1,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#0ea5e9"
         },
         {
           "partido": "PC do B",
@@ -3921,84 +4713,84 @@
           "cadeiras": 10,
           "percentual": 1.9,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#f97316"
         },
         {
           "partido": "PV",
           "cadeiras": 8,
           "percentual": 1.6,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#16a34a"
         },
         {
           "partido": "PHS",
           "cadeiras": 5,
           "percentual": 1.0,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#059669"
         },
         {
           "partido": "PSOL",
           "cadeiras": 5,
           "percentual": 1.0,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#facc15"
         },
         {
           "partido": "PTN",
           "cadeiras": 4,
           "percentual": 0.8,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#06b6d4"
         },
         {
           "partido": "PMN",
           "cadeiras": 3,
           "percentual": 0.6,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#dc2626"
         },
         {
           "partido": "PRP",
           "cadeiras": 3,
           "percentual": 0.6,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#0284c7"
         },
         {
           "partido": "PATRIOTA",
           "cadeiras": 2,
           "percentual": 0.4,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#10b981"
         },
         {
           "partido": "PSDC",
           "cadeiras": 2,
           "percentual": 0.4,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#2563eb"
         },
         {
           "partido": "PTC",
           "cadeiras": 2,
           "percentual": 0.4,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#f59e0b"
         },
         {
           "partido": "PRTB",
           "cadeiras": 1,
           "percentual": 0.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#1e3a8a"
         },
         {
           "partido": "PSL",
           "cadeiras": 1,
           "percentual": 0.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#1e3a8a"
         },
         {
           "partido": "PT do B",
@@ -4190,70 +4982,70 @@
           "cadeiras": 19,
           "percentual": 23.5,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#15803d"
         },
         {
           "partido": "PT",
           "cadeiras": 13,
           "percentual": 16.0,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#ef4444"
         },
         {
           "partido": "PSDB",
           "cadeiras": 10,
           "percentual": 12.3,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#38bdf8"
         },
         {
           "partido": "PSB",
           "cadeiras": 7,
           "percentual": 8.6,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#ea580c"
         },
         {
           "partido": "PDT",
           "cadeiras": 6,
           "percentual": 7.4,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#dc2626"
         },
         {
           "partido": "DEM",
           "cadeiras": 5,
           "percentual": 6.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#2563eb"
         },
         {
           "partido": "PP",
           "cadeiras": 5,
           "percentual": 6.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#3b82f6"
         },
         {
           "partido": "PR",
           "cadeiras": 5,
           "percentual": 6.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#1e3a8a"
         },
         {
           "partido": "PTB",
           "cadeiras": 3,
           "percentual": 3.7,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#9333ea"
         },
         {
           "partido": "PSD",
           "cadeiras": 2,
           "percentual": 2.5,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#f59e0b"
         },
         {
           "partido": "PC do B",
@@ -4267,35 +5059,35 @@
           "cadeiras": 1,
           "percentual": 1.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#dc2626"
         },
         {
           "partido": "PPS",
           "cadeiras": 1,
           "percentual": 1.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#f97316"
         },
         {
           "partido": "PRB",
           "cadeiras": 1,
           "percentual": 1.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#0369a1"
         },
         {
           "partido": "PSC",
           "cadeiras": 1,
           "percentual": 1.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#0284c7"
         },
         {
           "partido": "PSOL",
           "cadeiras": 1,
           "percentual": 1.2,
           "alinhamento": "NAO_CLASSIFICADO",
-          "cor_hex": "#64748b"
+          "cor_hex": "#facc15"
         }
       ],
       "governabilidade": {

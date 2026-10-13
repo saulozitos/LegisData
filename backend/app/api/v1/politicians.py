@@ -29,6 +29,7 @@ from app.models import (
     VotingSession,
 )
 from app.services.basometro import calcular_basometro
+from app.services.presidential_service import get_all_presidents, get_mandate_date_range, get_president_by_reference
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, asc, desc, func, or_
 from sqlalchemy.orm import Session
@@ -204,16 +205,24 @@ def _fonte_assiduidade(casas: Any) -> Optional[str]:
 
 def _format_photo_url(politician: Politician, is_president: bool = False) -> Optional[str]:
     """Retorna URL confiável da foto ou fallback local para presidentes (identificados por mandato)."""
-    if politician.photo_url:
-        return politician.photo_url
-
     if is_president:
         for candidate in (_normalize_name(politician.electoral_name), _normalize_name(politician.civil_name)):
             if candidate in PRESIDENT_PHOTOS:
                 return PRESIDENT_PHOTOS[candidate]
 
+    if politician.senado_id:
+        return f"https://legis.senado.leg.br/senadores/fotos-oficiais/{politician.senado_id}"
+
     if politician.camara_id:
         return f"https://www.camara.leg.br/internet/deputado/bandep/{politician.camara_id}.jpg"
+
+    if politician.photo_url:
+        url = politician.photo_url.strip()
+        if "senado.leg.br" in url and politician.senado_id:
+            return f"https://legis.senado.leg.br/senadores/fotos-oficiais/{politician.senado_id}"
+        if url.startswith("http://"):
+            return "https://" + url[7:]
+        return url
 
     return None
 
@@ -248,23 +257,24 @@ def _load_json_list_or_404(filename: str, detail: str) -> Any:
 
 
 @router.get("/presidents", response_model=List[Dict[str, Any]])
-def get_historical_presidents():
+def get_historical_presidents(db: Session = Depends(get_db)):
     """
-    Retorna o catálogo histórico completo dos Presidentes do Brasil (Itamar Franco -> Presente),
-    incluindo ministros da fazenda, vices, partidos e marcos econômicos.
+    Retorna a lista canônica unificada de presidentes históricos desde 1994, com fotos oficiais,
+    partidos, períodos de mandato, vices e ministros da Fazenda/Economia.
     """
-    return _load_json_list_or_404("presidentes_historico.json", "Dados de presidentes ainda não processados.")
+    presidents = get_all_presidents(db)
+    if not presidents:
+        raise HTTPException(status_code=404, detail="Dados de presidentes ainda não processados.")
+    return presidents
 
 
 @router.get("/presidents/{mandate_id}")
-def get_president_by_mandate(mandate_id: str):
-    """Retorna detalhes específicos de um mandato presidencial."""
-    data = _load_json_list_or_404("presidentes_historico.json", "Dados não encontrados.")
-    for pres in data:
-        if pres.get("id_referencia") == mandate_id:
-            return pres
-
-    raise HTTPException(status_code=404, detail=f"Mandato '{mandate_id}' não encontrado.")
+def get_president_by_mandate(mandate_id: str, db: Session = Depends(get_db)):
+    """Retorna detalhes específicos de um mandato presidencial unificado."""
+    pres = get_president_by_reference(mandate_id, db)
+    if not pres:
+        raise HTTPException(status_code=404, detail=f"Mandato '{mandate_id}' não encontrado.")
+    return pres
 
 
 def _parse_office(office: Optional[str]) -> Optional[CargoPoliticoEnum]:
@@ -286,6 +296,17 @@ def _parse_uf(uf: Optional[str]) -> Optional[str]:
     return clean
 
 
+PARTY_SIGLA_ALIASES: Dict[str, str] = {
+    "PODEMOS": "PODE",
+    "PC DO B": "PCDOB",
+    "PC_DO_B": "PCDOB",
+    "PRB": "REPUBLICANOS",
+    "PRB/REP": "REPUBLICANOS",
+    "SD": "SOLIDARIEDADE",
+    "PATRI": "PATRIOTA",
+}
+
+
 def _is_current_mandate_clause():
     today = date.today()
     return or_(Mandate.end_date.is_(None), Mandate.end_date >= today)
@@ -299,6 +320,9 @@ def search_politicians(
     party: Optional[str] = Query(None, max_length=50, description="Filtro por sigla do partido (match exato)"),
     partido: Optional[str] = Query(None, max_length=50, description="Alias para party"),
     uf: Optional[str] = Query(None, description="Filtro por UF de jurisdição do mandato"),
+    mandate_id: Optional[str] = Query(
+        None, description="Filtro por mandato presidencial (ex: lula-2023, bolsonaro-2019)"
+    ),
     limit: int = Query(50, ge=1, le=800, description="Quantidade máxima de registros"),
     offset: int = Query(0, ge=0, description="Deslocamento para paginação"),
     db: Session = Depends(get_db),
@@ -323,13 +347,36 @@ def search_politicians(
     clean_uf = _parse_uf(uf)
 
     if target_party:
-        # Match exato de sigla (PT não traz PTB) e somente vínculo ATUAL (filiação vigente ou mandato em curso)
-        party_ids = db.query(PoliticalParty.id).filter(func.upper(PoliticalParty.acronym) == target_party)
-        party_mandate_subq = db.query(Mandate.politician_id).filter(
-            Mandate.party_id.in_(party_ids), _is_current_mandate_clause()
+        # Match de sigla com suporte a aliases conhecidos (ex.: Podemos -> PODE, PC do B -> PCdoB)
+        norm_sigla = PARTY_SIGLA_ALIASES.get(target_party, target_party)
+        party_ids = db.query(PoliticalParty.id).filter(
+            or_(
+                func.upper(PoliticalParty.acronym) == target_party,
+                func.upper(PoliticalParty.acronym) == norm_sigla,
+            )
         )
+        if mandate_id and mandate_id.strip():
+            date_range = get_mandate_date_range(mandate_id.strip(), db)
+            if date_range:
+                m_start, m_end = date_range
+                mandate_clause = and_(
+                    Mandate.start_date <= m_end,
+                    or_(Mandate.end_date.is_(None), Mandate.end_date >= m_start),
+                )
+                aff_clause = and_(
+                    PartyAffiliation.start_date <= m_end,
+                    or_(PartyAffiliation.end_date.is_(None), PartyAffiliation.end_date >= m_start),
+                )
+            else:
+                mandate_clause = _is_current_mandate_clause()
+                aff_clause = PartyAffiliation.is_current.is_(True)
+        else:
+            mandate_clause = _is_current_mandate_clause()
+            aff_clause = PartyAffiliation.is_current.is_(True)
+
+        party_mandate_subq = db.query(Mandate.politician_id).filter(Mandate.party_id.in_(party_ids), mandate_clause)
         party_aff_subq = db.query(PartyAffiliation.politician_id).filter(
-            PartyAffiliation.party_id.in_(party_ids), PartyAffiliation.is_current.is_(True)
+            PartyAffiliation.party_id.in_(party_ids), aff_clause
         )
         query = query.filter(or_(Politician.id.in_(party_mandate_subq), Politician.id.in_(party_aff_subq)))
 
@@ -340,6 +387,18 @@ def search_politicians(
         query = query.filter(
             Politician.id.in_(db.query(Mandate.politician_id).filter(Mandate.jurisdiction_state == clean_uf))
         )
+
+    if mandate_id and mandate_id.strip():
+        date_range = get_mandate_date_range(mandate_id.strip(), db)
+        if date_range:
+            m_start, m_end = date_range
+            mandate_active_subq = db.query(Mandate.politician_id).filter(
+                Mandate.start_date <= m_end,
+                or_(Mandate.end_date.is_(None), Mandate.end_date >= m_start),
+            )
+            if office_enum:
+                mandate_active_subq = mandate_active_subq.filter(Mandate.office == office_enum)
+            query = query.filter(Politician.id.in_(mandate_active_subq))
 
     total_count = query.count()
     politicians = query.order_by(Politician.electoral_name.asc(), Politician.id.asc()).offset(offset).limit(limit).all()

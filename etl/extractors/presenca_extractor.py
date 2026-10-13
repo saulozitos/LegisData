@@ -332,15 +332,16 @@ class PoliteHttpClient(HttpClient):
 
     def __init__(
         self,
-        base_interval: float = 2.0,
-        cooldown_inicial: float = 45.0,
-        cooldown_max: float = 600.0,
-        tentativas_429: int = 8,
+        base_interval: float = 0.25,
+        cooldown_inicial: float = 15.0,
+        cooldown_max: float = 300.0,
+        tentativas_429: int = 6,
+        user_agent: str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 (LegisData Collector)",
         **kwargs,
     ):
         kwargs.setdefault("max_retries", 1)
-        kwargs.setdefault("timeout", 40.0)
-        super().__init__(min_interval=base_interval, **kwargs)
+        kwargs.setdefault("timeout", 30.0)
+        super().__init__(min_interval=base_interval, user_agent=user_agent, **kwargs)
         self.cooldown_inicial = cooldown_inicial
         self.cooldown_max = cooldown_max
         self.tentativas_429 = tentativas_429

@@ -213,4 +213,22 @@ describe('LegislativePanel', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Fechar' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
+
+  it("sessão com votação secreta exibe aviso oficial e apuração agregada", async () => {
+    getVotes.mockResolvedValueOnce({
+      ...votesResponse(),
+      is_votacao_secreta: true,
+      aviso: "Votação secreta oficial do Senado",
+      placar: { SIM: 45, NAO: 12, ABSTENCAO: 3, TOTAL: 60 },
+      votos: [],
+    });
+    render(<LegislativePanel propositions={props} />);
+    fireEvent.click(screen.getByRole("button", { name: "PL 1/2023 - Saúde" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByText(/Votação Secreta Oficial/)).toBeInTheDocument();
+    expect(within(dialog).getByText("Votação secreta oficial do Senado")).toBeInTheDocument();
+    expect(within(dialog).getByText("45")).toBeInTheDocument();
+    expect(within(dialog).getByText("12")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Ana")).not.toBeInTheDocument();
+  });
 });

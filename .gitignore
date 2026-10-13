@@ -8,7 +8,9 @@
 
 # Python
 .venv/
+backend/venv
 venv/
+backend/venv
 env/
 ENV/
 __pycache__/
@@ -59,6 +61,7 @@ etl/data/raw/atlas_violencia/
 etl/data/raw/prodes/
 etl/data/raw/yahoo/
 etl/data/raw/presenca/
+etl/data/raw/datajud/
 etl/data/raw/remuneracao/
 etl/data/raw/tse/
 etl/data/raw/identidades_parlamentares.json
@@ -66,3 +69,7 @@ etl/data/raw/votacoes/
 
 # Checkpoints de extração (regeneráveis)
 etl/data/raw/checkpoint_*.json
+
+# Ativos pesados de mídia (hospedados em Releases / Git LFS)
+assets/*.mp4
+assets/*.webm

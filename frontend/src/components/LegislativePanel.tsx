@@ -509,7 +509,7 @@ export default function LegislativePanel({
                             : "bg-slate-900 text-slate-300 border-slate-800 hover:text-slate-100"
                         }`}
                       >
-                        {sess.titulo || `Turno ${idx + 1}`}
+                        {sess.is_votacao_secreta ? "🔒 " : ""}{sess.titulo || `Turno ${idx + 1}`}
                       </button>
                     );
                   })}
@@ -585,7 +585,7 @@ export default function LegislativePanel({
               </div>
             </div>
 
-            {/* Lista dos Votos Nominais */}
+            {/* Lista dos Votos Nominais ou Apuração de Votação Secreta */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-2">
               {loadingVotes ? (
                 <div role="status" aria-live="polite" className="text-center py-12 text-slate-400 text-xs">
@@ -597,6 +597,43 @@ export default function LegislativePanel({
                   message="A lista nominal não pôde ser obtida. Isso não significa que a matéria não tenha sido votada."
                   onRetry={votes.retry}
                 />
+              ) : (votesData?.is_votacao_secreta || votesData?.sessao_ativa?.is_votacao_secreta) ? (
+                <div className="space-y-4 py-4 max-w-xl mx-auto">
+                  <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-center space-y-2">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      🔒 Votação Secreta Oficial
+                    </span>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      {votesData?.aviso || "Conforme o Regimento Interno do Senado Federal, os votos individuais dos senadores são sigilosos e não constam em relatórios nominais. O resultado abaixo reflete a apuração oficial agregada da urna."}
+                    </p>
+                  </div>
+
+                  {/* Placar Oficial Agregado */}
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div className="p-3.5 rounded-xl bg-slate-900 border border-emerald-500/30">
+                      <div className="text-xs text-emerald-400 font-semibold mb-1">SIM</div>
+                      <div className="text-2xl font-black text-emerald-300 font-mono">
+                        {votesData?.placar?.SIM ?? votesData?.sessao_ativa?.placar?.SIM ?? 0}
+                      </div>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-slate-900 border border-rose-500/30">
+                      <div className="text-xs text-rose-400 font-semibold mb-1">NÃO</div>
+                      <div className="text-2xl font-black text-rose-300 font-mono">
+                        {votesData?.placar?.NAO ?? votesData?.sessao_ativa?.placar?.NAO ?? 0}
+                      </div>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-slate-900 border border-amber-500/30">
+                      <div className="text-xs text-amber-400 font-semibold mb-1">ABSTENÇÃO</div>
+                      <div className="text-2xl font-black text-amber-300 font-mono">
+                        {votesData?.placar?.ABSTENCAO ?? votesData?.sessao_ativa?.placar?.ABSTENCAO ?? 0}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-center text-xs text-slate-400 font-mono">
+                    Total apurado na urna: <span className="font-bold text-slate-200">{votesData?.total || votesData?.placar?.TOTAL || votesData?.sessao_ativa?.placar?.TOTAL || 0}</span> votos
+                  </div>
+                </div>
               ) : modalFilteredVotes.length === 0 ? (
                 <div role="status" className="text-center py-12 text-slate-400 text-xs">
                   Nenhum parlamentar encontrado para o critério pesquisado.

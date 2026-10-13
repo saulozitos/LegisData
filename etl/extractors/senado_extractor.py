@@ -123,13 +123,14 @@ class SenadoExtractor:
             if not codigo:
                 continue
             sid = int(codigo)
+            foto_url = f"https://legis.senado.leg.br/senadores/fotos-oficiais/{sid}" if sid else ident.get("UrlFotoParlamentar")
             registro = {
                 "senado_id": sid,
                 "nome_civil": ident.get("NomeCompletoParlamentar") or ident.get("NomeParlamentar"),
                 "nome_eleitoral": ident.get("NomeParlamentar"),
                 "partido_sigla": ident.get("SiglaPartidoParlamentar") or "S.PART.",
                 "uf": ident.get("UfParlamentar"),
-                "foto_url": ident.get("UrlFotoParlamentar"),
+                "foto_url": foto_url,
                 "email": ident.get("EmailParlamentar"),
                 "gabinete_telefone": formatar_telefone_senado(ident),
                 "cargo": "SENADOR",

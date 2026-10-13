@@ -174,6 +174,12 @@ describe('construção de URLs', () => {
     expect(lastUrl()).toBe('/api/v1/executivo/mandates/m1/summary');
     await api.getLegislativePropositions();
     expect(lastUrl()).toBe('/api/v1/legislative/propositions');
+    await api.getEmendasResumo();
+    expect(lastUrl()).toBe('/api/v1/emendas/resumo');
+    await api.getEmendasPorLocalidade('Belo Horizonte', 20);
+    expect(lastUrl()).toBe('/api/v1/emendas/localidade/Belo%20Horizonte?limit=20');
+    await api.getEmendasPorAutor('BANCADA DA BAHIA', 10);
+    expect(lastUrl()).toBe('/api/v1/emendas/autor/BANCADA%20DA%20BAHIA?limit=10');
   });
 });
 

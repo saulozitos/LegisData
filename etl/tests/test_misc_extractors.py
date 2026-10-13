@@ -102,7 +102,7 @@ def test_filiacoes_sem_origem_inventada(tmp_path):
 
     fulano = df[df["politico_nome"] == "Fulano"]
     assert len(fulano) == 1  # só a filiação atual: sem "DEM"/"PSL" sorteados por idx % 2
-    assert fulano.iloc[0]["data_filiacao"] is None and bool(fulano.iloc[0]["data_filiacao_desconhecida"])
+    assert (fulano.iloc[0]["data_filiacao"] is None or pd.isna(fulano.iloc[0]["data_filiacao"])) and bool(fulano.iloc[0]["data_filiacao_desconhecida"])
     assert fulano.iloc[0]["partido_sigla"] == "UNIÃO"
 
     kim = df[df["politico_nome"] == "Kim Kataguiri"]

@@ -39,12 +39,12 @@ const composition = {
   senado: house(81, ['MDB']),
 };
 
-const politician = (id: string, nome: string, uf: string) => ({
+const politician = (id: string, nome: string, uf: string, party: string = 'PT') => ({
   id,
   nome_eleitoral: nome,
   nome_civil: `${nome} Civil`,
   cargo: 'DEPUTADO_FEDERAL',
-  partido_sigla: 'PT',
+  partido_sigla: party,
   uf,
   foto_url: null,
 });
@@ -88,7 +88,7 @@ describe('CongressCompositionPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'PT · 10' }));
     const dialog = await screen.findByRole('dialog');
-    expect(search).toHaveBeenCalledWith(undefined, 'DEPUTADO_FEDERAL', 'PT', undefined, 200, expect.any(AbortSignal));
+    expect(search).toHaveBeenCalledWith(undefined, 'DEPUTADO_FEDERAL', 'PT', undefined, 200, 'm1', expect.any(AbortSignal));
     expect(await within(dialog).findByText('Ana')).toBeInTheDocument();
     expect(within(dialog).getByText('2 parlamentares')).toBeInTheDocument();
 
@@ -123,6 +123,38 @@ describe('CongressCompositionPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'PL · 9' }));
     fireEvent.click(await screen.findByTitle(/Raio-X de Caio/));
     expect(alt).toHaveBeenCalledWith('7');
+  });
+
+  it('ao selecionar uma legenda menor (ex: NOVO), busca exatamente os parlamentares daquele partido', async () => {
+    const compPartidos = {
+      ...composition,
+      camara: {
+        ...composition.camara,
+        bancadas: [
+          { partido: 'PT', cadeiras: 10, percentual: 50, alinhamento: 'BASE_GOVERNO', cor_hex: '#ef4444' },
+          { partido: 'PL', cadeiras: 6, percentual: 30, alinhamento: 'OPOSICAO', cor_hex: '#1d4ed8' },
+          { partido: 'NOVO', cadeiras: 4, percentual: 20, alinhamento: 'OPOSICAO', cor_hex: '#f97316' },
+        ],
+      },
+    };
+    getComposition.mockResolvedValue(compPartidos);
+    search.mockResolvedValue({
+      politicos: [
+        politician('2', 'Deputado Novo 1', 'RS', 'NOVO'),
+        politician('3', 'Deputado Novo 2', 'SP', 'NOVO'),
+      ],
+    });
+
+    render(<CongressCompositionPanel mandateId="m1" />);
+    await screen.findByText('Presidente Casa');
+
+    fireEvent.click(screen.getByRole('button', { name: 'NOVO · 4' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(search).toHaveBeenCalledWith(undefined, 'DEPUTADO_FEDERAL', 'NOVO', undefined, 200, 'm1', expect.any(AbortSignal));
+    expect(within(dialog).getByRole('heading', { name: /Parlamentares do NOVO/ })).toBeInTheDocument();
+    expect(within(dialog).getByText('Deputado Novo 1')).toBeInTheDocument();
+    expect(within(dialog).getByText('Deputado Novo 2')).toBeInTheDocument();
+    expect(within(dialog).getByText('2 parlamentares')).toBeInTheDocument();
   });
 
   it('onSelectParty substitui o modal interno', async () => {

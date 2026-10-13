@@ -105,6 +105,13 @@ describe('safeExternalUrl', () => {
     expect(safeExternalUrl('http://a.com')).toBe('http://a.com/');
   });
 
+  it('normaliza URLs legadas de fotos do Senado para HTTPS canônico', () => {
+    expect(safeExternalUrl('http://www.senado.leg.br/senadores/img/fotos-oficiais/senador4770.jpg'))
+      .toBe('https://legis.senado.leg.br/senadores/fotos-oficiais/4770');
+    expect(safeExternalUrl('https://legis.senado.leg.br/senadores/fotos-oficiais/4770'))
+      .toBe('https://legis.senado.leg.br/senadores/fotos-oficiais/4770');
+  });
+
   it('bloqueia esquemas perigosos e valores inválidos', () => {
     expect(safeExternalUrl('javascript:alert(1)')).toBeUndefined();
     expect(safeExternalUrl('data:text/html,<script>')).toBeUndefined();
