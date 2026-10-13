@@ -43,7 +43,7 @@ jobs:
 
       - name: Executar Deploy via SSH Seguro
         if: env.SKIP_DEPLOY != 'true'
-        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
