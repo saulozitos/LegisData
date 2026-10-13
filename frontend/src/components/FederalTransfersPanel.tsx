@@ -1,17 +1,16 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
-  DollarSign,
   Building2,
   HeartPulse,
   GraduationCap,
   HardHat,
   Shield,
   Layers,
-  ArrowUpDown,
   Search
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -21,11 +20,10 @@ import {
   Tooltip,
   Cell
 } from "recharts";
-import {
-  getFederalTransfers,
-  FederalTransfersResponse,
-  StateTransferItem
-} from "../services/api";
+import { getFederalTransfers } from "../services/api";
+import { useApi } from "@/hooks/useApi";
+import { fmtNum } from "@/lib/format";
+import { EmptyState, ErrorState, LoadingState } from "@/components/StateViews";
 
 interface FederalTransfersPanelProps {
   mandateId: string;
@@ -39,64 +37,61 @@ const REGIAO_COLORS: Record<string, string> = {
   "Centro-Oeste": "#8b5cf6"
 };
 
+// Aparência por área temática; áreas desconhecidas usam o padrão (as áreas vêm da API).
+const AREA_STYLE: Record<string, { icon: LucideIcon; active: string }> = {
+  "Saúde": { icon: HeartPulse, active: "bg-rose-500" },
+  "Educação": { icon: GraduationCap, active: "bg-blue-500" },
+  "Infraestrutura": { icon: HardHat, active: "bg-amber-500" },
+  "Segurança Pública": { icon: Shield, active: "bg-purple-500" },
+};
+const DEFAULT_AREA_STYLE = { icon: Layers, active: "bg-emerald-500" };
+
 export default function FederalTransfersPanel({ mandateId }: FederalTransfersPanelProps) {
-  const [data, setData] = useState<FederalTransfersResponse | null>(null);
-  const [loading, setLoading] = useState(true);
   const [selectedArea, setSelectedArea] = useState<string>("TODAS");
   const [sortBy, setSortBy] = useState<"total" | "per_capita">("total");
   const [searchTerm, setSearchTerm] = useState("");
 
-  useEffect(() => {
-    async function loadTransfers() {
-      try {
-        setLoading(true);
-        const areaParam = selectedArea === "TODAS" ? undefined : selectedArea;
-        const res = await getFederalTransfers(mandateId, areaParam);
-        if (res) setData(res);
-      } catch (err) {
-        console.error("Erro ao carregar repasses federais:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadTransfers();
-  }, [mandateId, selectedArea]);
+  // A consulta sem filtro alimenta a lista de áreas (os botões nunca desaparecem ao filtrar).
+  const base = useApi(`federal-transfers:${mandateId}:ALL`, (signal) => getFederalTransfers(mandateId, undefined, signal));
+  const filtered = useApi(
+    `federal-transfers:${mandateId}:${selectedArea}`,
+    (signal) => getFederalTransfers(mandateId, selectedArea, signal),
+    selectedArea !== "TODAS"
+  );
+  const active = selectedArea === "TODAS" ? base : filtered;
+  const data = active.data ?? null;
+  const areas = Object.keys(base.data?.areas_resumo ?? {});
 
-  if (loading) {
-    return (
-      <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-8 text-center animate-pulse">
-        <div className="h-6 bg-slate-800 rounded w-1/3 mx-auto mb-4" />
-        <div className="h-64 bg-slate-800/40 rounded-2xl w-full" />
-      </div>
-    );
-  }
-
-  if (!data) return null;
+  if (base.loading) return <LoadingState label="Carregando repasses federais..." />;
+  if (base.error) return <ErrorState onRetry={base.retry} />;
+  if (!base.data) return <EmptyState title="Repasses federais indisponíveis" />;
 
   // Filtrar e agrupar por UF (caso TODAS as áreas estejam selecionadas, somamos por UF)
   const ufMap = new Map<string, {
     uf: string;
     nome: string;
     regiao: string;
-    populacao: number;
+    populacao: number | null;
     total_brl: number;
-    per_capita: number;
+    per_capita: number | null;
   }>();
 
-  data.por_uf.forEach((item) => {
+  (data?.por_uf ?? []).forEach((item) => {
     if (!ufMap.has(item.uf)) {
       ufMap.set(item.uf, {
         uf: item.uf,
         nome: item.estado_nome,
         regiao: item.regiao,
-        populacao: item.populacao_estimada,
+        populacao: item.populacao_estimada ?? null,
         total_brl: item.valor_pago_brl,
-        per_capita: item.valor_per_capita_brl
+        per_capita: item.valor_per_capita_brl ?? null
       });
     } else {
       const existing = ufMap.get(item.uf)!;
       existing.total_brl += item.valor_pago_brl;
-      existing.per_capita = existing.populacao > 0 ? existing.total_brl / existing.populacao : 0;
+      existing.per_capita = (existing.populacao != null && existing.populacao > 0)
+        ? existing.total_brl / existing.populacao
+        : null;
     }
   });
 
@@ -115,11 +110,11 @@ export default function FederalTransfersPanel({ mandateId }: FederalTransfersPan
   // Ordenação
   ufsList.sort((a, b) => {
     if (sortBy === "total") return b.total_brl - a.total_brl;
-    return b.per_capita - a.per_capita;
+    return (b.per_capita ?? 0) - (a.per_capita ?? 0);
   });
 
   const top10ChartData = ufsList.slice(0, 10);
-  const totalBrlBi = (data.total_repassado_brl / 1_000_000_000).toFixed(1);
+  const totalBrlBi = data ? fmtNum(data.total_repassado_brl / 1_000_000_000) : null;
 
   return (
     <div className="space-y-6">
@@ -129,95 +124,73 @@ export default function FederalTransfersPanel({ mandateId }: FederalTransfersPan
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                <Building2 className="w-5 h-5" />
+                <Building2 className="w-5 h-5" aria-hidden="true" />
               </span>
               <h2 className="text-xl font-extrabold text-slate-100 tracking-tight">
                 Distribuição de Verbas e Repasses Federais por Estado (UF)
               </h2>
             </div>
             <p className="text-xs text-slate-400">
-              Execução orçamentária da União transferida para os 26 Estados e o Distrito Federal nas áreas prioritárias de desenvolvimento.
+              Execução orçamentária da União transferida aos Estados e ao Distrito Federal nas áreas prioritárias de desenvolvimento.
             </p>
           </div>
 
           <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800 text-right self-start md:self-auto">
-            <span className="text-[10px] uppercase font-bold text-slate-500 block">Total Repassado no Mandato</span>
+            <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Repassado no Mandato ({selectedArea})</span>
             <span className="text-xl font-black text-emerald-400 font-mono">
-              R$ {totalBrlBi} Bilhões
+              {totalBrlBi ? `R$ ${totalBrlBi} Bilhões` : "Indisponível"}
             </span>
           </div>
         </div>
 
-        {/* Filtros por Área Temática */}
+        {/* Filtros por Área Temática (áreas vindas da API) */}
         <div className="flex flex-wrap items-center gap-2 mt-6 pt-4 border-t border-slate-800/80">
-          <button
-            onClick={() => setSelectedArea("TODAS")}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              selectedArea === "TODAS"
-                ? "bg-emerald-500 text-slate-950 shadow-md"
-                : "bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            Todas as Áreas
-          </button>
-          <button
-            onClick={() => setSelectedArea("Saúde")}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              selectedArea === "Saúde"
-                ? "bg-rose-500 text-slate-950 shadow-md"
-                : "bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <HeartPulse className="w-3.5 h-3.5" />
-            Saúde (SUS & FNS)
-          </button>
-          <button
-            onClick={() => setSelectedArea("Educação")}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              selectedArea === "Educação"
-                ? "bg-blue-500 text-slate-950 shadow-md"
-                : "bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <GraduationCap className="w-3.5 h-3.5" />
-            Educação (FUNDEB & FNDE)
-          </button>
-          <button
-            onClick={() => setSelectedArea("Infraestrutura")}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              selectedArea === "Infraestrutura"
-                ? "bg-amber-500 text-slate-950 shadow-md"
-                : "bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <HardHat className="w-3.5 h-3.5" />
-            Infraestrutura & Cidades
-          </button>
-          <button
-            onClick={() => setSelectedArea("Segurança Pública")}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              selectedArea === "Segurança Pública"
-                ? "bg-purple-500 text-slate-950 shadow-md"
-                : "bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Shield className="w-3.5 h-3.5" />
-            Segurança Pública
-          </button>
+          {["TODAS", ...areas].map((area) => {
+            const style = AREA_STYLE[area] ?? DEFAULT_AREA_STYLE;
+            const Icon = area === "TODAS" ? Layers : style.icon;
+            const isActive = selectedArea === area;
+            return (
+              <button
+                type="button"
+                key={area}
+                aria-pressed={isActive}
+                onClick={() => setSelectedArea(area)}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  isActive
+                    ? `${area === "TODAS" ? "bg-emerald-500" : style.active} text-slate-950 shadow-md`
+                    : "bg-slate-950 border border-slate-800 text-slate-300 hover:text-slate-100"
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" aria-hidden="true" />
+                {area === "TODAS" ? "Todas as Áreas" : area}
+              </button>
+            );
+          })}
         </div>
       </div>
 
+      {active.loading && <LoadingState label="Atualizando repasses..." />}
+      {active.error && <ErrorState onRetry={active.retry} />}
+      {!active.loading && !active.error && !data && (
+        <EmptyState message="Nenhum repasse encontrado para a área selecionada." />
+      )}
+
+      {data && (
+        <>
       {/* Gráfico Top 10 Estados */}
       <div className="bg-slate-900/60 border border-slate-800/80 rounded-3xl p-6 backdrop-blur-md">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-bold text-slate-200">
             Top 10 Estados com Maior Destinação de Recursos Federais ({selectedArea})
           </h3>
-          <span className="text-xs text-slate-500 font-medium">Valores em Bilhões de R$</span>
+          <span className="text-xs text-slate-400 font-medium">Valores em Bilhões de R$</span>
         </div>
 
-        <div className="h-72 w-full">
+        <div
+          role="img"
+          aria-label={`Gráfico de barras com os 10 estados que mais receberam repasses federais (${selectedArea})`}
+          className="h-72 w-full"
+        >
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={top10ChartData} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
               <XAxis dataKey="uf" stroke="#64748b" tick={{ fontSize: 11 }} />
@@ -233,15 +206,15 @@ export default function FederalTransfersPanel({ mandateId }: FederalTransfersPan
                   borderRadius: "12px",
                   fontSize: "12px"
                 }}
-                formatter={(val: any) => [
-                  `R$ ${(Number(val) / 1_000_000_000).toFixed(2)} Bilhões`,
+                formatter={(val) => [
+                  `R$ ${fmtNum(Number(val) / 1_000_000_000, 2)} Bilhões`,
                   "Repasse Total"
                 ]}
               />
               <Bar dataKey="total_brl" radius={[6, 6, 0, 0]}>
-                {top10ChartData.map((entry, index) => (
+                {top10ChartData.map((entry) => (
                   <Cell
-                    key={`cell-${index}`}
+                    key={`cell-${entry.uf}`}
                     fill={REGIAO_COLORS[entry.regiao] || "#10b981"}
                   />
                 ))}
@@ -255,35 +228,40 @@ export default function FederalTransfersPanel({ mandateId }: FederalTransfersPan
       <div className="bg-slate-900/60 border border-slate-800/80 rounded-3xl p-6 backdrop-blur-md space-y-4">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="relative w-full sm:w-80">
-            <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" aria-hidden="true" />
             <input
               type="text"
+              aria-label="Buscar estado, UF ou região"
               placeholder="Buscar Estado, UF ou Região..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3.5 py-2 text-xs font-medium text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3.5 py-2 text-xs font-medium text-slate-200 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
             />
           </div>
 
           {/* Toggle de Ordenação */}
           <div className="flex items-center gap-2 self-start sm:self-auto">
-            <span className="text-xs text-slate-500 font-semibold">Ordenar por:</span>
+            <span className="text-xs text-slate-400 font-semibold">Ordenar por:</span>
             <button
+              type="button"
+              aria-pressed={sortBy === "total"}
               onClick={() => setSortBy("total")}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 sortBy === "total"
                   ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                  : "bg-slate-950 text-slate-400 border border-slate-800 hover:text-slate-200"
+                  : "bg-slate-950 text-slate-300 border border-slate-800 hover:text-slate-100"
               }`}
             >
               Volume Total (R$)
             </button>
             <button
+              type="button"
+              aria-pressed={sortBy === "per_capita"}
               onClick={() => setSortBy("per_capita")}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 sortBy === "per_capita"
                   ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                  : "bg-slate-950 text-slate-400 border border-slate-800 hover:text-slate-200"
+                  : "bg-slate-950 text-slate-300 border border-slate-800 hover:text-slate-100"
               }`}
             >
               Per Capita (R$/hab)
@@ -294,14 +272,15 @@ export default function FederalTransfersPanel({ mandateId }: FederalTransfersPan
         {/* Tabela com Scroll */}
         <div className="overflow-x-auto rounded-2xl border border-slate-800/80 max-h-96 overflow-y-auto">
           <table className="w-full text-left border-collapse text-xs">
+            <caption className="sr-only">Repasses federais por Unidade da Federação ({selectedArea})</caption>
             <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider sticky top-0 z-10">
               <tr>
-                <th className="py-3 px-4">UF</th>
-                <th className="py-3 px-4">Estado</th>
-                <th className="py-3 px-4">Região</th>
-                <th className="py-3 px-4 text-right">População (IBGE)</th>
-                <th className="py-3 px-4 text-right">Repasse Total ({selectedArea})</th>
-                <th className="py-3 px-4 text-right">Per Capita (R$/hab)</th>
+                <th scope="col" className="py-3 px-4">UF</th>
+                <th scope="col" className="py-3 px-4">Estado</th>
+                <th scope="col" className="py-3 px-4">Região</th>
+                <th scope="col" className="py-3 px-4 text-right">População (IBGE)</th>
+                <th scope="col" className="py-3 px-4 text-right">Repasse Total ({selectedArea})</th>
+                <th scope="col" className="py-3 px-4 text-right">Per Capita (R$/hab)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-medium">
@@ -320,13 +299,13 @@ export default function FederalTransfersPanel({ mandateId }: FederalTransfersPan
                     </span>
                   </td>
                   <td className="py-2.5 px-4 text-right text-slate-400 font-mono">
-                    {u.populacao.toLocaleString("pt-BR")}
+                    {u.populacao != null ? u.populacao.toLocaleString("pt-BR") : "Dado indisponível"}
                   </td>
                   <td className="py-2.5 px-4 text-right font-mono font-bold text-emerald-400">
                     R$ {u.total_brl.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                   <td className="py-2.5 px-4 text-right font-mono text-cyan-300 font-bold">
-                    R$ {u.per_capita.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {u.per_capita != null ? `R$ ${u.per_capita.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Dado indisponível"}
                   </td>
                 </tr>
               ))}
@@ -334,6 +313,8 @@ export default function FederalTransfersPanel({ mandateId }: FederalTransfersPan
           </table>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

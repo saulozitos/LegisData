@@ -4,10 +4,43 @@ Contém as fórmulas científicas oficiais (capitalização composta de IPCA, PI
 """
 
 import math
-from typing import List, Dict, Any, Optional
 from datetime import datetime
-import pandas as pd
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
+import pandas as pd
+
+
+def mes_pertence(datas: pd.Series, inicio: pd.Timestamp, fim_exclusivo: pd.Timestamp) -> pd.Series:
+    """
+    Máscara dos meses que pertencem a um mandato [inicio, fim_exclusivo).
+
+    As séries mensais têm data no dia 1; cada mês vale para o mandato em vigor no MEIO do mês (dia 15). Assim:
+    (1) o fim é exclusivo — o mês de janeiro, que começa no `data_fim` do mandato anterior, não entra nos dois;
+    (2) quem assume no meio do mês (Itamar em 02/10/1992, Temer em 31/08/2016) recebe o mês correto.
+    Antes, `data <= data_fim` contava janeiro duas vezes e `data >= data_inicio` perdia o mês de posse de Itamar.
+    """
+    ref = datas + pd.Timedelta(days=14)
+    return (ref >= inicio) & (ref < fim_exclusivo)
+
+
+def intervalo_mandato(
+    pres: Dict[str, Any], agora: Optional[datetime] = None
+) -> Tuple[pd.Timestamp, pd.Timestamp, int, int]:
+    """
+    (inicio, fim_exclusivo, ano_inicial, ano_final_inclusivo) de um mandato.
+    `data_fim` é o dia em que o sucessor assume, portanto o último ano do mandato é (data_fim - 1 dia).year:
+    FHC 1 (fim 1999-01-01) cobre 1995-1998 — antes o ano 1999 entrava também em FHC 2.
+    Mandato em curso (sem data_fim) termina hoje.
+    """
+    agora = agora or datetime.now()
+    inicio = pd.to_datetime(pres["data_inicio"])
+    if pres.get("data_fim"):
+        fim_exclusivo = pd.to_datetime(pres["data_fim"])
+    else:
+        fim_exclusivo = pd.Timestamp(agora).normalize() + pd.Timedelta(days=1)
+    ano_final = min((fim_exclusivo - pd.Timedelta(days=1)).year, agora.year)
+    return inicio, fim_exclusivo, inicio.year, ano_final
 
 
 class EconomicNormalizer:
@@ -25,7 +58,7 @@ class EconomicNormalizer:
         factor = 1.0
         for rate in monthly_rates:
             if rate is not None and not math.isnan(rate):
-                factor *= (1.0 + (rate / 100.0))
+                factor *= 1.0 + (rate / 100.0)
 
         return round((factor - 1.0) * 100.0, 4)
 
@@ -41,7 +74,7 @@ class EconomicNormalizer:
         factor = 1.0
         for rate in growth_rates:
             if rate is not None and not math.isnan(rate):
-                factor *= (1.0 + (rate / 100.0))
+                factor *= 1.0 + (rate / 100.0)
 
         return round((factor - 1.0) * 100.0, 2)
 
@@ -58,7 +91,7 @@ class EconomicNormalizer:
         deforestation_dict: Optional[Dict[int, float]] = None,
         food_insecurity_dict: Optional[Dict[int, float]] = None,
         homicide_dict: Optional[Dict[int, float]] = None,
-        feminicide_dict: Optional[Dict[int, float]] = None
+        feminicide_dict: Optional[Dict[int, float]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Cruza todas as séries macroeconômicas oficiais com as datas exatas
@@ -72,11 +105,13 @@ class EconomicNormalizer:
                 df["data"] = pd.to_datetime(df["data"])
 
         for pres in presidents:
-            dt_inicio = pd.to_datetime(pres["data_inicio"])
-            dt_fim = pd.to_datetime(pres["data_fim"]) if pres.get("data_fim") else pd.to_datetime(datetime.now())
+            dt_inicio, dt_fim, ano_ini, ano_fim = intervalo_mandato(pres)
+
+            def recorte(df: pd.DataFrame) -> pd.DataFrame:
+                return df[mes_pertence(df["data"], dt_inicio, dt_fim)] if not df.empty else pd.DataFrame()
 
             # 1. IPCA no período do mandato
-            ipca_subset = ipca_df[(ipca_df["data"] >= dt_inicio) & (ipca_df["data"] <= dt_fim)] if not ipca_df.empty else pd.DataFrame()
+            ipca_subset = recorte(ipca_df)
             if not ipca_subset.empty:
                 # Caso especial de Itamar Franco:
                 # O período pré-Real (1992-1994) teve hiperinflação de milhares de %.
@@ -91,25 +126,26 @@ class EconomicNormalizer:
                 else:
                     ipca_pos_real = ipca_acumulado
             else:
-                ipca_acumulado = 0.0
-                ipca_pos_real = 0.0
+                ipca_acumulado = None  # sem dados: None, não 0.0 (0 seria lido como "inflação zero")
+                ipca_pos_real = None
 
             # 2. PIB no período (Variação real anual)
-            # Associar anos de mandato
-            ano_ini = dt_inicio.year
-            ano_fim = min(dt_fim.year, datetime.now().year)
-            # Se assumiu após julho, o primeiro ano pleno é o seguinte para impacto
-            pib_subset = pib_anual_df[(pib_anual_df["ano"] >= ano_ini) & (pib_anual_df["ano"] <= ano_fim)] if not pib_anual_df.empty else pd.DataFrame()
+            # Anos do mandato: ver intervalo_mandato (fim exclusivo)
+            pib_subset = (
+                pib_anual_df[(pib_anual_df["ano"] >= ano_ini) & (pib_anual_df["ano"] <= ano_fim)]
+                if not pib_anual_df.empty
+                else pd.DataFrame()
+            )
             if not pib_subset.empty:
                 pib_growth_rates = pib_subset["valor"].tolist()
                 pib_acumulado = cls.calculate_compound_growth(pib_growth_rates)
                 pib_medio_ano = round(float(np.mean(pib_growth_rates)), 2)
             else:
-                pib_acumulado = 0.0
-                pib_medio_ano = 0.0
+                pib_acumulado = None
+                pib_medio_ano = None
 
             # 3. Taxa de Câmbio (USD/BRL)
-            cambio_subset = cambio_df[(cambio_df["data"] >= dt_inicio) & (cambio_df["data"] <= dt_fim)] if not cambio_df.empty else pd.DataFrame()
+            cambio_subset = recorte(cambio_df)
             if not cambio_subset.empty:
                 # Pegar valor pós-Real para evitar distorção de milhões de Cruzeiros
                 cambio_real_subset = cambio_subset[cambio_subset["data"] >= "1994-07-01"]
@@ -127,7 +163,7 @@ class EconomicNormalizer:
                 cambio_var_pct = None
 
             # 4. Dívida Líquida (% PIB)
-            divida_subset = divida_df[(divida_df["data"] >= dt_inicio) & (divida_df["data"] <= dt_fim)] if not divida_df.empty else pd.DataFrame()
+            divida_subset = recorte(divida_df)
             if not divida_subset.empty:
                 divida_ini = float(divida_subset.iloc[0]["valor"])
                 divida_fim = float(divida_subset.iloc[-1]["valor"])
@@ -138,7 +174,7 @@ class EconomicNormalizer:
                 divida_delta = None
 
             # 5. Salário Mínimo (em R$ e equivalente em USD)
-            sal_min_subset = salario_min_df[(salario_min_df["data"] >= dt_inicio) & (salario_min_df["data"] <= dt_fim)] if not salario_min_df.empty else pd.DataFrame()
+            sal_min_subset = recorte(salario_min_df)
             if not sal_min_subset.empty:
                 sal_pos_real = sal_min_subset[sal_min_subset["data"] >= "1994-07-01"]
                 if not sal_pos_real.empty:
@@ -155,7 +191,7 @@ class EconomicNormalizer:
             sal_fim_usd = round(sal_fim / cambio_fim, 2) if (sal_fim and cambio_fim and cambio_fim > 0) else None
 
             # Anos do mandato
-            mandate_years = [y for y in range(ano_ini, ano_fim + 1)] if ano_fim >= ano_ini else [ano_ini]
+            mandate_years = list(range(ano_ini, ano_fim + 1)) if ano_fim >= ano_ini else [ano_ini]
 
             # 6. Desemprego no mandato (Início, Fim, Média)
             desemp_ini = None
@@ -220,22 +256,26 @@ class EconomicNormalizer:
                 y_sal_rows = salario_min_df[salario_min_df["ano"] == y]
                 y_sal = float(y_sal_rows.iloc[-1]["valor"]) if not y_sal_rows.empty else None
 
-                valores_anuais.append({
-                    "ano": y,
-                    "pib_crescimento_real_pct": y_pib,
-                    "crescimento_pib_percentual": y_pib,
-                    "ipca_acumulado_ano_pct": y_ipca,
-                    "inflacao_anual_ipca": y_ipca,
-                    "cotacao_dolar_fechamento": y_dolar,
-                    "cambio_dolar_medio": round(float(y_cambio_rows["valor"].mean()), 4) if not y_cambio_rows.empty else None,
-                    "salario_minimo": y_sal,
-                    "salario_minimo_nominal_brl": y_sal,
-                    "taxa_desemprego_anual": unemployment_dict.get(y) if unemployment_dict else None,
-                    "taxa_homicidios": homicide_dict.get(y) if homicide_dict else None,
-                    "taxa_feminicidios": feminicide_dict.get(y) if feminicide_dict else None,
-                    "taxa_desmatamento_amazonia": deforestation_dict.get(y) if deforestation_dict else None,
-                    "inseguranca_alimentar_pct": food_insecurity_dict.get(y) if food_insecurity_dict else None,
-                })
+                valores_anuais.append(
+                    {
+                        "ano": y,
+                        "pib_crescimento_real_pct": y_pib,
+                        "crescimento_pib_percentual": y_pib,
+                        "ipca_acumulado_ano_pct": y_ipca,
+                        "inflacao_anual_ipca": y_ipca,
+                        "cotacao_dolar_fechamento": y_dolar,
+                        "cambio_dolar_medio": (
+                            round(float(y_cambio_rows["valor"].mean()), 4) if not y_cambio_rows.empty else None
+                        ),
+                        "salario_minimo": y_sal,
+                        "salario_minimo_nominal_brl": y_sal,
+                        "taxa_desemprego_anual": unemployment_dict.get(y) if unemployment_dict else None,
+                        "taxa_homicidios": homicide_dict.get(y) if homicide_dict else None,
+                        "taxa_feminicidios": feminicide_dict.get(y) if feminicide_dict else None,
+                        "taxa_desmatamento_amazonia": deforestation_dict.get(y) if deforestation_dict else None,
+                        "inseguranca_alimentar_pct": food_insecurity_dict.get(y) if food_insecurity_dict else None,
+                    }
+                )
 
             summary = {
                 "id_mandato": pres["id_referencia"],
@@ -275,7 +315,7 @@ class EconomicNormalizer:
                 "feminicidios_medio": fem_med,
                 "valores_anuais": valores_anuais,
                 "ministros_fazenda_principais": [m["nome"] for m in pres.get("ministros_fazenda_chave", [])],
-                "marcos_economicos_principais": pres.get("marcos_economicos", [])[:2]
+                "marcos_economicos_principais": pres.get("marcos_economicos", [])[:2],
             }
             mandate_summaries.append(summary)
 
@@ -296,7 +336,7 @@ class EconomicNormalizer:
         food_insecurity_dict: Optional[Dict[int, float]] = None,
         homicide_dict: Optional[Dict[int, float]] = None,
         feminicide_dict: Optional[Dict[int, float]] = None,
-        dolar_fechamento_df: Optional[pd.DataFrame] = None
+        dolar_fechamento_df: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
         """
         Cria a tabela macroeconômica consolidada ano a ano (1993 a presente)
@@ -327,12 +367,12 @@ class EconomicNormalizer:
 
             # Cotação do Dólar no final do ano
             cotacao_dolar_fechamento = None
-            if dolar_fechamento_df is not None and not dolar_fechamento_df.empty:
+            # Ano em curso não tem 'fechamento': a última cotação disponível seria apresentada como se fosse final de ano.
+            if ano < datetime.now().year and dolar_fechamento_df is not None and not dolar_fechamento_df.empty:
                 dolar_rows = dolar_fechamento_df[dolar_fechamento_df["ano"] == ano]
                 if not dolar_rows.empty:
                     cotacao_dolar_fechamento = round(float(dolar_rows.iloc[-1]["valor"]), 4)
-            if cotacao_dolar_fechamento is None and not cambio_rows.empty:
-                cotacao_dolar_fechamento = round(float(cambio_rows.iloc[-1]["valor"]), 4)
+            # Sem a série de fim de período NÃO se usa a média mensal de dezembro como "fechamento": fica None.
 
             # Dívida no final do ano
             divida_rows = divida_df[divida_df["ano"] == ano]
@@ -364,18 +404,14 @@ class EconomicNormalizer:
             # Inflação acumulada no mandato até o fim deste ano
             infl_acum_mandato = None
             if pres_dominante_obj:
-                dt_mandato_ini = pd.to_datetime(pres_dominante_obj["data_inicio"])
-                dt_fim_ano = pd.to_datetime(f"{ano}-12-31")
-                if pres_dominante_obj.get("data_fim"):
-                    dt_max = min(dt_fim_ano, pd.to_datetime(pres_dominante_obj["data_fim"]))
-                else:
-                    dt_max = dt_fim_ano
+                dt_mandato_ini, dt_mandato_fim, _, _ = intervalo_mandato(pres_dominante_obj)
+                dt_max = min(pd.to_datetime(f"{ano + 1}-01-01"), dt_mandato_fim)
 
                 # Se for mandato de Itamar Franco, considerar pós-Real para consistência
                 if "itamar" in pres_dominante_obj["id_referencia"]:
                     dt_mandato_ini = max(dt_mandato_ini, pd.to_datetime("1994-07-01"))
 
-                monthly_rates = ipca_df[(ipca_df["data"] >= dt_mandato_ini) & (ipca_df["data"] <= dt_max)]["valor"].tolist()
+                monthly_rates = ipca_df[mes_pertence(ipca_df["data"], dt_mandato_ini, dt_max)]["valor"].tolist()
                 if monthly_rates:
                     infl_acum_mandato = cls.calculate_compound_inflation(monthly_rates)
 
@@ -385,25 +421,27 @@ class EconomicNormalizer:
             homicidio_ano = homicide_dict.get(ano) if homicide_dict else None
             feminicidio_ano = feminicide_dict.get(ano) if feminicide_dict else None
 
-            records.append({
-                "ano": ano,
-                "presidente_dominante": pres_dominante,
-                "ipca_acumulado_ano_pct": ipca_acum,
-                "pib_crescimento_real_pct": pib_cresc,
-                "crescimento_pib_percentual": pib_cresc,
-                "inflacao_anual_ipca": ipca_acum,
-                "inflacao_acumulada_mandato": infl_acum_mandato,
-                "taxa_desemprego_anual": desemprego_ano,
-                "taxa_desmatamento_amazonia": desmatamento_ano,
-                "inseguranca_alimentar_pct": fome_ano,
-                "cambio_dolar_medio": cambio_medio,
-                "cotacao_dolar_fechamento": cotacao_dolar_fechamento,
-                "salario_minimo": sal_fim,
-                "salario_minimo_nominal_brl": sal_fim,
-                "taxa_homicidios": homicidio_ano,
-                "taxa_feminicidios": feminicidio_ano,
-                "divida_liquida_pct_pib": divida_fim,
-                "ibovespa_fechamento": ibov_fim
-            })
+            records.append(
+                {
+                    "ano": ano,
+                    "presidente_dominante": pres_dominante,
+                    "ipca_acumulado_ano_pct": ipca_acum,
+                    "pib_crescimento_real_pct": pib_cresc,
+                    "crescimento_pib_percentual": pib_cresc,
+                    "inflacao_anual_ipca": ipca_acum,
+                    "inflacao_acumulada_mandato": infl_acum_mandato,
+                    "taxa_desemprego_anual": desemprego_ano,
+                    "taxa_desmatamento_amazonia": desmatamento_ano,
+                    "inseguranca_alimentar_pct": fome_ano,
+                    "cambio_dolar_medio": cambio_medio,
+                    "cotacao_dolar_fechamento": cotacao_dolar_fechamento,
+                    "salario_minimo": sal_fim,
+                    "salario_minimo_nominal_brl": sal_fim,
+                    "taxa_homicidios": homicidio_ano,
+                    "taxa_feminicidios": feminicidio_ano,
+                    "divida_liquida_pct_pib": divida_fim,
+                    "ibovespa_fechamento": ibov_fim,
+                }
+            )
 
         return pd.DataFrame(records)

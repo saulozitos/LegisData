@@ -51,7 +51,8 @@ Para nos ajudar a reproduzir e solucionar o problema o mais rápido possível, i
 
 ## 4. Nosso Processo e Prazos
 
-- **Confirmação de recebimento:** Nos comprometemos a responder o mais rápido possível confirmando o recebimento do relatório.
-- **Triagem e Avaliação:** Analisaremos o impacto e a severidade o mais rápido possível.
+- **Confirmação de recebimento:** em até **3 dias úteis** após o relato.
+- **Triagem e Avaliação:** classificação de severidade e primeira avaliação em até **10 dias úteis**.
+- **Prazo de correção (alvo):** vulnerabilidades críticas em até **15 dias corridos**; altas em até **30 dias**; médias e baixas em até **90 dias**. Se o prazo não puder ser cumprido, o relator será informado com justificativa.
 - **Correção:** Trabalharemos em um patch de segurança em um branch privado ou Security Advisory privado.
 - **Divulgação Coordenada:** Uma vez lançado o patch, creditaremos os pesquisadores que seguiram as diretrizes de divulgação responsável no changelog do projeto.

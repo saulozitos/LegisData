@@ -1,59 +1,79 @@
-import sys
-import os
-# Add both root and backend to python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../backend')))
+"""
+Diagnóstico de anomalias de autoria: políticos com muitas proposições ou cujo nome não aparece no `author_name`.
 
-from app.core.database import SessionLocal
-from app.models.politician import Politician
-from app.models.legislative import Proposition
+Compara nomes normalizados (sem acento/caixa/títulos). Nomes vazios são ignorados — antes, `"" in texto` era
+sempre verdadeiro e escondia justamente os casos suspeitos.
+"""
+
+import argparse
+from collections import defaultdict
+from typing import Optional
+
 from sqlalchemy import func
 
-def diagnose_anomalies():
-    with SessionLocal() as db:
-        # Get count of propositions per politician
-        results = db.query(
-            Politician.id,
-            Politician.electoral_name,
-            Politician.civil_name,
-            func.count(Proposition.id).label('prop_count')
-        ).join(Proposition, Proposition.author_politician_id == Politician.id)\
-         .group_by(Politician.id)\
-         .order_by(func.count(Proposition.id).desc())\
-         .all()
+from etl.utils.bootstrap import ensure_backend_on_path
+from etl.utils.names import first_signatory, normalize_name_tokens
 
-        print(f"Total de políticos com proposições: {len(results)}")
-        
-        print("\n=== TOP 50 POLÍTICOS COM MAIS PROPOSIÇÕES ===")
-        # Analyze top 50 politicians by proposition count
-        for i, (pol_id, elec_name, civil_name, prop_count) in enumerate(results[:50]):
-            
-            # Fetch a sample of their propositions to check author_name
-            props = db.query(Proposition.author_name, Proposition.id).filter(Proposition.author_politician_id == pol_id).all()
-            
-            suspect_count = 0
-            suspect_names = set()
-            
-            elec_lower = (elec_name or "").lower().strip()
-            civil_lower = (civil_name or "").lower().strip()
-            
-            for p_author, p_id in props:
-                aut_lower = (p_author or "").lower()
-                
-                # Check if electoral or civil name is in author_name
-                if elec_lower not in aut_lower and civil_lower not in aut_lower:
-                    # sometimes the name in the database is "Senador X" or "Deputado X"
-                    suspect_count += 1
-                    suspect_names.add(p_author)
-            
-            if suspect_count > 0 or prop_count > 100:
-                print(f"\n{i+1}. {elec_name} (ID: {pol_id}) - {prop_count} proposições")
-                print(f"   Nome Civil: {civil_name}")
-                if suspect_count > 0:
-                    print(f"   ALERTA: {suspect_count} proposições suspeitas ({suspect_count/prop_count*100:.1f}%)")
-                    print(f"   Exemplos de author_name suspeitos:")
-                    for name in list(suspect_names)[:10]:
-                        print(f"     - {name}")
+ensure_backend_on_path()
+
+LIMITE_TOP = 50
+LIMITE_VOLUME_ALTO = 100
+
+
+def nome_aparece(nome_politico: Optional[str], autor: Optional[str]) -> bool:
+    """True se TODOS os tokens do nome do político estão no primeiro signatário do autor."""
+    toks = set(normalize_name_tokens(nome_politico).split())
+    if not toks:
+        return False
+    return toks <= set(normalize_name_tokens(first_signatory(autor)).split())
+
+
+def diagnose_anomalies() -> None:
+    from app.core.database import SessionLocal
+    from app.models.legislative import Proposition
+    from app.models.politician import Politician
+
+    with SessionLocal() as db:
+        ranking = (
+            db.query(
+                Politician.id, Politician.electoral_name, Politician.civil_name, func.count(Proposition.id).label("n")
+            )
+            .join(Proposition, Proposition.author_politician_id == Politician.id)
+            .group_by(Politician.id)
+            .order_by(func.count(Proposition.id).desc())
+            .all()
+        )
+        print(f"Total de políticos com proposições: {len(ranking)}")
+
+        top = ranking[:LIMITE_TOP]
+        ids = [r[0] for r in top]
+        # Um único SELECT para todos os autores do top (antes: um por político)
+        autores_por_pol = defaultdict(list)
+        for pol_id, autor in db.query(Proposition.author_politician_id, Proposition.author_name).filter(
+            Proposition.author_politician_id.in_(ids)
+        ):
+            autores_por_pol[pol_id].append(autor)
+
+        print(f"\n=== TOP {LIMITE_TOP} POLÍTICOS COM MAIS PROPOSIÇÕES ===")
+        for i, (pol_id, elec_name, civil_name, total) in enumerate(top, start=1):
+            suspeitos = [
+                a for a in autores_por_pol[pol_id] if not (nome_aparece(elec_name, a) or nome_aparece(civil_name, a))
+            ]
+            if not suspeitos and total <= LIMITE_VOLUME_ALTO:
+                continue
+            print(f"\n{i}. {elec_name} (ID: {pol_id}) - {total} proposições")
+            print(f"   Nome Civil: {civil_name}")
+            if suspeitos:
+                print(f"   ALERTA: {len(suspeitos)} proposições suspeitas ({len(suspeitos) / total * 100:.1f}%)")
+                print("   Exemplos de author_name suspeitos:")
+                for nome in list(dict.fromkeys(suspeitos))[:10]:
+                    print(f"     - {nome}")
+
+
+def main(argv: Optional[list] = None) -> None:
+    argparse.ArgumentParser(description="Diagnostica anomalias de autoria (somente leitura).").parse_args(argv)
+    diagnose_anomalies()
+
 
 if __name__ == "__main__":
-    diagnose_anomalies()
+    main()

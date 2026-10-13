@@ -3,6 +3,10 @@
  * Endpoints: Políticos, Séries Macroeconômicas, Analytics e Legislativo
  */
 
+import { ApiError, isAbortError } from "@/lib/errors";
+
+export { ApiError, isAbortError };
+
 function resolveApiBaseUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (envUrl) {
@@ -271,21 +275,91 @@ export interface CompareMandatesResponse {
   termometro_repasses_apoio?: TermometroRepassesData;
 }
 
-async function fetchJson<T>(endpoint: string, fallbackData: T): Promise<T> {
+/**
+ * Executa um GET na API e devolve o JSON. Qualquer falha (rede, HTTP não-2xx,
+ * corpo inválido) lança `ApiError`; o cancelamento via `signal` propaga o
+ * `AbortError` original para que o chamador possa ignorá-lo.
+ */
+async function fetchJson<T>(endpoint: string, signal?: AbortSignal): Promise<T> {
+  let res: Response;
   try {
-    const res = await fetch(`${API_BASE_URL}${endpoint}`, {
-      next: { revalidate: 60 },
-      headers: { Accept: "application/json" }
+    res = await fetch(`${API_BASE_URL}${endpoint}`, {
+      headers: { Accept: "application/json" },
+      signal,
     });
-    if (!res.ok) {
-      console.warn(`[API] Resposta não-200 em ${endpoint}: status ${res.status}`);
-      return fallbackData;
-    }
-    return await res.json();
   } catch (error) {
-    console.warn(`[API] Falha ao conectar em ${API_BASE_URL}${endpoint}:`, error);
-    return fallbackData;
+    if (isAbortError(error)) throw error;
+    throw new ApiError("Não foi possível conectar à API.", endpoint);
   }
+  if (!res.ok) {
+    throw new ApiError(`A API respondeu com status ${res.status}.`, endpoint, res.status);
+  }
+  try {
+    return (await res.json()) as T;
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    throw new ApiError("Resposta inválida da API.", endpoint, res.status);
+  }
+}
+
+const CATALOG_TTL_MS = 5 * 60 * 1000;
+const catalogCache = new Map<string, { at: number; promise: Promise<unknown> }>();
+
+function abortError(): Error {
+  const err = new Error("The operation was aborted.");
+  err.name = "AbortError";
+  return err;
+}
+
+/**
+ * Cache em memória (com TTL) para catálogos que várias telas consultam. A requisição
+ * compartilhada não é abortável; cada chamador apenas deixa de aguardá-la ao abortar.
+ */
+function cachedFetch<T>(key: string, load: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  let entry = catalogCache.get(key);
+  if (!entry || Date.now() - entry.at > CATALOG_TTL_MS) {
+    const promise = load();
+    const created = { at: Date.now(), promise };
+    entry = created;
+    catalogCache.set(key, created);
+    promise.catch(() => {
+      if (catalogCache.get(key) === created) catalogCache.delete(key);
+    });
+  }
+  const shared = entry.promise as Promise<T>;
+  if (!signal) return shared;
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortError());
+    signal.addEventListener("abort", onAbort, { once: true });
+    shared.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (err) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(err);
+      }
+    );
+  });
+}
+
+/** Verificação real de disponibilidade da API (usada pelo selo do cabeçalho). */
+export async function getApiHealth(signal?: AbortSignal): Promise<{ status: string }> {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+  const healthUrl = envUrl
+    ? `${envUrl.replace(/\/+$/, "").replace(/\/api\/v1$/, "")}/health`
+    : "/api/health";
+  let res: Response;
+  try {
+    res = await fetch(healthUrl, { headers: { Accept: "application/json" }, signal, cache: "no-store" });
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    throw new ApiError("API indisponível.", healthUrl);
+  }
+  if (!res.ok) throw new ApiError(`A API respondeu com status ${res.status}.`, healthUrl, res.status);
+  return (await res.json()) as { status: string };
 }
 
 export interface PartyBalanceItem {
@@ -335,32 +409,39 @@ export interface PartyFidelityResponse {
   summary: PartyFidelitySummary;
 }
 
-export async function getPresidentes(): Promise<PresidenteHistorico[]> {
-  return fetchJson<PresidenteHistorico[]>("/politicians/presidents", []);
+export async function getPresidentes(signal?: AbortSignal): Promise<PresidenteHistorico[]> {
+  return fetchJson<PresidenteHistorico[]>("/politicians/presidents", signal);
 }
 
-export async function getMandatesPerformance(): Promise<MandatoPerformance[]> {
-  return fetchJson<MandatoPerformance[]>("/analytics/mandates-performance", []);
+export async function getMandatesPerformance(signal?: AbortSignal): Promise<MandatoPerformance[]> {
+  return fetchJson<MandatoPerformance[]>("/analytics/mandates-performance", signal);
 }
 
-export async function getAnnualMacroSummary(mandateId?: string | null): Promise<ResumoMacroeconomicoAnual[]> {
+export async function getAnnualMacroSummary(
+  mandateId?: string | null,
+  signal?: AbortSignal
+): Promise<ResumoMacroeconomicoAnual[]> {
   const query = mandateId ? `?mandate_id=${encodeURIComponent(mandateId)}` : "";
-  return fetchJson<ResumoMacroeconomicoAnual[]>(`/economic/annual-summary${query}`, []);
+  return fetchJson<ResumoMacroeconomicoAnual[]>(`/economic/annual-summary${query}`, signal);
 }
 
-export async function getLegislativePropositions(): Promise<ProposicaoLegislativa[]> {
-  return fetchJson<ProposicaoLegislativa[]>("/legislative/propositions", []);
+export async function getLegislativePropositions(signal?: AbortSignal): Promise<ProposicaoLegislativa[]> {
+  return fetchJson<ProposicaoLegislativa[]>("/legislative/propositions", signal);
 }
 
-export async function getCompareMandates(mandate1: string, mandate2: string): Promise<CompareMandatesResponse | null> {
-  return fetchJson<CompareMandatesResponse | null>(
+export async function getCompareMandates(
+  mandate1: string,
+  mandate2: string,
+  signal?: AbortSignal
+): Promise<CompareMandatesResponse> {
+  return fetchJson<CompareMandatesResponse>(
     `/analytics/compare-mandates?mandate1=${encodeURIComponent(mandate1)}&mandate2=${encodeURIComponent(mandate2)}`,
-    null
+    signal
   );
 }
 
-export async function getPartyFidelity(): Promise<PartyFidelityResponse | null> {
-  return fetchJson<PartyFidelityResponse | null>("/analytics/party-fidelity", null);
+export async function getPartyFidelity(signal?: AbortSignal): Promise<PartyFidelityResponse> {
+  return fetchJson<PartyFidelityResponse>("/analytics/party-fidelity", signal);
 }
 
 export interface WagePoint {
@@ -461,8 +542,8 @@ export interface StateTransferItem {
   regiao: string;
   area_tematica: string;
   valor_pago_brl: number;
-  populacao_estimada: number;
-  valor_per_capita_brl: number;
+  populacao_estimada: number | null;
+  valor_per_capita_brl: number | null;
 }
 
 export interface FederalTransfersResponse {
@@ -474,22 +555,29 @@ export interface FederalTransfersResponse {
   por_uf: StateTransferItem[];
 }
 
-export async function getWageDisparity(): Promise<WageDisparityResponse | null> {
-  return fetchJson<WageDisparityResponse | null>("/analytics/wage-disparity", null);
+export async function getWageDisparity(signal?: AbortSignal): Promise<WageDisparityResponse> {
+  return fetchJson<WageDisparityResponse>("/analytics/wage-disparity", signal);
 }
 
-export async function getCongressComposition(mandateId: string = "lula-2023"): Promise<CongressCompositionResponse | null> {
-  return fetchJson<CongressCompositionResponse | null>(
+export async function getCongressComposition(
+  mandateId: string,
+  signal?: AbortSignal
+): Promise<CongressCompositionResponse> {
+  return fetchJson<CongressCompositionResponse>(
     `/analytics/congress-composition?mandate_id=${encodeURIComponent(mandateId)}`,
-    null
+    signal
   );
 }
 
-export async function getFederalTransfers(mandateId: string = "lula-2023", area?: string): Promise<FederalTransfersResponse | null> {
+export async function getFederalTransfers(
+  mandateId: string,
+  area?: string,
+  signal?: AbortSignal
+): Promise<FederalTransfersResponse> {
   const url = area
     ? `/analytics/federal-transfers?mandate_id=${encodeURIComponent(mandateId)}&area=${encodeURIComponent(area)}`
     : `/analytics/federal-transfers?mandate_id=${encodeURIComponent(mandateId)}`;
-  return fetchJson<FederalTransfersResponse | null>(url, null);
+  return fetchJson<FederalTransfersResponse>(url, signal);
 }
 
 // ==========================================
@@ -528,6 +616,8 @@ export interface PropositionVotesResponse {
     data_hora: string;
     casa: string;
     aprovada: boolean;
+    is_votacao_secreta?: boolean;
+    placar?: { SIM: number; NAO: number; ABSTENCAO: number; TOTAL: number };
   } | null;
   sessoes_disponiveis?: Array<{
     id: string;
@@ -535,8 +625,14 @@ export interface PropositionVotesResponse {
     data_hora: string;
     casa: string;
     aprovada: boolean;
+    is_votacao_secreta?: boolean;
   }>;
+  is_votacao_secreta?: boolean;
+  aviso?: string;
+  placar?: { SIM: number; NAO: number; ABSTENCAO: number; TOTAL: number };
   total: number;
+  total_correspondente?: number;
+  truncado?: boolean;
   votos: VotoNominalItem[];
 }
 
@@ -545,8 +641,9 @@ export async function getPropositionVotes(
   house?: string,
   sessionId?: string,
   search?: string,
-  voteChoice?: string
-): Promise<PropositionVotesResponse | null> {
+  voteChoice?: string,
+  signal?: AbortSignal
+): Promise<PropositionVotesResponse> {
   const params = new URLSearchParams();
   if (house) params.append("house", house);
   if (sessionId) params.append("session_id", sessionId);
@@ -554,9 +651,9 @@ export async function getPropositionVotes(
   if (voteChoice) params.append("vote_choice", voteChoice);
 
   const query = params.toString() ? `?${params.toString()}` : "";
-  return fetchJson<PropositionVotesResponse | null>(
+  return fetchJson<PropositionVotesResponse>(
     `/legislative/propositions/${encodeURIComponent(propId)}/votes${query}`,
-    null
+    signal
   );
 }
 
@@ -617,10 +714,11 @@ export interface RemuneracaoItem {
   ano: number;
   mes: number;
   salario_bruto: number;
-  salario_liquido: number;
-  cota_ceap: number;
-  auxilio_moradia: number;
-  outros_beneficios: number;
+  // A fonte oficial só informa o bruto mensal (e o líquido do mês mais recente): o resto vem null.
+  salario_liquido: number | null;
+  cota_ceap: number | null;
+  auxilio_moradia: number | null;
+  outros_beneficios: number | null;
   fonte: string;
 }
 
@@ -832,12 +930,17 @@ export interface FinanciamentoCampanhaData {
 }
 
 export interface BasometroData {
-  taxa_governismo_pct: number;
+  /** `null` quando não há orientação de governo por votação (o backend não inventa baseline). */
+  taxa_governismo_pct: number | null;
   total_votacoes_analisadas: number;
-  votos_alinhados: number;
-  votos_divergentes: number;
-  classificacao: string;
+  votos_alinhados: number | null;
+  votos_divergentes: number | null;
+  classificacao: string | null;
   partido_sigla?: string;
+  /** Falso quando há menos votações com orientação do governo que `amostra_minima`. */
+  dados_suficientes?: boolean;
+  amostra_minima?: number;
+  metodologia?: string;
 }
 
 export interface RelevanciaLegislativaData {
@@ -850,17 +953,18 @@ export interface RelevanciaLegislativaData {
 }
 
 export interface RoiCidadaoData {
-  score: string;
-  nota: number;
-  custo_total_operacional: number;
-  custo_por_projeto_impacto: number;
+  /** `null` quando faltam CEAP, remuneração ou presenças para calcular o indicador. */
+  score: string | null;
+  nota: number | null;
+  custo_total_operacional: number | null;
+  custo_por_projeto_impacto: number | null;
   projetos_estruturantes: number;
   diagnostico: string;
 }
 
 export interface ConcentracaoCeapData {
   indice_hhi: number;
-  nivel_risco: "ALERTA" | "MODERADO" | "BAIXO";
+  nivel_risco: "ALERTA" | "MODERADO" | "BAIXO" | null;
   percentual_maior_fornecedor: number;
   maior_fornecedor: string | null;
   cnpj_maior_fornecedor: string | null;
@@ -868,29 +972,29 @@ export interface ConcentracaoCeapData {
 }
 
 export interface EnriquecimentoPatrimonialData {
-  delta_patrimonio: number;
-  salario_acumulado_estimado: number;
-  razao_patrimonio_renda: number;
-  compatibilidade: "COMPATÍVEL" | "MODERADO" | "ATÍPICO";
+  delta_patrimonio: number | null;
+  salario_acumulado_estimado: number | null;
+  razao_patrimonio_renda: number | null;
+  compatibilidade: "COMPATÍVEL" | "MODERADO" | "ATÍPICO" | null;
   diagnostico: string;
 }
 
 export interface EstabilidadePartidariaData {
   total_trocas: number;
-  anos_medio_por_partido: number;
-  classificacao: string;
-  taxa_governismo_pct: number;
+  anos_medio_por_partido: number | null;
+  classificacao: string | null;
+  taxa_governismo_pct: number | null;
   diagnostico: string;
 }
 
 export interface EficienciaEmendasData {
-  taxa_conversao_pct: number;
+  taxa_conversao_pct: number | null;
   total_empenhado: number;
   total_pago: number;
   percentual_pix: number;
   municipio_predileto: string | null;
   concentracao_municipio_predileto_pct: number;
-  classificacao: string;
+  classificacao: string | null;
   diagnostico: string;
 }
 
@@ -907,7 +1011,6 @@ export interface PoliticoDossier {
     id: string;
     nome_eleitoral: string;
     nome_civil: string;
-    cpf?: string | null;
     genero?: string | null;
     data_nascimento?: string | null;
     naturalidade?: string;
@@ -919,7 +1022,7 @@ export interface PoliticoDossier {
     email?: string | null;
     gabinete_sala?: string | null;
     gabinete_telefone?: string | null;
-    redes_sociais?: Record<string, any> | null;
+    redes_sociais?: Record<string, string | null> | null;
     camara_id?: number | null;
     senado_id?: number | null;
     possui_processos_declarados?: boolean;
@@ -928,12 +1031,12 @@ export interface PoliticoDossier {
   filiacoes_partidarias: FiliacaoHistorico[];
   remuneracao: {
     resumo: {
-      salario_bruto_atual: number;
-      salario_liquido_atual: number;
-      media_ceap_mensal: number;
-      total_bruto_2023: number;
-      total_ceap_2023: number;
-      total_beneficios_2023: number;
+      salario_bruto_atual: number | null;
+      salario_liquido_atual: number | null;
+      media_ceap_mensal: number | null;
+      total_bruto_2023: number | null;
+      total_ceap_2023: number | null;
+      total_beneficios_2023: number | null;
     };
     historico: RemuneracaoItem[];
   };
@@ -958,9 +1061,15 @@ export interface PoliticoDossier {
     total_sessoes: number;
     total_presencas: number;
     faltas_justificadas: number;
-    faltas_nao_justificadas: number;
-    taxa_presenca_pct: number;
+    /** null no Senado: a fonte (votações nominais) não distingue ausência não justificada. */
+    faltas_nao_justificadas: number | null;
+    taxa_presenca_pct: number | null;
     amostra_faltas: FaltaRegistro[];
+    periodo_inicio?: string | null;
+    periodo_fim?: string | null;
+    /** Unidade da contagem (ex.: "dia com sessão deliberativa"). */
+    unidade?: string | null;
+    fonte?: string | null;
   };
   evolucao_patrimonial?: EvolucaoPatrimonial;
   indices_inteligencia?: IndicesInteligenciaData;
@@ -985,15 +1094,21 @@ export interface ClasseSocialItem {
   renda_familiar_min_brl: number;
   renda_familiar_max_brl: number | null;
   faixa_renda_formatada: string;
+  /** Pessoas por classe de renda domiciliar total (PNAD) ou estimativa de referência. */
   percentual_populacao: number;
+  /** Domicílios por classe de renda domiciliar total; só presente quando a origem é a PNAD. */
+  percentual_domicilios?: number;
   descricao: string;
   cor: string;
   destaque: string;
 }
 
 export interface ClassesSociaisResponse {
+  /** `pnad`: calculado dos microdados da PNAD Contínua; `referencia_fixa`: estimativa fixa rotulada. */
+  origem?: "pnad" | "referencia_fixa";
   salario_minimo_referencia_brl: number;
   ano_referencia: number;
+  anos_disponiveis?: number[];
   fonte: string;
   resumo_populacional: {
     maioria_populacao_acumulada_d_e_pct: number;
@@ -1040,33 +1155,51 @@ export async function searchPoliticians(
   office?: string,
   party?: string,
   uf?: string,
-  limit: number = 80
-): Promise<PoliticoSearchResponse | null> {
+  limit: number = 80,
+  mandateIdOrSignal?: string | AbortSignal,
+  signal?: AbortSignal
+): Promise<PoliticoSearchResponse> {
+  const actualSignal = mandateIdOrSignal instanceof AbortSignal ? mandateIdOrSignal : signal;
+  const mandateId = typeof mandateIdOrSignal === "string" ? mandateIdOrSignal : undefined;
+
   const params = new URLSearchParams();
   if (search) params.append("search", search);
   if (office) params.append("office", office);
   if (party) params.append("party", party);
   if (uf) params.append("uf", uf);
+  if (mandateId) params.append("mandate_id", mandateId);
   params.append("limit", limit.toString());
 
-  return fetchJson<PoliticoSearchResponse | null>(`/politicians?${params.toString()}`, null);
+  return fetchJson<PoliticoSearchResponse>(`/politicians?${params.toString()}`, actualSignal);
 }
 
-export async function getPoliticianDossier(politicianId: string): Promise<PoliticoDossier | null> {
-  return fetchJson<PoliticoDossier | null>(`/politicians/${encodeURIComponent(politicianId)}`, null);
+export async function getPoliticianDossier(politicianId: string, signal?: AbortSignal): Promise<PoliticoDossier> {
+  return fetchJson<PoliticoDossier>(`/politicians/${encodeURIComponent(politicianId)}`, signal);
 }
 
-export async function getSocialIndicators(): Promise<IndicadorSocialAnual[]> {
-  return fetchJson<IndicadorSocialAnual[]>("/analytics/social-indicators", []);
+export async function getSocialIndicators(signal?: AbortSignal): Promise<IndicadorSocialAnual[]> {
+  return cachedFetch(
+    "social-indicators",
+    () => fetchJson<IndicadorSocialAnual[]>("/analytics/social-indicators"),
+    signal
+  );
 }
 
-export async function getSocialClasses(): Promise<ClassesSociaisResponse | null> {
-  return fetchJson<ClassesSociaisResponse | null>("/analytics/social-classes", null);
-}
-
-export async function getSocialElectionsCorrelation(ano?: number): Promise<SocialElectionsResponse | null> {
+export async function getSocialClasses(signal?: AbortSignal, ano?: number): Promise<ClassesSociaisResponse> {
   const q = ano ? `?ano=${ano}` : "";
-  return fetchJson<SocialElectionsResponse | null>(`/analytics/social-elections${q}`, null);
+  return cachedFetch(
+    `social-classes${ano ? `:${ano}` : ""}`,
+    () => fetchJson<ClassesSociaisResponse>(`/analytics/social-classes${q}`),
+    signal
+  );
+}
+
+export async function getSocialElectionsCorrelation(
+  ano?: number,
+  signal?: AbortSignal
+): Promise<SocialElectionsResponse> {
+  const q = ano ? `?ano=${ano}` : "";
+  return fetchJson<SocialElectionsResponse>(`/analytics/social-elections${q}`, signal);
 }
 
 // ==========================================
@@ -1192,14 +1325,15 @@ export async function getAuthorsProductivityRanking(
   limit: number = 20,
   partido?: string,
   setor?: string,
-  criterio: "efetividade" | "volume" | string = "efetividade"
+  criterio: "efetividade" | "volume" | string = "efetividade",
+  signal?: AbortSignal
 ): Promise<AuthorProductivityItem[]> {
   const q = new URLSearchParams();
   q.append("limit", String(limit));
   if (partido && partido.toUpperCase() !== "TODOS") q.append("partido", partido.trim());
   if (setor && setor.toUpperCase() !== "TODOS") q.append("setor", setor.trim());
   if (criterio) q.append("criterio", criterio.trim());
-  return fetchJson<AuthorProductivityItem[]>(`/legislative/ranking/authors?${q.toString()}`, []);
+  return fetchJson<AuthorProductivityItem[]>(`/legislative/ranking/authors?${q.toString()}`, signal);
 }
 
 export interface PartidoCatalogoItem {
@@ -1218,19 +1352,22 @@ export interface PartidoCatalogoItem {
   cor_hex: string;
 }
 
-export async function getParties(): Promise<PartidoCatalogoItem[]> {
-  return fetchJson<PartidoCatalogoItem[]>("/parties", []);
+export async function getParties(signal?: AbortSignal): Promise<PartidoCatalogoItem[]> {
+  return cachedFetch("parties", () => fetchJson<PartidoCatalogoItem[]>("/parties"), signal);
 }
 
-export async function getLegislativeExplorer(params?: {
-  search?: string;
-  setor?: string;
-  tipo?: string;
-  status?: string;
-  apenas_votadas?: boolean;
-  page?: number;
-  limit?: number;
-}): Promise<LegislativeExplorerResponse | null> {
+export async function getLegislativeExplorer(
+  params?: {
+    search?: string;
+    setor?: string;
+    tipo?: string;
+    status?: string;
+    apenas_votadas?: boolean;
+    page?: number;
+    limit?: number;
+  },
+  signal?: AbortSignal
+): Promise<LegislativeExplorerResponse> {
   const q = new URLSearchParams();
   if (params?.search) q.append("search", params.search);
   if (params?.setor) q.append("setor", params.setor);
@@ -1240,17 +1377,18 @@ export async function getLegislativeExplorer(params?: {
   if (params?.page) q.append("page", String(params.page));
   if (params?.limit) q.append("limit", String(params.limit));
 
-  return fetchJson<LegislativeExplorerResponse | null>(`/legislative/explorer?${q.toString()}`, null);
+  return fetchJson<LegislativeExplorerResponse>(`/legislative/explorer?${q.toString()}`, signal);
 }
 
 export async function getPropositionNominalVotesSplit(
   propId: string,
-  search?: string
-): Promise<PropositionNominalVotesSplitResponse | null> {
+  search?: string,
+  signal?: AbortSignal
+): Promise<PropositionNominalVotesSplitResponse> {
   const q = search ? `?search=${encodeURIComponent(search)}` : "";
-  return fetchJson<PropositionNominalVotesSplitResponse | null>(
+  return fetchJson<PropositionNominalVotesSplitResponse>(
     `/legislative/propositions/${encodeURIComponent(propId)}/nominal-votes${q}`,
-    null
+    signal
   );
 }
 
@@ -1313,9 +1451,12 @@ export interface CalendarioVotacoesResponse {
   dias: DiaVotacaoItem[];
 }
 
-export async function getVotingCalendar(year?: number): Promise<CalendarioVotacoesResponse | null> {
+export async function getVotingCalendar(
+  year?: number,
+  signal?: AbortSignal
+): Promise<CalendarioVotacoesResponse> {
   const query = year ? `?year=${year}` : "";
-  return fetchJson<CalendarioVotacoesResponse | null>(`/legislative/calendar${query}`, null);
+  return fetchJson<CalendarioVotacoesResponse>(`/legislative/calendar${query}`, signal);
 }
 
 // ==========================================
@@ -1342,16 +1483,17 @@ export interface ConsultaPublicaItem {
   destaque?: boolean;
 }
 
-export async function getConsultasPublicas(casa?: string, forceRefresh?: boolean): Promise<ConsultaPublicaItem[]> {
+export async function getConsultasPublicas(
+  casa?: string,
+  forceRefresh?: boolean,
+  signal?: AbortSignal
+): Promise<ConsultaPublicaItem[]> {
   const params = new URLSearchParams();
   if (casa) params.set("casa", casa);
   if (forceRefresh) params.set("force_refresh", "true");
   const query = params.toString() ? `?${params.toString()}` : "";
-  return fetchJson<ConsultaPublicaItem[]>(`/cidadania/consultas${query}`, []);
+  return fetchJson<ConsultaPublicaItem[]>(`/cidadania/consultas${query}`, signal);
 }
-
-
-
 
 
 export interface PresidentialMandate {
@@ -1378,10 +1520,168 @@ export interface MandateIndicatorData {
   [key: string]: string | number | undefined;
 }
 
-export async function getPresidentialMandates(): Promise<PresidentialMandate[]> {
-  return fetchJson<PresidentialMandate[]>("/executivo/mandates", []);
+export async function getPresidentialMandates(signal?: AbortSignal): Promise<PresidentialMandate[]> {
+  return fetchJson<PresidentialMandate[]>("/executivo/mandates", signal);
 }
 
-export async function getMandateIndicators(mandateId: string): Promise<MandateIndicatorData[]> {
-  return fetchJson<MandateIndicatorData[]>(`/executivo/mandates/${mandateId}/indicators`, []);
+export async function getMandateIndicators(
+  mandateId: string,
+  signal?: AbortSignal
+): Promise<MandateIndicatorData[]> {
+  return fetchJson<MandateIndicatorData[]>(`/executivo/mandates/${encodeURIComponent(mandateId)}/indicators`, signal);
+}
+
+export interface KPIStat {
+  primeiro: number | null;
+  ultimo: number | null;
+  minimo: number | null;
+  maximo: number | null;
+  media: number | null;
+  variacao_pp?: number | null;
+  total_acumulado?: number | null;
+}
+
+export interface MandateSummary {
+  mandate_id: string;
+  nome: string;
+  partido: string;
+  inicio: string;
+  fim: string | null;
+  foto_url: string | null;
+  total_meses: number;
+  kpis: {
+    inflacao_ipca?: KPIStat;
+    desemprego_pnad?: KPIStat;
+    aprovacao_popular?: KPIStat;
+    cambio_usd_brl?: KPIStat;
+    selic_meta?: KPIStat;
+    emendas_bilhoes?: KPIStat;
+  };
+}
+
+export async function getMandateSummary(mandateId: string, signal?: AbortSignal): Promise<MandateSummary> {
+  return fetchJson<MandateSummary>(`/executivo/mandates/${encodeURIComponent(mandateId)}/summary`, signal);
+}
+
+// ─── Emendas Orçamentárias (APIs Oficiais e Tradução Humanizada) ───────────────
+
+export interface DicionarioEmendas {
+  termos_orcamentarios: Record<string, { termo_tecnico: string; traducao: string; explicacao: string }>;
+  linha_do_tempo: Array<{ etapa: number; nome: string; status: string; descricao: string }>;
+  areas_tematicas: Record<string, { icone: string; rotulo: string }>;
+}
+
+export interface EmendasResumoResponse {
+  estatisticas_gerais: {
+    total_emendas: number;
+    total_reservado_empenhado_brl: number;
+    total_entregue_pago_brl: number;
+    taxa_execucao_pago_pct: number;
+  };
+  por_tipo_autor: Record<
+    string,
+    {
+      total_empenhado: number;
+      total_pago: number;
+      quantidade: number;
+      categoria: string;
+      icone: string;
+      descricao: string;
+    }
+  >;
+  por_area_tematica: Array<{
+    area: string;
+    rotulo: string;
+    icone: string;
+    total_empenhado: number;
+    total_pago: number;
+    quantidade: number;
+  }>;
+  por_ano: Record<string, { total_empenhado: number; total_pago: number; quantidade: number }>;
+  top_ufs: Array<{ uf: string; total_empenhado: number; total_pago: number; quantidade: number }>;
+  dicionario: DicionarioEmendas;
+}
+
+export interface EmendasLocalidadeResponse {
+  localidade_pesquisada: string;
+  total_emendas_encontradas: number;
+  total_reservado_empenhado_brl: number;
+  total_entregue_pago_brl: number;
+  taxa_execucao_pct: number;
+  divisao_por_area: Array<{
+    area: string;
+    rotulo: string;
+    icone: string;
+    total_empenhado: number;
+    total_pago: number;
+    quantidade: number;
+  }>;
+  emendas: Array<{
+    codigo_emenda: string;
+    ano: number;
+    area_tematica: string;
+    area_rotulo: string;
+    area_icone: string;
+    valor_reservado_empenhado: number;
+    valor_entregue_pago: number;
+    estagio: string;
+    tipo_recurso: string;
+    autor: {
+      tipo_autor: string;
+      categoria: string;
+      nome_tecnico: string;
+      nome_amigavel: string;
+      descricao_amigavel: string;
+      icone: string;
+    };
+  }>;
+  dicionario: DicionarioEmendas;
+}
+
+export interface EmendasAutorResponse {
+  autor_pesquisado: string;
+  perfil_autor: {
+    tipo_autor: string;
+    categoria: string;
+    nome_tecnico: string;
+    nome_amigavel: string;
+    descricao_amigavel: string;
+    icone: string;
+  };
+  total_emendas_enviadas: number;
+  total_reservado_empenhado_brl: number;
+  total_entregue_pago_brl: number;
+  taxa_execucao_pct: number;
+  top_destinos: Array<{ localidade: string; total_empenhado: number; total_pago: number; quantidade: number }>;
+  por_area_tematica: Array<{
+    area: string;
+    rotulo: string;
+    icone: string;
+    total_empenhado: number;
+    total_pago: number;
+    quantidade: number;
+  }>;
+  emendas: Array<{
+    codigo_emenda: string;
+    ano: number;
+    localidade_destino: string;
+    area_tematica: string;
+    area_rotulo: string;
+    area_icone: string;
+    valor_reservado_empenhado: number;
+    valor_entregue_pago: number;
+    estagio: string;
+  }>;
+}
+
+export async function getEmendasResumo(signal?: AbortSignal): Promise<EmendasResumoResponse> {
+  return fetchJson<EmendasResumoResponse>("/emendas/resumo", signal);
+}
+
+export async function getEmendasPorLocalidade(localidade: string, limit = 50, signal?: AbortSignal): Promise<EmendasLocalidadeResponse> {
+  return fetchJson<EmendasLocalidadeResponse>(`/emendas/localidade/${encodeURIComponent(localidade)}?limit=${limit}`, signal);
+}
+
+export async function getEmendasPorAutor(autor: string, limit = 50, signal?: AbortSignal): Promise<EmendasAutorResponse> {
+  return fetchJson<EmendasAutorResponse>(`/emendas/autor/${encodeURIComponent(autor)}?limit=${limit}`, signal);
 }

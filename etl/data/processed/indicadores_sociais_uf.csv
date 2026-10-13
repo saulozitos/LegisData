@@ -1,163 +1,514 @@
-ano,uf,estado_nome,regiao,taxa_analfabetismo_pct,extrema_pobreza_pct,inseguranca_alimentar_pct,indice_gini
-2002,AC,Acre,Norte,20.23,17.92,13.72,0.591
-2002,AL,Alagoas,Nordeste,31.54,23.68,17.15,0.603
-2002,AP,Amapá,Norte,12.5,17.28,14.21,0.569
-2002,AM,Amazonas,Norte,13.09,19.2,16.17,0.603
-2002,BA,Bahia,Nordeste,24.99,19.84,14.7,0.603
-2002,CE,Ceará,Nordeste,24.39,19.2,14.21,0.58
-2002,DF,Distrito Federal,Centro-Oeste,4.17,7.04,7.35,0.648
-2002,ES,Espírito Santo,Sudeste,10.12,9.6,8.33,0.557
-2002,GO,Goiás,Centro-Oeste,10.12,8.96,8.33,0.534
-2002,MA,Maranhão,Nordeste,29.75,24.96,16.66,0.614
-2002,MT,Mato Grosso,Centro-Oeste,11.3,8.96,8.33,0.534
-2002,MS,Mato Grosso do Sul,Centro-Oeste,10.71,9.6,8.82,0.546
-2002,MG,Minas Gerais,Sudeste,10.71,10.24,8.82,0.546
-2002,PA,Pará,Norte,17.85,18.56,15.19,0.58
-2002,PB,Paraíba,Nordeste,27.37,19.46,15.19,0.591
-2002,PR,Paraná,Sul,7.74,7.68,6.37,0.534
-2002,PE,Pernambuco,Nordeste,25.59,18.94,15.68,0.603
-2002,PI,Piauí,Nordeste,28.56,21.12,15.68,0.591
-2002,RJ,Rio de Janeiro,Sudeste,5.95,11.52,10.78,0.603
-2002,RN,Rio Grande do Norte,Nordeste,23.21,17.92,13.72,0.58
-2002,RS,Rio Grande do Sul,Sul,5.36,7.04,6.37,0.523
-2002,RO,Rondônia,Norte,13.09,12.16,10.78,0.546
-2002,RR,Roraima,Norte,11.9,16.64,14.21,0.58
-2002,SC,Santa Catarina,Sul,4.76,5.12,4.9,0.489
-2002,SP,São Paulo,Sudeste,5.36,7.68,6.86,0.58
-2002,SE,Sergipe,Nordeste,23.8,18.56,14.7,0.591
-2002,TO,Tocantins,Norte,19.04,14.08,11.76,0.557
-2006,AC,Acre,Norte,17.68,11.62,8.12,0.561
-2006,AL,Alagoas,Nordeste,27.56,15.36,10.15,0.572
-2006,AP,Amapá,Norte,10.92,11.21,8.41,0.54
-2006,AM,Amazonas,Norte,11.44,12.45,9.57,0.572
-2006,BA,Bahia,Nordeste,21.84,12.87,8.7,0.572
-2006,CE,Ceará,Nordeste,21.32,12.45,8.41,0.55
-2006,DF,Distrito Federal,Centro-Oeste,3.64,4.57,4.35,0.615
-2006,ES,Espírito Santo,Sudeste,8.84,6.23,4.93,0.529
-2006,GO,Goiás,Centro-Oeste,8.84,5.81,4.93,0.507
-2006,MA,Maranhão,Nordeste,26.0,16.19,9.86,0.583
-2006,MT,Mato Grosso,Centro-Oeste,9.88,5.81,4.93,0.507
-2006,MS,Mato Grosso do Sul,Centro-Oeste,9.36,6.23,5.22,0.518
-2006,MG,Minas Gerais,Sudeste,9.36,6.64,5.22,0.518
-2006,PA,Pará,Norte,15.6,12.04,8.99,0.55
-2006,PB,Paraíba,Nordeste,23.92,12.62,8.99,0.561
-2006,PR,Paraná,Sul,6.76,4.98,3.77,0.507
-2006,PE,Pernambuco,Nordeste,22.36,12.28,9.28,0.572
-2006,PI,Piauí,Nordeste,24.96,13.7,9.28,0.561
-2006,RJ,Rio de Janeiro,Sudeste,5.2,7.47,6.38,0.572
-2006,RN,Rio Grande do Norte,Nordeste,20.28,11.62,8.12,0.55
-2006,RS,Rio Grande do Sul,Sul,4.68,4.57,3.77,0.496
-2006,RO,Rondônia,Norte,11.44,7.89,6.38,0.518
-2006,RR,Roraima,Norte,10.4,10.79,8.41,0.55
-2006,SC,Santa Catarina,Sul,4.16,3.32,2.9,0.464
-2006,SP,São Paulo,Sudeste,4.68,4.98,4.06,0.55
-2006,SE,Sergipe,Nordeste,20.8,12.04,8.7,0.561
-2006,TO,Tocantins,Norte,16.64,9.13,6.96,0.529
-2010,AC,Acre,Norte,16.32,8.12,6.44,0.532
-2010,AL,Alagoas,Nordeste,25.44,10.73,8.05,0.542
-2010,AP,Amapá,Norte,10.08,7.83,6.67,0.512
-2010,AM,Amazonas,Norte,10.56,8.7,7.59,0.542
-2010,BA,Bahia,Nordeste,20.16,8.99,6.9,0.542
-2010,CE,Ceará,Nordeste,19.68,8.7,6.67,0.522
-2010,DF,Distrito Federal,Centro-Oeste,3.36,3.19,3.45,0.583
-2010,ES,Espírito Santo,Sudeste,8.16,4.35,3.91,0.501
-2010,GO,Goiás,Centro-Oeste,8.16,4.06,3.91,0.481
-2010,MA,Maranhão,Nordeste,24.0,11.31,7.82,0.553
-2010,MT,Mato Grosso,Centro-Oeste,9.12,4.06,3.91,0.481
-2010,MS,Mato Grosso do Sul,Centro-Oeste,8.64,4.35,4.14,0.491
-2010,MG,Minas Gerais,Sudeste,8.64,4.64,4.14,0.491
-2010,PA,Pará,Norte,14.4,8.41,7.13,0.522
-2010,PB,Paraíba,Nordeste,22.08,8.82,7.13,0.532
-2010,PR,Paraná,Sul,6.24,3.48,2.99,0.481
-2010,PE,Pernambuco,Nordeste,20.64,8.58,7.36,0.542
-2010,PI,Piauí,Nordeste,23.04,9.57,7.36,0.532
-2010,RJ,Rio de Janeiro,Sudeste,4.8,5.22,5.06,0.542
-2010,RN,Rio Grande do Norte,Nordeste,18.72,8.12,6.44,0.522
-2010,RS,Rio Grande do Sul,Sul,4.32,3.19,2.99,0.471
-2010,RO,Rondônia,Norte,10.56,5.51,5.06,0.491
-2010,RR,Roraima,Norte,9.6,7.54,6.67,0.522
-2010,SC,Santa Catarina,Sul,3.84,2.32,2.3,0.44
-2010,SP,São Paulo,Sudeste,4.32,3.48,3.22,0.522
-2010,SE,Sergipe,Nordeste,19.2,8.41,6.9,0.532
-2010,TO,Tocantins,Norte,15.36,6.38,5.52,0.501
-2014,AC,Acre,Norte,13.6,3.92,4.2,0.492
-2014,AL,Alagoas,Nordeste,21.2,5.18,5.25,0.501
-2014,AP,Amapá,Norte,8.4,3.78,4.35,0.473
-2014,AM,Amazonas,Norte,8.8,4.2,4.95,0.501
-2014,BA,Bahia,Nordeste,16.8,4.34,4.5,0.501
-2014,CE,Ceará,Nordeste,16.4,4.2,4.35,0.482
-2014,DF,Distrito Federal,Centro-Oeste,2.8,1.54,2.25,0.539
-2014,ES,Espírito Santo,Sudeste,6.8,2.1,2.55,0.464
-2014,GO,Goiás,Centro-Oeste,6.8,1.96,2.55,0.445
-2014,MA,Maranhão,Nordeste,20.0,5.46,5.1,0.511
-2014,MT,Mato Grosso,Centro-Oeste,7.6,1.96,2.55,0.445
-2014,MS,Mato Grosso do Sul,Centro-Oeste,7.2,2.1,2.7,0.454
-2014,MG,Minas Gerais,Sudeste,7.2,2.24,2.7,0.454
-2014,PA,Pará,Norte,12.0,4.06,4.65,0.482
-2014,PB,Paraíba,Nordeste,18.4,4.26,4.65,0.492
-2014,PR,Paraná,Sul,5.2,1.68,1.95,0.445
-2014,PE,Pernambuco,Nordeste,17.2,4.14,4.8,0.501
-2014,PI,Piauí,Nordeste,19.2,4.62,4.8,0.492
-2014,RJ,Rio de Janeiro,Sudeste,4.0,2.52,3.3,0.501
-2014,RN,Rio Grande do Norte,Nordeste,15.6,3.92,4.2,0.482
-2014,RS,Rio Grande do Sul,Sul,3.6,1.54,1.95,0.435
-2014,RO,Rondônia,Norte,8.8,2.66,3.3,0.454
-2014,RR,Roraima,Norte,8.0,3.64,4.35,0.482
-2014,SC,Santa Catarina,Sul,3.2,1.12,1.5,0.407
-2014,SP,São Paulo,Sudeste,3.6,1.68,2.1,0.482
-2014,SE,Sergipe,Nordeste,16.0,4.06,4.5,0.492
-2014,TO,Tocantins,Norte,12.8,3.08,3.6,0.464
-2018,AC,Acre,Norte,11.56,7.14,8.12,0.541
-2018,AL,Alagoas,Nordeste,18.02,9.44,10.15,0.551
-2018,AP,Amapá,Norte,7.14,6.88,8.41,0.52
-2018,AM,Amazonas,Norte,7.48,7.65,9.57,0.551
-2018,BA,Bahia,Nordeste,14.28,7.9,8.7,0.551
-2018,CE,Ceará,Nordeste,13.94,7.65,8.41,0.531
-2018,DF,Distrito Federal,Centro-Oeste,2.38,2.81,4.35,0.593
-2018,ES,Espírito Santo,Sudeste,5.78,3.82,4.93,0.51
-2018,GO,Goiás,Centro-Oeste,5.78,3.57,4.93,0.489
-2018,MA,Maranhão,Nordeste,17.0,9.94,9.86,0.562
-2018,MT,Mato Grosso,Centro-Oeste,6.46,3.57,4.93,0.489
-2018,MS,Mato Grosso do Sul,Centro-Oeste,6.12,3.82,5.22,0.499
-2018,MG,Minas Gerais,Sudeste,6.12,4.08,5.22,0.499
-2018,PA,Pará,Norte,10.2,7.39,8.99,0.531
-2018,PB,Paraíba,Nordeste,15.64,7.75,8.99,0.541
-2018,PR,Paraná,Sul,4.42,3.06,3.77,0.489
-2018,PE,Pernambuco,Nordeste,14.62,7.55,9.28,0.551
-2018,PI,Piauí,Nordeste,16.32,8.41,9.28,0.541
-2018,RJ,Rio de Janeiro,Sudeste,3.4,4.59,6.38,0.551
-2018,RN,Rio Grande do Norte,Nordeste,13.26,7.14,8.12,0.531
-2018,RS,Rio Grande do Sul,Sul,3.06,2.81,3.77,0.479
-2018,RO,Rondônia,Norte,7.48,4.84,6.38,0.499
-2018,RR,Roraima,Norte,6.8,6.63,8.41,0.531
-2018,SC,Santa Catarina,Sul,2.72,2.04,2.9,0.447
-2018,SP,São Paulo,Sudeste,3.06,3.06,4.06,0.531
-2018,SE,Sergipe,Nordeste,13.6,7.39,8.7,0.541
-2018,TO,Tocantins,Norte,10.88,5.61,6.96,0.51
-2022,AC,Acre,Norte,9.52,6.44,21.7,0.52
-2022,AL,Alagoas,Nordeste,14.84,8.51,27.12,0.53
-2022,AP,Amapá,Norte,5.88,6.21,22.47,0.5
-2022,AM,Amazonas,Norte,6.16,6.9,25.57,0.53
-2022,BA,Bahia,Nordeste,11.76,7.13,23.25,0.53
-2022,CE,Ceará,Nordeste,11.48,6.9,22.47,0.51
-2022,DF,Distrito Federal,Centro-Oeste,1.96,2.53,11.62,0.57
-2022,ES,Espírito Santo,Sudeste,4.76,3.45,13.17,0.49
-2022,GO,Goiás,Centro-Oeste,4.76,3.22,13.17,0.47
-2022,MA,Maranhão,Nordeste,14.0,8.97,26.35,0.54
-2022,MT,Mato Grosso,Centro-Oeste,5.32,3.22,13.17,0.47
-2022,MS,Mato Grosso do Sul,Centro-Oeste,5.04,3.45,13.95,0.48
-2022,MG,Minas Gerais,Sudeste,5.04,3.68,13.95,0.48
-2022,PA,Pará,Norte,8.4,6.67,24.03,0.51
-2022,PB,Paraíba,Nordeste,12.88,6.99,24.03,0.52
-2022,PR,Paraná,Sul,3.64,2.76,10.08,0.47
-2022,PE,Pernambuco,Nordeste,12.04,6.81,24.8,0.53
-2022,PI,Piauí,Nordeste,13.44,7.59,24.8,0.52
-2022,RJ,Rio de Janeiro,Sudeste,2.8,4.14,17.05,0.53
-2022,RN,Rio Grande do Norte,Nordeste,10.92,6.44,21.7,0.51
-2022,RS,Rio Grande do Sul,Sul,2.52,2.53,10.08,0.46
-2022,RO,Rondônia,Norte,6.16,4.37,17.05,0.48
-2022,RR,Roraima,Norte,5.6,5.98,22.47,0.51
-2022,SC,Santa Catarina,Sul,2.24,1.84,7.75,0.43
-2022,SP,São Paulo,Sudeste,2.52,2.76,10.85,0.51
-2022,SE,Sergipe,Nordeste,11.2,6.67,23.25,0.52
-2022,TO,Tocantins,Norte,8.96,5.06,18.6,0.49
+ano,uf,estado_nome,regiao,taxa_analfabetismo_pct,extrema_pobreza_pct,pobreza_pct,inseguranca_alimentar_pct,indice_gini,is_synthetic,fonte
+2004,AC,Acre,Norte,,,,14.79,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,AC,Acre,Norte,,,,,0.562,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,AC,Acre,Norte,,,,,0.525,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,AC,Acre,Norte,,,,,0.572,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,AC,Acre,Norte,,,,,0.503,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,AC,Acre,Norte,,19.0,56.2,,0.566,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,AC,Acre,Norte,,16.8,55.2,,0.554,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,AC,Acre,Norte,,15.1,53.6,,0.529,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,AC,Acre,Norte,,15.6,54.5,,0.55,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,AC,Acre,Norte,12.5,21.1,58.9,,0.564,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,AC,Acre,Norte,11.7,22.3,57.2,,0.547,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,AC,Acre,Norte,11.6,19.5,52.7,,0.559,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,AC,Acre,Norte,11.1,22.0,53.2,,0.56,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,AC,Acre,Norte,,13.3,50.3,,0.515,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,AC,Acre,Norte,,21.0,56.0,,0.539,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,AC,Acre,Norte,8.7,17.6,53.0,,0.523,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,AC,Acre,Norte,9.6,15.9,53.7,5.8,0.51,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,AC,Acre,Norte,9.4,10.2,49.3,5.9,0.502,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,AC,Acre,Norte,8.9,,,,0.509,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,AL,Alagoas,Nordeste,,,,9.27,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,AL,Alagoas,Nordeste,,,,,0.569,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,AL,Alagoas,Nordeste,,,,,0.544,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,AL,Alagoas,Nordeste,,,,,0.532,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,AL,Alagoas,Nordeste,,,,,0.478,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,AL,Alagoas,Nordeste,,17.5,62.8,,0.503,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,AL,Alagoas,Nordeste,,18.4,62.7,,0.51,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,AL,Alagoas,Nordeste,,17.4,59.2,,0.527,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,AL,Alagoas,Nordeste,,18.2,62.2,,0.525,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,AL,Alagoas,Nordeste,18.3,19.2,60.8,,0.523,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,AL,Alagoas,Nordeste,17.3,20.9,62.0,,0.525,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,AL,Alagoas,Nordeste,16.2,23.5,61.9,,0.55,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,AL,Alagoas,Nordeste,15.9,19.1,60.4,,0.525,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,AL,Alagoas,Nordeste,,16.2,57.0,,0.509,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,AL,Alagoas,Nordeste,,20.7,62.2,,0.526,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,AL,Alagoas,Nordeste,14.3,16.0,56.2,,0.498,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,AL,Alagoas,Nordeste,14.1,11.2,48.7,5.7,0.486,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,AL,Alagoas,Nordeste,14.2,9.4,47.2,5.0,0.516,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,AL,Alagoas,Nordeste,13.1,,,,0.512,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,AP,Amapá,Norte,,,,13.16,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,AP,Amapá,Norte,,,,,0.485,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,AP,Amapá,Norte,,,,,0.442,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,AP,Amapá,Norte,,,,,0.488,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,AP,Amapá,Norte,,,,,0.479,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,AP,Amapá,Norte,,14.6,55.1,,0.528,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,AP,Amapá,Norte,,9.5,49.4,,0.513,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,AP,Amapá,Norte,,10.5,49.2,,0.523,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,AP,Amapá,Norte,,15.0,51.2,,0.547,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,AP,Amapá,Norte,4.7,16.8,54.2,,0.554,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,AP,Amapá,Norte,4.9,15.8,59.7,,0.589,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,AP,Amapá,Norte,5.7,15.5,57.0,,0.548,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,AP,Amapá,Norte,5.1,12.2,55.1,,0.513,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,AP,Amapá,Norte,,13.3,51.2,,0.5,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,AP,Amapá,Norte,,15.2,59.9,,0.53,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,AP,Amapá,Norte,4.9,11.8,50.0,,0.531,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,AP,Amapá,Norte,5.7,6.3,35.7,8.4,0.491,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,AP,Amapá,Norte,5.4,4.9,41.8,9.3,0.509,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,AP,Amapá,Norte,4.5,,,,0.496,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,AM,Amazonas,Norte,,,,9.39,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,AM,Amazonas,Norte,,,,,0.479,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,AM,Amazonas,Norte,,,,,0.489,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,AM,Amazonas,Norte,,,,,0.485,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,AM,Amazonas,Norte,,,,,0.492,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,AM,Amazonas,Norte,,17.1,55.7,,0.59,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,AM,Amazonas,Norte,,16.1,56.0,,0.582,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,AM,Amazonas,Norte,,14.4,54.2,,0.562,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,AM,Amazonas,Norte,,16.9,55.1,,0.553,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,AM,Amazonas,Norte,6.6,20.7,62.4,,0.559,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,AM,Amazonas,Norte,5.9,19.7,60.1,,0.592,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,AM,Amazonas,Norte,5.5,20.0,58.7,,0.545,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,AM,Amazonas,Norte,5.1,21.3,58.9,,0.567,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,AM,Amazonas,Norte,,16.7,55.3,,0.533,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,AM,Amazonas,Norte,,21.2,60.9,,0.541,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,AM,Amazonas,Norte,4.9,15.7,57.3,,0.509,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,AM,Amazonas,Norte,5.0,9.7,50.5,9.1,0.511,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,AM,Amazonas,Norte,4.8,7.2,44.2,7.2,0.474,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,AM,Amazonas,Norte,4.3,,,,0.488,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,BA,Bahia,Nordeste,,,,12.08,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,BA,Bahia,Nordeste,,,,,0.529,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,BA,Bahia,Nordeste,,,,,0.534,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,BA,Bahia,Nordeste,,,,,0.533,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,BA,Bahia,Nordeste,,,,,0.523,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,BA,Bahia,Nordeste,,19.2,58.2,,0.562,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,BA,Bahia,Nordeste,,16.6,55.5,,0.535,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,BA,Bahia,Nordeste,,13.0,52.1,,0.528,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,BA,Bahia,Nordeste,,15.0,52.0,,0.521,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,BA,Bahia,Nordeste,12.3,17.4,56.3,,0.537,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,BA,Bahia,Nordeste,12.2,20.0,57.4,,0.586,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,BA,Bahia,Nordeste,12.2,19.1,56.3,,0.548,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,BA,Bahia,Nordeste,12.2,18.7,54.0,,0.555,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,BA,Bahia,Nordeste,,13.5,50.5,,0.532,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,BA,Bahia,Nordeste,,20.7,58.9,,0.543,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,BA,Bahia,Nordeste,10.5,14.9,53.3,,0.507,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,BA,Bahia,Nordeste,10.4,12.0,49.4,6.1,0.485,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,BA,Bahia,Nordeste,9.9,8.1,41.1,5.4,0.477,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,BA,Bahia,Nordeste,9.5,,,,0.466,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,CE,Ceará,Nordeste,,,,13.5,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,CE,Ceará,Nordeste,,,,,0.523,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,CE,Ceará,Nordeste,,,,,0.533,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,CE,Ceará,Nordeste,,,,,0.528,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,CE,Ceará,Nordeste,,,,,0.504,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,CE,Ceará,Nordeste,,18.3,58.2,,0.546,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,CE,Ceará,Nordeste,,18.1,54.6,,0.537,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,CE,Ceará,Nordeste,,14.6,53.9,,0.522,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,CE,Ceará,Nordeste,,15.9,54.4,,0.528,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,CE,Ceará,Nordeste,14.4,18.1,56.2,,0.543,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,CE,Ceará,Nordeste,13.5,17.1,55.2,,0.547,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,CE,Ceará,Nordeste,12.5,16.8,53.9,,0.547,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,CE,Ceará,Nordeste,12.8,16.5,52.9,,0.562,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,CE,Ceará,Nordeste,,13.0,50.3,,0.542,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,CE,Ceará,Nordeste,,19.8,56.4,,0.55,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,CE,Ceará,Nordeste,12.1,14.5,52.6,,0.516,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,CE,Ceará,Nordeste,11.5,12.4,51.1,6.3,0.51,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,CE,Ceará,Nordeste,11.8,10.3,47.3,4.5,0.487,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,CE,Ceará,Nordeste,11.1,,,,0.506,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,DF,Distrito Federal,Centro-Oeste,,,,4.13,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,DF,Distrito Federal,Centro-Oeste,,,,,0.604,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,DF,Distrito Federal,Centro-Oeste,,,,,0.618,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,DF,Distrito Federal,Centro-Oeste,,,,,0.607,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,DF,Distrito Federal,Centro-Oeste,,,,,0.598,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,DF,Distrito Federal,Centro-Oeste,,3.4,24.6,,0.602,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,DF,Distrito Federal,Centro-Oeste,,3.7,21.5,,0.58,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,DF,Distrito Federal,Centro-Oeste,,2.8,21.7,,0.574,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,DF,Distrito Federal,Centro-Oeste,,3.4,21.5,,0.581,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,DF,Distrito Federal,Centro-Oeste,2.4,3.3,22.5,,0.579,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,DF,Distrito Federal,Centro-Oeste,2.3,4.5,23.4,,0.594,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,DF,Distrito Federal,Centro-Oeste,2.9,3.9,22.0,,0.571,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,DF,Distrito Federal,Centro-Oeste,2.5,2.8,19.9,,0.554,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,DF,Distrito Federal,Centro-Oeste,,3.5,19.5,,0.549,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,DF,Distrito Federal,Centro-Oeste,,5.3,23.7,,0.567,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,DF,Distrito Federal,Centro-Oeste,1.9,2.9,18.9,,0.536,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,DF,Distrito Federal,Centro-Oeste,1.7,2.3,18.1,4.0,0.542,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,DF,Distrito Federal,Centro-Oeste,1.8,2.7,18.0,4.2,0.547,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,DF,Distrito Federal,Centro-Oeste,2.0,,,,0.57,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,ES,Espírito Santo,Sudeste,,,,4.27,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,ES,Espírito Santo,Sudeste,,,,,0.511,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,ES,Espírito Santo,Sudeste,,,,,0.511,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,ES,Espírito Santo,Sudeste,,,,,0.506,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,ES,Espírito Santo,Sudeste,,,,,0.494,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,ES,Espírito Santo,Sudeste,,4.8,32.2,,0.489,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,ES,Espírito Santo,Sudeste,,5.1,33.0,,0.498,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,ES,Espírito Santo,Sudeste,,5.2,30.7,,0.499,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,ES,Espírito Santo,Sudeste,,6.2,32.9,,0.504,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,ES,Espírito Santo,Sudeste,5.7,6.8,35.1,,0.509,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,ES,Espírito Santo,Sudeste,5.1,7.3,33.9,,0.504,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,ES,Espírito Santo,Sudeste,5.0,5.9,32.2,,0.507,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,ES,Espírito Santo,Sudeste,4.8,5.5,29.8,,0.518,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,ES,Espírito Santo,Sudeste,,5.7,28.8,,0.482,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,ES,Espírito Santo,Sudeste,,8.9,36.7,,0.507,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,ES,Espírito Santo,Sudeste,4.7,5.2,28.4,,0.49,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,ES,Espírito Santo,Sudeste,4.4,3.3,24.6,2.2,0.483,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,ES,Espírito Santo,Sudeste,3.9,2.8,22.2,1.5,0.48,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,ES,Espírito Santo,Sudeste,3.8,,,,0.48,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,GO,Goiás,Centro-Oeste,,,,4.93,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,GO,Goiás,Centro-Oeste,,,,,0.514,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,GO,Goiás,Centro-Oeste,,,,,0.512,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,GO,Goiás,Centro-Oeste,,,,,0.508,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,GO,Goiás,Centro-Oeste,,,,,0.476,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,GO,Goiás,Centro-Oeste,,3.0,30.1,,0.475,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,GO,Goiás,Centro-Oeste,,2.4,23.2,,0.466,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,GO,Goiás,Centro-Oeste,,3.0,25.8,,0.458,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,GO,Goiás,Centro-Oeste,,3.2,27.0,,0.457,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,GO,Goiás,Centro-Oeste,5.9,4.6,31.0,,0.467,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,GO,Goiás,Centro-Oeste,5.4,4.1,29.1,,0.477,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,GO,Goiás,Centro-Oeste,5.2,4.3,28.8,,0.47,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,GO,Goiás,Centro-Oeste,4.6,4.5,29.2,,0.46,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,GO,Goiás,Centro-Oeste,,4.2,27.8,,0.445,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,GO,Goiás,Centro-Oeste,,5.1,33.7,,0.467,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,GO,Goiás,Centro-Oeste,4.5,3.5,25.0,,0.455,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,GO,Goiás,Centro-Oeste,4.0,1.8,20.3,3.7,0.472,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,GO,Goiás,Centro-Oeste,3.6,2.2,19.5,2.4,0.462,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,GO,Goiás,Centro-Oeste,3.5,,,,0.479,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,MA,Maranhão,Nordeste,,,,18.01,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,MA,Maranhão,Nordeste,,,,,0.525,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,MA,Maranhão,Nordeste,,,,,0.507,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,MA,Maranhão,Nordeste,,,,,0.517,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,MA,Maranhão,Nordeste,,,,,0.505,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,MA,Maranhão,Nordeste,,24.8,66.6,,0.498,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,MA,Maranhão,Nordeste,,23.3,64.7,,0.493,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,MA,Maranhão,Nordeste,,21.5,63.4,,0.475,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,MA,Maranhão,Nordeste,,22.7,63.7,,0.495,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,MA,Maranhão,Nordeste,15.7,24.3,65.2,,0.517,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,MA,Maranhão,Nordeste,15.7,24.6,65.5,,0.526,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,MA,Maranhão,Nordeste,15.1,25.5,65.2,,0.527,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,MA,Maranhão,Nordeste,14.5,26.1,64.0,,0.531,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,MA,Maranhão,Nordeste,,19.3,60.2,,0.482,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,MA,Maranhão,Nordeste,,27.6,67.7,,0.529,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,MA,Maranhão,Nordeste,12.0,18.2,59.2,,0.49,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,MA,Maranhão,Nordeste,11.3,15.8,54.1,8.2,0.491,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,MA,Maranhão,Nordeste,11.2,13.9,51.3,5.2,0.487,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,MA,Maranhão,Nordeste,10.9,,,,0.491,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,MT,Mato Grosso,Centro-Oeste,,,,4.32,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,MT,Mato Grosso,Centro-Oeste,,,,,0.495,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,MT,Mato Grosso,Centro-Oeste,,,,,0.543,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,MT,Mato Grosso,Centro-Oeste,,,,,0.49,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,MT,Mato Grosso,Centro-Oeste,,,,,0.485,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,MT,Mato Grosso,Centro-Oeste,,4.4,29.9,,0.488,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,MT,Mato Grosso,Centro-Oeste,,3.4,25.2,,0.456,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,MT,Mato Grosso,Centro-Oeste,,3.3,26.5,,0.46,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,MT,Mato Grosso,Centro-Oeste,,3.7,26.6,,0.444,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,MT,Mato Grosso,Centro-Oeste,5.9,3.7,29.0,,0.454,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,MT,Mato Grosso,Centro-Oeste,6.0,4.3,28.0,,0.464,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,MT,Mato Grosso,Centro-Oeste,6.4,3.5,25.5,,0.465,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,MT,Mato Grosso,Centro-Oeste,5.6,3.9,25.4,,0.456,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,MT,Mato Grosso,Centro-Oeste,,4.2,26.9,,0.463,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,MT,Mato Grosso,Centro-Oeste,,5.0,30.7,,0.462,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,MT,Mato Grosso,Centro-Oeste,4.9,4.4,24.4,,0.45,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,MT,Mato Grosso,Centro-Oeste,4.5,3.5,19.3,3.9,0.453,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,MT,Mato Grosso,Centro-Oeste,3.8,2.2,15.0,2.8,0.442,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,MT,Mato Grosso,Centro-Oeste,3.5,,,,0.439,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,MS,Mato Grosso do Sul,Centro-Oeste,,,,5.01,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,MS,Mato Grosso do Sul,Centro-Oeste,,,,,0.561,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,MS,Mato Grosso do Sul,Centro-Oeste,,,,,0.53,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,MS,Mato Grosso do Sul,Centro-Oeste,,,,,0.517,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,MS,Mato Grosso do Sul,Centro-Oeste,,,,,0.513,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,MS,Mato Grosso do Sul,Centro-Oeste,,3.4,29.0,,0.476,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,MS,Mato Grosso do Sul,Centro-Oeste,,2.9,26.9,,0.472,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,MS,Mato Grosso do Sul,Centro-Oeste,,2.3,25.9,,0.473,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,MS,Mato Grosso do Sul,Centro-Oeste,,3.5,25.8,,0.449,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,MS,Mato Grosso do Sul,Centro-Oeste,5.7,3.3,25.1,,0.471,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,MS,Mato Grosso do Sul,Centro-Oeste,4.6,4.4,27.8,,0.465,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,MS,Mato Grosso do Sul,Centro-Oeste,4.5,4.0,26.2,,0.491,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,MS,Mato Grosso do Sul,Centro-Oeste,4.6,3.8,23.6,,0.484,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,MS,Mato Grosso do Sul,Centro-Oeste,,3.3,26.0,,0.47,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,MS,Mato Grosso do Sul,Centro-Oeste,,5.2,30.6,,0.497,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,MS,Mato Grosso do Sul,Centro-Oeste,4.0,3.3,23.0,,0.479,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,MS,Mato Grosso do Sul,Centro-Oeste,3.9,2.6,20.8,2.6,0.476,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,MS,Mato Grosso do Sul,Centro-Oeste,3.7,1.9,19.0,2.4,0.454,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,MS,Mato Grosso do Sul,Centro-Oeste,3.9,,,,0.457,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,MG,Minas Gerais,Sudeste,,,,4.5,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,MG,Minas Gerais,Sudeste,,,,,0.507,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,MG,Minas Gerais,Sudeste,,,,,0.506,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,MG,Minas Gerais,Sudeste,,,,,0.504,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,MG,Minas Gerais,Sudeste,,,,,0.486,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,MG,Minas Gerais,Sudeste,,6.1,34.1,,0.5,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,MG,Minas Gerais,Sudeste,,4.9,31.2,,0.492,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,MG,Minas Gerais,Sudeste,,4.8,29.6,,0.49,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,MG,Minas Gerais,Sudeste,,4.3,29.2,,0.485,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,MG,Minas Gerais,Sudeste,5.8,6.0,32.7,,0.491,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,MG,Minas Gerais,Sudeste,5.6,5.5,32.2,,0.494,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,MG,Minas Gerais,Sudeste,5.4,5.3,31.3,,0.492,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,MG,Minas Gerais,Sudeste,5.1,5.6,29.8,,0.487,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,MG,Minas Gerais,Sudeste,,4.5,27.1,,0.46,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,MG,Minas Gerais,Sudeste,,6.8,33.6,,0.486,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,MG,Minas Gerais,Sudeste,4.7,4.5,29.4,,0.465,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,MG,Minas Gerais,Sudeste,4.6,2.8,22.7,2.8,0.474,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,MG,Minas Gerais,Sudeste,4.3,2.9,19.9,2.2,0.447,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,MG,Minas Gerais,Sudeste,3.8,,,,0.473,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,PA,Pará,Norte,,,,13.22,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,PA,Pará,Norte,,,,,0.511,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,PA,Pará,Norte,,,,,0.495,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,PA,Pará,Norte,,,,,0.491,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,PA,Pará,Norte,,,,,0.514,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,PA,Pará,Norte,,18.1,57.5,,0.534,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,PA,Pará,Norte,,15.9,57.6,,0.532,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,PA,Pará,Norte,,14.9,54.4,,0.508,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,PA,Pará,Norte,,16.6,56.2,,0.515,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,PA,Pará,Norte,8.7,17.6,58.2,,0.51,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,PA,Pará,Norte,8.3,17.0,57.8,,0.506,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,PA,Pará,Norte,8.3,17.4,57.0,,0.561,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,PA,Pará,Norte,7.9,18.4,57.6,,0.528,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,PA,Pará,Norte,,11.3,51.0,,0.479,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,PA,Pará,Norte,,20.3,58.3,,0.528,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,PA,Pará,Norte,7.5,11.5,50.3,,0.506,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,PA,Pará,Norte,7.0,8.8,44.9,9.6,0.499,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,PA,Pará,Norte,6.6,7.7,43.7,7.0,0.49,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,PA,Pará,Norte,6.2,,,,0.492,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,PB,Paraíba,Nordeste,,,,15.06,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,PB,Paraíba,Nordeste,,,,,0.582,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,PB,Paraíba,Nordeste,,,,,0.57,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,PB,Paraíba,Nordeste,,,,,0.562,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,PB,Paraíba,Nordeste,,,,,0.527,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,PB,Paraíba,Nordeste,,16.7,57.3,,0.517,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,PB,Paraíba,Nordeste,,15.0,55.6,,0.514,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,PB,Paraíba,Nordeste,,12.4,52.4,,0.525,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,PB,Paraíba,Nordeste,,12.4,51.0,,0.533,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,PB,Paraíba,Nordeste,15.3,14.8,54.9,,0.528,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,PB,Paraíba,Nordeste,15.7,14.8,52.5,,0.549,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,PB,Paraíba,Nordeste,15.1,16.7,52.8,,0.551,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,PB,Paraíba,Nordeste,15.1,18.0,55.1,,0.563,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,PB,Paraíba,Nordeste,,13.4,54.3,,0.515,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,PB,Paraíba,Nordeste,,20.9,58.9,,0.562,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,PB,Paraíba,Nordeste,13.6,14.3,55.5,,0.558,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,PB,Paraíba,Nordeste,13.1,10.6,49.7,6.0,0.561,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,PB,Paraíba,Nordeste,12.7,6.9,43.6,3.9,0.496,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,PB,Paraíba,Nordeste,11.6,,,,0.507,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,PR,Paraná,Sul,,,,3.73,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,PR,Paraná,Sul,,,,,0.533,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,PR,Paraná,Sul,,,,,0.507,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,PR,Paraná,Sul,,,,,0.494,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,PR,Paraná,Sul,,,,,0.472,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,PR,Paraná,Sul,,3.0,23.1,,0.483,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,PR,Paraná,Sul,,2.7,21.3,,0.473,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,PR,Paraná,Sul,,2.4,19.8,,0.464,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,PR,Paraná,Sul,,2.9,21.4,,0.453,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,PR,Paraná,Sul,4.1,3.5,23.6,,0.476,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,PR,Paraná,Sul,4.3,3.8,23.2,,0.48,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,PR,Paraná,Sul,4.6,4.1,22.5,,0.491,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,PR,Paraná,Sul,4.2,3.6,21.6,,0.476,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,PR,Paraná,Sul,,4.7,21.7,,0.46,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,PR,Paraná,Sul,,4.8,26.0,,0.475,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,PR,Paraná,Sul,4.0,3.7,21.8,,0.468,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,PR,Paraná,Sul,3.5,2.9,18.9,2.2,0.461,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,PR,Paraná,Sul,3.6,2.3,15.7,1.9,0.473,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,PR,Paraná,Sul,3.3,,,,0.47,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,PE,Pernambuco,Nordeste,,,,10.63,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,PE,Pernambuco,Nordeste,,,,,0.523,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,PE,Pernambuco,Nordeste,,,,,0.538,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,PE,Pernambuco,Nordeste,,,,,0.522,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,PE,Pernambuco,Nordeste,,,,,0.482,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,PE,Pernambuco,Nordeste,,16.3,56.5,,0.574,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,PE,Pernambuco,Nordeste,,14.4,52.4,,0.567,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,PE,Pernambuco,Nordeste,,12.5,49.9,,0.566,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,PE,Pernambuco,Nordeste,,14.5,51.3,,0.567,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,PE,Pernambuco,Nordeste,12.1,16.8,53.9,,0.567,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,PE,Pernambuco,Nordeste,12.7,17.2,54.6,,0.551,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,PE,Pernambuco,Nordeste,11.1,16.5,52.4,,0.535,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,PE,Pernambuco,Nordeste,11.1,17.1,54.0,,0.573,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,PE,Pernambuco,Nordeste,,16.4,52.4,,0.536,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,PE,Pernambuco,Nordeste,,23.8,62.6,,0.58,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,PE,Pernambuco,Nordeste,11.1,15.8,53.3,,0.514,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,PE,Pernambuco,Nordeste,10.2,11.8,50.8,6.5,0.495,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,PE,Pernambuco,Nordeste,10.1,8.9,45.7,4.9,0.53,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,PE,Pernambuco,Nordeste,10.1,,,,0.52,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,PI,Piauí,Nordeste,,,,10.79,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,PI,Piauí,Nordeste,,,,,0.599,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,PI,Piauí,Nordeste,,,,,0.579,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,PI,Piauí,Nordeste,,,,,0.558,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,PI,Piauí,Nordeste,,,,,0.515,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,PI,Piauí,Nordeste,,19.3,58.3,,0.496,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,PI,Piauí,Nordeste,,16.1,54.5,,0.535,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,PI,Piauí,Nordeste,,16.7,52.7,,0.516,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,PI,Piauí,Nordeste,,14.7,52.3,,0.52,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,PI,Piauí,Nordeste,16.2,19.3,56.0,,0.528,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,PI,Piauí,Nordeste,15.6,20.0,56.1,,0.53,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,PI,Piauí,Nordeste,15.5,20.0,54.6,,0.53,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,PI,Piauí,Nordeste,15.0,19.9,55.7,,0.538,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,PI,Piauí,Nordeste,,13.4,50.2,,0.474,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,PI,Piauí,Nordeste,,19.6,54.6,,0.515,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,PI,Piauí,Nordeste,14.8,14.6,50.9,,0.518,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,PI,Piauí,Nordeste,13.2,11.5,48.2,5.4,0.549,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,PI,Piauí,Nordeste,13.8,6.6,42.5,4.0,0.493,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,PI,Piauí,Nordeste,13.1,,,,0.508,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,RJ,Rio de Janeiro,Sudeste,,,,3.73,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,RJ,Rio de Janeiro,Sudeste,,,,,0.525,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,RJ,Rio de Janeiro,Sudeste,,,,,0.522,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,RJ,Rio de Janeiro,Sudeste,,,,,0.522,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,RJ,Rio de Janeiro,Sudeste,,,,,0.506,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,RJ,Rio de Janeiro,Sudeste,,4.5,28.9,,0.529,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,RJ,Rio de Janeiro,Sudeste,,4.5,27.3,,0.518,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,RJ,Rio de Janeiro,Sudeste,,4.1,25.5,,0.512,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,RJ,Rio de Janeiro,Sudeste,,4.3,25.9,,0.504,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,RJ,Rio de Janeiro,Sudeste,2.5,5.2,28.9,,0.526,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,RJ,Rio de Janeiro,Sudeste,2.4,5.2,28.9,,0.519,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,RJ,Rio de Janeiro,Sudeste,2.2,5.2,27.8,,0.544,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,RJ,Rio de Janeiro,Sudeste,1.9,5.8,27.4,,0.553,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,RJ,Rio de Janeiro,Sudeste,,7.1,28.3,,0.549,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,RJ,Rio de Janeiro,Sudeste,,8.9,32.8,,0.566,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,RJ,Rio de Janeiro,Sudeste,2.1,5.9,29.2,,0.54,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,RJ,Rio de Janeiro,Sudeste,2.0,4.3,24.8,3.1,0.539,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,RJ,Rio de Janeiro,Sudeste,2.0,3.8,21.8,2.5,0.522,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,RJ,Rio de Janeiro,Sudeste,1.6,,,,0.543,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,RN,Rio Grande do Norte,Nordeste,,,,13.85,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,RN,Rio Grande do Norte,Nordeste,,,,,0.55,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,RN,Rio Grande do Norte,Nordeste,,,,,0.543,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,RN,Rio Grande do Norte,Nordeste,,,,,0.547,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,RN,Rio Grande do Norte,Nordeste,,,,,0.535,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,RN,Rio Grande do Norte,Nordeste,,13.5,54.3,,0.508,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,RN,Rio Grande do Norte,Nordeste,,12.0,51.1,,0.505,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,RN,Rio Grande do Norte,Nordeste,,11.4,49.0,,0.509,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,RN,Rio Grande do Norte,Nordeste,,11.4,46.5,,0.518,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,RN,Rio Grande do Norte,Nordeste,13.9,13.0,49.3,,0.542,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,RN,Rio Grande do Norte,Nordeste,12.9,15.1,51.3,,0.523,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,RN,Rio Grande do Norte,Nordeste,12.2,16.2,49.3,,0.54,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,RN,Rio Grande do Norte,Nordeste,12.7,15.6,49.8,,0.555,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,RN,Rio Grande do Norte,Nordeste,,9.2,45.3,,0.513,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,RN,Rio Grande do Norte,Nordeste,,17.9,53.8,,0.588,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,RN,Rio Grande do Norte,Nordeste,10.6,11.6,47.1,,0.523,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,RN,Rio Grande do Norte,Nordeste,10.9,9.7,46.4,4.9,0.53,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,RN,Rio Grande do Norte,Nordeste,10.5,7.9,40.2,3.9,0.522,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,RN,Rio Grande do Norte,Nordeste,9.3,,,,0.54,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,RS,Rio Grande do Sul,Sul,,,,4.01,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,RS,Rio Grande do Sul,Sul,,,,,0.496,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,RS,Rio Grande do Sul,Sul,,,,,0.501,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,RS,Rio Grande do Sul,Sul,,,,,0.492,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,RS,Rio Grande do Sul,Sul,,,,,0.481,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,RS,Rio Grande do Sul,Sul,,3.1,21.6,,0.495,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,RS,Rio Grande do Sul,Sul,,2.2,18.3,,0.477,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,RS,Rio Grande do Sul,Sul,,2.5,18.7,,0.479,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,RS,Rio Grande do Sul,Sul,,2.3,17.4,,0.467,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,RS,Rio Grande do Sul,Sul,3.0,2.9,19.6,,0.473,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,RS,Rio Grande do Sul,Sul,2.8,3.2,19.7,,0.481,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,RS,Rio Grande do Sul,Sul,2.8,3.4,20.8,,0.486,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,RS,Rio Grande do Sul,Sul,2.4,3.1,17.4,,0.481,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,RS,Rio Grande do Sul,Sul,,3.4,18.2,,0.475,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,RS,Rio Grande do Sul,Sul,,3.5,20.5,,0.467,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,RS,Rio Grande do Sul,Sul,2.5,3.1,18.3,,0.466,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,RS,Rio Grande do Sul,Sul,2.7,1.7,16.1,2.2,0.465,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,RS,Rio Grande do Sul,Sul,2.4,1.7,12.7,1.8,0.458,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,RS,Rio Grande do Sul,Sul,2.2,,,,0.468,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,RO,Rondônia,Norte,,,,3.89,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,RO,Rondônia,Norte,,,,,0.474,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,RO,Rondônia,Norte,,,,,0.484,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,RO,Rondônia,Norte,,,,,0.493,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,RO,Rondônia,Norte,,,,,0.476,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,RO,Rondônia,Norte,,9.1,42.1,,0.488,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,RO,Rondônia,Norte,,9.1,41.4,,0.475,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,RO,Rondônia,Norte,,6.2,38.7,,0.443,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,RO,Rondônia,Norte,,7.7,40.8,,0.462,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,RO,Rondônia,Norte,6.0,7.7,40.7,,0.465,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,RO,Rondônia,Norte,6.6,6.6,39.2,,0.447,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,RO,Rondônia,Norte,5.9,7.1,37.5,,0.497,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,RO,Rondônia,Norte,5.8,7.4,35.4,,0.472,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,RO,Rondônia,Norte,,6.0,31.6,,0.439,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,RO,Rondônia,Norte,,10.6,41.0,,0.458,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,RO,Rondônia,Norte,4.9,6.0,32.2,,0.446,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,RO,Rondônia,Norte,5.1,4.9,28.5,2.9,0.454,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,RO,Rondônia,Norte,5.2,2.5,24.8,1.9,0.442,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,RO,Rondônia,Norte,5.1,,,,0.458,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,RR,Roraima,Norte,,,,15.81,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,RR,Roraima,Norte,,,,,0.507,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,RR,Roraima,Norte,,,,,0.52,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,RR,Roraima,Norte,,,,,0.512,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,RR,Roraima,Norte,,,,,0.52,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,RR,Roraima,Norte,,8.9,44.3,,0.549,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,RR,Roraima,Norte,,9.3,45.4,,0.556,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,RR,Roraima,Norte,,7.7,41.7,,0.523,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,RR,Roraima,Norte,,6.5,41.0,,0.538,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,RR,Roraima,Norte,6.0,8.8,43.8,,0.538,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,RR,Roraima,Norte,5.5,9.9,47.7,,0.526,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,RR,Roraima,Norte,5.5,11.9,43.0,,0.567,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,RR,Roraima,Norte,4.5,16.5,52.1,,0.58,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,RR,Roraima,Norte,,12.9,51.5,,0.54,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,RR,Roraima,Norte,,19.1,59.0,,0.597,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,RR,Roraima,Norte,3.8,10.9,47.1,,0.548,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,RR,Roraima,Norte,4.2,10.2,39.7,6.7,0.521,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,RR,Roraima,Norte,3.8,8.3,42.3,6.7,0.53,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,RR,Roraima,Norte,3.4,,,,0.506,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,SC,Santa Catarina,Sul,,,,2.04,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,SC,Santa Catarina,Sul,,,,,0.47,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,SC,Santa Catarina,Sul,,,,,0.475,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,SC,Santa Catarina,Sul,,,,,0.473,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,SC,Santa Catarina,Sul,,,,,0.445,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,SC,Santa Catarina,Sul,,2.2,16.4,,0.436,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,SC,Santa Catarina,Sul,,1.4,14.8,,0.429,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,SC,Santa Catarina,Sul,,1.2,13.5,,0.408,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,SC,Santa Catarina,Sul,,1.5,13.8,,0.415,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,SC,Santa Catarina,Sul,2.7,2.2,15.7,,0.422,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,SC,Santa Catarina,Sul,2.4,2.0,14.3,,0.414,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,SC,Santa Catarina,Sul,2.3,2.0,14.1,,0.418,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,SC,Santa Catarina,Sul,2.1,2.0,13.2,,0.422,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,SC,Santa Catarina,Sul,,2.5,14.5,,0.412,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,SC,Santa Catarina,Sul,,3.0,16.1,,0.425,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,SC,Santa Catarina,Sul,2.1,2.2,14.1,,0.419,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,SC,Santa Catarina,Sul,2.0,1.7,12.6,1.5,0.418,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,SC,Santa Catarina,Sul,1.9,1.5,9.5,1.4,0.43,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,SC,Santa Catarina,Sul,1.5,,,,0.425,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,SP,São Paulo,Sudeste,,,,3.37,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,SP,São Paulo,Sudeste,,,,,0.496,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,SP,São Paulo,Sudeste,,,,,0.493,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,SP,São Paulo,Sudeste,,,,,0.482,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,SP,São Paulo,Sudeste,,,,,0.471,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,SP,São Paulo,Sudeste,,3.0,20.3,,0.511,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,SP,São Paulo,Sudeste,,2.5,19.3,,0.51,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,SP,São Paulo,Sudeste,,2.3,18.4,,0.508,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,SP,São Paulo,Sudeste,,2.5,20.2,,0.513,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,SP,São Paulo,Sudeste,2.6,3.5,20.9,,0.525,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,SP,São Paulo,Sudeste,2.4,3.8,23.8,,0.526,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,SP,São Paulo,Sudeste,2.4,4.2,21.9,,0.539,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,SP,São Paulo,Sudeste,2.4,3.5,20.3,,0.527,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,SP,São Paulo,Sudeste,,4.4,21.8,,0.522,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,SP,São Paulo,Sudeste,,5.4,25.7,,0.532,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,SP,São Paulo,Sudeste,2.2,3.5,21.3,,0.499,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,SP,São Paulo,Sudeste,2.3,2.7,17.8,3.0,0.503,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,SP,São Paulo,Sudeste,2.2,2.6,15.7,2.4,0.489,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,SP,São Paulo,Sudeste,1.9,,,,0.491,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,SE,Sergipe,Nordeste,,,,3.75,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,SE,Sergipe,Nordeste,,,,,0.524,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,SE,Sergipe,Nordeste,,,,,0.522,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,SE,Sergipe,Nordeste,,,,,0.552,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,SE,Sergipe,Nordeste,,,,,0.544,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,SE,Sergipe,Nordeste,,16.5,55.7,,0.569,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,SE,Sergipe,Nordeste,,14.2,54.7,,0.572,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,SE,Sergipe,Nordeste,,12.5,51.6,,0.542,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,SE,Sergipe,Nordeste,,12.9,52.0,,0.538,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,SE,Sergipe,Nordeste,13.9,16.4,54.2,,0.566,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,SE,Sergipe,Nordeste,13.7,18.8,54.7,,0.55,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,SE,Sergipe,Nordeste,13.0,19.6,56.2,,0.576,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,SE,Sergipe,Nordeste,12.7,18.9,55.8,,0.58,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,SE,Sergipe,Nordeste,,11.5,48.7,,0.522,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,SE,Sergipe,Nordeste,,19.5,58.4,,0.566,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,SE,Sergipe,Nordeste,11.8,12.5,48.9,,0.526,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,SE,Sergipe,Nordeste,11.3,10.7,47.9,5.6,0.503,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,SE,Sergipe,Nordeste,10.8,6.8,41.4,4.0,0.498,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,SE,Sergipe,Nordeste,10.3,,,,0.532,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2004,TO,Tocantins,Norte,,,,7.93,,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2007,TO,Tocantins,Norte,,,,,0.545,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2008,TO,Tocantins,Norte,,,,,0.54,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2009,TO,Tocantins,Norte,,,,,0.521,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2011,TO,Tocantins,Norte,,,,,0.508,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2012,TO,Tocantins,Norte,,10.0,50.9,,0.508,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2013,TO,Tocantins,Norte,,10.8,50.3,,0.515,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2014,TO,Tocantins,Norte,,8.9,45.0,,0.498,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2015,TO,Tocantins,Norte,,9.1,46.1,,0.506,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2016,TO,Tocantins,Norte,9.5,10.9,47.2,,0.49,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2017,TO,Tocantins,Norte,9.4,8.8,45.5,,0.496,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2018,TO,Tocantins,Norte,9.1,10.1,44.2,,0.53,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2019,TO,Tocantins,Norte,8.9,11.9,45.8,,0.531,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2020,TO,Tocantins,Norte,,7.7,42.4,,0.486,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2021,TO,Tocantins,Norte,,10.3,47.7,,0.515,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2022,TO,Tocantins,Norte,7.2,6.6,36.7,,0.507,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2023,TO,Tocantins,Norte,7.7,5.6,33.2,2.6,0.478,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2024,TO,Tocantins,Norte,6.6,5.3,29.4,4.3,0.477,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"
+2025,TO,Tocantins,Norte,6.8,,,,0.472,False,"IBGE/SIDRA (PNAD, PNAD Contínua, ODS) — ver tabelas na documentação"

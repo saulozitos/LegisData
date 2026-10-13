@@ -11,10 +11,12 @@ Fontes dos dados:
 - Banco Central: Câmbio, Selic
 """
 
-import asyncio
+import argparse
 from datetime import date
-from app.core.database import SessionLocal
-from app.models.executivo import PresidentialMandate, MandateIndicator
+
+from app.core.database import SessionLocal, engine
+from app.models.base import Base
+from app.models.executivo import MandateIndicator, PresidentialMandate
 from sqlalchemy.orm import Session
 
 
@@ -104,7 +106,7 @@ LULA3_DADOS = {
     (2024, 8): {"inflacao_ipca": 4.24, "desemprego_pnad": 6.6, "aprovacao_popular": 35.0, "cambio_usd_brl": 5.40, "selic_meta": 10.5, "emendas_bilhoes": 12.8},
     (2024, 9): {"inflacao_ipca": 4.42, "desemprego_pnad": 6.2, "aprovacao_popular": 35.0, "cambio_usd_brl": 5.44, "selic_meta": 10.75, "emendas_bilhoes": 14.1},
     (2024, 10): {"inflacao_ipca": 4.76, "desemprego_pnad": 6.2, "aprovacao_popular": 36.0, "cambio_usd_brl": 5.62, "selic_meta": 10.75, "emendas_bilhoes": 16.0},
-    (2024, 11): {"inflacao_ipca": 7.87, "desemprego_pnad": 6.2, "aprovacao_popular": 24.0, "cambio_usd_brl": 6.09, "selic_meta": 11.25, "emendas_bilhoes": 20.0},
+    (2024, 11): {"inflacao_ipca": 4.87, "desemprego_pnad": 6.2, "aprovacao_popular": 24.0, "cambio_usd_brl": 6.09, "selic_meta": 11.25, "emendas_bilhoes": 20.0},
     (2024, 12): {"inflacao_ipca": 4.83, "desemprego_pnad": 6.2, "aprovacao_popular": 25.0, "cambio_usd_brl": 6.18, "selic_meta": 12.25, "emendas_bilhoes": 28.0},
     (2025, 1): {"inflacao_ipca": 4.83, "desemprego_pnad": 7.0, "aprovacao_popular": 24.0, "cambio_usd_brl": 6.07, "selic_meta": 13.25, "emendas_bilhoes": 5.5},
     (2025, 2): {"inflacao_ipca": 5.06, "desemprego_pnad": 6.8, "aprovacao_popular": 26.0, "cambio_usd_brl": 5.87, "selic_meta": 13.25, "emendas_bilhoes": 6.5},
@@ -119,13 +121,25 @@ LULA3_DADOS = {
 }
 
 
-async def seed_data():
+def seed_data(reset: bool = False):
+    # Garante que as tabelas existam (o app não as cria sozinho)
+    Base.metadata.create_all(bind=engine, tables=[PresidentialMandate.__table__, MandateIndicator.__table__])
+
     db: Session = SessionLocal()
 
     try:
-        # Limpa dados anteriores
-        db.query(PresidentialMandate).delete()
-        db.commit()
+        existing = db.query(PresidentialMandate).count()
+        if existing and not reset:
+            print(
+                f"⚠️  Já existem {existing} mandatos no banco. Nada foi alterado.\n"
+                "   Use --reset para APAGAR os mandatos e indicadores existentes e recriá-los."
+            )
+            return
+        if existing:
+            # Apaga indicadores primeiro (não depende de cascade do banco) e depois os mandatos
+            db.query(MandateIndicator).delete()
+            db.query(PresidentialMandate).delete()
+            db.commit()
 
         # --- MANDATO BOLSONARO (2019-2022) ---
         bolsonaro = PresidentialMandate(
@@ -133,7 +147,7 @@ async def seed_data():
             inicio=date(2019, 1, 1),
             fim=date(2022, 12, 31),
             partido="PL",
-            foto_url="jair-bolsonaro"
+            foto_url="/presidents/bolsonaro.jpg"
         )
         db.add(bolsonaro)
         db.commit()
@@ -155,7 +169,7 @@ async def seed_data():
             inicio=date(2023, 1, 1),
             fim=None,
             partido="PT",
-            foto_url="luiz-inacio-lula-da-silva"
+            foto_url="/presidents/lula.jpg"
         )
         db.add(lula3)
         db.commit()
@@ -185,4 +199,11 @@ async def seed_data():
 
 
 if __name__ == "__main__":
-    asyncio.run(seed_data())
+    parser = argparse.ArgumentParser(description="Popula os mandatos presidenciais e seus indicadores mensais.")
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Apaga os mandatos e indicadores existentes antes de inserir (destrutivo).",
+    )
+    args = parser.parse_args()
+    seed_data(reset=args.reset)

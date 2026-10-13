@@ -1,140 +1,411 @@
 #!/usr/bin/env python3
 """
 CLI Unificado de Execução do Pipeline de ETL e Carga no PostgreSQL
+
 Uso:
-    python3 etl/run_etl.py              # Executa toda a esteira (ETL + Carga no PostgreSQL)
-    python3 etl/run_etl.py --camara     # Executa apenas a extração da Câmara dos Deputados
-    python3 etl/run_etl.py --load-db    # Executa apenas a carga no PostgreSQL
-    python3 etl/run_etl.py --economic   # Executa apenas BCB/IBGE e Presidentes
+    python3 etl/run_etl.py                      # Toda a esteira (extração + carga no PostgreSQL)
+    python3 etl/run_etl.py --camara --senado    # Etapas selecionadas
+    python3 etl/run_etl.py --load-db            # Somente a carga no PostgreSQL
+
+Dados sintéticos/estimados NUNCA são gerados por padrão. Para demonstrações locais:
+    python3 etl/run_etl.py --allow-synthetic
+
+Cada etapa é isolada: uma falha é registrada, as demais seguem, o resumo final lista o que deu certo e o que
+falhou, e o processo termina com código de saída 1 se alguma etapa falhou (antes, o script sempre dizia
+"concluída com sucesso"). Na esteira completa, a carga no banco só roda se todas as extrações passaram.
 """
 
-import sys
 import argparse
+import logging
+import sys
+import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable, Dict, List, Optional
 
-# Adicionar raiz do projeto e backend ao sys.path
-current_dir = Path(__file__).resolve().parent
-project_root = current_dir.parent
-backend_dir = project_root / "backend"
-for p in [str(project_root), str(backend_dir)]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
+# Raiz do projeto no sys.path (o backend é adicionado sob demanda por etl.utils.bootstrap)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-from etl.pipelines.presidents_economic_sync import PresidentsEconomicSyncPipeline
-from etl.extractors.camara_extractor import CamaraExtractor
-from etl.extractors.senado_extractor import SenadoExtractor
-from etl.extractors.tse_extractor import TSEExtractor
-from etl.extractors.orcamento_extractor import OrcamentoExtractor
-from etl.extractors.composicao_extractor import save_composicao_congresso
-from etl.extractors.salario_inflacao_extractor import SalarioInflacaoExtractor
-from etl.pipelines.db_loader import DatabaseLoader
+from etl.config import ensure_data_dirs  # noqa: E402
+
+logger = logging.getLogger("run_etl")
 
 
-def main():
-    parser = argparse.ArgumentParser(
+@dataclass
+class Etapa:
+    chave: str
+    titulo: str
+    executar: Callable[[], object]
+    depende_de_extracao: bool = False  # True para etapas de carga
+
+
+def _economic(use_cache: bool):
+    from etl.pipelines.presidents_economic_sync import PresidentsEconomicSyncPipeline
+
+    return PresidentsEconomicSyncPipeline().run(use_cache=use_cache)
+
+
+def _camara(force_refresh: bool):
+    from etl.extractors.camara_extractor import CamaraExtractor
+
+    return CamaraExtractor(request_delay=0.15).run_full_extraction(force_refresh=force_refresh)
+
+
+def _senado():
+    from etl.extractors.senado_extractor import SenadoExtractor
+
+    return SenadoExtractor().run_full_extraction()
+
+
+def _filiacoes():
+    from etl.extractors.tse_extractor import TSEExtractor
+
+    return TSEExtractor().run()
+
+
+def _patrimonio(force: bool):
+    from etl.extractors.tse_patrimonio_extractor import TSEPatrimonioExtractor
+
+    return TSEPatrimonioExtractor().run(force=force)
+
+
+def _doacoes(force: bool):
+    from etl.extractors.tse_doacoes_extractor import TseDoacoesExtractor
+
+    return TseDoacoesExtractor().run(force=force)
+
+
+def _eleicoes(force: bool):
+    from etl.extractors.tse_eleicoes_extractor import TSEEleicoesExtractor
+
+    return TSEEleicoesExtractor().run(force=force)
+
+
+def _candidaturas(force: bool):
+    from etl.extractors.tse_candidaturas_extractor import TSECandidaturasExtractor
+
+    return TSECandidaturasExtractor().run(force=force)
+
+
+def _social(allow_synthetic: bool):
+    from etl.extractors.social_indicators_extractor import SocialIndicatorsExtractor
+
+    return SocialIndicatorsExtractor().export_all(allow_synthetic=allow_synthetic)
+
+
+def _orcamento(allow_synthetic: bool):
+    from etl.extractors.orcamento_extractor import OrcamentoExtractor
+
+    return OrcamentoExtractor().run(allow_synthetic=allow_synthetic)
+
+
+def _pnad(force: bool):
+    from etl.extractors.pnad_extractor import PNADExtractor
+
+    return PNADExtractor().run(force=force)
+
+
+def _votacoes(ano_inicio: int, force: bool):
+    from datetime import date
+
+    from etl.extractors.votacoes_extractor import run_votacoes
+
+    return run_votacoes(anos=list(range(ano_inicio, date.today().year + 1)), force=force)
+
+
+def _composicao():
+    from etl.extractors.composicao_extractor import save_composicao_congresso
+
+    return save_composicao_congresso()
+
+
+def _renda():
+    from etl.extractors.salario_inflacao_extractor import SalarioInflacaoExtractor
+
+    return SalarioInflacaoExtractor().run()
+
+
+def _ceap_emendas(ano_inicio: int):
+    from etl.pipelines.sync_ceap_emendas import run
+
+    resumo = run(ano_inicio=ano_inicio)
+    if resumo.get("ceap_gravado") is False or resumo.get("emendas_gravado") is False:
+        raise RuntimeError(f"CEAP/emendas não gravadas (arquivos anteriores preservados): {resumo}")
+    return resumo
+
+
+def _load_db(allow_synthetic: bool, allow_unverified: bool, purge: bool):
+    from etl.pipelines.db_loader import DatabaseLoader
+
+    return DatabaseLoader(
+        allow_synthetic=allow_synthetic, allow_unverified=allow_unverified, purge_legacy_synthetic=purge
+    ).load_all()
+
+
+def _processos(allow_unverified_legal: bool):
+    from etl.utils.bootstrap import ensure_backend_on_path
+
+    ensure_backend_on_path()
+    from app.core.database import SessionLocal  # backend já está no path (db_loader/bootstrap) — importado sob demanda
+
+    from etl.extractors.processos_loader import populate_processos_judiciais
+
+    with SessionLocal() as session:
+        return populate_processos_judiciais(session, allow_unverified=allow_unverified_legal)
+
+
+def _presenca(no_cache: bool, max_paginas: Optional[int]):
+    from etl.extractors.presenca_extractor import PresencaExtractor, ids_deputados_conhecidos
+
+    resultado = PresencaExtractor().run(
+        usar_cache=not no_cache, ids_camara=ids_deputados_conhecidos(), max_paginas_novas=max_paginas
+    )
+    for casa, dados in resultado.items():
+        print(
+            f"    {casa}: {len(dados['resumos'])} resumos parlamentar/ano, {len(dados['dias'])} dias, "
+            f"{len(dados['falhas'])} falhas, {dados.get('paginas_pendentes', 0)} páginas pendentes"
+        )
+        if dados["falhas"]:
+            raise RuntimeError(f"{casa}: {len(dados['falhas'])} falhas de extração (ex.: {dados['falhas'][0]})")
+
+
+def _remuneracao(no_cache: bool):
+    from etl.extractors.presenca_extractor import ids_deputados_conhecidos
+    from etl.extractors.remuneracao_extractor import RemuneracaoExtractor
+
+    resultado = RemuneracaoExtractor().run(usar_cache=not no_cache, ids_permitidos=ids_deputados_conhecidos())
+    print(f"    {len(resultado['registros'])} registros mensais, {len(resultado['cobertura']['falhas'])} falhas")
+    if resultado["cobertura"]["falhas"]:
+        raise RuntimeError(f"{len(resultado['cobertura']['falhas'])} falhas de extração")
+
+
+def _load_presenca_remuneracao():
+    from etl.utils.bootstrap import ensure_backend_on_path
+
+    ensure_backend_on_path()
+    from app.core.database import SessionLocal
+
+    from etl.pipelines.load_attendance_and_remuneration import load_attendances, load_remunerations
+
+    db = SessionLocal()
+    try:
+        print("    Presença:", load_attendances(db))
+        print("    Remuneração:", load_remunerations(db))
+    finally:
+        db.close()
+
+
+def montar_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
         description="Pipeline Integrado: Política e Economia Brasileira (ETL & Carga no PostgreSQL)"
     )
-    parser.add_argument(
-        "--no-cache",
-        action="store_true",
-        help="Força requisição direta às APIs públicas sem usar cache local"
+    p.add_argument("--no-cache", action="store_true", help="Ignora caches locais (BCB e cache de deputados)")
+    for flag, ajuda in [
+        ("economic", "Extração econômica e de presidentes (BCB/INPE/indicadores)"),
+        ("camara", "Dados abertos da Câmara dos Deputados"),
+        ("senado", "Dados abertos do Senado Federal"),
+        ("tse", "Filiações partidárias"),
+        ("patrimonio", "Declarações de patrimônio (TSE, bem_candidato)"),
+        ("doacoes", "Financiamento de campanha (TSE, prestação de contas de candidatos)"),
+        ("eleicoes", "Eleições presidenciais por UF (TSE, votação por candidato/município/zona)"),
+        ("candidaturas", "Situação do registro de candidatura / ficha limpa (TSE, consulta_cand)"),
+        ("social", "Indicadores sociais oficiais (IBGE/SIDRA) e eleições presidenciais por UF (manuais)"),
+        ("orcamento", "Repasses federais por UF (Portal da Transparência, CSV mensal oficial)"),
+        ("composicao", "Composição histórica do Congresso"),
+        ("renda", "Salário mínimo vs subsídio parlamentar vs inflação"),
+        ("pnad", "Faixas de salário mínimo a partir dos microdados da PNAD Contínua (IBGE)"),
+        ("ceap", "CEAP (Câmara/Senado) e emendas parlamentares oficiais"),
+        ("votacoes", "Votações nominais em plenário (Câmara e Senado) com orientação do governo e ex-parlamentares"),
+        ("presenca", "Presença em plenário (Câmara: portal oficial; Senado: votações nominais)"),
+        ("remuneracao", "Remuneração mensal dos deputados (portal da Câmara)"),
+        ("load-db", "Carga e upsert no PostgreSQL"),
+        ("load-presenca", "Carga de presença e remuneração oficiais no PostgreSQL"),
+        ("processos", "Carga do acervo manual de processos judiciais (exige --allow-unverified-legal)"),
+    ]:
+        p.add_argument(f"--{flag}", action="store_true", help=ajuda)
+    p.add_argument("--ceap-ano-inicio", type=int, default=2019, help="Ano inicial do CEAP/emendas (padrão: 2019)")
+    p.add_argument(
+        "--presenca-max-paginas",
+        type=int,
+        default=None,
+        help="Máximo de páginas novas do portal da Câmara por execução (o portal limita a taxa; a extração é retomável)",
     )
-    parser.add_argument(
-        "--economic",
-        action="store_true",
-        help="Executa apenas a extração econômica e de presidentes (BCB/IBGE)"
+    p.add_argument("--votacoes-ano-inicio", type=int, default=2019, help="Ano inicial das votações (padrão: 2019)")
+    p.add_argument(
+        "--allow-synthetic", action="store_true", help="Gera/carrega dados SINTÉTICOS marcados (demonstração)"
     )
-    parser.add_argument(
-        "--camara",
-        action="store_true",
-        help="Executa apenas a extração de dados abertos da Câmara dos Deputados"
+    p.add_argument(
+        "--allow-unverified", action="store_true", help="Carrega dados digitados e não verificados (eleições por UF)"
     )
-    parser.add_argument(
-        "--senado",
-        action="store_true",
-        help="Executa apenas a extração de dados abertos do Senado Federal"
+    p.add_argument(
+        "--allow-unverified-legal", action="store_true", help="Autoriza o acervo manual de processos judiciais"
     )
-    parser.add_argument(
-        "--tse",
+    p.add_argument(
+        "--purge-legacy-synthetic",
         action="store_true",
-        help="Executa apenas a extração de filiações partidárias do TSE"
+        help="DESTRUTIVO: apaga sintéticos legados do banco antes da carga",
     )
-    parser.add_argument(
-        "--orcamento",
-        action="store_true",
-        help="Executa a modelagem de repasses orçamentários por UF"
+    return p
+
+
+def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
+    chaves = [
+        "economic",
+        "camara",
+        "senado",
+        "tse",
+        "patrimonio",
+        "doacoes",
+        "eleicoes",
+        "candidaturas",
+        "social",
+        "orcamento",
+        "composicao",
+        "renda",
+        "pnad",
+        "ceap",
+        "votacoes",
+        "presenca",
+        "remuneracao",
+        "load_db",
+        "load_presenca",
+        "processos",
+    ]
+    selecionadas = {k for k in chaves if getattr(args, k)}
+    modo_completo = not selecionadas
+
+    def quer(chave: str) -> bool:
+        # Etapas que exigem autorização explícita nunca entram só por "modo completo"
+        if chave == "processos":
+            return args.processos or args.allow_unverified_legal
+        return modo_completo or chave in selecionadas
+
+    cache = not args.no_cache
+    catalogo = [
+        Etapa("economic", "Extração econômica e presidentes (BCB / INPE)", lambda: _economic(cache)),
+        Etapa("camara", "Dados abertos da Câmara dos Deputados", lambda: _camara(args.no_cache)),
+        Etapa("senado", "Dados abertos do Senado Federal", _senado),
+        Etapa("tse", "Filiações partidárias", _filiacoes),
+        Etapa("patrimonio", "Declarações de patrimônio (TSE)", lambda: _patrimonio(args.no_cache)),
+        Etapa("doacoes", "Financiamento de campanha (TSE)", lambda: _doacoes(args.no_cache)),
+        Etapa("eleicoes", "Eleições presidenciais por UF (TSE)", lambda: _eleicoes(args.no_cache)),
+        Etapa("candidaturas", "Situação do registro de candidatura (TSE)", lambda: _candidaturas(args.no_cache)),
+        Etapa("social", "Indicadores sociais e eleições por UF", lambda: _social(args.allow_synthetic)),
+        Etapa(
+            "orcamento", "Repasses federais por UF (Portal da Transparência)", lambda: _orcamento(args.allow_synthetic)
+        ),
+        Etapa("composicao", "Composição do Congresso e governabilidade", _composicao),
+        Etapa("renda", "Salário mínimo vs subsídio parlamentar vs inflação", _renda),
+        Etapa("pnad", "Faixas de salário mínimo (microdados PNAD Contínua)", lambda: _pnad(args.no_cache)),
+        Etapa("ceap", "CEAP e emendas parlamentares oficiais", lambda: _ceap_emendas(args.ceap_ano_inicio)),
+        Etapa(
+            "votacoes",
+            "Votações nominais e orientação do governo (Câmara e Senado)",
+            lambda: _votacoes(args.votacoes_ano_inicio, args.no_cache),
+        ),
+        Etapa(
+            "presenca",
+            "Presença em plenário (Câmara e Senado)",
+            lambda: _presenca(args.no_cache, args.presenca_max_paginas),
+        ),
+        Etapa("remuneracao", "Remuneração mensal dos deputados", lambda: _remuneracao(args.no_cache)),
+        Etapa(
+            "load_db",
+            "Carga e upsert relacional no PostgreSQL",
+            lambda: _load_db(args.allow_synthetic, args.allow_unverified, args.purge_legacy_synthetic),
+            depende_de_extracao=True,
+        ),
+        Etapa(
+            "load_presenca",
+            "Carga de presença e remuneração oficiais",
+            _load_presenca_remuneracao,
+            depende_de_extracao=True,
+        ),
+        Etapa(
+            "processos",
+            "Processos judiciais (acervo manual)",
+            lambda: _processos(args.allow_unverified_legal),
+            depende_de_extracao=True,
+        ),
+    ]
+    etapas = [e for e in catalogo if quer(e.chave)]
+    return etapas
+
+
+def executar(etapas: List[Etapa], modo_completo: bool) -> Dict[str, str]:
+    resultados: Dict[str, str] = {}
+    total = len(etapas)
+    for i, etapa in enumerate(etapas, start=1):
+        print(f"\n>>> [ETAPA {i}/{total}] {etapa.titulo.upper()} <<<")
+
+        falhas_extracao = [k for k, v in resultados.items() if v.startswith("FALHOU")]
+        if modo_completo and etapa.depende_de_extracao and falhas_extracao:
+            resultados[etapa.chave] = f"PULADA (extração com falha: {', '.join(falhas_extracao)})"
+            print(f"    {resultados[etapa.chave]}")
+            continue
+
+        inicio = time.time()
+        try:
+            etapa.executar()
+            resultados[etapa.chave] = f"OK ({time.time() - inicio:.1f}s)"
+        except Exception as exc:  # noqa: BLE001 — a etapa é isolada de propósito; o erro é registrado e relatado
+            logger.error("Etapa '%s' falhou: %s", etapa.chave, exc, exc_info=True)
+            resultados[etapa.chave] = f"FALHOU: {exc}"
+    return resultados
+
+
+def imprimir_resumo(resultados: Dict[str, str]) -> bool:
+    print("\n" + "=" * 70)
+    print("RESUMO DA ESTEIRA")
+    print("=" * 70)
+    for chave, status in resultados.items():
+        print(f"  {chave:<12} {status}")
+    ok = all(v.startswith("OK") for v in resultados.values())
+    print("=" * 70)
+    print(
+        "Esteira concluída com sucesso."
+        if ok
+        else "Esteira concluída COM FALHAS ou etapas puladas — veja o resumo acima."
     )
-    parser.add_argument(
-        "--composicao",
-        action="store_true",
-        help="Executa a curadoria histórica da composição do Congresso Nacional"
+    return ok
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    args = montar_parser().parse_args(argv)
+    ensure_data_dirs()
+
+    etapas = construir_etapas(args)
+    if not etapas:
+        print("Nenhuma etapa selecionada.")
+        return 0
+    modo_completo = not any(
+        getattr(args, k)
+        for k in [
+            "economic",
+            "camara",
+            "senado",
+            "tse",
+            "patrimonio",
+            "social",
+            "orcamento",
+            "composicao",
+            "renda",
+            "pnad",
+            "ceap",
+            "votacoes",
+            "presenca",
+            "remuneracao",
+            "load_db",
+            "load_presenca",
+            "processos",
+        ]
     )
-    parser.add_argument(
-        "--renda",
-        action="store_true",
-        help="Executa a análise de salário mínimo vs salário parlamentar vs inflação"
-    )
-    parser.add_argument(
-        "--load-db",
-        action="store_true",
-        help="Executa apenas a carga e upsert no PostgreSQL"
-    )
-
-    args = parser.parse_args()
-    use_cache = not args.no_cache
-
-    # Modo seletivo ou completo
-    specific_run = args.economic or args.camara or args.senado or args.tse or args.orcamento or args.composicao or args.renda or args.load_db
-    run_economic = args.economic or not specific_run
-    run_camara = args.camara or not specific_run
-    run_senado = args.senado or not specific_run
-    run_tse = args.tse or not specific_run
-    run_orcamento = args.orcamento or not specific_run
-    run_composicao = args.composicao or not specific_run
-    run_renda = args.renda or not specific_run
-    run_load = args.load_db or not specific_run
-
-    if run_economic:
-        print("\n>>> [ETAPA 1/7] EXTRAÇÃO ECONÔMICA E PRESIDENTES (BCB / IBGE) <<<")
-        econ_pipeline = PresidentsEconomicSyncPipeline()
-        econ_pipeline.run(use_cache=use_cache)
-
-    if run_camara:
-        print("\n>>> [ETAPA 2/7] EXTRAÇÃO DADOS ABERTOS DA CÂMARA DOS DEPUTADOS <<<")
-        camara_extractor = CamaraExtractor(request_delay=0.15)
-        camara_extractor.run_full_extraction()
-
-    if run_senado:
-        print("\n>>> [ETAPA 3/7] EXTRAÇÃO DADOS ABERTOS DO SENADO FEDERAL <<<")
-        senado_extractor = SenadoExtractor()
-        senado_extractor.run_full_extraction()
-
-    if run_tse:
-        print("\n>>> [ETAPA 4/7] EXTRAÇÃO DE FILIAÇÕES PARTIDÁRIAS DO TSE <<<")
-        tse_extractor = TSEExtractor()
-        tse_extractor.run()
-
-    if run_orcamento:
-        print("\n>>> [ETAPA 5/7] REPASSES FEDERAIS E ORÇAMENTO POR UF <<<")
-        orc_extractor = OrcamentoExtractor()
-        orc_extractor.run()
-
-    if run_composicao:
-        print("\n>>> [ETAPA 6/7] COMPOSIÇÃO DO CONGRESSO E GOVERNABILIDADE <<<")
-        save_composicao_congresso()
-
-    if run_renda:
-        print("\n>>> [ETAPA 7/7] SALÁRIO MÍNIMO VS SUBSÍDIO PARLAMENTAR VS INFLAÇÃO <<<")
-        renda_extractor = SalarioInflacaoExtractor()
-        renda_extractor.run()
-
-    if run_load:
-        print("\n>>> [CARGA] CARGA E UPSERT RELACIONAL NO POSTGRESQL <<<")
-        loader = DatabaseLoader()
-        loader.load_all()
-
-    print("\nEsteira de execução concluída com sucesso!")
+    resultados = executar(etapas, modo_completo)
+    return 0 if imprimir_resumo(resultados) else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

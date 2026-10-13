@@ -1,160 +1,284 @@
 """
-Extrator de Financiamento de Campanha e Doações Eleitorais (TSE DivulgaCandContas)
-User-Agent: LegisDataBot/1.0
+Extrator de financiamento de campanha (receitas de candidatos) a partir da prestação de contas oficial do TSE.
+
+Cada ano tem um layout próprio nos dados abertos; `LAYOUTS` mapeia os arquivos e as colunas de 2002 a 2022
+para um formato único. Para cada político da base casado com um candidato (ver `tse_core.casar_candidatos`) são
+gravados os maiores doadores e uma linha agregada "Demais doadores", de modo que a soma das linhas é o total
+arrecadado. CPF de doador pessoa física é gravado MASCARADO (`***.123.456-**`); CNPJ é público.
+Eleições municipais (2020/2024) não são carregadas: os arquivos têm mais de 1 GB e não envolvem os cargos
+federais tratados pelo projeto.
 """
 
-import json
 import logging
-import random
-import time
-import urllib.request
-import urllib.error
-from datetime import datetime
+import re
+from collections import defaultdict
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from etl.config import RAW_DATA_DIR, PROCESSED_DATA_DIR, DEFAULT_USER_AGENT
+import pandas as pd
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+from etl.config import PROCESSED_DATA_DIR
+from etl.extractors.tse_core import (
+    TSE_RAW_DIR,
+    Politico,
+    baixar,
+    carregar_universo,
+    casar_candidatos,
+    fonte,
+    ler_candidatos,
+    ler_csv_zip,
+    parse_brl,
+)
+from etl.utils.io_utils import write_json_if_valid
+from etl.utils.provenance import mark_official
+
 logger = logging.getLogger("TseDoacoesExtractor")
 
-DONOR_TEMPLATES = [
-    ("Diretório Nacional - Fundo Especial de Financiamento de Campanha (FEFC)", "00.000.000/0001-00", "Fundo Público (FEFC)"),
-    ("Diretório Estadual - Fundo Partidário Ordinário", "00.000.000/0002-00", "Fundo Partidário"),
-    ("Recursos Próprios do Candidato", None, "Recursos Próprios"),
-    ("Financiamento Coletivo Oficial (Vaquinha Virtual Eleitoral)", "33.123.456/0001-89", "Doações Pessoas Físicas"),
-    ("João Carlos de Oliveira e Silva", "***.452.198-**", "Doação de Pessoa Física"),
-    ("Maria Helena Guimarães Prado", "***.819.304-**", "Doação de Pessoa Física"),
-    ("Antônio Augusto Mendonça Barros", "***.671.942-**", "Doação de Pessoa Física"),
-    ("Patrícia Souza Magalhães", "***.234.810-**", "Doação de Pessoa Física"),
-    ("Ricardo Albuquerque Fontes", "***.903.112-**", "Doação de Pessoa Física"),
-    ("Eduardo Moreira de Carvalho", "***.778.650-**", "Doação de Pessoa Física"),
-    ("Diretório Municipal de Campanha", "00.000.000/0003-00", "Repasse Partidário Municipal"),
-]
+TOP_DOADORES = 20
+SAIDA = "tse_doacoes_campanha.json"
+
+# ano -> (dataset, arquivo, regex dos membros, colunas de origem -> colunas normalizadas)
+LAYOUTS: Dict[int, Dict[str, Any]] = {
+    2002: {
+        "arquivo": "prestacao_contas_2002.zip",
+        "membros": r"Candidato/Receita/ReceitaCandidato\.csv$",
+        "cols": {
+            "SEQUENCIAL_CANDIDATO": "sq",
+            "SG_UF": "uf",
+            "CD_CPF_CGC": "doc",
+            "NO_DOADOR": "nome",
+            "VR_RECEITA": "valor",
+            "TP_RECURSO": "origem",
+        },
+    },
+    2006: {
+        "arquivo": "prestacao_contas_2006.zip",
+        "membros": r"Candidato/Receita/ReceitaCandidato\.csv$",
+        "cols": {
+            "SEQUENCIAL_CANDIDATO": "sq",
+            "UNIDADE_ELEITORAL_CANDIDATO": "uf",
+            "NUMERO_CPF_CGC_DOADOR": "doc",
+            "NOME_DOADOR": "nome",
+            "VALOR_RECEITA": "valor",
+            "TIPO_RECEITA": "origem",
+        },
+    },
+    2010: {
+        "arquivo": "prestacao_contas_2010.zip",
+        "membros": r"candidato/[A-Z]{2}/ReceitasCandidatos\.txt$",
+        "cols": {
+            "Sequencial Candidato": "sq",
+            "UF": "uf",
+            "CPF/CNPJ do doador": "doc",
+            "Nome do doador": "nome",
+            "Valor receita": "valor",
+            "Tipo receita": "origem",
+        },
+    },
+    2014: {
+        "arquivo": "prestacao_final_2014.zip",
+        "membros": r"receitas_candidatos_2014_[A-Z]{2}\.txt$",
+        "cols": {
+            "Sequencial Candidato": "sq",
+            "UF": "uf",
+            "CPF/CNPJ do doador": "doc",
+            "Nome do doador": "nome",
+            "Valor receita": "valor",
+            "Tipo receita": "origem",
+        },
+    },
+    2018: {
+        "arquivo": "prestacao_de_contas_eleitorais_candidatos_2018.zip",
+        "membros": r"receitas_candidatos_2018_[A-Z]{2}\.csv$",
+        "cols": {
+            "SQ_CANDIDATO": "sq",
+            "SG_UE": "uf",
+            "NR_CPF_CNPJ_DOADOR": "doc",
+            "NM_DOADOR": "nome",
+            "VR_RECEITA": "valor",
+            "DS_ORIGEM_RECEITA": "origem",
+        },
+    },
+    2022: {
+        "arquivo": "prestacao_de_contas_eleitorais_candidatos_2022.zip",
+        "membros": r"receitas_candidatos_2022_[A-Z]{2}\.csv$",
+        "cols": {
+            "SQ_CANDIDATO": "sq",
+            "SG_UE": "uf",
+            "NR_CPF_CNPJ_DOADOR": "doc",
+            "NM_DOADOR": "nome",
+            "VR_RECEITA": "valor",
+            "DS_ORIGEM_RECEITA": "origem",
+        },
+    },
+}
+ANOS_PADRAO = tuple(sorted(LAYOUTS))
+NULOS = {"", "#NULO", "#NULO#", "#NE", "-1", "-3", "-4"}
+
+
+def mascarar_documento(valor: Any) -> Optional[str]:
+    """CPF (11 dígitos) -> '***.123.456-**'; CNPJ (14) fica íntegro; qualquer outro formato é descartado."""
+    texto = str(valor if valor is not None else "").strip()
+    if texto in NULOS:
+        return None
+    digitos = re.sub(r"\D", "", texto)
+    if len(digitos) == 11:
+        return f"***.{digitos[3:6]}.{digitos[6:9]}-**"
+    if len(digitos) == 14:
+        return f"{digitos[:2]}.{digitos[2:5]}.{digitos[5:8]}/{digitos[8:12]}-{digitos[12:]}"
+    return None
+
+
+def _limpo(valor: Any) -> str:
+    texto = str(valor if valor is not None else "").strip()
+    return "" if texto in NULOS else texto
+
+
+def ler_receitas(zip_path: Path, layout: Dict[str, Any]) -> Iterable[pd.DataFrame]:
+    """Blocos normalizados (colunas sq, uf, doc, nome, valor, origem) das receitas de candidatos do ano."""
+    mapa = layout["cols"]
+    for bloco in ler_csv_zip(zip_path, membros=layout["membros"], usecols=lambda c: c in mapa):
+        bloco = bloco.rename(columns=mapa)
+        for coluna in mapa.values():
+            if coluna not in bloco.columns:
+                bloco[coluna] = ""
+        yield bloco[list(mapa.values())]
+
+
+def agregar_receitas(
+    blocos: Iterable[pd.DataFrame], chaves_por_sq: Dict[str, str], chaves_por_uf_sq: Dict[str, str]
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Soma receitas por candidato casado. Liga a receita ao candidato por `UF|SQ` (ou só `SQ` quando o sequencial
+    é único no ano). Devolve {cand_key: {total, quantidade, doadores: {(doc, nome, origem): valor}}}.
+    """
+    resultado: Dict[str, Dict[str, Any]] = {}
+    for bloco in blocos:
+        for sq, uf, doc, nome, valor, origem in zip(
+            bloco["sq"], bloco["uf"], bloco["doc"], bloco["nome"], bloco["valor"], bloco["origem"]
+        ):
+            key = chaves_por_uf_sq.get(f"{str(uf).strip().upper()}|{str(sq).strip()}") or chaves_por_sq.get(
+                str(sq).strip()
+            )
+            if key is None:
+                continue
+            numero = parse_brl(valor)
+            if numero is None or numero <= 0:
+                continue
+            item = resultado.setdefault(key, {"total": 0.0, "quantidade": 0, "doadores": defaultdict(float)})
+            item["total"] += numero
+            item["quantidade"] += 1
+            item["doadores"][
+                (mascarar_documento(doc), _limpo(nome) or "Doador não identificado", _limpo(origem))
+            ] += numero
+    return resultado
+
+
+def linhas_do_candidato(resumo: Dict[str, Any], top: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Maiores doadores + linha 'Demais doadores' que preserva o total arrecadado."""
+    top = TOP_DOADORES if top is None else top
+    ordenados = sorted(resumo["doadores"].items(), key=lambda kv: kv[1], reverse=True)
+    linhas = [
+        {
+            "nome_doador": nome,
+            "cpf_cnpj_doador": doc,
+            "valor_doado": round(valor, 2),
+            "tipo_receita": origem or "Doação eleitoral",
+        }
+        for (doc, nome, origem), valor in ordenados[:top]
+    ]
+    restantes = ordenados[top:]
+    if restantes:
+        linhas.append(
+            {
+                "nome_doador": f"Demais doadores ({len(restantes)})",
+                "cpf_cnpj_doador": None,
+                "valor_doado": round(sum(v for _, v in restantes), 2),
+                "tipo_receita": "Agregado",
+            }
+        )
+    return linhas
 
 
 class TseDoacoesExtractor:
-    """Extrai ou consolida as principais receitas e doadores de campanha eleitoral do TSE."""
+    """Receitas de campanha dos parlamentares e presidentes da base (prestação de contas oficial do TSE)."""
 
-    def __init__(self, raw_dir: Path = RAW_DATA_DIR, processed_dir: Path = PROCESSED_DATA_DIR):
-        self.raw_dir = raw_dir
-        self.processed_dir = processed_dir
-        self.headers = {
-            "User-Agent": DEFAULT_USER_AGENT,
-            "Accept": "application/json"
+    def __init__(self, processed_dir: Path = PROCESSED_DATA_DIR, raw_dir: Path = TSE_RAW_DIR):
+        self.processed_dir = Path(processed_dir)
+        self.raw_dir = Path(raw_dir)
+
+    def _ano(self, ano: int, universo: Sequence[Politico], force: bool) -> List[Dict[str, Any]]:
+        layout = LAYOUTS[ano]
+        cand_zip = baixar("consulta_cand", f"consulta_cand_{ano}.zip", self.raw_dir, force)
+        dataset = "prestacao_contas"
+        contas_zip = baixar(dataset, layout["arquivo"], self.raw_dir, force)
+        if not cand_zip or not contas_zip:
+            logger.warning("Eleição %s sem arquivos completos no TSE: ignorada.", ano)
+            return []
+
+        candidatos = ler_candidatos(cand_zip)
+        casamento = casar_candidatos(universo, candidatos)
+        alvo = {int(i): chave for chave, i in casamento.casados.items()}
+        por_uf_sq: Dict[str, str] = {}
+        for i in alvo:
+            row = candidatos.iloc[i]
+            por_uf_sq[f"{row['SG_UE'].upper()}|{row['SQ_CANDIDATO']}"] = row["cand_key"]
+        # `SQ` sozinho só quando ele identifica um único candidato do ano inteiro (evita colisão entre UFs)
+        todos_sq = candidatos["SQ_CANDIDATO"].astype(str).value_counts()
+        por_sq = {
+            str(candidatos.iloc[i]["SQ_CANDIDATO"]): candidatos.iloc[i]["cand_key"]
+            for i in alvo
+            if todos_sq.get(str(candidatos.iloc[i]["SQ_CANDIDATO"]), 0) == 1
         }
 
-    def fetch_doacoes_tse_online(self, ano: int, uf: str, cargo_cod: int, candidato_num: int) -> Optional[List[Dict[str, Any]]]:
-        """Tenta consultar o endpoint do TSE DivulgaCandContas caso disponível."""
-        url = f"https://divulgacandcontas.tse.jus.br/divulga/rest/v1/prestador/consulta/receitas/{ano}/{uf}/{cargo_cod}/{candidato_num}"
-        try:
-            req = urllib.request.Request(url, headers=self.headers)
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                if resp.status == 200:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    receitas = data.get("dados", [])
-                    res = []
-                    for r in receitas[:10]:
-                        res.append({
-                            "ano_eleicao": ano,
-                            "nome_doador": r.get("nomeDoador", "Doador não identificado"),
-                            "cpf_cnpj_doador": r.get("cpfCnpjDoador"),
-                            "valor_doado": float(r.get("valorReceita", 0.0)),
-                            "tipo_receita": r.get("tipoReceita", "Doação Eleitoral")
-                        })
-                    return res
-        except Exception as e:
-            logger.debug(f"TSE online não respondeu para candidato {candidato_num}: {e}")
-        return None
-
-    def generate_realistic_donations(self, pol_id: str, nome: str, partido_sigla: str, cargo: str, ano: int = 2022) -> List[Dict[str, Any]]:
-        """Gera a prestação de contas dos Top Doadores de acordo com a regra eleitoral do TSE."""
-        rng = random.Random(f"{pol_id}-{ano}-tse-fin")
-        doacoes = []
-
-        is_pres = cargo == "PRESIDENTE"
-        base_fefc = rng.uniform(25000000.0, 75000000.0) if is_pres else rng.uniform(1200000.0, 3100000.0)
-        base_partidario = rng.uniform(5000000.0, 15000000.0) if is_pres else rng.uniform(300000.0, 800000.0)
-        base_proprio = rng.uniform(100000.0, 1500000.0) if is_pres else rng.uniform(30000.0, 150000.0)
-        base_crowd = rng.uniform(500000.0, 3000000.0) if is_pres else rng.uniform(40000.0, 180000.0)
-
-        # 1. FEFC (Principal fonte)
-        doacoes.append({
-            "ano_eleicao": ano,
-            "nome_doador": f"Diretório Nacional do {partido_sigla} (FEFC - Fundo Especial)",
-            "cpf_cnpj_doador": "00.000.000/0001-00",
-            "valor_doado": round(base_fefc, 2),
-            "tipo_receita": "Fundo Especial de Financiamento de Campanha (FEFC)"
-        })
-
-        # 2. Fundo Partidário Estadual
-        doacoes.append({
-            "ano_eleicao": ano,
-            "nome_doador": f"Diretório Estadual do {partido_sigla} (Fundo Partidário)",
-            "cpf_cnpj_doador": "00.000.000/0002-00",
-            "valor_doado": round(base_partidario, 2),
-            "tipo_receita": "Fundo Partidário Ordinário"
-        })
-
-        # 3. Recursos Próprios do Candidato
-        doacoes.append({
-            "ano_eleicao": ano,
-            "nome_doador": f"Recursos Próprios ({nome})",
-            "cpf_cnpj_doador": "***.***.***-**",
-            "valor_doado": round(base_proprio, 2),
-            "tipo_receita": "Recursos Próprios do Candidato"
-        })
-
-        # 4. Crowdfunding / Vaquinha
-        doacoes.append({
-            "ano_eleicao": ano,
-            "nome_doador": "Arrecadação Eleitoral Coletiva (Doações Físicas Registradas)",
-            "cpf_cnpj_doador": "33.123.456/0001-89",
-            "valor_doado": round(base_crowd, 2),
-            "tipo_receita": "Financiamento Coletivo de Campanha"
-        })
-
-        # 5 a 8. Pessoas Físicas doadoras
-        pf_templates = [t for t in DONOR_TEMPLATES if "Pessoa Física" in t[2]]
-        num_pfs = rng.randint(3, 5)
-        for i in range(num_pfs):
-            t = pf_templates[i % len(pf_templates)]
-            val_pf = rng.uniform(10000.0, 95000.0) if not is_pres else rng.uniform(50000.0, 250000.0)
-            doacoes.append({
-                "ano_eleicao": ano,
-                "nome_doador": t[0],
-                "cpf_cnpj_doador": t[1],
-                "valor_doado": round(val_pf, 2),
-                "tipo_receita": "Doação de Pessoa Física Declarada"
-            })
-
-        # Ordenar pelos maiores valores (Top Doadores)
-        doacoes.sort(key=lambda d: d["valor_doado"], reverse=True)
-        return doacoes
-
-    def extract_and_save(self, politicians_list: List[Dict[str, Any]]) -> Path:
-        """Gera e salva o arquivo consolidado de doações de campanha."""
-        self.processed_dir.mkdir(parents=True, exist_ok=True)
-        out_file = self.processed_dir / "tse_doacoes_campanha.json"
-
-        all_donations = {}
-        for pol in politicians_list:
-            pol_id = pol.get("id")
-            nome = pol.get("nome_eleitoral") or pol.get("nome_civil") or "Candidato"
-            partido = pol.get("partido_sigla") or "UNIÃO"
-            cargo = pol.get("cargo") or "DEPUTADO_FEDERAL"
-
-            doacoes = self.generate_realistic_donations(
-                pol_id=pol_id,
-                nome=nome,
-                partido_sigla=partido,
-                cargo=cargo,
-                ano=2022
+        receitas = agregar_receitas(ler_receitas(contas_zip, layout), por_sq, por_uf_sq)
+        por_chave = {p.chave: p for p in universo}
+        origem = f"{fonte(dataset, layout['arquivo'])} + consulta_cand/consulta_cand_{ano}.zip"
+        registros: List[Dict[str, Any]] = []
+        for chave, idx in casamento.casados.items():
+            resumo = receitas.get(candidatos.at[idx, "cand_key"])
+            if not resumo:
+                continue
+            registros.append(
+                mark_official(
+                    {
+                        **por_chave[chave].identificadores(),
+                        "ano_eleicao": ano,
+                        "total_arrecadado": round(resumo["total"], 2),
+                        "quantidade_receitas": resumo["quantidade"],
+                        "doadores": linhas_do_candidato(resumo),
+                    },
+                    origem,
+                )
             )
-            all_donations[pol_id] = doacoes
+        logger.info(
+            "[%s] %d políticos casados (%d ambíguos); %d com receitas de campanha.",
+            ano,
+            len(casamento.casados),
+            casamento.ambiguos,
+            sum(1 for r in registros if r["ano_eleicao"] == ano),
+        )
+        return registros
 
-        with open(out_file, "w", encoding="utf-8") as f:
-            json.dump(all_donations, f, ensure_ascii=False, indent=2)
+    def run(
+        self,
+        anos: Optional[Iterable[int]] = None,
+        universo: Optional[Sequence[Politico]] = None,
+        force: bool = False,
+        **_ignorado: Any,
+    ) -> List[Dict[str, Any]]:
+        universo = universo if universo is not None else carregar_universo(self.processed_dir)
+        registros: List[Dict[str, Any]] = []
+        for ano in anos or ANOS_PADRAO:
+            registros.extend(self._ano(int(ano), universo, force))
+        registros.sort(key=lambda r: (r["nome_eleitoral"], r["ano_eleicao"]))
+        destino = self.processed_dir / SAIDA
+        if write_json_if_valid(destino, registros, indent=None):
+            logger.info("%d prestações de contas de campanha salvas em %s.", len(registros), destino)
+        else:
+            logger.warning("Nenhuma receita obtida: %s preservado.", SAIDA)
+        return registros
 
-        logger.info(f"Consolidadas doações de campanha para {len(all_donations)} políticos em {out_file}")
-        return out_file
+
+if __name__ == "__main__":
+    TseDoacoesExtractor().run()

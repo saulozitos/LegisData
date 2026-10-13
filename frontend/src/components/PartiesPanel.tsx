@@ -1,24 +1,20 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
-import { getParties, PartidoCatalogoItem } from "@/services/api";
+import React, { useState, useMemo } from "react";
+import { getParties } from "@/services/api";
+import { useApi } from "@/hooks/useApi";
+import { safeExternalUrl } from "@/lib/safeUrl";
+import { EmptyState, ErrorState } from "@/components/StateViews";
 import {
-  Users,
   Search,
   Filter,
-  Landmark,
   Compass,
-  Sparkles,
   ArrowRight,
-  Shield,
-  Layers,
-  Award,
 } from "lucide-react";
 
 interface PartiesPanelProps {
   onSelectParty?: (sigla: string) => void;
   targetParty?: string | null;
-  mandateId?: string | null;
 }
 
 const SPECTRUM_BADGE_CONFIG: Record<string, { label: string; bg: string; text: string; border: string }> = {
@@ -67,7 +63,8 @@ export function PartyLogoBadge({
 }) {
   const [hasError, setHasError] = useState(false);
   const color = corHex || "#3b82f6";
-  const showImage = Boolean(logoUrl && !hasError);
+  const safeLogo = safeExternalUrl(logoUrl) ?? (logoUrl?.startsWith("/") ? logoUrl : undefined);
+  const showImage = Boolean(safeLogo && !hasError);
 
   const sizeClasses = {
     sm: "w-10 h-10 rounded-xl p-1 text-xs",
@@ -84,7 +81,7 @@ export function PartyLogoBadge({
     >
       {showImage ? (
         <img
-          src={logoUrl!}
+          src={safeLogo}
           alt={`Logo ${sigla}`}
           onError={() => setHasError(true)}
           className="object-contain w-full h-full filter drop-shadow-sm transition-transform duration-300 group-hover:scale-105"
@@ -100,31 +97,18 @@ export function PartyLogoBadge({
 }
 
 export default function PartiesPanel({ onSelectParty, targetParty }: PartiesPanelProps) {
-  const [parties, setParties] = useState<PartidoCatalogoItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const partiesQuery = useApi("parties", (signal) => getParties(signal));
+  const parties = useMemo(() => partiesQuery.data ?? [], [partiesQuery.data]);
+  const loading = partiesQuery.loading;
   const [searchTerm, setSearchTerm] = useState(targetParty || "");
   const [spectrumFilter, setSpectrumFilter] = useState("TODOS");
 
-  useEffect(() => {
-    if (targetParty) {
-      setSearchTerm(targetParty);
-    }
-  }, [targetParty]);
-
-  useEffect(() => {
-    async function loadParties() {
-      setLoading(true);
-      try {
-        const data = await getParties();
-        setParties(data);
-      } catch (err) {
-        console.error("Erro ao carregar catálogo de partidos:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadParties();
-  }, []);
+  // Sincroniza a busca quando o partido-alvo muda (ajuste de estado durante a renderização).
+  const [lastTarget, setLastTarget] = useState(targetParty);
+  if (targetParty !== lastTarget) {
+    setLastTarget(targetParty);
+    if (targetParty) setSearchTerm(targetParty);
+  }
 
   const filteredParties = useMemo(() => {
     return parties.filter((p) => {
@@ -142,12 +126,6 @@ export default function PartiesPanel({ onSelectParty, targetParty }: PartiesPane
     });
   }, [parties, searchTerm, spectrumFilter]);
 
-  // Estatísticas rápidas
-  const totalBancada = useMemo(
-    () => parties.reduce((acc, curr) => acc + curr.total_parlamentares, 0),
-    [parties]
-  );
-
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       {/* CABEÇALHO DO PAINEL */}
@@ -155,7 +133,7 @@ export default function PartiesPanel({ onSelectParty, targetParty }: PartiesPane
         <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative z-10 space-y-3">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-            <Compass className="w-3.5 h-3.5 text-indigo-400" />
+            <Compass className="w-3.5 h-3.5 text-indigo-400" aria-hidden="true" />
             Guia do Espectro Partidário Nacional
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
@@ -172,20 +150,21 @@ export default function PartiesPanel({ onSelectParty, targetParty }: PartiesPane
       <div className="bg-slate-900/70 border border-slate-800/90 rounded-2xl p-4 sm:p-5 backdrop-blur-md flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 shadow-lg">
         {/* Campo de Busca */}
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" aria-hidden="true" />
           <input
             type="text"
+            aria-label="Buscar partido por sigla, nome, ideologia ou lema"
             placeholder="Buscar por sigla, nome do partido, ideologia ou lema..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors shadow-inner"
+            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-cyan-500 transition-colors shadow-inner"
           />
         </div>
 
         {/* Filtro por Espectro Político */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
           <span className="text-xs font-semibold text-slate-400 mr-1 flex items-center gap-1 flex-shrink-0">
-            <Filter className="w-3.5 h-3.5" /> Espectro:
+            <Filter className="w-3.5 h-3.5" aria-hidden="true" /> Espectro:
           </span>
           {[
             { id: "TODOS", label: "Todos" },
@@ -196,12 +175,14 @@ export default function PartiesPanel({ onSelectParty, targetParty }: PartiesPane
             { id: "DIREITA", label: "Direita" },
           ].map((item) => (
             <button
+              type="button"
               key={item.id}
+              aria-pressed={spectrumFilter === item.id}
               onClick={() => setSpectrumFilter(item.id)}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                 spectrumFilter === item.id
                   ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
-                  : "bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+                  : "bg-slate-950 border border-slate-800 text-slate-300 hover:text-slate-100 hover:bg-slate-900"
               }`}
             >
               {item.label}
@@ -211,8 +192,11 @@ export default function PartiesPanel({ onSelectParty, targetParty }: PartiesPane
       </div>
 
       {/* GRADE DE CARDS DOS PARTIDOS */}
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 animate-pulse">
+      {partiesQuery.error ? (
+        <ErrorState onRetry={partiesQuery.retry} />
+      ) : loading ? (
+        <div role="status" aria-live="polite" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 animate-pulse">
+          <span className="sr-only">Carregando partidos...</span>
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
@@ -220,13 +204,15 @@ export default function PartiesPanel({ onSelectParty, targetParty }: PartiesPane
             />
           ))}
         </div>
+      ) : parties.length === 0 ? (
+        <EmptyState title="Catálogo de partidos indisponível" />
       ) : filteredParties.length === 0 ? (
-        <div className="bg-slate-900/40 border border-slate-800 rounded-3xl p-12 text-center text-slate-400 space-y-2">
-          <Compass className="w-8 h-8 text-slate-600 mx-auto" />
+        <div role="status" className="bg-slate-900/40 border border-slate-800 rounded-3xl p-12 text-center text-slate-400 space-y-2">
+          <Compass className="w-8 h-8 text-slate-400 mx-auto" aria-hidden="true" />
           <p className="text-sm font-semibold text-slate-300">
             Nenhum partido encontrado para os termos da busca.
           </p>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-400">
             Tente remover os filtros ou buscar por outra sigla.
           </p>
         </div>
@@ -244,10 +230,9 @@ export default function PartiesPanel({ onSelectParty, targetParty }: PartiesPane
             const isTarget = Boolean(targetParty && p.sigla.toUpperCase() === targetParty.toUpperCase());
 
             return (
-              <div
+              <article
                 key={p.id}
-                onClick={() => onSelectParty?.(p.sigla)}
-                className={`bg-slate-900/80 border hover:border-cyan-400/80 rounded-3xl p-5 sm:p-6 flex flex-col justify-between transition-all duration-300 hover:scale-[1.02] hover:bg-slate-900 group shadow-xl cursor-pointer hover:shadow-cyan-950/30 relative overflow-hidden ${
+                className={`bg-slate-900/80 border hover:border-cyan-400/80 rounded-3xl p-5 sm:p-6 flex flex-col justify-between transition-all duration-300 hover:scale-[1.02] hover:bg-slate-900 group shadow-xl hover:shadow-cyan-950/30 relative overflow-hidden focus-within:ring-2 focus-within:ring-cyan-400 ${
                   isTarget ? "ring-2 ring-cyan-400 border-cyan-400 shadow-cyan-950/50 scale-[1.02]" : "border-slate-800/90"
                 }`}
               >
@@ -271,7 +256,18 @@ export default function PartiesPanel({ onSelectParty, targetParty }: PartiesPane
                       <div>
                         <div className="flex items-center gap-2">
                           <h3 className="text-lg font-black text-white group-hover:text-cyan-300 transition-colors">
-                            {p.sigla}
+                            {onSelectParty ? (
+                              <button
+                                type="button"
+                                onClick={() => onSelectParty(p.sigla)}
+                                aria-label={`Ver bancada do ${p.sigla}`}
+                                className="cursor-pointer focus:outline-none after:absolute after:inset-0 after:content-['']"
+                              >
+                                {p.sigla}
+                              </button>
+                            ) : (
+                              p.sigla
+                            )}
                           </h3>
                           {p.numero_eleitoral && (
                             <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-lg bg-slate-950 text-slate-300 border border-slate-800">
@@ -294,7 +290,7 @@ export default function PartiesPanel({ onSelectParty, targetParty }: PartiesPane
 
                   {/* Ideologia Doutrinária */}
                   <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 space-y-1">
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
                       Ideologia Política
                     </span>
                     <p className="text-xs font-semibold text-slate-200">
@@ -304,7 +300,7 @@ export default function PartiesPanel({ onSelectParty, targetParty }: PartiesPane
 
                   {/* Lema Oficial */}
                   <div className="px-1">
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
                       Lema da Legenda
                     </span>
                     <p className="text-xs italic text-slate-300 leading-relaxed">
@@ -319,11 +315,11 @@ export default function PartiesPanel({ onSelectParty, targetParty }: PartiesPane
                     <span className="text-slate-400" title="Deputados Federais">
                       Dep: <strong className="text-slate-200">{p.total_deputados}</strong>
                     </span>
-                    <span className="text-slate-600">•</span>
+                    <span className="text-slate-400" aria-hidden="true">•</span>
                     <span className="text-slate-400" title="Senadores">
                       Sen: <strong className="text-slate-200">{p.total_senadores}</strong>
                     </span>
-                    <span className="text-slate-600">•</span>
+                    <span className="text-slate-400" aria-hidden="true">•</span>
                     <span className="text-cyan-400 font-bold" title="Total no Congresso Nacional">
                       Total: {p.total_parlamentares}
                     </span>
@@ -331,10 +327,10 @@ export default function PartiesPanel({ onSelectParty, targetParty }: PartiesPane
 
                   <div className="inline-flex items-center gap-1 text-[11px] font-bold text-cyan-400 group-hover:text-cyan-300 transition-colors">
                     <span>Ver Bancada</span>
-                    <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                    <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" aria-hidden="true" />
                   </div>
                 </div>
-              </div>
+              </article>
             );
           })}
         </div>

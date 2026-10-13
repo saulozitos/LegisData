@@ -1,0 +1,58 @@
+[
+  {
+    "nome_civil": "MARCIO TADEU ANHAIA DE LEMOS",
+    "nome_eleitoral": "Coronel Tadeu",
+    "camara_id": 204514,
+    "senado_id": null,
+    "ano_eleicao": 2006,
+    "orgao": "TSE",
+    "tipo_certidao": "Situação do registro de candidatura 2006 (Deputado Federal)",
+    "status_ficha": "Declarada: registro indeferido",
+    "detalhes": "Eleição 2006, Deputado Federal (SP). Situação da candidatura: INAPTO; detalhe: INDEFERIDO; resultado: REGISTRO NEGADO ANTES DA ELEIÇÃO.",
+    "numero_processo": "6527",
+    "is_synthetic": false,
+    "fonte": "TSE — Dados Abertos (cdn.tse.jus.br/estatistica/sead/odsele): consulta_cand/consulta_cand_2006.zip"
+  },
+  {
+    "nome_civil": "JOSÉ NELTO LAGARES DAS MERCEZ",
+    "nome_eleitoral": "José Nelto",
+    "camara_id": 204391,
+    "senado_id": null,
+    "ano_eleicao": 2010,
+    "orgao": "TSE",
+    "tipo_certidao": "Situação do registro de candidatura 2010 (Deputado Federal)",
+    "status_ficha": "Declarada: registro indeferido",
+    "detalhes": "Eleição 2010, Deputado Federal (GO). Situação da candidatura: APTO; detalhe: INDEFERIDO COM RECURSO; resultado: INDEFERIDO COM RECURSO.",
+    "numero_processo": "41432820106090000",
+    "is_synthetic": false,
+    "fonte": "TSE — Dados Abertos (cdn.tse.jus.br/estatistica/sead/odsele): consulta_cand/consulta_cand_2010.zip"
+  },
+  {
+    "nome_civil": "Luiz Cantuária Barreto",
+    "nome_eleitoral": "Lucas Barreto",
+    "camara_id": null,
+    "senado_id": 5926,
+    "ano_eleicao": 2010,
+    "orgao": "TSE",
+    "tipo_certidao": "Situação do registro de candidatura 2010 (Governador)",
+    "status_ficha": "Declarada: registro cancelado",
+    "detalhes": "Eleição 2010, Governador (AP). Situação da candidatura: INAPTO; detalhe: CANCELADO.",
+    "numero_processo": "2023820106030000",
+    "is_synthetic": false,
+    "fonte": "TSE — Dados Abertos (cdn.tse.jus.br/estatistica/sead/odsele): consulta_cand/consulta_cand_2010.zip"
+  },
+  {
+    "nome_civil": "AIRES DO ESPIRITO SANTO RIBEIRO NETO",
+    "nome_eleitoral": "Ribeiro Neto",
+    "camara_id": 235088,
+    "senado_id": null,
+    "ano_eleicao": 2010,
+    "orgao": "TSE",
+    "tipo_certidao": "Situação do registro de candidatura 2010 (Deputado Estadual)",
+    "status_ficha": "Declarada: registro indeferido",
+    "detalhes": "Eleição 2010, Deputado Estadual (MA). Situação da candidatura: INAPTO; detalhe: INDEFERIDO.",
+    "numero_processo": "30717620106100000",
+    "is_synthetic": false,
+    "fonte": "TSE — Dados Abertos (cdn.tse.jus.br/estatistica/sead/odsele): consulta_cand/consulta_cand_2010.zip"
+  }
+]

@@ -4,7 +4,8 @@ import React from "react";
 
 export default function LoadingSkeleton() {
   return (
-    <div className="space-y-6 animate-pulse">
+    <div role="status" aria-live="polite" className="space-y-6 animate-pulse">
+      <span className="sr-only">Carregando painel...</span>
       {/* Timeline skeleton */}
       <div className="h-16 bg-slate-900/60 border border-slate-800 rounded-2xl w-full" />
 

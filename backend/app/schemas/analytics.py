@@ -102,13 +102,17 @@ class StateTransferItem(BaseModel):
     regiao: str
     area_tematica: str
     valor_pago_brl: float
-    populacao_estimada: int
-    valor_per_capita_brl: float
+    populacao_estimada: Optional[int] = None
+    valor_per_capita_brl: Optional[float] = None
 
 
 class FederalTransfersResponse(BaseModel):
     mandato_id: str
     periodo: str
+    periodo_inicio: Optional[str] = None
+    periodo_fim: Optional[str] = None
+    meses_cobertos: Optional[int] = None
+    cobertura_parcial: Optional[bool] = None
     total_repassado_brl: float
     areas_resumo: Dict[str, float]
     regioes_resumo: Dict[str, float]

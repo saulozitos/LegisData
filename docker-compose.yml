@@ -1,15 +1,19 @@
+# Stack de produção: nenhuma porta de banco/API é publicada no host.
+# O frontend fala com o backend pela rede interna (backend:8000) e o backend com o banco (postgres:5432).
+# Para desenvolvimento local (acesso do host ao Postgres e à API em loopback) use também
+# docker-compose.dev.yml:  docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Imagens fixadas em tag minor; a renovação (inclusive de digest) é feita pelo Dependabot (.github/dependabot.yml).
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine
     container_name: politica_postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-politica_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}
       POSTGRES_DB: ${POSTGRES_DB:-politica_db}
-    ports:
-      # Exposição estritamente em localhost para auditoria de segurança (evita acesso externo)
-      - "127.0.0.1:5432:5432"
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -17,6 +21,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
 
   backend:
     build:
@@ -30,28 +39,63 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-politica_user}:${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}@postgres:5432/${POSTGRES_DB:-politica_db}
       ENVIRONMENT: ${ENVIRONMENT:-production}
-    ports:
-      # Restringido estritamente ao loopback local (127.0.0.1)
-      - "127.0.0.1:8000:8000"
+      # O Postgres do compose não tem TLS (rede interna). Use "require" para bancos gerenciados.
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
+      ADMIN_REFRESH_TOKEN: ${ADMIN_REFRESH_TOKEN:-}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     volumes:
       # Apenas dados do ETL em modo somente leitura (sem montagem de código do disco)
       - ./etl/data:/etl_data:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1g
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        INTERNAL_BACKEND_URL: ${INTERNAL_BACKEND_URL:-http://backend:8000}
     container_name: politica_frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
       - INTERNAL_BACKEND_URL=http://backend:8000
       - PORT=3000
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
-      - "3000:3000"
+      # Apenas loopback: exponha ao público por um proxy reverso (TLS/HSTS terminados no proxy).
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768m
 
 volumes:
   postgres_data:
-

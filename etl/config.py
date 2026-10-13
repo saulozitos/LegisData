@@ -2,8 +2,9 @@
 Configurações Globais do Pipeline de ETL - Política e Economia Brasileira
 """
 
-from pathlib import Path
+import os
 from datetime import date
+from pathlib import Path
 
 # Diretórios base
 BASE_DIR = Path(__file__).resolve().parent
@@ -11,15 +12,29 @@ DATA_DIR = BASE_DIR / "data"
 RAW_DATA_DIR = DATA_DIR / "raw"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
 
-RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
-PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+def ensure_data_dirs() -> None:
+    """Cria os diretórios de dados sob demanda (não mais como efeito colateral do import)."""
+    RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
 
 # Parâmetros temporais padrão (Início do governo Itamar Franco até o presente)
 DATA_INICIO_PADRAO = "02/10/1992"  # Posse interina de Itamar Franco
-DATA_FIM_PADRAO = date.today().strftime("%d/%m/%Y")
 
-# User-Agent oficial do projeto para consumo de APIs públicas
-DEFAULT_USER_AGENT = "LegisDataBot/1.0 (Transparência Pública; contato@legisdata.org)"
+
+def data_fim_padrao() -> str:
+    """Data de hoje no formato DD/MM/AAAA, calculada no momento da chamada (não no import)."""
+    return date.today().strftime("%d/%m/%Y")
+
+
+# Mantido por compatibilidade; prefira data_fim_padrao() em processos de longa duração.
+DATA_FIM_PADRAO = data_fim_padrao()
+
+# User-Agent do projeto para consumo de APIs públicas.
+# O contato deve ser um canal real mantido pelo projeto: defina LEGISDATA_CONTACT no ambiente.
+CONTACT_EMAIL = os.environ.get("LEGISDATA_CONTACT", "")
+DEFAULT_USER_AGENT = "LegisDataBot/1.0 (Transparencia Publica" + (f"; {CONTACT_EMAIL})" if CONTACT_EMAIL else ")")
 
 # URLs Base das APIs Públicas
 BCB_SGS_API_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.{codigo}/dados"
@@ -33,7 +48,7 @@ BCB_SERIES = {
         "unidade": "%",
         "categoria": "INFLACAO",
         "frequencia": "MENSAL",
-        "data_inicio": "01/01/1980"
+        "data_inicio": "01/01/1980",
     },
     "ipca_acumulado_12m": {
         "codigo": 13522,
@@ -41,7 +56,7 @@ BCB_SERIES = {
         "unidade": "%",
         "categoria": "INFLACAO",
         "frequencia": "MENSAL",
-        "data_inicio": "01/01/1995"
+        "data_inicio": "01/01/1995",
     },
     "selic_meta_ano": {
         "codigo": 432,
@@ -49,7 +64,7 @@ BCB_SERIES = {
         "unidade": "% a.a.",
         "categoria": "JUROS_SELIC",
         "frequencia": "DIARIA_OU_REUNIAO",
-        "data_inicio": "04/03/1999"
+        "data_inicio": "04/03/1999",
     },
     "selic_acumulada_mes": {
         "codigo": 4390,
@@ -57,7 +72,7 @@ BCB_SERIES = {
         "unidade": "% a.m.",
         "categoria": "JUROS_SELIC",
         "frequencia": "MENSAL",
-        "data_inicio": "01/07/1986"
+        "data_inicio": "01/07/1986",
     },
     "cambio_usd_brl_venda": {
         "codigo": 3698,
@@ -65,7 +80,7 @@ BCB_SERIES = {
         "unidade": "BRL/USD",
         "categoria": "CAMBIO_DOLAR",
         "frequencia": "MENSAL",
-        "data_inicio": "01/01/1985"
+        "data_inicio": "01/01/1985",
     },
     "dolar_ptax_fechamento": {
         "codigo": 10813,
@@ -73,7 +88,7 @@ BCB_SERIES = {
         "unidade": "BRL/USD",
         "categoria": "CAMBIO_DOLAR",
         "frequencia": "MENSAL",
-        "data_inicio": "01/01/1985"
+        "data_inicio": "01/01/1985",
     },
     "pib_mensal_corrente": {
         "codigo": 4380,
@@ -81,7 +96,7 @@ BCB_SERIES = {
         "unidade": "R$ milhões",
         "categoria": "PIB",
         "frequencia": "MENSAL",
-        "data_inicio": "01/01/1990"
+        "data_inicio": "01/01/1990",
     },
     "pib_variacao_anual": {
         "codigo": 7326,
@@ -89,7 +104,7 @@ BCB_SERIES = {
         "unidade": "% a.a.",
         "categoria": "PIB",
         "frequencia": "ANUAL",
-        "data_inicio": "01/01/1996"
+        "data_inicio": "01/01/1996",
     },
     "divida_liquida_pib": {
         "codigo": 4513,
@@ -97,7 +112,7 @@ BCB_SERIES = {
         "unidade": "% do PIB",
         "categoria": "DIVIDA_PUBLICA",
         "frequencia": "MENSAL",
-        "data_inicio": "01/12/2001"
+        "data_inicio": "01/12/2001",
     },
     "divida_bruta_governo_pib": {
         "codigo": 4536,
@@ -105,7 +120,7 @@ BCB_SERIES = {
         "unidade": "% do PIB",
         "categoria": "DIVIDA_PUBLICA",
         "frequencia": "MENSAL",
-        "data_inicio": "01/12/2001"
+        "data_inicio": "01/12/2001",
     },
     "salario_minimo_nominal": {
         "codigo": 1619,
@@ -113,7 +128,7 @@ BCB_SERIES = {
         "unidade": "R$ / Moeda Vigente",
         "categoria": "SALARIO_MINIMO",
         "frequencia": "MENSAL",
-        "data_inicio": "01/01/1980"
+        "data_inicio": "01/01/1980",
     },
     "ibovespa_fechamento": {
         "codigo": 7,
@@ -121,7 +136,7 @@ BCB_SERIES = {
         "unidade": "Pontos",
         "categoria": "MERCADO_FINANCEIRO",
         "frequencia": "DIARIA",
-        "data_inicio": "01/01/1990"
+        "data_inicio": "01/01/1990",
     },
     "desemprego_pnad": {
         "codigo": 24369,
@@ -129,6 +144,6 @@ BCB_SERIES = {
         "unidade": "%",
         "categoria": "DESEMPREGO",
         "frequencia": "MENSAL",
-        "data_inicio": "01/01/2012"
-    }
+        "data_inicio": "01/01/2012",
+    },
 }

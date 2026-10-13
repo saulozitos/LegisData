@@ -2,23 +2,34 @@
 Pipeline Principal de ETL: Sincronização de Presidentes e Indicadores Econômicos Básicos (BCB / IBGE)
 """
 
-import os
-import json
 import logging
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+
 import pandas as pd
 
-from etl.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
-from etl.extractors.presidents_extractor import PresidentsExtractor
+from etl.config import PROCESSED_DATA_DIR
 from etl.extractors.bcb_extractor import BCBExtractor
 from etl.extractors.ibge_extractor import IBGEExtractor
 from etl.extractors.inpe_extractor import INPEExtractor
-from etl.extractors.social_indicators_extractor import SocialIndicatorsExtractor
+from etl.extractors.presidents_extractor import PresidentsExtractor
 from etl.extractors.seguranca_extractor import SegurancaExtractor
+from etl.extractors.social_indicators_extractor import SocialIndicatorsExtractor
 from etl.transformers.economic_normalizer import EconomicNormalizer
+from etl.utils.io_utils import atomic_write_json, atomic_write_text
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("ETLPipeline")
+
+
+class EssentialSeriesMissing(RuntimeError):
+    """Série indispensável veio vazia: abortar é melhor do que gravar mandatos inteiros com zeros."""
+
+
+def _fmt(valor, formato: str, sufixo: str = "") -> str:
+    """Formata números do painel; None/NaN viram 'N/D' (valor 0 legítimo continua sendo 0)."""
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+        return "N/D"
+    return format(valor, formato) + sufixo
 
 
 class PresidentsEconomicSyncPipeline:
@@ -45,14 +56,24 @@ class PresidentsEconomicSyncPipeline:
 
         # 2. Extrair dados das APIs públicas do Banco Central e IBGE
         logger.info("Passo 2/5: Extraindo indicadores econômicos das APIs do Banco Central (SGS) e IBGE...")
-        
+
         # IPCA Mensal (Série 433 BCB)
         ipca_df = self.bcb_extractor.fetch_serie_dataframe("ipca_mensal", use_cache=use_cache)
-        logger.info(f"-> IPCA Mensal: {len(ipca_df)} registros obtidos ({ipca_df['data'].min()} a {ipca_df['data'].max()})")
+        if ipca_df.empty:
+            raise EssentialSeriesMissing("IPCA mensal (SGS 433) vazio: nada foi gravado.")
+        logger.info(
+            f"-> IPCA Mensal: {len(ipca_df)} registros obtidos ({ipca_df['data'].min()} a {ipca_df['data'].max()})"
+        )
 
         # Câmbio USD/BRL (Série 3698 BCB)
         cambio_df = self.bcb_extractor.fetch_serie_dataframe("cambio_usd_brl_venda", use_cache=use_cache)
+        if cambio_df.empty:
+            raise EssentialSeriesMissing("Câmbio USD/BRL (SGS 3698) vazio: nada foi gravado.")
         logger.info(f"-> Câmbio USD/BRL: {len(cambio_df)} registros obtidos.")
+
+        # Dólar de fim de período (PTAX, série 10813): é o "fechamento"; a média mensal (3698) NÃO serve para isso
+        dolar_fechamento_df = self.bcb_extractor.fetch_serie_dataframe("dolar_ptax_fechamento", use_cache=use_cache)
+        logger.info(f"-> Dólar (fim de período): {len(dolar_fechamento_df)} registros obtidos.")
 
         # PIB Variação Anual Real (Série 7326 BCB)
         pib_anual_df = self.bcb_extractor.fetch_serie_dataframe("pib_variacao_anual", use_cache=use_cache)
@@ -73,10 +94,12 @@ class PresidentsEconomicSyncPipeline:
         # 2.1 Extrair indicadores socioambientais expandidos
         logger.info("-> Extraindo dados de desemprego (IBGE), desmatamento (INPE/PRODES) e fome...")
         unemployment_dict = self.social_extractor.get_annual_unemployment_history()
-        
+
         deforest_df = self.inpe_extractor.fetch_deforestation_history(use_cache=use_cache)
-        deforestation_dict = dict(zip(deforest_df["ano"], deforest_df["desmatamento_km2"])) if not deforest_df.empty else {}
-        
+        deforestation_dict = (
+            dict(zip(deforest_df["ano"], deforest_df["desmatamento_km2"])) if not deforest_df.empty else {}
+        )
+
         social_indicators = self.social_extractor.get_annual_social_indicators()
         food_insecurity_dict = {
             item["ano"]: item.get("inseguranca_alimentar_pct")
@@ -103,7 +126,7 @@ class PresidentsEconomicSyncPipeline:
             deforestation_dict=deforestation_dict,
             food_insecurity_dict=food_insecurity_dict,
             homicide_dict=homicide_dict,
-            feminicide_dict=feminicide_dict
+            feminicide_dict=feminicide_dict,
         )
 
         logger.info("Passo 4/5: Construindo série histórica macroeconômica anual consolidada (1993 a presente)...")
@@ -119,35 +142,28 @@ class PresidentsEconomicSyncPipeline:
             deforestation_dict=deforestation_dict,
             food_insecurity_dict=food_insecurity_dict,
             homicide_dict=homicide_dict,
-            feminicide_dict=feminicide_dict
+            feminicide_dict=feminicide_dict,
+            dolar_fechamento_df=dolar_fechamento_df,
         )
 
         # 4. Exportação dos Dados Estruturados
         logger.info("Passo 5/5: Salvando arquivos processados em etl/data/processed/...")
-        
-        # Salvar JSON dos presidentes
-        presidents_file = PROCESSED_DATA_DIR / "presidentes_historico.json"
-        with open(presidents_file, "w", encoding="utf-8") as f:
-            json.dump(presidents, f, ensure_ascii=False, indent=2)
 
-        # Salvar resumo de mandatos (JSON e CSV)
-        mandates_json_file = PROCESSED_DATA_DIR / "indicadores_por_mandato.json"
-        with open(mandates_json_file, "w", encoding="utf-8") as f:
-            json.dump(mandates_summary, f, ensure_ascii=False, indent=2)
+        # Todas as gravações são atômicas (temp + os.replace): uma falha no meio não deixa arquivo truncado.
+        atomic_write_json(PROCESSED_DATA_DIR / "presidentes_historico.json", presidents)
+        atomic_write_json(PROCESSED_DATA_DIR / "indicadores_por_mandato.json", mandates_summary)
 
-        mandates_df = pd.DataFrame(mandates_summary)
-        # Converter listas para strings para compatibilidade CSV
-        mandates_df_export = mandates_df.copy()
-        mandates_df_export["ministros_fazenda_principais"] = mandates_df_export["ministros_fazenda_principais"].apply(lambda x: ", ".join(x) if isinstance(x, list) else x)
-        mandates_df_export["marcos_economicos_principais"] = mandates_df_export["marcos_economicos_principais"].apply(lambda x: " | ".join(x) if isinstance(x, list) else x)
-        mandates_df_export.to_csv(PROCESSED_DATA_DIR / "indicadores_por_mandato.csv", index=False, encoding="utf-8")
+        mandates_df_export = pd.DataFrame(mandates_summary).copy()
+        mandates_df_export["ministros_fazenda_principais"] = mandates_df_export["ministros_fazenda_principais"].apply(
+            lambda x: ", ".join(x) if isinstance(x, list) else x
+        )
+        mandates_df_export["marcos_economicos_principais"] = mandates_df_export["marcos_economicos_principais"].apply(
+            lambda x: " | ".join(x) if isinstance(x, list) else x
+        )
+        atomic_write_text(PROCESSED_DATA_DIR / "indicadores_por_mandato.csv", mandates_df_export.to_csv(index=False))
 
-        # Salvar resumo anual
-        annual_summary_df.to_csv(PROCESSED_DATA_DIR / "resumo_macroeconomico_anual.csv", index=False, encoding="utf-8")
-
-        # Salvar série de IPCA mensal tratada
-        if not ipca_df.empty:
-            ipca_df.to_csv(PROCESSED_DATA_DIR / "ipca_mensal_historico.csv", index=False, encoding="utf-8")
+        atomic_write_text(PROCESSED_DATA_DIR / "resumo_macroeconomico_anual.csv", annual_summary_df.to_csv(index=False))
+        atomic_write_text(PROCESSED_DATA_DIR / "ipca_mensal_historico.csv", ipca_df.to_csv(index=False))
 
         logger.info(f"Arquivos gerados com sucesso em {PROCESSED_DATA_DIR}")
 
@@ -158,7 +174,7 @@ class PresidentsEconomicSyncPipeline:
             "total_presidents": len(presidents),
             "mandates_summary": mandates_summary,
             "annual_records": len(annual_summary_df),
-            "output_directory": str(PROCESSED_DATA_DIR)
+            "output_directory": str(PROCESSED_DATA_DIR),
         }
 
     def _print_terminal_dashboard(self, mandates_summary: List[Dict[str, Any]]) -> None:
@@ -174,31 +190,34 @@ class PresidentsEconomicSyncPipeline:
             pres = m["presidente"]
             partido = m["partido"]
             periodo = m["anos_cobertos"]
-            
+
             # Formatação de inflação
             if "itamar" in m["id_mandato"]:
-                ipca_str = f"33.0% (pós-Real)*"
+                ipca_str = f"{_fmt(m.get('ipca_pos_real_pct'), '.1f', '%')} (pós-Real)*"
             else:
-                ipca_str = f"{m['ipca_acumulado_pct']:>8.1f}%"
+                ipca_str = _fmt(m["ipca_acumulado_pct"], ">8.1f", "%")
 
             # Formatação PIB
-            pib_str = f"{m['pib_medio_anual_pct']:>6.2f}%" if m['pib_medio_anual_pct'] else "N/D"
+            pib_str = _fmt(m["pib_medio_anual_pct"], ">6.2f", "%")
 
             # Câmbio final
-            cambio_str = f"R$ {m['cambio_final_usd_brl']:>5.2f}" if m['cambio_final_usd_brl'] else "N/D"
+            cambio_str = "N/D" if m["cambio_final_usd_brl"] is None else f"R$ {m['cambio_final_usd_brl']:>5.2f}"
 
             # Salário mínimo em USD
-            sal_usd = f"US$ {m['salario_minimo_final_usd']:>6.2f}" if m['salario_minimo_final_usd'] else "N/D"
+            sal_usd = "N/D" if m["salario_minimo_final_usd"] is None else f"US$ {m['salario_minimo_final_usd']:>6.2f}"
 
-            print(f"{pres:<26} | {partido:<6} | {periodo:<11} | {ipca_str:<15} | {pib_str:<12} | {cambio_str:<12} | {sal_usd}")
+            print(
+                f"{pres:<26} | {partido:<6} | {periodo:<11} | {ipca_str:<15} | {pib_str:<12} | {cambio_str:<12} | {sal_usd}"
+            )
 
         print("-" * 115)
         print("* Nota: No governo Itamar Franco, a inflação pré-Real atingiu patamar hiperinflacionário de 4 dígitos;")
-        print("        o valor de 33.0% refere-se à inflação controlada nos 6 meses após o lançamento do Real (01/07/1994 a 31/12/1994).")
+        print(
+            "        o valor exibido refere-se à inflação acumulada desde o lançamento do Real (01/07/1994) até o fim do mandato."
+        )
         print("=" * 115 + "\n")
 
 
 if __name__ == "__main__":
     pipeline = PresidentsEconomicSyncPipeline()
     pipeline.run()
-

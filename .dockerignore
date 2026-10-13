@@ -54,3 +54,8 @@ Thumbs.db
 .gemini*
 .dev*
 scratch/
+
+# Artefatos pesados
+assets/
+*.mp4
+*.webm

@@ -141,6 +141,10 @@ class VotingSession(Base):
     votes_no_count: Mapped[int] = mapped_column("totalNao", Integer, default=0, nullable=False)
     votes_abstain_count: Mapped[int] = mapped_column("totalAbstencao", Integer, default=0, nullable=False)
     votes_obstruction_count: Mapped[int] = mapped_column("totalObstrucao", Integer, default=0, nullable=False)
+    # Orientação da bancada "Governo" nesta votação (SIM, NAO, LIBERADO, ABSTENCAO, OBSTRUCAO) — nula quando a
+    # fonte não registrou orientação do governo. `party_orientations` guarda o JSON {bancada: orientação}.
+    government_orientation: Mapped[Optional[str]] = mapped_column("orientacaoGoverno", String(20), nullable=True)
+    party_orientations: Mapped[Optional[str]] = mapped_column("orientacoesBancadas", Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     proposition: Mapped["Proposition"] = relationship(back_populates="voting_sessions")
@@ -164,14 +168,12 @@ class ParliamentaryVote(Base):
         UUID(as_uuid=True),
         ForeignKey("politicos.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     party_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         "partidoId",
         UUID(as_uuid=True),
         ForeignKey("partidos_politicos.id"),
         nullable=True,
-        index=True,
     )
     vote_choice: Mapped[VotoOpcaoEnum] = mapped_column("voto", Enum(VotoOpcaoEnum), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

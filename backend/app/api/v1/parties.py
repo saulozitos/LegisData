@@ -1,9 +1,10 @@
+from datetime import date
 from typing import Any, Dict, List
 
 from app.core.database import get_db
-from app.models import CargoPoliticoEnum, Mandate, PartyAffiliation, PoliticalParty
+from app.models import CargoPoliticoEnum, Mandate, PartyAffiliation, PoliticalParty, StatusMandatoEnum
 from fastapi import APIRouter, Depends
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 router = APIRouter()
@@ -39,22 +40,27 @@ def list_parties(db: Session = Depends(get_db)):
     Retorna o catálogo completo de partidos políticos registrados,
     com suas ideologias, lemas oficiais, espectro político e bancadas atuais.
     """
-    parties = db.query(PoliticalParty).filter(PoliticalParty.acronym != "S.PART.").all()
-
-    # Contagem de parlamentares por partido nos mandatos
-    deputados_counts = dict(
-        db.query(Mandate.party_id, func.count(Mandate.id))
-        .filter(Mandate.office == CargoPoliticoEnum.DEPUTADO_FEDERAL)
-        .group_by(Mandate.party_id)
-        .all()
+    parties = (
+        db.query(PoliticalParty).filter(PoliticalParty.acronym != "S.PART.").order_by(PoliticalParty.acronym).all()
     )
 
-    senadores_counts = dict(
-        db.query(Mandate.party_id, func.count(Mandate.id))
-        .filter(Mandate.office == CargoPoliticoEnum.SENADOR)
-        .group_by(Mandate.party_id)
-        .all()
+    # Bancada ATUAL: somente mandatos em curso (sem data de fim ou com fim futuro) e em exercício,
+    # contando cada parlamentar uma única vez por partido (nunca mandatos históricos).
+    current_filter = (
+        or_(Mandate.end_date.is_(None), Mandate.end_date >= date.today()),
+        Mandate.status.in_([StatusMandatoEnum.TITULAR_ATIVO, StatusMandatoEnum.SUPLENTE_EM_EXERCICIO]),
     )
+
+    def current_counts(office: CargoPoliticoEnum) -> dict:
+        return dict(
+            db.query(Mandate.party_id, func.count(func.distinct(Mandate.politician_id)))
+            .filter(Mandate.office == office, *current_filter)
+            .group_by(Mandate.party_id)
+            .all()
+        )
+
+    deputados_counts = current_counts(CargoPoliticoEnum.DEPUTADO_FEDERAL)
+    senadores_counts = current_counts(CargoPoliticoEnum.SENADOR)
 
     # Contagem de filiados ativos na base (TSE)
     filiados_counts = dict(
@@ -73,7 +79,7 @@ def list_parties(db: Session = Depends(get_db)):
         total_parl = total_dep + total_sen
 
         cor = PARTY_COLORS.get(sigla_upper, "#64748b")
-        espectro = p.political_spectrum.value if p.political_spectrum else "CENTRO"
+        espectro = p.political_spectrum.value if p.political_spectrum else None
 
         result.append(
             {
@@ -82,8 +88,8 @@ def list_parties(db: Session = Depends(get_db)):
                 "nome_completo": p.full_name,
                 "numero_eleitoral": p.electoral_number,
                 "espectro_politico": espectro,
-                "ideologia": p.ideology or "Centrismo Democrático",
-                "lema": p.motto or "Pelo desenvolvimento e equilíbrio nacional",
+                "ideologia": p.ideology,
+                "lema": p.motto,
                 "logo_url": p.logo_url,
                 "total_deputados": total_dep,
                 "total_senadores": total_sen,

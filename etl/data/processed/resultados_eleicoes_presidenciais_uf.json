@@ -1,7 +1,7 @@
 [
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "AC",
     "estado_nome": "Acre",
     "regiao": "Norte",
@@ -11,11 +11,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 31.5,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "AL",
     "estado_nome": "Alagoas",
     "regiao": "Nordeste",
@@ -25,11 +28,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 31.2,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "AP",
     "estado_nome": "Amapá",
     "regiao": "Norte",
@@ -39,11 +45,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 37.1,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "AM",
     "estado_nome": "Amazonas",
     "regiao": "Norte",
@@ -53,11 +62,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 36.2,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "BA",
     "estado_nome": "Bahia",
     "regiao": "Nordeste",
@@ -67,11 +79,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 34.1,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "CE",
     "estado_nome": "Ceará",
     "regiao": "Nordeste",
@@ -81,11 +96,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 30.2,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "DF",
     "estado_nome": "Distrito Federal",
     "regiao": "Centro-Oeste",
@@ -95,11 +113,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 41.2,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "ES",
     "estado_nome": "Espírito Santo",
     "regiao": "Sudeste",
@@ -109,11 +130,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 24.7,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "GO",
     "estado_nome": "Goiás",
     "regiao": "Centro-Oeste",
@@ -123,11 +147,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 22.4,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "MA",
     "estado_nome": "Maranhão",
     "regiao": "Nordeste",
@@ -137,11 +164,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 29.5,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "MT",
     "estado_nome": "Mato Grosso",
     "regiao": "Centro-Oeste",
@@ -151,11 +181,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 20.8,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "MS",
     "estado_nome": "Mato Grosso do Sul",
     "regiao": "Centro-Oeste",
@@ -165,11 +198,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 21.2,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "MG",
     "estado_nome": "Minas Gerais",
     "regiao": "Sudeste",
@@ -179,11 +215,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 23.5,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "PA",
     "estado_nome": "Pará",
     "regiao": "Norte",
@@ -193,11 +232,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 33.5,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "PB",
     "estado_nome": "Paraíba",
     "regiao": "Nordeste",
@@ -207,11 +249,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 33.1,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "PR",
     "estado_nome": "Paraná",
     "regiao": "Sul",
@@ -221,11 +266,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 21.0,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "PE",
     "estado_nome": "Pernambuco",
     "regiao": "Nordeste",
@@ -235,11 +283,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 35.8,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "PI",
     "estado_nome": "Piauí",
     "regiao": "Nordeste",
@@ -249,11 +300,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 30.1,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "RJ",
     "estado_nome": "Rio de Janeiro",
     "regiao": "Sudeste",
@@ -263,11 +317,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 25.1,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "RN",
     "estado_nome": "Rio Grande do Norte",
     "regiao": "Nordeste",
@@ -277,11 +334,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 29.8,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "RS",
     "estado_nome": "Rio Grande do Sul",
     "regiao": "Sul",
@@ -291,11 +351,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 38.2,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "RO",
     "estado_nome": "Rondônia",
     "regiao": "Norte",
@@ -305,11 +368,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 24.2,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "RR",
     "estado_nome": "Roraima",
     "regiao": "Norte",
@@ -319,11 +385,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 26.2,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "SC",
     "estado_nome": "Santa Catarina",
     "regiao": "Sul",
@@ -333,11 +402,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 21.5,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "SP",
     "estado_nome": "São Paulo",
     "regiao": "Sudeste",
@@ -347,11 +419,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 20.3,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "SE",
     "estado_nome": "Sergipe",
     "regiao": "Nordeste",
@@ -361,11 +436,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 35.6,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1994,
-    "mandato_id_ref": "fhc-1",
+    "mandato_id_ref": "fhc-1995",
     "uf": "TO",
     "estado_nome": "Tocantins",
     "regiao": "Norte",
@@ -375,11 +453,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 28.4,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "AC",
     "estado_nome": "Acre",
     "regiao": "Norte",
@@ -389,11 +470,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 32.1,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "AL",
     "estado_nome": "Alagoas",
     "regiao": "Nordeste",
@@ -403,11 +487,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 29.1,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "AP",
     "estado_nome": "Amapá",
     "regiao": "Norte",
@@ -417,11 +504,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 39.2,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "AM",
     "estado_nome": "Amazonas",
     "regiao": "Norte",
@@ -431,11 +521,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 34.0,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "BA",
     "estado_nome": "Bahia",
     "regiao": "Nordeste",
@@ -445,11 +538,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 35.4,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "CE",
     "estado_nome": "Ceará",
     "regiao": "Nordeste",
@@ -459,11 +555,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 32.8,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "DF",
     "estado_nome": "Distrito Federal",
     "regiao": "Centro-Oeste",
@@ -473,11 +572,14 @@
     "candidato_segundo_nome": "Fernando Henrique Cardoso",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 43.2,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "ES",
     "estado_nome": "Espírito Santo",
     "regiao": "Sudeste",
@@ -487,11 +589,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 30.2,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "GO",
     "estado_nome": "Goiás",
     "regiao": "Centro-Oeste",
@@ -501,11 +606,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 25.1,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "MA",
     "estado_nome": "Maranhão",
     "regiao": "Nordeste",
@@ -515,11 +623,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 28.4,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "MT",
     "estado_nome": "Mato Grosso",
     "regiao": "Centro-Oeste",
@@ -529,11 +640,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 26.0,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "MS",
     "estado_nome": "Mato Grosso do Sul",
     "regiao": "Centro-Oeste",
@@ -543,11 +657,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 27.5,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "MG",
     "estado_nome": "Minas Gerais",
     "regiao": "Sudeste",
@@ -557,11 +674,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 32.1,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "PA",
     "estado_nome": "Pará",
     "regiao": "Norte",
@@ -571,11 +691,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 35.1,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "PB",
     "estado_nome": "Paraíba",
     "regiao": "Nordeste",
@@ -585,11 +708,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 34.5,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "PR",
     "estado_nome": "Paraná",
     "regiao": "Sul",
@@ -599,11 +725,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 27.4,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "PE",
     "estado_nome": "Pernambuco",
     "regiao": "Nordeste",
@@ -613,11 +742,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 42.1,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "PI",
     "estado_nome": "Piauí",
     "regiao": "Nordeste",
@@ -627,11 +759,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 32.6,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "RJ",
     "estado_nome": "Rio de Janeiro",
     "regiao": "Sudeste",
@@ -641,11 +776,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 34.2,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "RN",
     "estado_nome": "Rio Grande do Norte",
     "regiao": "Nordeste",
@@ -655,11 +793,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 31.8,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "RS",
     "estado_nome": "Rio Grande do Sul",
     "regiao": "Sul",
@@ -669,11 +810,14 @@
     "candidato_segundo_nome": "Fernando Henrique Cardoso",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 44.1,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "RO",
     "estado_nome": "Rondônia",
     "regiao": "Norte",
@@ -683,11 +827,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 28.2,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "RR",
     "estado_nome": "Roraima",
     "regiao": "Norte",
@@ -697,11 +844,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 25.4,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "SC",
     "estado_nome": "Santa Catarina",
     "regiao": "Sul",
@@ -711,11 +861,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 25.6,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "SP",
     "estado_nome": "São Paulo",
     "regiao": "Sudeste",
@@ -725,11 +878,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 26.5,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "SE",
     "estado_nome": "Sergipe",
     "regiao": "Nordeste",
@@ -739,11 +895,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 39.5,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 1998,
-    "mandato_id_ref": "fhc-2",
+    "mandato_id_ref": "fhc-1999",
     "uf": "TO",
     "estado_nome": "Tocantins",
     "regiao": "Norte",
@@ -753,11 +912,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 29.8,
-    "turno": 1
+    "turno": 1,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "AC",
     "estado_nome": "Acre",
     "regiao": "Norte",
@@ -767,11 +929,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 40.4,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "AL",
     "estado_nome": "Alagoas",
     "regiao": "Nordeste",
@@ -781,11 +946,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 49.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "AP",
     "estado_nome": "Amapá",
     "regiao": "Norte",
@@ -795,11 +963,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 33.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "AM",
     "estado_nome": "Amazonas",
     "regiao": "Norte",
@@ -809,11 +980,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 31.6,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "BA",
     "estado_nome": "Bahia",
     "regiao": "Nordeste",
@@ -823,11 +997,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 34.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "CE",
     "estado_nome": "Ceará",
     "regiao": "Nordeste",
@@ -837,11 +1014,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 28.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "DF",
     "estado_nome": "Distrito Federal",
     "regiao": "Centro-Oeste",
@@ -851,11 +1031,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 37.7,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "ES",
     "estado_nome": "Espírito Santo",
     "regiao": "Sudeste",
@@ -865,11 +1048,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 38.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "GO",
     "estado_nome": "Goiás",
     "regiao": "Centro-Oeste",
@@ -879,11 +1065,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 46.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "MA",
     "estado_nome": "Maranhão",
     "regiao": "Nordeste",
@@ -893,11 +1082,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 32.6,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "MT",
     "estado_nome": "Mato Grosso",
     "regiao": "Centro-Oeste",
@@ -907,11 +1099,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 45.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "MS",
     "estado_nome": "Mato Grosso do Sul",
     "regiao": "Centro-Oeste",
@@ -921,11 +1116,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 44.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "MG",
     "estado_nome": "Minas Gerais",
     "regiao": "Sudeste",
@@ -935,11 +1133,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 33.6,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "PA",
     "estado_nome": "Pará",
     "regiao": "Norte",
@@ -949,11 +1150,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 42.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "PB",
     "estado_nome": "Paraíba",
     "regiao": "Nordeste",
@@ -963,11 +1167,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 42.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "PR",
     "estado_nome": "Paraná",
     "regiao": "Sul",
@@ -977,11 +1184,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 47.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "PE",
     "estado_nome": "Pernambuco",
     "regiao": "Nordeste",
@@ -991,11 +1201,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 36.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "PI",
     "estado_nome": "Piauí",
     "regiao": "Nordeste",
@@ -1005,11 +1218,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 35.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "RJ",
     "estado_nome": "Rio de Janeiro",
     "regiao": "Sudeste",
@@ -1019,11 +1235,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 21.0,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "RN",
     "estado_nome": "Rio Grande do Norte",
     "regiao": "Nordeste",
@@ -1033,11 +1252,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 39.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "RS",
     "estado_nome": "Rio Grande do Sul",
     "regiao": "Sul",
@@ -1047,11 +1269,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 44.0,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "RO",
     "estado_nome": "Rondônia",
     "regiao": "Norte",
@@ -1061,11 +1286,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 44.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "RR",
     "estado_nome": "Roraima",
     "regiao": "Norte",
@@ -1075,11 +1303,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 45.7,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "SC",
     "estado_nome": "Santa Catarina",
     "regiao": "Sul",
@@ -1089,11 +1320,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 43.3,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "SP",
     "estado_nome": "São Paulo",
     "regiao": "Sudeste",
@@ -1103,11 +1337,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 44.6,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "SE",
     "estado_nome": "Sergipe",
     "regiao": "Nordeste",
@@ -1117,11 +1354,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 33.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2002,
-    "mandato_id_ref": "lula-1",
+    "mandato_id_ref": "lula-2003",
     "uf": "TO",
     "estado_nome": "Tocantins",
     "regiao": "Norte",
@@ -1131,11 +1371,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 41.1,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "AC",
     "estado_nome": "Acre",
     "regiao": "Norte",
@@ -1145,11 +1388,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 43.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "AL",
     "estado_nome": "Alagoas",
     "regiao": "Nordeste",
@@ -1159,11 +1405,14 @@
     "candidato_segundo_nome": "Geraldo Alckmin",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 31.4,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "AP",
     "estado_nome": "Amapá",
     "regiao": "Norte",
@@ -1173,11 +1422,14 @@
     "candidato_segundo_nome": "Geraldo Alckmin",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 37.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "AM",
     "estado_nome": "Amazonas",
     "regiao": "Norte",
@@ -1187,11 +1439,14 @@
     "candidato_segundo_nome": "Geraldo Alckmin",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 13.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "BA",
     "estado_nome": "Bahia",
     "regiao": "Nordeste",
@@ -1201,11 +1456,14 @@
     "candidato_segundo_nome": "Geraldo Alckmin",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 21.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "CE",
     "estado_nome": "Ceará",
     "regiao": "Nordeste",
@@ -1215,11 +1473,14 @@
     "candidato_segundo_nome": "Geraldo Alckmin",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 17.6,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "DF",
     "estado_nome": "Distrito Federal",
     "regiao": "Centro-Oeste",
@@ -1229,11 +1490,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 43.0,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "ES",
     "estado_nome": "Espírito Santo",
     "regiao": "Sudeste",
@@ -1243,11 +1507,14 @@
     "candidato_segundo_nome": "Geraldo Alckmin",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 48.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "GO",
     "estado_nome": "Goiás",
     "regiao": "Centro-Oeste",
@@ -1257,11 +1524,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 45.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "MA",
     "estado_nome": "Maranhão",
     "regiao": "Nordeste",
@@ -1271,11 +1541,14 @@
     "candidato_segundo_nome": "Geraldo Alckmin",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 15.4,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "MT",
     "estado_nome": "Mato Grosso",
     "regiao": "Centro-Oeste",
@@ -1285,11 +1558,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 45.3,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "MS",
     "estado_nome": "Mato Grosso do Sul",
     "regiao": "Centro-Oeste",
@@ -1299,11 +1575,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 44.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "MG",
     "estado_nome": "Minas Gerais",
     "regiao": "Sudeste",
@@ -1313,11 +1592,14 @@
     "candidato_segundo_nome": "Geraldo Alckmin",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 34.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "PA",
     "estado_nome": "Pará",
     "regiao": "Norte",
@@ -1327,11 +1609,14 @@
     "candidato_segundo_nome": "Geraldo Alckmin",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 40.0,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "PB",
     "estado_nome": "Paraíba",
     "regiao": "Nordeste",
@@ -1341,11 +1626,14 @@
     "candidato_segundo_nome": "Geraldo Alckmin",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 24.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "PR",
     "estado_nome": "Paraná",
     "regiao": "Sul",
@@ -1355,11 +1643,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 41.4,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "PE",
     "estado_nome": "Pernambuco",
     "regiao": "Nordeste",
@@ -1369,11 +1660,14 @@
     "candidato_segundo_nome": "Geraldo Alckmin",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 21.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "PI",
     "estado_nome": "Piauí",
     "regiao": "Nordeste",
@@ -1383,11 +1677,14 @@
     "candidato_segundo_nome": "Geraldo Alckmin",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 22.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "RJ",
     "estado_nome": "Rio de Janeiro",
     "regiao": "Sudeste",
@@ -1397,11 +1694,14 @@
     "candidato_segundo_nome": "Geraldo Alckmin",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 30.3,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "RN",
     "estado_nome": "Rio Grande do Norte",
     "regiao": "Nordeste",
@@ -1411,11 +1711,14 @@
     "candidato_segundo_nome": "Geraldo Alckmin",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 26.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "RS",
     "estado_nome": "Rio Grande do Sul",
     "regiao": "Sul",
@@ -1425,11 +1728,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 45.1,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "RO",
     "estado_nome": "Rondônia",
     "regiao": "Norte",
@@ -1439,11 +1745,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 46.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "RR",
     "estado_nome": "Roraima",
     "regiao": "Norte",
@@ -1453,11 +1762,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 37.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "SC",
     "estado_nome": "Santa Catarina",
     "regiao": "Sul",
@@ -1467,11 +1779,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 35.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "SP",
     "estado_nome": "São Paulo",
     "regiao": "Sudeste",
@@ -1481,11 +1796,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 47.7,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "SE",
     "estado_nome": "Sergipe",
     "regiao": "Nordeste",
@@ -1495,11 +1813,14 @@
     "candidato_segundo_nome": "Geraldo Alckmin",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 29.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2006,
-    "mandato_id_ref": "lula-2",
+    "mandato_id_ref": "lula-2007",
     "uf": "TO",
     "estado_nome": "Tocantins",
     "regiao": "Norte",
@@ -1509,11 +1830,14 @@
     "candidato_segundo_nome": "Geraldo Alckmin",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 34.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "AC",
     "estado_nome": "Acre",
     "regiao": "Norte",
@@ -1523,11 +1847,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 29.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "AL",
     "estado_nome": "Alagoas",
     "regiao": "Nordeste",
@@ -1537,11 +1864,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 46.4,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "AP",
     "estado_nome": "Amapá",
     "regiao": "Norte",
@@ -1551,11 +1881,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 37.3,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "AM",
     "estado_nome": "Amazonas",
     "regiao": "Norte",
@@ -1565,11 +1898,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 19.4,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "BA",
     "estado_nome": "Bahia",
     "regiao": "Nordeste",
@@ -1579,11 +1915,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 29.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "CE",
     "estado_nome": "Ceará",
     "regiao": "Nordeste",
@@ -1593,11 +1932,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 22.6,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "DF",
     "estado_nome": "Distrito Federal",
     "regiao": "Centro-Oeste",
@@ -1607,11 +1949,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 47.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "ES",
     "estado_nome": "Espírito Santo",
     "regiao": "Sudeste",
@@ -1621,11 +1966,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 49.1,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "GO",
     "estado_nome": "Goiás",
     "regiao": "Centro-Oeste",
@@ -1635,11 +1983,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 49.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "MA",
     "estado_nome": "Maranhão",
     "regiao": "Nordeste",
@@ -1649,11 +2000,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 20.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "MT",
     "estado_nome": "Mato Grosso",
     "regiao": "Centro-Oeste",
@@ -1663,11 +2017,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 48.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "MS",
     "estado_nome": "Mato Grosso do Sul",
     "regiao": "Centro-Oeste",
@@ -1677,11 +2034,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 44.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "MG",
     "estado_nome": "Minas Gerais",
     "regiao": "Sudeste",
@@ -1691,11 +2051,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 41.6,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "PA",
     "estado_nome": "Pará",
     "regiao": "Norte",
@@ -1705,11 +2068,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 46.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "PB",
     "estado_nome": "Paraíba",
     "regiao": "Nordeste",
@@ -1719,11 +2085,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 35.7,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "PR",
     "estado_nome": "Paraná",
     "regiao": "Sul",
@@ -1733,11 +2102,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 44.6,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "PE",
     "estado_nome": "Pernambuco",
     "regiao": "Nordeste",
@@ -1747,11 +2119,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 24.4,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "PI",
     "estado_nome": "Piauí",
     "regiao": "Nordeste",
@@ -1761,11 +2136,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 30.1,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "RJ",
     "estado_nome": "Rio de Janeiro",
     "regiao": "Sudeste",
@@ -1775,11 +2153,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 39.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "RN",
     "estado_nome": "Rio Grande do Norte",
     "regiao": "Nordeste",
@@ -1789,11 +2170,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 36.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "RS",
     "estado_nome": "Rio Grande do Sul",
     "regiao": "Sul",
@@ -1803,11 +2187,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 49.1,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "RO",
     "estado_nome": "Rondônia",
     "regiao": "Norte",
@@ -1817,11 +2204,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 47.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "RR",
     "estado_nome": "Roraima",
     "regiao": "Norte",
@@ -1831,11 +2221,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 32.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "SC",
     "estado_nome": "Santa Catarina",
     "regiao": "Sul",
@@ -1845,11 +2238,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 35.3,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "SP",
     "estado_nome": "São Paulo",
     "regiao": "Sudeste",
@@ -1859,11 +2255,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 45.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "SE",
     "estado_nome": "Sergipe",
     "regiao": "Nordeste",
@@ -1873,11 +2272,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 42.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2010,
-    "mandato_id_ref": "dilma-1",
+    "mandato_id_ref": "dilma-2011",
     "uf": "TO",
     "estado_nome": "Tocantins",
     "regiao": "Norte",
@@ -1887,11 +2289,14 @@
     "candidato_segundo_nome": "José Serra",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 41.1,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "AC",
     "estado_nome": "Acre",
     "regiao": "Norte",
@@ -1901,11 +2306,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 36.1,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "AL",
     "estado_nome": "Alagoas",
     "regiao": "Nordeste",
@@ -1915,11 +2323,14 @@
     "candidato_segundo_nome": "Aécio Neves",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 37.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "AP",
     "estado_nome": "Amapá",
     "regiao": "Norte",
@@ -1929,11 +2340,14 @@
     "candidato_segundo_nome": "Aécio Neves",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 38.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "AM",
     "estado_nome": "Amazonas",
     "regiao": "Norte",
@@ -1943,11 +2357,14 @@
     "candidato_segundo_nome": "Aécio Neves",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 35.0,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "BA",
     "estado_nome": "Bahia",
     "regiao": "Nordeste",
@@ -1957,11 +2374,14 @@
     "candidato_segundo_nome": "Aécio Neves",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 29.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "CE",
     "estado_nome": "Ceará",
     "regiao": "Nordeste",
@@ -1971,11 +2391,14 @@
     "candidato_segundo_nome": "Aécio Neves",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 23.3,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "DF",
     "estado_nome": "Distrito Federal",
     "regiao": "Centro-Oeste",
@@ -1985,11 +2408,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 38.1,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "ES",
     "estado_nome": "Espírito Santo",
     "regiao": "Sudeste",
@@ -1999,11 +2425,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 46.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "GO",
     "estado_nome": "Goiás",
     "regiao": "Centro-Oeste",
@@ -2013,11 +2442,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 42.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "MA",
     "estado_nome": "Maranhão",
     "regiao": "Nordeste",
@@ -2027,11 +2459,14 @@
     "candidato_segundo_nome": "Aécio Neves",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 21.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "MT",
     "estado_nome": "Mato Grosso",
     "regiao": "Centro-Oeste",
@@ -2041,11 +2476,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 45.3,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "MS",
     "estado_nome": "Mato Grosso do Sul",
     "regiao": "Centro-Oeste",
@@ -2055,11 +2493,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 43.7,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "MG",
     "estado_nome": "Minas Gerais",
     "regiao": "Sudeste",
@@ -2069,11 +2510,14 @@
     "candidato_segundo_nome": "Aécio Neves",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 47.6,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "PA",
     "estado_nome": "Pará",
     "regiao": "Norte",
@@ -2083,11 +2527,14 @@
     "candidato_segundo_nome": "Aécio Neves",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 46.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "PB",
     "estado_nome": "Paraíba",
     "regiao": "Nordeste",
@@ -2097,11 +2544,14 @@
     "candidato_segundo_nome": "Aécio Neves",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 35.7,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "PR",
     "estado_nome": "Paraná",
     "regiao": "Sul",
@@ -2111,11 +2561,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 39.0,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "PE",
     "estado_nome": "Pernambuco",
     "regiao": "Nordeste",
@@ -2125,11 +2578,14 @@
     "candidato_segundo_nome": "Aécio Neves",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 29.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "PI",
     "estado_nome": "Piauí",
     "regiao": "Nordeste",
@@ -2139,11 +2595,14 @@
     "candidato_segundo_nome": "Aécio Neves",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 21.7,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "RJ",
     "estado_nome": "Rio de Janeiro",
     "regiao": "Sudeste",
@@ -2153,11 +2612,14 @@
     "candidato_segundo_nome": "Aécio Neves",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 45.1,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "RN",
     "estado_nome": "Rio Grande do Norte",
     "regiao": "Nordeste",
@@ -2167,11 +2629,14 @@
     "candidato_segundo_nome": "Aécio Neves",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 30.1,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "RS",
     "estado_nome": "Rio Grande do Sul",
     "regiao": "Sul",
@@ -2181,11 +2646,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 46.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "RO",
     "estado_nome": "Rondônia",
     "regiao": "Norte",
@@ -2195,11 +2663,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 45.1,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "RR",
     "estado_nome": "Roraima",
     "regiao": "Norte",
@@ -2209,11 +2680,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 31.1,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "SC",
     "estado_nome": "Santa Catarina",
     "regiao": "Sul",
@@ -2223,11 +2697,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 35.4,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "SP",
     "estado_nome": "São Paulo",
     "regiao": "Sudeste",
@@ -2237,11 +2714,14 @@
     "candidato_segundo_nome": "Dilma Rousseff",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 35.7,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "SE",
     "estado_nome": "Sergipe",
     "regiao": "Nordeste",
@@ -2251,11 +2731,14 @@
     "candidato_segundo_nome": "Aécio Neves",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 33.0,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2014,
-    "mandato_id_ref": "dilma-2",
+    "mandato_id_ref": "dilma-2015",
     "uf": "TO",
     "estado_nome": "Tocantins",
     "regiao": "Norte",
@@ -2265,11 +2748,14 @@
     "candidato_segundo_nome": "Aécio Neves",
     "partido_segundo_sigla": "PSDB",
     "votos_segundo_pct": 49.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "AC",
     "estado_nome": "Acre",
     "regiao": "Norte",
@@ -2279,11 +2765,14 @@
     "candidato_segundo_nome": "Fernando Haddad",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 22.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "AL",
     "estado_nome": "Alagoas",
     "regiao": "Nordeste",
@@ -2293,11 +2782,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PSL",
     "votos_segundo_pct": 38.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "AP",
     "estado_nome": "Amapá",
     "regiao": "Norte",
@@ -2307,11 +2799,14 @@
     "candidato_segundo_nome": "Fernando Haddad",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 49.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "AM",
     "estado_nome": "Amazonas",
     "regiao": "Norte",
@@ -2321,11 +2816,14 @@
     "candidato_segundo_nome": "Fernando Haddad",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 49.7,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "BA",
     "estado_nome": "Bahia",
     "regiao": "Nordeste",
@@ -2335,11 +2833,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PSL",
     "votos_segundo_pct": 27.4,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "CE",
     "estado_nome": "Ceará",
     "regiao": "Nordeste",
@@ -2349,11 +2850,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PSL",
     "votos_segundo_pct": 28.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "DF",
     "estado_nome": "Distrito Federal",
     "regiao": "Centro-Oeste",
@@ -2363,11 +2867,14 @@
     "candidato_segundo_nome": "Fernando Haddad",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 30.1,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "ES",
     "estado_nome": "Espírito Santo",
     "regiao": "Sudeste",
@@ -2377,11 +2884,14 @@
     "candidato_segundo_nome": "Fernando Haddad",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 36.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "GO",
     "estado_nome": "Goiás",
     "regiao": "Centro-Oeste",
@@ -2391,11 +2901,14 @@
     "candidato_segundo_nome": "Fernando Haddad",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 34.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "MA",
     "estado_nome": "Maranhão",
     "regiao": "Nordeste",
@@ -2405,11 +2918,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PSL",
     "votos_segundo_pct": 26.7,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "MT",
     "estado_nome": "Mato Grosso",
     "regiao": "Centro-Oeste",
@@ -2419,11 +2935,14 @@
     "candidato_segundo_nome": "Fernando Haddad",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 33.6,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "MS",
     "estado_nome": "Mato Grosso do Sul",
     "regiao": "Centro-Oeste",
@@ -2433,11 +2952,14 @@
     "candidato_segundo_nome": "Fernando Haddad",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 34.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "MG",
     "estado_nome": "Minas Gerais",
     "regiao": "Sudeste",
@@ -2447,11 +2969,14 @@
     "candidato_segundo_nome": "Fernando Haddad",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 41.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "PA",
     "estado_nome": "Pará",
     "regiao": "Norte",
@@ -2461,11 +2986,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PSL",
     "votos_segundo_pct": 45.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "PB",
     "estado_nome": "Paraíba",
     "regiao": "Nordeste",
@@ -2475,11 +3003,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PSL",
     "votos_segundo_pct": 35.0,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "PR",
     "estado_nome": "Paraná",
     "regiao": "Sul",
@@ -2489,11 +3020,14 @@
     "candidato_segundo_nome": "Fernando Haddad",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 31.6,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "PE",
     "estado_nome": "Pernambuco",
     "regiao": "Nordeste",
@@ -2503,11 +3037,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PSL",
     "votos_segundo_pct": 33.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "PI",
     "estado_nome": "Piauí",
     "regiao": "Nordeste",
@@ -2517,11 +3054,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PSL",
     "votos_segundo_pct": 22.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "RJ",
     "estado_nome": "Rio de Janeiro",
     "regiao": "Sudeste",
@@ -2531,11 +3071,14 @@
     "candidato_segundo_nome": "Fernando Haddad",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 32.0,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "RN",
     "estado_nome": "Rio Grande do Norte",
     "regiao": "Nordeste",
@@ -2545,11 +3088,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PSL",
     "votos_segundo_pct": 36.6,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "RS",
     "estado_nome": "Rio Grande do Sul",
     "regiao": "Sul",
@@ -2559,11 +3105,14 @@
     "candidato_segundo_nome": "Fernando Haddad",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 36.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "RO",
     "estado_nome": "Rondônia",
     "regiao": "Norte",
@@ -2573,11 +3122,14 @@
     "candidato_segundo_nome": "Fernando Haddad",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 27.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "RR",
     "estado_nome": "Roraima",
     "regiao": "Norte",
@@ -2587,11 +3139,14 @@
     "candidato_segundo_nome": "Fernando Haddad",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 28.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "SC",
     "estado_nome": "Santa Catarina",
     "regiao": "Sul",
@@ -2601,11 +3156,14 @@
     "candidato_segundo_nome": "Fernando Haddad",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 24.1,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "SP",
     "estado_nome": "São Paulo",
     "regiao": "Sudeste",
@@ -2615,11 +3173,14 @@
     "candidato_segundo_nome": "Fernando Haddad",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 32.0,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "SE",
     "estado_nome": "Sergipe",
     "regiao": "Nordeste",
@@ -2629,11 +3190,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PSL",
     "votos_segundo_pct": 32.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2018,
-    "mandato_id_ref": "bolsonaro",
+    "mandato_id_ref": "bolsonaro-2019",
     "uf": "TO",
     "estado_nome": "Tocantins",
     "regiao": "Norte",
@@ -2643,11 +3207,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PSL",
     "votos_segundo_pct": 45.1,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "AC",
     "estado_nome": "Acre",
     "regiao": "Norte",
@@ -2657,11 +3224,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 29.7,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "AL",
     "estado_nome": "Alagoas",
     "regiao": "Nordeste",
@@ -2671,11 +3241,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PL",
     "votos_segundo_pct": 41.3,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "AP",
     "estado_nome": "Amapá",
     "regiao": "Norte",
@@ -2685,11 +3258,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 48.6,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "AM",
     "estado_nome": "Amazonas",
     "regiao": "Norte",
@@ -2699,11 +3275,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PL",
     "votos_segundo_pct": 48.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "BA",
     "estado_nome": "Bahia",
     "regiao": "Nordeste",
@@ -2713,11 +3292,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PL",
     "votos_segundo_pct": 27.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "CE",
     "estado_nome": "Ceará",
     "regiao": "Nordeste",
@@ -2727,11 +3309,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PL",
     "votos_segundo_pct": 30.1,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "DF",
     "estado_nome": "Distrito Federal",
     "regiao": "Centro-Oeste",
@@ -2741,11 +3326,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 41.2,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "ES",
     "estado_nome": "Espírito Santo",
     "regiao": "Sudeste",
@@ -2755,11 +3343,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 41.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "GO",
     "estado_nome": "Goiás",
     "regiao": "Centro-Oeste",
@@ -2769,11 +3360,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 41.3,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "MA",
     "estado_nome": "Maranhão",
     "regiao": "Nordeste",
@@ -2783,11 +3377,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PL",
     "votos_segundo_pct": 28.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "MT",
     "estado_nome": "Mato Grosso",
     "regiao": "Centro-Oeste",
@@ -2797,11 +3394,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 35.0,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "MS",
     "estado_nome": "Mato Grosso do Sul",
     "regiao": "Centro-Oeste",
@@ -2811,11 +3411,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 40.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "MG",
     "estado_nome": "Minas Gerais",
     "regiao": "Sudeste",
@@ -2825,11 +3428,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PL",
     "votos_segundo_pct": 49.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "PA",
     "estado_nome": "Pará",
     "regiao": "Norte",
@@ -2839,11 +3445,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PL",
     "votos_segundo_pct": 47.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "PB",
     "estado_nome": "Paraíba",
     "regiao": "Nordeste",
@@ -2853,11 +3462,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PL",
     "votos_segundo_pct": 33.4,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "PR",
     "estado_nome": "Paraná",
     "regiao": "Sul",
@@ -2867,11 +3479,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 37.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "PE",
     "estado_nome": "Pernambuco",
     "regiao": "Nordeste",
@@ -2881,11 +3496,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PL",
     "votos_segundo_pct": 33.0,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "PI",
     "estado_nome": "Piauí",
     "regiao": "Nordeste",
@@ -2895,11 +3513,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PL",
     "votos_segundo_pct": 23.1,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "RJ",
     "estado_nome": "Rio de Janeiro",
     "regiao": "Sudeste",
@@ -2909,11 +3530,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 43.5,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "RN",
     "estado_nome": "Rio Grande do Norte",
     "regiao": "Nordeste",
@@ -2923,11 +3547,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PL",
     "votos_segundo_pct": 34.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "RS",
     "estado_nome": "Rio Grande do Sul",
     "regiao": "Sul",
@@ -2937,11 +3564,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 43.7,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "RO",
     "estado_nome": "Rondônia",
     "regiao": "Norte",
@@ -2951,11 +3581,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 29.3,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "RR",
     "estado_nome": "Roraima",
     "regiao": "Norte",
@@ -2965,11 +3598,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 23.9,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "SC",
     "estado_nome": "Santa Catarina",
     "regiao": "Sul",
@@ -2979,11 +3615,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 30.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "SP",
     "estado_nome": "São Paulo",
     "regiao": "Sudeste",
@@ -2993,11 +3632,14 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 44.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "SE",
     "estado_nome": "Sergipe",
     "regiao": "Nordeste",
@@ -3007,11 +3649,14 @@
     "candidato_segundo_nome": "Jair Bolsonaro",
     "partido_segundo_sigla": "PL",
     "votos_segundo_pct": 32.8,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   },
   {
     "ano_eleicao": 2022,
-    "mandato_id_ref": "lula-3",
+    "mandato_id_ref": "lula-2023",
     "uf": "TO",
     "estado_nome": "Tocantins",
     "regiao": "Norte",
@@ -3021,6 +3666,9 @@
     "candidato_segundo_nome": "Luiz Inácio Lula da Silva",
     "partido_segundo_sigla": "PT",
     "votos_segundo_pct": 48.6,
-    "turno": 2
+    "turno": 2,
+    "verificado": false,
+    "is_synthetic": false,
+    "fonte": "Digitação manual LegisData — NÃO verificada contra os resultados oficiais do TSE"
   }
 ]

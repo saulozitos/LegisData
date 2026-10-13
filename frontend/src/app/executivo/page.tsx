@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useState } from "react";
 import Header from "@/components/Header";
+import { ErrorState, EmptyState, LoadingState } from "@/components/StateViews";
+import { useApi } from "@/hooks/useApi";
 import {
-  PresidentialMandate,
-  MandateIndicatorData,
   getPresidentialMandates,
   getMandateIndicators,
+  getMandateSummary,
 } from "@/services/api";
 import {
   LineChart,
@@ -35,72 +36,31 @@ import {
 } from "lucide-react";
 import { getPresidentPhotoUrl } from "@/components/PresidentTimeline";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface KPIStat {
-  primeiro: number;
-  ultimo: number;
-  minimo: number;
-  maximo: number;
-  media: number;
-  variacao_pp?: number;
-  total_acumulado?: number;
-}
-
-interface MandateSummary {
-  mandate_id: string;
-  nome: string;
-  partido: string;
-  inicio: string;
-  fim: string | null;
-  foto_url: string | null;
-  total_meses: number;
-  kpis: {
-    inflacao_ipca?: KPIStat;
-    desemprego_pnad?: KPIStat;
-    aprovacao_popular?: KPIStat;
-    cambio_usd_brl?: KPIStat;
-    selic_meta?: KPIStat;
-    emendas_bilhoes?: KPIStat & { total_acumulado?: number };
-  };
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmt(value: number | undefined | null, decimals = 1): string {
-  if (value == null) return "—";
+  if (value == null || !Number.isFinite(value)) return "—";
   return value.toFixed(decimals);
+}
+
+/** Variação (último − primeiro); `undefined` quando algum dos extremos não existe. */
+function diff(ultimo: number | null | undefined, primeiro: number | null | undefined): number | undefined {
+  if (ultimo == null || primeiro == null) return undefined;
+  return ultimo - primeiro;
 }
 
 function fmtDate(iso: string): string {
   const [y, m] = iso.split("-");
   const months = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
-  return `${months[parseInt(m) - 1]}/${y}`;
+  const idx = parseInt(m, 10) - 1;
+  return months[idx] ? `${months[idx]}/${y}` : iso;
 }
 
 function trendIcon(delta: number | undefined) {
-  if (delta == null) return <Minus className="w-4 h-4 text-slate-500" />;
+  if (delta == null) return <Minus className="w-4 h-4 text-slate-400" aria-hidden="true" />;
   if (delta > 0.5) return <TrendingUp className="w-4 h-4 text-rose-400" />;
   if (delta < -0.5) return <TrendingDown className="w-4 h-4 text-emerald-400" />;
   return <Minus className="w-4 h-4 text-slate-400" />;
-}
-
-async function getMandateSummary(id: string): Promise<MandateSummary | null> {
-  try {
-    const base =
-      (process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "").endsWith("/api/v1")
-        ? process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "")
-        : `${process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") || ""}/api/v1`) ||
-      "/api/v1";
-    const res = await fetch(`${base}/executivo/mandates/${id}/summary`, {
-      next: { revalidate: 60 },
-      headers: { Accept: "application/json" },
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
 }
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
@@ -131,20 +91,29 @@ function KPICard({ label, value, unit, sublabel, delta, invertDelta = false, ico
         </div>
         {tooltip && (
           <div className="relative">
-            <Info className="w-4 h-4 text-slate-600 group-hover:text-slate-400 transition-colors cursor-help" />
-            <div className="absolute right-0 top-5 z-10 w-56 bg-slate-800 border border-slate-700 rounded-lg p-3 text-xs text-slate-300 hidden group-hover:block shadow-xl">
+            <button
+              type="button"
+              aria-label={`Sobre ${label}: ${tooltip}`}
+              className="peer rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+            >
+              <Info className="w-4 h-4 text-slate-400 group-hover:text-slate-300 transition-colors cursor-help" aria-hidden="true" />
+            </button>
+            <div
+              role="tooltip"
+              className="absolute right-0 top-5 z-10 w-56 bg-slate-800 border border-slate-700 rounded-lg p-3 text-xs text-slate-300 hidden group-hover:block peer-hover:block peer-focus-visible:block shadow-xl"
+            >
               {tooltip}
             </div>
           </div>
         )}
       </div>
       <div>
-        <p className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">{label}</p>
+        <p className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">{label}</p>
         <div className="flex items-baseline gap-1.5">
           <span className="text-3xl font-bold text-slate-100 tabular-nums">{value}</span>
-          <span className="text-sm text-slate-500 font-medium">{unit}</span>
+          <span className="text-sm text-slate-400 font-medium">{unit}</span>
         </div>
-        {sublabel && <p className="text-xs text-slate-500 mt-1">{sublabel}</p>}
+        {sublabel && <p className="text-xs text-slate-400 mt-1">{sublabel}</p>}
       </div>
       {delta != null && (
         <div className={`flex items-center gap-1.5 text-sm font-semibold ${deltaColor}`}>
@@ -178,7 +147,7 @@ function ChartSection({ title, description, icon, children }: ChartSectionProps)
         <div className="mt-0.5">{icon}</div>
         <div>
           <h2 className="text-lg font-bold text-slate-100">{title}</h2>
-          <p className="text-sm text-slate-500">{description}</p>
+          <p className="text-sm text-slate-400">{description}</p>
         </div>
       </div>
       {children}
@@ -189,58 +158,21 @@ function ChartSection({ title, description, icon, children }: ChartSectionProps)
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ExecutivoDashboard() {
-  const [mandates, setMandates] = useState<PresidentialMandate[]>([]);
-  const [selectedMandateId, setSelectedMandateId] = useState<string>("");
-  const [indicators, setIndicators] = useState<MandateIndicatorData[]>([]);
-  const [summary, setSummary] = useState<MandateSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  const mandatesQuery = useApi("executivo-mandates", (signal) => getPresidentialMandates(signal));
+  const mandates = mandatesQuery.data ?? [];
+  const [pickedMandateId, setPickedMandateId] = useState<string | null>(null);
+  // Mais recente por padrão enquanto o usuário não escolher outro mandato.
+  const selectedMandateId = pickedMandateId ?? (mandates.length > 0 ? mandates[mandates.length - 1].id : "");
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const m = await getPresidentialMandates();
-        setMandates(m);
-        if (m.length > 0) {
-          setSelectedMandateId(m[m.length - 1].id); // Mais recente por padrão
-        }
-      } catch (err) {
-        console.error("Erro ao carregar mandatos", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, []);
-
-  const loadMandateDetail = useCallback(async (id: string) => {
-    if (!id) return;
-    setLoadingDetail(true);
-    try {
-      const [indData, sumData] = await Promise.all([
-        getMandateIndicators(id),
-        getMandateSummary(id),
-      ]);
-      setIndicators(indData);
-      setSummary(sumData);
-    } catch (err) {
-      console.error("Erro ao carregar detalhes", err);
-    } finally {
-      setLoadingDetail(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadMandateDetail(selectedMandateId);
-  }, [selectedMandateId, loadMandateDetail]);
-
-  if (loading) {
-    return (
-      <main className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center font-sans">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500"></div>
-      </main>
-    );
-  }
+  const detail = useApi(
+    `executivo-detail:${selectedMandateId}`,
+    (signal) =>
+      Promise.all([getMandateIndicators(selectedMandateId, signal), getMandateSummary(selectedMandateId, signal)]),
+    Boolean(selectedMandateId)
+  );
+  const indicators = detail.data?.[0] ?? [];
+  const summary = detail.data?.[1] ?? null;
+  const loadingDetail = detail.loading;
 
   const selectedMandate = mandates.find((m) => m.id === selectedMandateId);
   const kpis = summary?.kpis;
@@ -248,20 +180,22 @@ export default function ExecutivoDashboard() {
   // Formata para o eixo X dos gráficos
   const chartData = indicators.map((d) => ({
     ...d,
-    label: fmtDate(d.data as string),
+    label: fmtDate(String(d.data)),
   }));
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-cyan-500/30">
+    <main id="main-content" className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-cyan-500/30">
       <Header />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        {mandatesQuery.loading && <LoadingState label="Carregando mandatos..." />}
+        {mandatesQuery.error && <ErrorState onRetry={mandatesQuery.retry} />}
 
         {/* ── Cabeçalho ── */}
         <header className="space-y-2">
           <div className="flex items-center gap-3">
             <span className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shadow-lg shadow-cyan-500/10">
-              <Briefcase className="w-6 h-6" />
+              <Briefcase className="w-6 h-6" aria-hidden="true" />
             </span>
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-100 to-slate-400">
               Raio-X do Executivo
@@ -274,52 +208,56 @@ export default function ExecutivoDashboard() {
 
         {/* ── Seletor de Mandatos ── */}
         <section className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 backdrop-blur-md">
-          <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-4 flex items-center gap-1.5">
-            <Calendar className="w-3.5 h-3.5" />
+          <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-4 flex items-center gap-1.5">
+            <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
             Selecione o Mandato
           </p>
           <div className="flex flex-wrap gap-3">
             {mandates.map((m) => (
               <button
                 key={m.id}
-                onClick={() => setSelectedMandateId(m.id)}
+                type="button"
+                aria-pressed={selectedMandateId === m.id}
+                onClick={() => setPickedMandateId(m.id)}
                 className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all ${
                   selectedMandateId === m.id
                     ? "bg-cyan-500/20 border-cyan-500/40 text-cyan-300 shadow-lg shadow-cyan-500/10"
                     : "bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-600 hover:bg-slate-900"
                 }`}
               >
-                {m.foto_url && (
+                {getPresidentPhotoUrl(m.nome.toLowerCase(), m.foto_url ?? undefined) ? (
                   <img
-                    src={getPresidentPhotoUrl(m.nome.toLowerCase(), m.foto_url)}
-                    alt={m.nome}
+                    src={getPresidentPhotoUrl(m.nome.toLowerCase(), m.foto_url ?? undefined)}
+                    alt=""
+                    referrerPolicy="no-referrer"
                     className="w-9 h-9 rounded-full object-cover ring-2 ring-slate-700"
                   />
-                )}
+                ) : null}
                 <div className="text-left">
                   <p className="font-bold text-sm leading-tight">{m.nome.split(" ").slice(-1)[0]}</p>
-                  <p className="text-xs text-slate-500">{m.partido} · {m.inicio?.slice(0,4)}–{m.fim?.slice(0,4) ?? "atual"}</p>
+                  <p className="text-xs text-slate-400">{m.partido} · {m.inicio?.slice(0,4)}–{m.fim?.slice(0,4) ?? "atual"}</p>
                 </div>
               </button>
             ))}
           </div>
         </section>
 
-        {/* ── Loading overlay ── */}
-        {loadingDetail && (
-          <div className="flex justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-cyan-500"></div>
-          </div>
+        {/* ── Loading / erro do detalhe ── */}
+        {loadingDetail && <LoadingState label="Carregando indicadores do mandato..." />}
+        {!loadingDetail && detail.error && <ErrorState onRetry={detail.retry} />}
+        {!loadingDetail && !detail.error && selectedMandate && !summary && (
+          <EmptyState message="Não há indicadores disponíveis para este mandato." />
         )}
 
         {!loadingDetail && selectedMandate && summary && (
           <>
             {/* ── Cabeçalho do presidente ── */}
             <div className="flex flex-col sm:flex-row sm:items-center gap-5 bg-gradient-to-r from-slate-900/80 to-slate-950/60 border border-slate-800 rounded-2xl p-6">
-              {selectedMandate.foto_url && (
+              {getPresidentPhotoUrl(selectedMandate.nome.toLowerCase(), selectedMandate.foto_url ?? undefined) && (
                 <img
-                  src={getPresidentPhotoUrl(selectedMandate.nome.toLowerCase(), selectedMandate.foto_url)}
+                  src={getPresidentPhotoUrl(selectedMandate.nome.toLowerCase(), selectedMandate.foto_url ?? undefined)}
                   alt={selectedMandate.nome}
+                  referrerPolicy="no-referrer"
                   className="w-20 h-20 rounded-2xl object-cover ring-2 ring-cyan-500/30 shadow-xl"
                 />
               )}
@@ -335,7 +273,7 @@ export default function ExecutivoDashboard() {
                   {" "}· {summary.total_meses} meses de dados
                 </p>
               </div>
-              <div className="text-right text-xs text-slate-600 hidden sm:block">
+              <div className="text-right text-xs text-slate-400 hidden sm:block">
                 <p>Fontes: IBGE, BCB, Datafolha</p>
                 <p>Portal da Transparência</p>
               </div>
@@ -349,7 +287,7 @@ export default function ExecutivoDashboard() {
                 value={fmt(kpis?.inflacao_ipca?.media)}
                 unit="% a.a."
                 sublabel={`Pico: ${fmt(kpis?.inflacao_ipca?.maximo)}%`}
-                delta={kpis?.inflacao_ipca?.variacao_pp}
+                delta={kpis?.inflacao_ipca?.variacao_pp ?? undefined}
                 invertDelta
                 icon={<BarChart2 className="w-5 h-5 text-rose-400" />}
                 accent="text-rose-400 bg-rose-400/10"
@@ -361,7 +299,7 @@ export default function ExecutivoDashboard() {
                 value={fmt(kpis?.desemprego_pnad?.media)}
                 unit="% PNAD"
                 sublabel={`Mín: ${fmt(kpis?.desemprego_pnad?.minimo)}% · Máx: ${fmt(kpis?.desemprego_pnad?.maximo)}%`}
-                delta={(kpis?.desemprego_pnad?.ultimo ?? 0) - (kpis?.desemprego_pnad?.primeiro ?? 0)}
+                delta={diff(kpis?.desemprego_pnad?.ultimo, kpis?.desemprego_pnad?.primeiro)}
                 invertDelta
                 icon={<Users className="w-5 h-5 text-amber-400" />}
                 accent="text-amber-400 bg-amber-400/10"
@@ -373,7 +311,7 @@ export default function ExecutivoDashboard() {
                 value={fmt(kpis?.aprovacao_popular?.media)}
                 unit="% pop."
                 sublabel={`Pico: ${fmt(kpis?.aprovacao_popular?.maximo)}% · Vale: ${fmt(kpis?.aprovacao_popular?.minimo)}%`}
-                delta={(kpis?.aprovacao_popular?.ultimo ?? 0) - (kpis?.aprovacao_popular?.primeiro ?? 0)}
+                delta={diff(kpis?.aprovacao_popular?.ultimo, kpis?.aprovacao_popular?.primeiro)}
                 icon={<Users className="w-5 h-5 text-emerald-400" />}
                 accent="text-emerald-400 bg-emerald-400/10"
                 tooltip="Aprovação popular média (Datafolha/CNT). Considera 'ótimo + bom'."
@@ -384,7 +322,7 @@ export default function ExecutivoDashboard() {
                 value={fmt(kpis?.cambio_usd_brl?.ultimo, 2)}
                 unit="R$"
                 sublabel={`Início: R$ ${fmt(kpis?.cambio_usd_brl?.primeiro, 2)}`}
-                delta={(kpis?.cambio_usd_brl?.ultimo ?? 0) - (kpis?.cambio_usd_brl?.primeiro ?? 0)}
+                delta={diff(kpis?.cambio_usd_brl?.ultimo, kpis?.cambio_usd_brl?.primeiro)}
                 invertDelta
                 icon={<DollarSign className="w-5 h-5 text-sky-400" />}
                 accent="text-sky-400 bg-sky-400/10"
@@ -396,7 +334,7 @@ export default function ExecutivoDashboard() {
                 value={fmt(kpis?.selic_meta?.ultimo)}
                 unit="% a.a."
                 sublabel={`Média: ${fmt(kpis?.selic_meta?.media)}%`}
-                delta={(kpis?.selic_meta?.ultimo ?? 0) - (kpis?.selic_meta?.primeiro ?? 0)}
+                delta={diff(kpis?.selic_meta?.ultimo, kpis?.selic_meta?.primeiro)}
                 invertDelta
                 icon={<TrendingUp className="w-5 h-5 text-violet-400" />}
                 accent="text-violet-400 bg-violet-400/10"
@@ -430,7 +368,7 @@ export default function ExecutivoDashboard() {
                       <XAxis dataKey="label" stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} interval="preserveStartEnd" />
                       <YAxis yAxisId="left" stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
                       <YAxis yAxisId="right" orientation="right" stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
-                      <Tooltip {...TOOLTIP_STYLE} formatter={(val, name) => [`${(val as number).toFixed(1)}%`, name]} />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={(val, name) => [`${fmt(Number(val))}%`, name]} />
                       <Legend wrapperStyle={{ fontSize: "12px", paddingTop: "8px" }} />
                       <Line yAxisId="left" type="monotone" dataKey="inflacao_ipca" name="Inflação IPCA (%)" stroke="#fb7185" strokeWidth={2.5} dot={false} />
                       <Line yAxisId="right" type="monotone" dataKey="aprovacao_popular" name="Aprovação (%)" stroke="#34d399" strokeWidth={2.5} dot={false} />
@@ -457,8 +395,8 @@ export default function ExecutivoDashboard() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                       <XAxis dataKey="label" stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} interval="preserveStartEnd" />
                       <YAxis stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => `${v}%`} domain={["auto", "auto"]} />
-                      <Tooltip {...TOOLTIP_STYLE} formatter={(val) => [`${(val as number).toFixed(1)}%`, "Desemprego"]} />
-                      <ReferenceLine y={kpis?.desemprego_pnad?.media} stroke="#64748b" strokeDasharray="4 4" label={{ value: `Média: ${fmt(kpis?.desemprego_pnad?.media)}%`, fill: "#64748b", fontSize: 11 }} />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={(val) => [`${fmt(Number(val))}%`, "Desemprego"]} />
+                      <ReferenceLine y={kpis?.desemprego_pnad?.media ?? undefined} stroke="#64748b" strokeDasharray="4 4" label={{ value: `Média: ${fmt(kpis?.desemprego_pnad?.media)}%`, fill: "#64748b", fontSize: 11 }} />
                       <Area type="monotone" dataKey="desemprego_pnad" name="Desemprego (%)" stroke="#fbbf24" strokeWidth={2.5} fill="url(#colorDesemp)" dot={false} />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -478,7 +416,11 @@ export default function ExecutivoDashboard() {
                       <XAxis dataKey="label" stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} interval="preserveStartEnd" />
                       <YAxis yAxisId="left" stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => `R$${v}`} />
                       <YAxis yAxisId="right" orientation="right" stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
-                      <Tooltip {...TOOLTIP_STYLE} formatter={(val: any, name: any) => [String(name).includes("Câmbio") ? `R$ ${Number(val || 0).toFixed(2)}` : `${Number(val || 0).toFixed(2)}%`, String(name)]} />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={(val, name) => {
+                        const n = Number(val);
+                        if (!Number.isFinite(n)) return ["—", String(name)];
+                        return [String(name).includes("Câmbio") ? `R$ ${n.toFixed(2)}` : `${n.toFixed(2)}%`, String(name)];
+                      }} />
                       <Legend wrapperStyle={{ fontSize: "12px", paddingTop: "8px" }} />
                       <Line yAxisId="left" type="monotone" dataKey="cambio_usd_brl" name="Câmbio USD/BRL" stroke="#38bdf8" strokeWidth={2.5} dot={false} />
                       <Line yAxisId="right" type="monotone" dataKey="selic_meta" name="Selic Meta (%)" stroke="#a78bfa" strokeWidth={2.5} dot={false} strokeDasharray="4 2" />
@@ -505,20 +447,20 @@ export default function ExecutivoDashboard() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                       <XAxis dataKey="label" stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} interval="preserveStartEnd" />
                       <YAxis stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => `R$${v}bi`} />
-                      <Tooltip {...TOOLTIP_STYLE} formatter={(val) => [`R$ ${(val as number).toFixed(1)} bilhões`, "Emendas"]} />
+                      <Tooltip {...TOOLTIP_STYLE} formatter={(val) => [`R$ ${fmt(Number(val))} bilhões`, "Emendas"]} />
                       <Area type="monotone" dataKey="emendas_bilhoes" name="Emendas (R$ bi)" stroke="#fb923c" strokeWidth={2.5} fill="url(#colorEmendas)" dot={false} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
-                <p className="text-xs text-slate-600 mt-1 flex items-center gap-1">
-                  <Info className="w-3 h-3" />
+                <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+                  <Info className="w-3 h-3" aria-hidden="true" />
                   Valores crescem ao longo do ano e resetam em janeiro — padrão do ciclo orçamentário.
                 </p>
               </ChartSection>
             </div>
 
             {/* ── Nota de fontes ── */}
-            <div className="bg-slate-900/40 border border-slate-800/60 rounded-xl p-4 text-xs text-slate-500 flex flex-wrap gap-x-6 gap-y-1">
+            <div className="bg-slate-900/40 border border-slate-800/60 rounded-xl p-4 text-xs text-slate-400 flex flex-wrap gap-x-6 gap-y-1">
               <span>📊 <strong className="text-slate-400">IPCA:</strong> IBGE (variação acumulada 12 meses)</span>
               <span>👷 <strong className="text-slate-400">Desemprego:</strong> PNAD Contínua / IBGE (trimestral)</span>
               <span>📢 <strong className="text-slate-400">Aprovação:</strong> Datafolha / CNT-MDA</span>
@@ -530,12 +472,11 @@ export default function ExecutivoDashboard() {
         )}
 
         {/* Estado vazio */}
-        {!loadingDetail && mandates.length === 0 && (
-          <div className="text-center py-20 text-slate-500">
-            <Briefcase className="w-12 h-12 mx-auto mb-4 opacity-30" />
-            <p className="text-lg font-semibold">Nenhum mandato cadastrado</p>
-            <p className="text-sm mt-1">Execute o script <code className="bg-slate-800 px-1 rounded">seed_executivo.py</code> para popular os dados.</p>
-          </div>
+        {!mandatesQuery.loading && !mandatesQuery.error && mandates.length === 0 && (
+          <EmptyState
+            title="Nenhum mandato cadastrado"
+            message="Os mandatos presidenciais ainda não foram carregados na base de dados."
+          />
         )}
       </div>
     </main>

@@ -5,20 +5,25 @@ fusões partidárias (PSL + DEM -> UNIÃO, PTB + PATRIOTA -> PRD, PSC -> PODE, P
 e migrações de janela partidária.
 """
 
-import json
 import logging
 from pathlib import Path
-from datetime import date, datetime
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
 
 from etl.config import PROCESSED_DATA_DIR
+from etl.utils.datafiles import load_deputados, load_senadores
+from etl.utils.io_utils import atomic_write_json, atomic_write_text
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("TSEExtractor")
 
-# Casos notáveis e documentados de parlamentares com múltiplas legendas
-# (Nômades partidários com trajetória oficial no TSE/Congresso)
+FONTE_CURADORIA = "Curadoria manual LegisData (trajetória notória; não verificada automaticamente contra o TSE)"
+FONTE_ATUAL = "API de Dados Abertos (partido atual do parlamentar em exercício)"
+
+# Casos notáveis de parlamentares com múltiplas legendas (curadoria manual).
+# ATENÇÃO: estes períodos foram digitados à mão e NÃO são verificados automaticamente; cada registro
+# derivado carrega `fonte` = FONTE_CURADORIA para que o consumidor saiba disso.
 NOMADES_HISTORICO = {
     # Senadores
     "Alessandro Vieira": [
@@ -168,319 +173,121 @@ NOMADES_HISTORICO = {
         {"partido": "PMDB", "inicio": "2001-04-10", "fim": "2007-03-15", "motivo": "MUDANCA_VOLUNTARIA"},
         {"partido": "DEM", "inicio": "2007-03-16", "fim": "2022-02-07", "motivo": "FUSAO_OU_INCORPORACAO"},
         {"partido": "UNIÃO", "inicio": "2022-02-08", "fim": None, "motivo": None},
-    ]
+    ],
 }
 
 
 class TSEExtractor:
     """
     Extrator de Histórico de Filiações Partidárias e Migrações Parlamentares.
-    Gera dados consolidados em formato tabular/JSON para análise de infidelidade partidária.
+
+    Para parlamentares fora da curadoria NOMADES_HISTORICO só se conhece, com segurança, o partido ATUAL
+    (informado pelas APIs da Câmara/Senado). A origem e a data de filiação não são presumidas: antes, a
+    origem era sorteada por `idx % N` e as datas eram fixas, o que gerava trajetórias inexistentes.
     """
 
     def __init__(self, data_dir: Optional[Path] = None):
         self.data_dir = data_dir or PROCESSED_DATA_DIR
 
+    @staticmethod
+    def _registros_curados(nome: str, cargo: str, uf: str, camara_id: Any, senado_id: Any) -> List[Dict[str, Any]]:
+        return [
+            {
+                "politico_nome": nome,
+                "camara_id": camara_id,
+                "senado_id": senado_id,
+                "cargo": cargo,
+                "uf": uf,
+                "partido_sigla": item["partido"],
+                "data_filiacao": item["inicio"],
+                "data_filiacao_desconhecida": False,
+                "data_desfiliacao": item["fim"],
+                "motivo_desfiliacao": item["motivo"],
+                "is_atual": item["fim"] is None,
+                "fonte": FONTE_CURADORIA,
+                "is_synthetic": False,
+            }
+            for item in NOMADES_HISTORICO[nome]
+        ]
+
+    @staticmethod
+    def _registro_atual(nome: str, cargo: str, uf: str, partido: str, camara_id: Any, senado_id: Any) -> Dict[str, Any]:
+        return {
+            "politico_nome": nome,
+            "camara_id": camara_id,
+            "senado_id": senado_id,
+            "cargo": cargo,
+            "uf": uf,
+            "partido_sigla": partido,
+            "data_filiacao": None,
+            "data_filiacao_desconhecida": True,
+            "data_desfiliacao": None,
+            "motivo_desfiliacao": None,
+            "is_atual": True,
+            "fonte": FONTE_ATUAL,
+            "is_synthetic": False,
+        }
+
     def extract_affiliations(self) -> pd.DataFrame:
-        """
-        Processa e constrói o histórico de filiações partidárias cruzando:
-        1. Casos nominais de grande relevância (nômades partidários).
-        2. Efeitos das grandes fusões partidárias (PSL+DEM -> UNIÃO, PTB+PATRIOTA -> PRD, PSC -> PODE, PROS -> SOLIDARIEDADE).
-        3. Filiação atual dos deputados e senadores da 57ª Legislatura.
-        """
-        logger.info("Iniciando extração do histórico de filiações partidárias do TSE...")
+        """Constrói o histórico: curadoria para nômades notórios + filiação atual (data desconhecida) para os demais."""
+        logger.info("Iniciando extração do histórico de filiações partidárias...")
 
-        dep_file = self.data_dir / "deputados_camara.json"
-        sen_file = self.data_dir / "senadores_senado.json"
-
-        deputados = []
-        if dep_file.exists():
-            with open(dep_file, "r", encoding="utf-8") as f:
-                deputados = json.load(f)
-
-        senadores = []
-        if sen_file.exists():
-            with open(sen_file, "r", encoding="utf-8") as f:
-                senadores = json.load(f)
+        deputados = load_deputados(self.data_dir)
+        senadores = load_senadores(self.data_dir)
 
         records: List[Dict[str, Any]] = []
 
-        # 1. Processar Senadores
         for s in senadores:
             nome = s.get("nome_eleitoral")
-            partido_atual = s.get("partido_sigla") or "S.PART."
-            uf = s.get("uf") or "DF"
-            sid = s.get("senado_id")
-
+            uf = s.get("uf")
             if nome in NOMADES_HISTORICO:
-                hist = NOMADES_HISTORICO[nome]
-                for item in hist:
-                    records.append({
-                        "politico_nome": nome,
-                        "camara_id": None,
-                        "senado_id": sid,
-                        "cargo": "SENADOR",
-                        "uf": uf,
-                        "partido_sigla": item["partido"],
-                        "data_filiacao": item["inicio"],
-                        "data_desfiliacao": item["fim"],
-                        "motivo_desfiliacao": item["motivo"],
-                        "is_atual": item["fim"] is None,
-                    })
+                records.extend(self._registros_curados(nome, "SENADOR", uf, None, s.get("senado_id")))
             else:
-                # Se o senador está no UNIÃO, adicionar histórico da fusão (DEM ou PSL)
-                if partido_atual == "UNIÃO":
-                    records.append({
-                        "politico_nome": nome,
-                        "camara_id": None,
-                        "senado_id": sid,
-                        "cargo": "SENADOR",
-                        "uf": uf,
-                        "partido_sigla": "DEM",
-                        "data_filiacao": "2018-04-05",
-                        "data_desfiliacao": "2022-02-07",
-                        "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-                        "is_atual": False,
-                    })
-                    records.append({
-                        "politico_nome": nome,
-                        "camara_id": None,
-                        "senado_id": sid,
-                        "cargo": "SENADOR",
-                        "uf": uf,
-                        "partido_sigla": "UNIÃO",
-                        "data_filiacao": "2022-02-08",
-                        "data_desfiliacao": None,
-                        "motivo_desfiliacao": None,
-                        "is_atual": True,
-                    })
-                elif partido_atual == "PODE" and sid in (6337, 5990):  # PSC incorporado
-                    records.append({
-                        "politico_nome": nome,
-                        "camara_id": None,
-                        "senado_id": sid,
-                        "cargo": "SENADOR",
-                        "uf": uf,
-                        "partido_sigla": "PSC",
-                        "data_filiacao": "2018-04-05",
-                        "data_desfiliacao": "2022-12-10",
-                        "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-                        "is_atual": False,
-                    })
-                    records.append({
-                        "politico_nome": nome,
-                        "camara_id": None,
-                        "senado_id": sid,
-                        "cargo": "SENADOR",
-                        "uf": uf,
-                        "partido_sigla": partido_atual,
-                        "data_filiacao": "2022-12-11",
-                        "data_desfiliacao": None,
-                        "motivo_desfiliacao": None,
-                        "is_atual": True,
-                    })
-                else:
-                    # Filiação estável padrão
-                    records.append({
-                        "politico_nome": nome,
-                        "camara_id": None,
-                        "senado_id": sid,
-                        "cargo": "SENADOR",
-                        "uf": uf,
-                        "partido_sigla": partido_atual,
-                        "data_filiacao": "2018-04-05",
-                        "data_desfiliacao": None,
-                        "motivo_desfiliacao": None,
-                        "is_atual": True,
-                    })
+                records.append(
+                    self._registro_atual(
+                        nome, "SENADOR", uf, s.get("partido_sigla") or "S.PART.", None, s.get("senado_id")
+                    )
+                )
 
-        # 2. Processar Deputados Federais
-        for idx, d in enumerate(deputados):
+        for d in deputados:
             nome = d.get("nome_eleitoral")
-            partido_atual = d.get("partido_sigla") or "S.PART."
-            uf = d.get("uf") or "DF"
-            cid = d.get("camara_id")
-
+            uf = d.get("uf")
             if nome in NOMADES_HISTORICO:
-                hist = NOMADES_HISTORICO[nome]
-                for item in hist:
-                    records.append({
-                        "politico_nome": nome,
-                        "camara_id": cid,
-                        "senado_id": None,
-                        "cargo": "DEPUTADO_FEDERAL",
-                        "uf": uf,
-                        "partido_sigla": item["partido"],
-                        "data_filiacao": item["inicio"],
-                        "data_desfiliacao": item["fim"],
-                        "motivo_desfiliacao": item["motivo"],
-                        "is_atual": item["fim"] is None,
-                    })
-            elif partido_atual == "UNIÃO":
-                # Fusão DEM + PSL
-                partido_origem = "DEM" if (idx % 2 == 0) else "PSL"
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": partido_origem,
-                    "data_filiacao": "2018-04-05",
-                    "data_desfiliacao": "2022-02-07",
-                    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-                    "is_atual": False,
-                })
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": "UNIÃO",
-                    "data_filiacao": "2022-02-08",
-                    "data_desfiliacao": None,
-                    "motivo_desfiliacao": None,
-                    "is_atual": True,
-                })
-            elif partido_atual == "PRD":
-                # Fusão PTB + PATRIOTA
-                partido_origem = "PTB" if (idx % 2 == 0) else "PATRIOTA"
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": partido_origem,
-                    "data_filiacao": "2018-04-05",
-                    "data_desfiliacao": "2023-11-09",
-                    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-                    "is_atual": False,
-                })
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": "PRD",
-                    "data_filiacao": "2023-11-10",
-                    "data_desfiliacao": None,
-                    "motivo_desfiliacao": None,
-                    "is_atual": True,
-                })
-            elif partido_atual == "SOLIDARIEDADE" and (idx % 3 == 0):
-                # Incorporação PROS
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": "PROS",
-                    "data_filiacao": "2018-04-05",
-                    "data_desfiliacao": "2023-02-14",
-                    "motivo_desfiliacao": "FUSAO_OU_INCORPORACAO",
-                    "is_atual": False,
-                })
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": "SOLIDARIEDADE",
-                    "data_filiacao": "2023-02-15",
-                    "data_desfiliacao": None,
-                    "motivo_desfiliacao": None,
-                    "is_atual": True,
-                })
-            elif partido_atual == "PL" and (idx % 4 == 0):
-                # Migração em massa na janela partidária (ex: vindos de PSL ou PTB)
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": "PSL",
-                    "data_filiacao": "2018-04-05",
-                    "data_desfiliacao": "2022-03-20",
-                    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-                    "is_atual": False,
-                })
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": "PL",
-                    "data_filiacao": "2022-03-21",
-                    "data_desfiliacao": None,
-                    "motivo_desfiliacao": None,
-                    "is_atual": True,
-                })
-            elif partido_atual == "PSD" and (idx % 5 == 0):
-                # Migração em janela partidária (ex: vindos do PSDB ou MDB)
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": "PSDB",
-                    "data_filiacao": "2018-04-05",
-                    "data_desfiliacao": "2022-03-25",
-                    "motivo_desfiliacao": "MUDANCA_VOLUNTARIA",
-                    "is_atual": False,
-                })
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": "PSD",
-                    "data_filiacao": "2022-03-26",
-                    "data_desfiliacao": None,
-                    "motivo_desfiliacao": None,
-                    "is_atual": True,
-                })
+                records.extend(self._registros_curados(nome, "DEPUTADO_FEDERAL", uf, d.get("camara_id"), None))
             else:
-                # Filiação parlamentar estável
-                records.append({
-                    "politico_nome": nome,
-                    "camara_id": cid,
-                    "senado_id": None,
-                    "cargo": "DEPUTADO_FEDERAL",
-                    "uf": uf,
-                    "partido_sigla": partido_atual,
-                    "data_filiacao": "2022-03-30",
-                    "data_desfiliacao": None,
-                    "motivo_desfiliacao": None,
-                    "is_atual": True,
-                })
+                records.append(
+                    self._registro_atual(
+                        nome, "DEPUTADO_FEDERAL", uf, d.get("partido_sigla") or "S.PART.", d.get("camara_id"), None
+                    )
+                )
 
         df = pd.DataFrame(records)
-        logger.info(f"Total de {len(df)} registros de filiação gerados para {df['politico_nome'].nunique()} parlamentares.")
+        if df.empty:
+            logger.error("Nenhuma filiação gerada: arquivos de deputados/senadores ausentes ou vazios.")
+            return df
+        logger.info(
+            f"Total de {len(df)} registros de filiação gerados para {df['politico_nome'].nunique()} parlamentares."
+        )
         return df
 
     def save_data(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """Salva os dados processados em JSON e CSV."""
+        """Salva em JSON e CSV (atômico). DataFrame vazio NÃO sobrescreve os arquivos existentes."""
+        if df.empty:
+            raise RuntimeError("Extração de filiações vazia: arquivos existentes preservados.")
+
         json_path = self.data_dir / "filiacoes_partidarias.json"
         csv_path = self.data_dir / "filiacoes_partidarias.csv"
 
-        df_clean = df.where(pd.notnull(df), None)
-        records = df_clean.to_dict(orient="records")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(records, f, ensure_ascii=False, indent=2)
-
-        df.to_csv(csv_path, index=False, encoding="utf-8")
+        df_clean = df.astype(object).where(df.notna(), None)
+        registros = df_clean.to_dict(orient="records")
+        for reg in registros:  # ids numéricos voltam a ser inteiros (NaN no DataFrame os transformou em float)
+            for chave in ("camara_id", "senado_id"):
+                if isinstance(reg.get(chave), float):
+                    reg[chave] = int(reg[chave])
+        atomic_write_json(json_path, registros)
+        atomic_write_text(csv_path, df.to_csv(index=False))
         logger.info(f"Dados salvos com sucesso em {json_path} e {csv_path}!")
 
-        # Contagem rápida de nômades (políticos com mais de 1 filiação)
         trocas_por_politico = df.groupby("politico_nome")["partido_sigla"].count()
         nomades = trocas_por_politico[trocas_por_politico > 1]
 
@@ -488,7 +295,7 @@ class TSEExtractor:
             "total_filiacoes": len(df),
             "total_parlamentares": int(df["politico_nome"].nunique()),
             "parlamentares_com_troca": len(nomades),
-            "max_trocas": int(trocas_por_politico.max()) if not trocas_por_politico.empty else 0
+            "max_trocas": int(trocas_por_politico.max()) if not trocas_por_politico.empty else 0,
         }
 
     def run(self) -> Dict[str, Any]:
@@ -500,4 +307,4 @@ class TSEExtractor:
 if __name__ == "__main__":
     extractor = TSEExtractor()
     stats = extractor.run()
-    print("Estatísticas da Extração do TSE:", stats)
+    print("Estatísticas da Extração de Filiações:", stats)

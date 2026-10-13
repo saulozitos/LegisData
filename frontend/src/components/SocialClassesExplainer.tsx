@@ -1,80 +1,75 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import {
-  Users,
-  Info,
-  DollarSign,
-  TrendingDown,
-  PieChart as PieChartIcon,
-  HelpCircle,
-  ShieldAlert,
-  ArrowUpRight,
-  Calculator
-} from "lucide-react";
-import { getSocialClasses, ClassesSociaisResponse, ClasseSocialItem } from "@/services/api";
+import React, { useState } from "react";
+import { Users, Info, ShieldAlert, Calculator } from "lucide-react";
+import { getSocialClasses } from "@/services/api";
+import { useApi } from "@/hooks/useApi";
+import { EmptyState, ErrorState, LoadingState } from "@/components/StateViews";
+import { fmtNum, isNum } from "@/lib/format";
 
-interface SocialClassesExplainerProps {
-  mandateId?: string | null;
+/**
+ * Converte a renda digitada em número. Aceita "5000,50", "5.000,50", "5000.50" e "5.000".
+ * Retorna `null` quando o texto não representa um valor monetário válido.
+ */
+export function parseIncome(raw: string): number | null {
+  const text = raw.trim().replace(/\s/g, "").replace(/^R\$/i, "");
+  if (!text || !/^[\d.,]+$/.test(text)) return null;
+  let normalized: string;
+  if (text.includes(",")) {
+    normalized = text.replace(/\./g, "").replace(",", ".");
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(text)) {
+    normalized = text.replace(/\./g, "");
+  } else {
+    normalized = text;
+  }
+  const value = Number(normalized);
+  return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
-export default function SocialClassesExplainer({ mandateId }: SocialClassesExplainerProps = {}) {
-  const [data, setData] = useState<ClassesSociaisResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedClass, setSelectedClass] = useState<string>("Classe C");
+export default function SocialClassesExplainer() {
+  const [ano, setAno] = useState<number | null>(null);
+  const { data, loading, error, retry } = useApi(`social-classes:${ano ?? "latest"}`, (signal) =>
+    getSocialClasses(signal, ano ?? undefined)
+  );
+  const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [userIncome, setUserIncome] = useState<string>("");
   const [calculatedClass, setCalculatedClass] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const res = await getSocialClasses();
-        if (res) {
-          setData(res);
-        }
-      } catch (err) {
-        console.error("Erro ao carregar dados de classes sociais:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadData();
-  }, []);
+  const [incomeError, setIncomeError] = useState<string | null>(null);
 
   const handleCalculateClass = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userIncome || !data) return;
-    const income = parseFloat(userIncome.replace(/\./g, "").replace(",", "."));
-    if (isNaN(income) || income < 0) return;
-
-    const sm = data.salario_minimo_referencia_brl;
-    const smCount = income / sm;
-
-    if (smCount > 20) {
-      setCalculatedClass("Classe A");
-    } else if (smCount >= 10) {
-      setCalculatedClass("Classe B");
-    } else if (smCount >= 4) {
-      setCalculatedClass("Classe C");
-    } else if (smCount >= 2) {
-      setCalculatedClass("Classe D");
-    } else {
-      setCalculatedClass("Classe E");
+    if (!data) return;
+    const income = parseIncome(userIncome);
+    if (income === null) {
+      setCalculatedClass(null);
+      setIncomeError("Informe um valor válido, por exemplo 5000,00.");
+      return;
     }
+    setIncomeError(null);
+
+    const smCount = income / data.salario_minimo_referencia_brl;
+    // Faixas vindas da API (em salários mínimos); a última faixa não tem teto.
+    const match = data.classes.find(
+      (c) => smCount >= c.faixa_salarios_minimos_min && (c.faixa_salarios_minimos_max === null || smCount < c.faixa_salarios_minimos_max)
+    );
+    setCalculatedClass(match ? match.classe : null);
+    if (!match) setIncomeError("Não foi possível enquadrar este valor nas faixas disponíveis.");
   };
 
-  if (loading) {
-    return (
-      <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-8 backdrop-blur-md animate-pulse text-center">
-        <div className="h-6 w-64 bg-slate-800 rounded mx-auto mb-4" />
-        <div className="h-4 w-96 bg-slate-800/60 rounded mx-auto" />
-      </div>
-    );
+  if (loading) return <LoadingState label="Carregando classes sociais..." />;
+  if (error) return <ErrorState onRetry={retry} />;
+  if (!data || !data.classes?.length) {
+    return <EmptyState title="Classes sociais indisponíveis" />;
   }
 
-  if (!data) return null;
-
-  const currentClassInfo = data.classes.find((c) => c.classe === selectedClass) || data.classes[2];
+  // Classe padrão: a mais populosa; evita índice fixo.
+  const mostPopulous = data.classes.reduce((a, b) => (b.percentual_populacao > a.percentual_populacao ? b : a));
+  const currentClassInfo = data.classes.find((c) => c.classe === selectedClass) ?? mostPopulous;
+  const topClass = data.classes[0];
+  const lowerClasses = data.classes.filter((c) => c.classe === "Classe D" || c.classe === "Classe E");
+  const lowerPct = isNum(data.resumo_populacional?.maioria_populacao_acumulada_d_e_pct)
+    ? data.resumo_populacional.maioria_populacao_acumulada_d_e_pct
+    : lowerClasses.reduce((acc, c) => acc + c.percentual_populacao, 0);
 
   return (
     <div className="bg-slate-900/70 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-md shadow-xl space-y-6">
@@ -83,36 +78,55 @@ export default function SocialClassesExplainer({ mandateId }: SocialClassesExpla
         <div>
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
-              <Users className="w-5 h-5" />
+              <Users className="w-5 h-5" aria-hidden="true" />
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
                 Estratificação Social no Brasil (Classes A, B, C, D e E)
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Critério Oficial de Renda Familiar do IBGE / FGV Social • Salário Mínimo de Referência: R$ {data.salario_minimo_referencia_brl.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                {data.origem === "pnad"
+                  ? "Microdados da PNAD Contínua (IBGE) • renda domiciliar em salários mínimos"
+                  : "Estimativa de referência (não calculada de microdados)"}
+                {" "}• Salário Mínimo de {data.ano_referencia}: R$ {data.salario_minimo_referencia_brl.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
               </p>
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-950/80 rounded-xl border border-slate-800 text-xs text-slate-300">
-          <Info className="w-4 h-4 text-sky-400 flex-shrink-0" />
+          <Info className="w-4 h-4 text-sky-400 flex-shrink-0" aria-hidden="true" />
           <span>Fonte: {data.fonte}</span>
         </div>
+        {data.anos_disponiveis && data.anos_disponiveis.length > 1 && (
+          <label className="flex items-center gap-2 text-xs text-slate-300">
+            <span>Ano da PNAD</span>
+            <select
+              value={data.ano_referencia}
+              onChange={(e) => setAno(Number(e.target.value))}
+              className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-slate-200"
+            >
+              {data.anos_disponiveis.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
 
       {/* Destaque Educativo: Onde o Brasileiro Realmente Está */}
       <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 rounded-xl p-4.5 text-xs text-amber-200/90 flex flex-col md:flex-row items-start md:items-center gap-3">
         <div className="p-2 bg-amber-500/20 rounded-lg text-amber-400 flex-shrink-0">
-          <ShieldAlert className="w-5 h-5" />
+          <ShieldAlert className="w-5 h-5" aria-hidden="true" />
         </div>
         <div className="space-y-1">
           <h4 className="font-bold text-amber-200 text-sm">
             A Ilusão da &quot;Classe Média&quot; e a Realidade da Renda Nacional
           </h4>
           <p className="text-amber-300/80 leading-relaxed">
-            {data.resumo_populacional.texto_educativo}
+            {data.resumo_populacional?.texto_educativo}
           </p>
         </div>
       </div>
@@ -131,7 +145,9 @@ export default function SocialClassesExplainer({ mandateId }: SocialClassesExpla
               const isSelected = selectedClass === c.classe;
               return (
                 <button
+                  type="button"
                   key={c.classe}
+                  aria-pressed={isSelected}
                   onClick={() => setSelectedClass(c.classe)}
                   className={`w-full text-left p-3.5 rounded-xl border transition-all flex items-center justify-between group ${
                     isSelected
@@ -161,7 +177,7 @@ export default function SocialClassesExplainer({ mandateId }: SocialClassesExpla
 
                   <div className="text-right">
                     <span className="text-base font-extrabold text-slate-100">
-                      {c.percentual_populacao.toFixed(1)}%
+                      {fmtNum(c.percentual_populacao)}%
                     </span>
                     <div className="w-24 h-1.5 bg-slate-800 rounded-full mt-1 overflow-hidden">
                       <div
@@ -182,26 +198,28 @@ export default function SocialClassesExplainer({ mandateId }: SocialClassesExpla
           <div className="pt-2">
             <div className="text-[11px] text-slate-400 mb-1.5 flex justify-between">
               <span>Distribuição Total da População Brasileira (100%):</span>
-              <span className="text-slate-300 font-semibold">53% em Classes D/E</span>
+              <span className="text-slate-300 font-semibold">{fmtNum(lowerPct)}% em Classes D/E</span>
             </div>
             <div className="w-full h-3.5 bg-slate-800 rounded-lg overflow-hidden flex shadow-inner">
               {data.classes.map((c) => (
-                <div
+                <button
+                  type="button"
                   key={c.classe}
                   style={{
                     width: `${c.percentual_populacao}%`,
                     backgroundColor: c.cor
                   }}
-                  title={`${c.classe}: ${c.percentual_populacao}% da população`}
-                  className="h-full border-r border-slate-900/60 last:border-0 hover:opacity-80 transition-opacity cursor-pointer"
+                  title={`${c.classe}: ${fmtNum(c.percentual_populacao)}% da população`}
+                  aria-label={`${c.classe}: ${fmtNum(c.percentual_populacao)}% da população`}
+                  className="h-full border-r border-slate-900/60 last:border-0 hover:opacity-80 transition-opacity cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
                   onClick={() => setSelectedClass(c.classe)}
                 />
               ))}
             </div>
-            <div className="flex justify-between text-[10px] text-slate-500 mt-1 px-0.5">
-              <span>Topo (Classe A: 2.8%)</span>
-              <span>Classe C (31%)</span>
-              <span>Base (Classes D/E: 53%)</span>
+            <div className="flex justify-between text-[10px] text-slate-400 mt-1 px-0.5">
+              <span>Topo ({topClass.classe}: {fmtNum(topClass.percentual_populacao)}%)</span>
+              <span>{mostPopulous.classe} ({fmtNum(mostPopulous.percentual_populacao, 0)}%)</span>
+              <span>Base (Classes D/E: {fmtNum(lowerPct, 0)}%)</span>
             </div>
           </div>
         </div>
@@ -242,7 +260,11 @@ export default function SocialClassesExplainer({ mandateId }: SocialClassesExpla
               </div>
               <div className="flex justify-between py-1.5 border-b border-slate-800/80">
                 <span className="text-slate-400">Parcela da População:</span>
-                <span className="font-bold text-slate-200">{currentClassInfo.percentual_populacao.toFixed(1)}% dos lares</span>
+                <span className="font-bold text-slate-200">
+                  {isNum(currentClassInfo.percentual_domicilios)
+                    ? `${fmtNum(currentClassInfo.percentual_domicilios)}% dos domicílios`
+                    : `${fmtNum(currentClassInfo.percentual_populacao)}% dos lares`}
+                </span>
               </div>
             </div>
 
@@ -254,7 +276,7 @@ export default function SocialClassesExplainer({ mandateId }: SocialClassesExpla
           {/* Simulador Interativo de Enquadramento */}
           <div className="p-4.5 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs space-y-3">
             <div className="flex items-center gap-2 text-slate-200 font-bold">
-              <Calculator className="w-4 h-4 text-emerald-400" />
+              <Calculator className="w-4 h-4 text-emerald-400" aria-hidden="true" />
               <span>Simulador de Enquadramento de Renda</span>
             </div>
             <p className="text-slate-400 text-[11px]">
@@ -263,13 +285,16 @@ export default function SocialClassesExplainer({ mandateId }: SocialClassesExpla
 
             <form onSubmit={handleCalculateClass} className="space-y-2.5">
               <div className="relative">
-                <span className="absolute left-3 top-2.5 text-slate-500 font-semibold">R$</span>
+                <span className="absolute left-3 top-2.5 text-slate-400 font-semibold" aria-hidden="true">R$</span>
                 <input
                   type="text"
+                  inputMode="decimal"
+                  aria-label="Renda familiar mensal total em reais"
+                  aria-invalid={incomeError ? true : undefined}
                   placeholder="Ex: 5000,00"
                   value={userIncome}
                   onChange={(e) => setUserIncome(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700/80 rounded-xl pl-9 pr-3 py-2 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 text-xs font-medium"
+                  className="w-full bg-slate-900 border border-slate-700/80 rounded-xl pl-9 pr-3 py-2 text-slate-100 placeholder-slate-400 focus:outline-none focus:border-emerald-500 text-xs font-medium"
                 />
               </div>
               <button
@@ -280,11 +305,16 @@ export default function SocialClassesExplainer({ mandateId }: SocialClassesExpla
               </button>
             </form>
 
+            {incomeError && (
+              <p role="alert" className="text-rose-300 text-[11px]">{incomeError}</p>
+            )}
+
             {calculatedClass && (
               <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center mt-2 animate-in fade-in duration-300">
                 <span className="text-slate-400 text-[11px] block">Seu enquadramento oficial:</span>
                 <span className="text-base font-extrabold text-emerald-300">{calculatedClass}</span>
                 <button
+                  type="button"
                   onClick={() => setSelectedClass(calculatedClass)}
                   className="block mx-auto text-[10px] text-emerald-400 underline mt-1 hover:text-emerald-300"
                 >
