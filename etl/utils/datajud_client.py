@@ -255,7 +255,8 @@ class DataJudClient:
 
         classe_nome = classe.get("nome") or "Processo Judicial"
         assuntos_nomes = [a.get("nome") for a in assuntos if isinstance(a, dict) and a.get("nome")]
-        classe_assunto = f"{classe_nome} / {", ".join(assuntos_nomes)}" if assuntos_nomes else classe_nome
+        assuntos_str = ", ".join(assuntos_nomes)
+        classe_assunto = f"{classe_nome} / {assuntos_str}" if assuntos_nomes else classe_nome
 
         data_ajuizamento = source.get("dataAjuizamento")
         if data_ajuizamento and "T" in str(data_ajuizamento):
