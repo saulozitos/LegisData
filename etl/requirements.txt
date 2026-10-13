@@ -4,7 +4,7 @@
 # padrão (urllib via etl.utils.http_client) e nunca importa esses pacotes.
 pandas>=2.2.0,<3.0
 numpy>=1.26.0,<3.0
-sqlalchemy>=2.0.28,<3.0
+sqlalchemy>=2.1.4,<3.0
 psycopg2-binary>=2.9.9,<3.0
 # pydantic-settings é exigido por backend/app/core/config.py, importado pela carga no banco
 pydantic>=2.6.0,<3.0
