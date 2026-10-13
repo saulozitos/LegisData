@@ -8,4 +8,4 @@ sqlalchemy>=2.0.28,<3.0
 psycopg2-binary>=2.9.9,<3.0
 # pydantic-settings é exigido por backend/app/core/config.py, importado pela carga no banco
 pydantic>=2.6.0,<3.0
-pydantic-settings>=2.2.0,<3.0
+pydantic-settings>=2.15.0,<3.0
