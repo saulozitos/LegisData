@@ -75,7 +75,7 @@ _RE_LINHA_SESSAO = re.compile(r'<tr class="info-data__child">(.*?)</tr>', re.S)
 _RE_CELULA = re.compile(r"<td[^>]*>(.*?)</td>", re.S)
 _RE_DATA_BR = re.compile(r"(\d{2})/(\d{2})/(\d{4})")
 _RE_TAGS = re.compile(r"<[^>]+>")
-_RE_SCRIPT_STYLE = re.compile(r"<script.*?</script>|<style.*?</style>", re.S)
+_RE_SCRIPT_STYLE = re.compile(r"<script.*?</script>|<style.*?</style>", re.S | re.I)
 _RE_ESPACOS = re.compile(r"\s+")
 _RE_OBS = re.compile(r"\s*Observações\s*\?\s*", re.I)
 

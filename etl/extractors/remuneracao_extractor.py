@@ -69,7 +69,8 @@ def parse_remuneracao_anual(html_text: str) -> Dict[int, float]:
 def parse_remuneracao_detalhe(html_text: str) -> Optional[Dict[str, Optional[float]]]:
     """Fixa e líquido (após descontos obrigatórios) da FOLHA NORMAL da página detalhada; None se ausente."""
     texto = _RE_ESPACOS.sub(
-        " ", unescape(_RE_TAGS.sub(" ", re.sub(r"<script.*?</script>|<style.*?</style>", "", html_text, flags=re.S)))
+        " ",
+        unescape(_RE_TAGS.sub(" ", re.sub(r"<script.*?</script>|<style.*?</style>", "", html_text, flags=re.S | re.I))),
     )
     inicio = texto.find("FOLHA NORMAL")
     if inicio < 0:

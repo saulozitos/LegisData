@@ -105,7 +105,7 @@ def test_vercel_cors_regex_is_restricted_to_the_project():
 def test_cors_origins_are_merged_without_duplicates():
     s = make_settings(DATABASE_URL="postgresql://u:p@h/db", CORS_ORIGINS="http://localhost:3000, https://app.example ,")
     assert s.all_cors_origins.count("http://localhost:3000") == 1
-    assert "https://app.example" in s.all_cors_origins
+    assert s.all_cors_origins == ["http://localhost:3000", "https://app.example"]
 
 
 def test_is_production_flag_is_case_insensitive():
