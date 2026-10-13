@@ -74,7 +74,7 @@ def parse_remuneracao_detalhe(html_text: str) -> Optional[Dict[str, Optional[flo
             _RE_TAGS.sub(
                 " ",
                 re.sub(
-                    r"<script\b[^>]*>.*?</script\s*>|<style\b[^>]*>.*?</style\s*>", "", html_text, flags=re.S | re.I
+                    r"<script\b[^>]*>.*?</script[^>]*>|<style\b[^>]*>.*?</style[^>]*>", "", html_text, flags=re.S | re.I
                 ),
             )
         ),
