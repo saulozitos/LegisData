@@ -31,6 +31,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: ghcr.io/saulozitos/legisdata-backend:latest
     container_name: politica_api
     restart: unless-stopped
     depends_on:
@@ -69,6 +70,7 @@ services:
       dockerfile: Dockerfile
       args:
         INTERNAL_BACKEND_URL: ${INTERNAL_BACKEND_URL:-http://backend:8000}
+    image: ghcr.io/saulozitos/legisdata-frontend:latest
     container_name: politica_frontend
     restart: unless-stopped
     depends_on:
@@ -83,7 +85,7 @@ services:
     cap_drop:
       - ALL
     ports:
-      # Apenas loopback: exponha ao público por um proxy reverso (TLS/HSTS terminados no proxy).
+      # Exposto na LAN/loopback para comunicação do Cloudflare Tunnel
       - "3000:3000"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -96,6 +98,19 @@ services:
         limits:
           cpus: "1.0"
           memory: 768m
+
+  watchtower:
+    image: containrrr/watchtower:1.7.1
+    container_name: politica_watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_POLL_INTERVAL=120
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_INCLUDE_STOPPED=false
+      - WATCHTOWER_REVIVE_STOPPED=false
+    command: politica_frontend politica_api
 
 volumes:
   postgres_data:
