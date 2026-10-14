@@ -293,4 +293,83 @@ describe('ComparadorPage — comparação completa', () => {
     await screen.findByText('Score Sintético de Prosperidade Presidencial');
     expect(screen.getAllByText(/R\$ 3,00 bi/).length).toBeGreaterThan(0);
   });
+
+  it("renderiza Dimensão 4: Governabilidade & Poder Legislativo (IPLE) quando os mandatos contêm iple", async () => {
+    const mockIple1 = {
+      mandato_id: "bolsonaro-2019",
+      presidente: "Jair Bolsonaro",
+      periodo: "2019-2022",
+      indicadores_base: {
+        proposicoes_executivo_total: 242,
+        proposicoes_executivo_aprovadas: 179,
+        vetos_total_apreciados: 158,
+        vetos_mantidos: 99,
+        vetos_pendentes_pauta: 0,
+        taxa_sucesso_ts: 0.7397,
+        taxa_manutencao_vetos_tmv: 0.6266,
+        iple_score: 0.6832,
+      },
+      variaveis_contextuais: {
+        tamanho_oposicao_x1: 0.2827,
+        oposicao_cadeiras: 145,
+        total_cadeiras: 513,
+        fragmentacao_nep_x2: 16.41,
+        polarizacao_ipp_x3: 4.40,
+      },
+      calibragem_crisp_set: {
+        ts: { score: 0.7397, corte: 0.87, crisp_val: 0, classificacao: "Sucesso Baixo" },
+        tmv: { score: 0.6266, corte: 0.70, crisp_val: 0, classificacao: "Manutenção Baixa" },
+        iple: { score: 0.6832, corte: 0.785, crisp_val: 0, classificacao: "Executivo Fraco" },
+        oposicao_x1: { score: 0.2827, corte: 0.334, crisp_val: 0, classificacao: "Oposição Fraca" },
+        fragmentacao_x2: { score: 16.41, corte: 8.45, crisp_val: 1, classificacao: "Parlamento Fragmentado" },
+        polarizacao_x3: { score: 4.40, corte: 2.2, crisp_val: 1, classificacao: "Parlamento Polarizado" },
+      },
+      classificacao_geral: "Executivo Fraco",
+    };
+    const mockIple2 = {
+      mandato_id: "lula-2023",
+      presidente: "Luiz Inácio Lula da Silva",
+      periodo: "2023-2026",
+      indicadores_base: {
+        proposicoes_executivo_total: 84,
+        proposicoes_executivo_aprovadas: 69,
+        vetos_total_apreciados: 48,
+        vetos_mantidos: 33,
+        vetos_pendentes_pauta: 12,
+        taxa_sucesso_ts: 0.8214,
+        taxa_manutencao_vetos_tmv: 0.6875,
+        iple_score: 0.7545,
+      },
+      variaveis_contextuais: {
+        tamanho_oposicao_x1: 0.2359,
+        oposicao_cadeiras: 121,
+        total_cadeiras: 513,
+        fragmentacao_nep_x2: 9.93,
+        polarizacao_ipp_x3: 4.55,
+      },
+      calibragem_crisp_set: {
+        ts: { score: 0.8214, corte: 0.87, crisp_val: 0, classificacao: "Sucesso Baixo" },
+        tmv: { score: 0.6875, corte: 0.70, crisp_val: 0, classificacao: "Manutenção Baixa" },
+        iple: { score: 0.7545, corte: 0.785, crisp_val: 0, classificacao: "Executivo Fraco" },
+        oposicao_x1: { score: 0.2359, corte: 0.334, crisp_val: 0, classificacao: "Oposição Fraca" },
+        fragmentacao_x2: { score: 9.93, corte: 8.45, crisp_val: 1, classificacao: "Parlamento Fragmentado" },
+        polarizacao_x3: { score: 4.55, corte: 2.2, crisp_val: 1, classificacao: "Parlamento Polarizado" },
+      },
+      classificacao_geral: "Executivo Fraco",
+    };
+
+    getMandates.mockResolvedValue(list);
+    getCompare.mockResolvedValue({
+      ...comparison(),
+      mandate1: { ...comparison().mandate1, iple: mockIple1 },
+      mandate2: { ...comparison().mandate2, iple: mockIple2 },
+    });
+
+    render(<ComparadorPage />);
+    expect(await screen.findByText(/Dimensão 4: Governabilidade & Poder Legislativo/i)).toBeInTheDocument();
+    expect(screen.getByText("0.683")).toBeInTheDocument();
+    expect(screen.getByText(/0\.754/)).toBeInTheDocument();
+    expect(screen.getByText("74.0%")).toBeInTheDocument();
+    expect(screen.getByText("82.1%")).toBeInTheDocument();
+  });
 });

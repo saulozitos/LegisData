@@ -4,7 +4,9 @@ from uuid import UUID
 from app.core.database import get_db
 from app.models.executivo import MandateIndicator, PresidentialMandate
 from app.schemas.executivo import PresidentialMandateListItem
-from fastapi import APIRouter, Depends, HTTPException
+from app.services.iple_service import get_all_mandates_iple, get_mandate_iple
+from app.services.presidential_service import get_president_by_reference
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 router = APIRouter()
@@ -84,6 +86,10 @@ def get_mandate_summary(mandate_id: UUID, db: Session = Depends(get_db)):
         ipca = kpis["inflacao_ipca"]
         ipca["variacao_pp"] = round(ipca["ultimo"] - ipca["primeiro"], 2)
 
+    pres = get_president_by_reference(str(mandate_id), db)
+    ref_id = pres.get("id_referencia") if pres else None
+    iple_data = get_mandate_iple(ref_id, db=db) if ref_id else None
+
     return {
         "mandate_id": str(mandate_id),
         "nome": mandate.nome,
@@ -93,6 +99,7 @@ def get_mandate_summary(mandate_id: UUID, db: Session = Depends(get_db)):
         "foto_url": mandate.foto_url,
         "kpis": kpis,
         "total_meses": len(by_key.get("inflacao_ipca", [])),
+        "iple": iple_data,
     }
 
 
@@ -121,3 +128,32 @@ def get_mandate_indicators(mandate_id: UUID, db: Session = Depends(get_db)):
         grouped_data[date_str][ind.chave_indicador] = ind.valor
 
     return list(grouped_data.values())
+
+
+@router.get("/iple")
+def get_executive_legislative_power_index(
+    mandate_id: Optional[str] = Query(
+        None,
+        description="ID de referência do mandato presidencial (ex: lula-2023, bolsonaro-2019, fhc-1995)",
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    Retorna o Índice de Poder Legislativo do Executivo (IPLE) e variáveis contextuais QCA:
+    - Taxa de Sucesso Legislativo (TS) = |P_exec_aprov| / |P_exec|
+    - Taxa de Manutenção de Vetos (TMV) = |V_mantidos| / |V_total_apreciados|
+    - IPLE = (TS + TMV) / 2 (estritamente 0.0 a 1.0)
+    - X1: Tamanho da Oposição (% cadeiras)
+    - X2: Fragmentação Partidária (NEP de Laakso & Taagepera)
+    - X3: Polarização Ideológica Ponderada (IPP)
+    - Calibragem Crisp-set QCA completa (Tabela 4)
+    """
+    if mandate_id:
+        data = get_mandate_iple(mandate_id, db=db)
+        if not data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Mandato '{mandate_id}' não encontrado para cálculo do IPLE.",
+            )
+        return data
+    return get_all_mandates_iple(db=db)

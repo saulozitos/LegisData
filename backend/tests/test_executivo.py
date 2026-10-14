@@ -105,3 +105,80 @@ def test_indicators_group_values_by_date(client, mandates):
 def test_indicators_empty_series_and_unknown_mandate(client, mandates):
     assert client.get(f"{BASE}/mandates/{mandates['vazio'].id}/indicators").json() == []
     assert client.get(f"{BASE}/mandates/{uuid.uuid4()}/indicators").status_code == 404
+
+
+def test_get_all_mandates_iple(client):
+    res = client.get(f"{BASE}/iple")
+    assert res.status_code == 200
+    data = res.json()
+    assert isinstance(data, list)
+    assert len(data) >= 10
+    first = data[0]
+    assert "mandato_id" in first
+    assert "indicadores_base" in first
+    assert "variaveis_contextuais" in first
+    assert "calibragem_crisp_set" in first
+    assert 0.0 <= first["indicadores_base"]["iple_score"] <= 1.0
+
+
+def test_get_single_mandate_iple(client):
+    res = client.get(f"{BASE}/iple?mandate_id=lula-2023")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["mandato_id"] == "lula-2023"
+    base = data["indicadores_base"]
+    assert 0.0 <= base["taxa_sucesso_ts"] <= 1.0
+    assert 0.0 <= base["taxa_manutencao_vetos_tmv"] <= 1.0
+    assert 0.0 <= base["iple_score"] <= 1.0
+    ctx = data["variaveis_contextuais"]
+    assert ctx["fragmentacao_nep_x2"] > 0
+    assert ctx["polarizacao_ipp_x3"] > 0
+    assert "calibragem_crisp_set" in data
+
+
+def test_unknown_mandate_iple_is_404(client):
+    assert client.get(f"{BASE}/iple?mandate_id=desconhecido-9999").status_code == 404
+
+
+def test_iple_service_mathematical_formulas():
+    from app.services.iple_service import (
+        calculate_iple,
+        calculate_ipp,
+        calculate_nep,
+        calculate_opposition_share,
+        calculate_tmv,
+        calculate_ts,
+        calibrate_crisp_set,
+    )
+
+    # 1. TS
+    assert calculate_ts(100, 87) == 0.87
+    assert calculate_ts(0, 0) == 0.0
+
+    # 2. TMV
+    assert calculate_tmv(70, 100) == 0.70
+    assert calculate_tmv(0, 0, fallback_ts=0.85) == 0.85
+    assert calculate_tmv(0, 0) == 1.0
+
+    # 3. IPLE
+    assert calculate_iple(0.87, 0.70) == 0.785
+    assert 0.0 <= calculate_iple(1.0, 1.0) <= 1.0
+
+    # 4. NEP
+    bancadas = [{"partido": "A", "cadeiras": 50}, {"partido": "B", "cadeiras": 50}]
+    assert calculate_nep(bancadas) == 2.0
+
+    # 5. IPP
+    assert calculate_ipp(bancadas, {"A": 2.0, "B": 8.0}) == 9.0
+
+    # 6. Oposição
+    assert calculate_opposition_share(150, 500) == 0.30
+
+    # 7. Calibragem Crisp-set
+    crisp = calibrate_crisp_set(0.88, 0.75, 0.815, 0.35, 9.0, 2.5)
+    assert crisp["ts"]["crisp_val"] == 1
+    assert crisp["tmv"]["crisp_val"] == 1
+    assert crisp["iple"]["crisp_val"] == 1
+    assert crisp["oposicao_x1"]["crisp_val"] == 1
+    assert crisp["fragmentacao_x2"]["crisp_val"] == 1
+    assert crisp["polarizacao_x3"]["crisp_val"] == 1

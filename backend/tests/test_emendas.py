@@ -2,7 +2,6 @@
 Testes automatizados para os endpoints oficiais de Emendas Orçamentárias (/api/v1/emendas).
 """
 
-import pytest
 from app.api.v1.emendas import DICIONARIO_ORCAMENTO, classificar_autor
 
 BASE = "/api/v1/emendas"

@@ -312,6 +312,28 @@ def test_explorer_author_party_comes_from_real_mandate(client, seed):
     assert executive["autor_partido"] == "GOV" and executive["autor_nome"] == "Poder Executivo"
 
 
+def test_explorer_party_filter(client, seed):
+    # Filter by party of author (PT)
+    resp_pt = client.get(f"{BASE}/explorer", params={"partido": "PT"}).json()
+    assert resp_pt["total"] == 1
+    assert resp_pt["items"][0]["titulo"] == "PL 10/2023"
+    assert resp_pt["items"][0]["autor_partido"] == "PT"
+
+    # Filter by GOV (Poder Executivo)
+    resp_gov = client.get(f"{BASE}/explorer", params={"partido": "GOV"}).json()
+    assert resp_gov["total"] == 1
+    assert resp_gov["items"][0]["titulo"] == "MPV 1/2023"
+    assert resp_gov["items"][0]["autor_partido"] == "GOV"
+
+    # Filter by party with no propositions
+    resp_empty = client.get(f"{BASE}/explorer", params={"partido": "PL"}).json()
+    assert resp_empty["total"] == 0
+
+    # Todos returns all
+    resp_all = client.get(f"{BASE}/explorer", params={"partido": "Todos"}).json()
+    assert resp_all["total"] == 3
+
+
 # ---------------------------------------------------------------------------
 # Calendário
 # ---------------------------------------------------------------------------
@@ -408,3 +430,291 @@ def test_senado_secret_vote_returns_totals_without_individual_voters(client, see
     assert data["placar"]["NAO"] == 10
     assert data["placar"]["ABSTENCAO"] == 2
     assert "Votação secreta" in data["aviso"]
+
+
+def test_ranking_authors_weighted_indicators_and_new_criteria(client, seed):
+    # Test valid criteria 'lideranca' and 'coautoria'
+    res_lider = client.get(f"{BASE}/ranking/authors", params={"criterio": "lideranca"})
+    assert res_lider.status_code == 200
+    res_coaut = client.get(f"{BASE}/ranking/authors", params={"criterio": "coautoria"})
+    assert res_coaut.status_code == 200
+
+    # Test returned fields in ranking items
+    items = res_lider.json()
+    if items:
+        first = items[0]
+        assert "autoria_principal_count" in first
+        assert "coautoria_count" in first
+        assert "score_ponderado" in first
+        assert "taxa_eficiencia_pct" in first
+        assert first["autoria_principal_count"] >= 0
+        assert first["coautoria_count"] >= 0
+
+
+def test_calculate_proposition_score_ialp_formula():
+    from app.models.legislative import StatusTramitacaoEnum, TipoAutoriaEnum, TipoProposicaoEnum
+    from app.services.legislative_scoring import calculate_proposition_score
+
+    # 1. Autor Principal (1.0) em PEC (3.0) Sancionada (3.0): 3.0 * 1.0 * 3.0 = 9.0
+    score_pec_sanc = calculate_proposition_score(
+        TipoProposicaoEnum.PEC,
+        TipoAutoriaEnum.AUTOR_PRINCIPAL,
+        StatusTramitacaoEnum.APROVADA_E_SANCIONADA,
+    )
+    assert score_pec_sanc == 9.0
+
+    # 2. Coautor (0.2) em PEC (3.0) Tramitando (1.0): 3.0 * 0.2 * 1.0 = 0.6
+    score_pec_coaut = calculate_proposition_score(
+        TipoProposicaoEnum.PEC,
+        TipoAutoriaEnum.COAUTOR,
+        StatusTramitacaoEnum.EM_TRAMITACAO,
+    )
+    assert score_pec_coaut == 0.6
+
+    # 3. Relator (0.8) em PLP (2.5) Aprovado em Plenário (2.0): 2.5 * 0.8 * 2.0 = 4.0
+    score_plp_relator = calculate_proposition_score(
+        TipoProposicaoEnum.PLP,
+        TipoAutoriaEnum.RELATOR,
+        StatusTramitacaoEnum.APROVADO_PLENARIO,
+    )
+    assert score_plp_relator == 4.0
+
+    # 4. Autor Institucional (0.0): score zero sem crédito individual
+    score_inst = calculate_proposition_score(
+        TipoProposicaoEnum.PL,
+        TipoAutoriaEnum.INSTITUCIONAL,
+        StatusTramitacaoEnum.APROVADA_E_SANCIONADA,
+    )
+    assert score_inst == 0.0
+
+    # 5. Requerimento Burocrático REQ (0.1) Autor Principal (1.0): 0.1 * 1.0 * 1.0 = 0.1
+    score_req = calculate_proposition_score(
+        TipoProposicaoEnum.REQ,
+        TipoAutoriaEnum.AUTOR_PRINCIPAL,
+        StatusTramitacaoEnum.EM_TRAMITACAO,
+    )
+    assert score_req == 0.1
+
+
+def test_coauthorship_network_endpoint_and_louvain_metrics(client, seed, db):
+    from app.models.legislative import PropositionAuthor, TipoAutoriaEnum
+
+    # Seed proposition authors connecting fulano and lula_fonte
+    pa1 = PropositionAuthor(
+        proposition_id=seed.proposition.id,
+        politician_id=seed.fulano.id,
+        author_name="Fulano",
+        authorship_type=TipoAutoriaEnum.AUTOR_PRINCIPAL,
+        order=1,
+    )
+    pa2 = PropositionAuthor(
+        proposition_id=seed.proposition.id,
+        politician_id=seed.lula_fonte.id,
+        author_name="Lula da Fonte",
+        authorship_type=TipoAutoriaEnum.COAUTOR,
+        order=2,
+    )
+    db.add_all([pa1, pa2])
+    db.commit()
+
+    resp = client.get(f"{BASE}/network", params={"limit_nodes": 20, "min_weight": 1})
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert "nodes" in data
+    assert "edges" in data
+    assert "communities" in data
+    assert "stats" in data
+
+    stats = data["stats"]
+    assert "total_nodes" in stats
+    assert "total_edges" in stats
+    assert "total_communities" in stats
+    assert "density" in stats
+    assert "top_articulators" in stats
+
+    if data["nodes"]:
+        first_node = data["nodes"][0]
+        assert "id" in first_node
+        assert "name" in first_node
+        assert "party" in first_node
+        assert "uf" in first_node
+        assert "house" in first_node
+        assert "community" in first_node
+        assert "betweenness_centrality" in first_node
+        assert "degree" in first_node
+        assert first_node["betweenness_centrality"] >= 0.0
+
+    if data["communities"]:
+        first_comm = data["communities"][0]
+        assert "community_id" in first_comm
+        assert "color" in first_comm
+        assert "label" in first_comm
+        assert "total_parlamentares" in first_comm
+
+    # Test dynamic filters
+    resp_pec = client.get(f"{BASE}/network", params={"tipo_proposta": "PEC", "limit_nodes": 10})
+    assert resp_pec.status_code == 200
+    assert resp_pec.json()["stats"]["tipo_filtro"] == "PEC"
+
+
+def test_politician_productivity_ialp_endpoint(client, seed):
+    # Encontrar um parlamentar válido na base
+    pol_id = str(seed.fulano.id)
+    resp = client.get(f"{BASE}/politicians/{pol_id}/productivity")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["politician_id"] == pol_id
+    assert "score_ialp_total" in data
+    assert "total_proposicoes" in data
+    assert "taxa_eficacia_pct" in data
+    assert "desvio_foco" in data
+    assert "distribuicao_autoria" in data
+    assert "top_coautores" in data
+
+    desvio = data["desvio_foco"]
+    assert "estruturais" in desvio
+    assert "burocraticas" in desvio
+    assert "proporcao_estrutural_pct" in desvio
+    assert "diagnostico" in desvio
+
+    autoria = data["distribuicao_autoria"]
+    assert "autor_principal" in autoria
+    assert "relator" in autoria
+    assert "coautor" in autoria
+
+    # Test 404 for non-existent UUID
+    import uuid
+    random_uuid = str(uuid.uuid4())
+    resp_404 = client.get(f"{BASE}/politicians/{random_uuid}/productivity")
+    assert resp_404.status_code == 404
+
+
+def test_deliberacoes_history_and_module_3_specification(client, seed, db):
+    """
+    Testes de conformidade com o MÓDULO 3: HISTÓRICO DE DELIBERAÇÕES E TRANSPARÊNCIA DE VOTOS:
+    6.1 Classificação das deliberações em COMISSAO, SIMBOLICA e NOMINAL.
+    6.2 Modelagem relacional votacoes_proposicao, votos_nominais, orientacoes_partidarias.
+    6.3 Regras de exibição para cada tipo de deliberação.
+    """
+    from datetime import datetime, timezone
+    import uuid
+    from app.models.legislative import (
+        VotacaoProposicao,
+        VotoNominal,
+        OrientacaoPartidaria,
+    )
+
+    prop = seed.proposition
+    prop_id = str(prop.id)
+
+    # 1. Criar uma deliberação em COMISSAO
+    vot_comissao = VotacaoProposicao(
+        id=uuid.uuid4(),
+        proposicao_id=prop.id,
+        data_hora=datetime(2023, 4, 15, 10, 0, tzinfo=timezone.utc),
+        local_deliberacao="CCJC - Comissão de Constituição e Justiça",
+        tipo_deliberacao="COMISSAO",
+        resumo_decisao="Aprovado parecer do relator pela admissibilidade",
+        nome_comissao="Comissão de Constituição e Justiça e de Cidadania",
+        link_ata_reuniao="https://www.camara.leg.br/atas/ccjc",
+        relator_nome="Dep. Fulano de Tal",
+        parecer_relator_numero="Parecer nº 05/2023-CCJC",
+        parecer_relator_texto="Parecer favorável pela constitucionalidade.",
+        link_parecer_relator="https://www.camara.leg.br/pareceres/123",
+        aprovada=True,
+    )
+    db.add(vot_comissao)
+
+    # 2. Criar uma deliberação SIMBOLICA
+    vot_simbolica = VotacaoProposicao(
+        id=uuid.uuid4(),
+        proposicao_id=prop.id,
+        data_hora=datetime(2023, 5, 20, 16, 0, tzinfo=timezone.utc),
+        local_deliberacao="Plenário da Câmara dos Deputados",
+        tipo_deliberacao="SIMBOLICA",
+        resumo_decisao="Aprovado requerimento de urgência em votação simbólica",
+        aprovada=True,
+    )
+    db.add(vot_simbolica)
+    db.flush()
+
+    op1 = OrientacaoPartidaria(votacao_id=vot_simbolica.id, partido_bancada="PT", orientacao="SIM")
+    op2 = OrientacaoPartidaria(votacao_id=vot_simbolica.id, partido_bancada="PL", orientacao="LIBERADO")
+    db.add_all([op1, op2])
+
+    # 3. Criar uma deliberação NOMINAL
+    vot_nominal = VotacaoProposicao(
+        id=uuid.uuid4(),
+        proposicao_id=prop.id,
+        data_hora=datetime(2023, 6, 10, 19, 0, tzinfo=timezone.utc),
+        local_deliberacao="Plenário da Câmara dos Deputados",
+        tipo_deliberacao="NOMINAL",
+        resumo_decisao="Aprovada redação final com registro nominal",
+        total_sim=1,
+        total_nao=1,
+        total_abstencao=0,
+        total_obstrucao=0,
+        aprovada=True,
+    )
+    db.add(vot_nominal)
+    db.flush()
+
+    vn1 = VotoNominal(votacao_id=vot_nominal.id, parlamentar_id=seed.fulano.id, voto="SIM")
+    vn2 = VotoNominal(votacao_id=vot_nominal.id, parlamentar_id=seed.beltrano.id, voto="NAO")
+    op_gov = OrientacaoPartidaria(votacao_id=vot_nominal.id, partido_bancada="Governo", orientacao="SIM")
+    db.add_all([vn1, vn2, op_gov])
+    db.commit()
+
+    # GET /propositions/{prop_id}/deliberacoes
+    resp = client.get(f"{BASE}/propositions/{prop_id}/deliberacoes")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["proposicao"]["id"] == prop_id
+    assert len(data["deliberacoes"]) >= 3
+
+    tipos = [d["tipo_deliberacao"] for d in data["deliberacoes"]]
+    assert "COMISSAO" in tipos
+    assert "SIMBOLICA" in tipos
+    assert "NOMINAL" in tipos
+
+    # GET /deliberacoes/{vot_comissao.id} -> COMISSAO rule 6.3
+    resp_com = client.get(f"{BASE}/deliberacoes/{str(vot_comissao.id)}")
+    assert resp_com.status_code == 200
+    data_com = resp_com.json()
+    assert data_com["tipo_deliberacao"] == "COMISSAO"
+    assert data_com["nome_comissao"] == "Comissão de Constituição e Justiça e de Cidadania"
+    assert data_com["link_ata_reuniao"] == "https://www.camara.leg.br/atas/ccjc"
+    assert data_com["relator_nome"] == "Dep. Fulano de Tal"
+    assert data_com["parecer_relator_numero"] == "Parecer nº 05/2023-CCJC"
+    assert data_com["parecer_relator_texto"] == "Parecer favorável pela constitucionalidade."
+    assert data_com["link_parecer_relator"] == "https://www.camara.leg.br/pareceres/123"
+
+    # GET /deliberacoes/{vot_simbolica.id} -> SIMBOLICA rule 6.3
+    resp_simb = client.get(f"{BASE}/deliberacoes/{str(vot_simbolica.id)}")
+    assert resp_simb.status_code == 200
+    data_simb = resp_simb.json()
+    assert data_simb["tipo_deliberacao"] == "SIMBOLICA"
+    assert "aviso_educativo" in data_simb
+    assert len(data_simb["orientacoes_partidarias"]) >= 2
+    # Individual votes should not be present in SIMBOLICA
+    assert "votos_sim" not in data_simb
+
+    # GET /deliberacoes/{vot_nominal.id} -> NOMINAL rule 6.3
+    resp_nom = client.get(f"{BASE}/deliberacoes/{str(vot_nominal.id)}")
+    assert resp_nom.status_code == 200
+    data_nom = resp_nom.json()
+    assert data_nom["tipo_deliberacao"] == "NOMINAL"
+    assert data_nom["placar"]["sim"] == 1
+    assert data_nom["placar"]["nao"] == 1
+    assert len(data_nom["votos_sim"]) == 1
+    assert len(data_nom["votos_nao"]) == 1
+    assert data_nom["votos_sim"][0]["politico_id"] == str(seed.fulano.id)
+    assert data_nom["votos_nao"][0]["politico_id"] == str(seed.beltrano.id)
+
+    # 404 & 422 validations
+    resp_404 = client.get(f"{BASE}/deliberacoes/{str(uuid.uuid4())}")
+    assert resp_404.status_code == 404
+    resp_422 = client.get(f"{BASE}/deliberacoes/invalid-uuid")
+    assert resp_422.status_code == 422

@@ -178,7 +178,13 @@ def test_search_row_uses_current_party_and_real_photo_fallbacks(client, seed):
 
 def test_senator_photo_url_is_canonical_https(client, db):
     from app.models.politician import Politician
-    senador = Politician(civil_name="Izalci Lucas", electoral_name="Izalci Lucas", senado_id=4770, photo_url="http://www.senado.leg.br/senadores/img/fotos-oficiais/senador4770.jpg")
+
+    senador = Politician(
+        civil_name="Izalci Lucas",
+        electoral_name="Izalci Lucas",
+        senado_id=4770,
+        photo_url="http://www.senado.leg.br/senadores/img/fotos-oficiais/senador4770.jpg",
+    )
     db.add(senador)
     db.commit()
     res = client.get(f"{BASE}/{senador.id}").json()

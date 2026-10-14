@@ -27,13 +27,26 @@ class TipoProposicaoEnum(str, enum.Enum):
     PLP = "PLP"
     MPV = "MPV"
     PDL = "PDL"
+    PR = "PR"
+    PRC = "PRC"
+    PDS = "PDS"
+    REQ = "REQ"
+    INC = "INC"
     DECRETO_PRES = "DECRETO_PRES"
     LEI_DELEGADA = "LEI_DELEGADA"
+
+
+class TipoDeliberacaoEnum(str, enum.Enum):
+    DELIBERACAO_COMISSAO = "COMISSAO"
+    VOTACAO_SIMBOLICA = "SIMBOLICA"
+    VOTACAO_NOMINAL = "NOMINAL"
 
 
 class StatusTramitacaoEnum(str, enum.Enum):
     APROVADA_E_SANCIONADA = "APROVADA_E_SANCIONADA"
     APROVADA_E_PROMULGADA = "APROVADA_E_PROMULGADA"
+    APROVADO_PLENARIO = "APROVADO_PLENARIO"
+    APROVADO_COMISSAO = "APROVADO_COMISSAO"
     VETADA_TOTAL = "VETADA_TOTAL"
     VETADA_PARCIAL = "VETADA_PARCIAL"
     REJEITADA = "REJEITADA"
@@ -63,6 +76,13 @@ class TipoPresencaEnum(str, enum.Enum):
     AUSENCIA_NAO_JUSTIFICADA = "AUSENCIA_NAO_JUSTIFICADA"
     LICENCA_MEDICA = "LICENCA_MEDICA"
     MISSAO_OFICIAL = "MISSAO_OFICIAL"
+
+
+class TipoAutoriaEnum(str, enum.Enum):
+    AUTOR_PRINCIPAL = "AUTOR_PRINCIPAL"
+    RELATOR = "RELATOR"
+    COAUTOR = "COAUTOR"
+    INSTITUCIONAL = "INSTITUCIONAL"
 
 
 class Proposition(TimeStampedModel):
@@ -106,6 +126,16 @@ class Proposition(TimeStampedModel):
     )
     economic_impacts: Mapped[List["PolicyEconomicImpact"]] = relationship(
         "PolicyEconomicImpact",
+        back_populates="proposition",
+        cascade="all, delete-orphan",
+    )
+    deliberacoes: Mapped[List["VotacaoProposicao"]] = relationship(
+        "VotacaoProposicao",
+        back_populates="proposicao",
+        cascade="all, delete-orphan",
+    )
+    authors_detail: Mapped[List["PropositionAuthor"]] = relationship(
+        "PropositionAuthor",
         back_populates="proposition",
         cascade="all, delete-orphan",
     )
@@ -218,3 +248,132 @@ class AttendanceRecord(Base):
     mandate: Mapped["Mandate"] = relationship("Mandate", back_populates="attendances")
 
     __table_args__ = (Index("idx_attendance_politician_date", "politicoId", "dataSessao"),)
+
+
+class PropositionAuthor(Base):
+    __tablename__ = "proposicoes_autores"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    proposition_id: Mapped[uuid.UUID] = mapped_column(
+        "proposicaoId",
+        UUID(as_uuid=True),
+        ForeignKey("proposicoes.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    politician_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        "politicoId",
+        UUID(as_uuid=True),
+        ForeignKey("politicos.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    author_name: Mapped[str] = mapped_column("nomeAutor", Text, nullable=False)
+    authorship_type: Mapped[TipoAutoriaEnum] = mapped_column(
+        "tipoAutoria",
+        Enum(TipoAutoriaEnum),
+        default=TipoAutoriaEnum.AUTOR_PRINCIPAL,
+        nullable=False,
+    )
+    order: Mapped[int] = mapped_column("ordem", Integer, default=1, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    proposition: Mapped["Proposition"] = relationship(back_populates="authors_detail")
+    politician: Mapped[Optional["Politician"]] = relationship("Politician", backref="propositions_authored")
+
+    __table_args__ = (
+        Index("idx_prop_autor_pol_tipo", "politicoId", "tipoAutoria"),
+        Index("idx_prop_autor_prop_ordem", "proposicaoId", "ordem"),
+    )
+
+
+class VotacaoProposicao(Base):
+    __tablename__ = "votacoes_proposicao"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    proposicao_id: Mapped[uuid.UUID] = mapped_column(
+        "proposicao_id",
+        UUID(as_uuid=True),
+        ForeignKey("proposicoes.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    data_hora: Mapped[datetime] = mapped_column("data_hora", DateTime(timezone=True), nullable=False)
+    local_deliberacao: Mapped[str] = mapped_column("local_deliberacao", String(100), nullable=False)
+    tipo_deliberacao: Mapped[str] = mapped_column("tipo_deliberacao", String(30), nullable=False)
+    resumo_decisao: Mapped[str] = mapped_column("resumo_decisao", Text, nullable=False)
+
+    # Metadados adicionais para DELIBERACAO_COMISSAO (Módulo 3 - Especificação 6.3)
+    nome_comissao: Mapped[Optional[str]] = mapped_column("nome_comissao", String(150), nullable=True)
+    link_ata_reuniao: Mapped[Optional[str]] = mapped_column("link_ata_reuniao", Text, nullable=True)
+    relator_nome: Mapped[Optional[str]] = mapped_column("relator_nome", String(150), nullable=True)
+    parecer_relator_numero: Mapped[Optional[str]] = mapped_column("parecer_relator_numero", String(80), nullable=True)
+    parecer_relator_texto: Mapped[Optional[str]] = mapped_column("parecer_relator_texto", Text, nullable=True)
+    link_parecer_relator: Mapped[Optional[str]] = mapped_column("link_parecer_relator", Text, nullable=True)
+
+    # Placar agregado
+    total_sim: Mapped[int] = mapped_column("total_sim", Integer, default=0, nullable=False)
+    total_nao: Mapped[int] = mapped_column("total_nao", Integer, default=0, nullable=False)
+    total_abstencao: Mapped[int] = mapped_column("total_abstencao", Integer, default=0, nullable=False)
+    total_obstrucao: Mapped[int] = mapped_column("total_obstrucao", Integer, default=0, nullable=False)
+    aprovada: Mapped[bool] = mapped_column("aprovada", Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    # Relationships
+    proposicao: Mapped["Proposition"] = relationship("Proposition", back_populates="deliberacoes")
+    votos_nominais: Mapped[List["VotoNominal"]] = relationship(
+        "VotoNominal", back_populates="votacao", cascade="all, delete-orphan"
+    )
+    orientacoes_partidarias: Mapped[List["OrientacaoPartidaria"]] = relationship(
+        "OrientacaoPartidaria", back_populates="votacao", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("idx_votacoes_prop_id", "proposicao_id"),
+        Index("idx_votacoes_prop_tipo", "tipo_deliberacao"),
+        Index("idx_votacoes_prop_data", "data_hora"),
+    )
+
+
+class VotoNominal(Base):
+    __tablename__ = "votos_nominais"
+
+    votacao_id: Mapped[uuid.UUID] = mapped_column(
+        "votacao_id",
+        UUID(as_uuid=True),
+        ForeignKey("votacoes_proposicao.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    parlamentar_id: Mapped[uuid.UUID] = mapped_column(
+        "parlamentar_id",
+        UUID(as_uuid=True),
+        ForeignKey("politicos.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    voto: Mapped[str] = mapped_column("voto", String(20), nullable=False)  # 'SIM', 'NAO', 'ABSTENCAO', 'OBSTRUCAO'
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    votacao: Mapped["VotacaoProposicao"] = relationship("VotacaoProposicao", back_populates="votos_nominais")
+    parlamentar: Mapped["Politician"] = relationship("Politician")
+
+    __table_args__ = (
+        Index("idx_votos_nominais_voto", "voto"),
+        Index("idx_votos_nominais_parlamentar", "parlamentar_id"),
+    )
+
+
+class OrientacaoPartidaria(Base):
+    __tablename__ = "orientacoes_partidarias"
+
+    votacao_id: Mapped[uuid.UUID] = mapped_column(
+        "votacao_id",
+        UUID(as_uuid=True),
+        ForeignKey("votacoes_proposicao.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    partido_bancada: Mapped[str] = mapped_column("partido_bancada", String(50), primary_key=True)
+    orientacao: Mapped[str] = mapped_column("orientacao", String(20), nullable=False)  # 'SIM', 'NAO', 'LIBERADO', 'OBSTRUCAO'
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    votacao: Mapped["VotacaoProposicao"] = relationship("VotacaoProposicao", back_populates="orientacoes_partidarias")
+
+    __table_args__ = (
+        Index("idx_orientacoes_partido", "partido_bancada"),
+    )

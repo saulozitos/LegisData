@@ -99,6 +99,7 @@ export interface MandatoPerformance {
   ministros_fazenda_principais: string[];
   marcos_economicos_principais: string[];
   score_prosperidade?: ScoreProsperidadeData;
+  iple?: IpleData;
 }
 
 export interface ResumoMacroeconomicoAnual {
@@ -273,6 +274,11 @@ export interface CompareMandatesResponse {
     delta_estabilidade: number;
   };
   termometro_repasses_apoio?: TermometroRepassesData;
+  iple?: {
+    mandate1?: IpleData;
+    mandate2?: IpleData;
+    delta_iple_score?: number | null;
+  };
 }
 
 /**
@@ -528,12 +534,58 @@ export interface ChamberComposition {
   };
 }
 
+export interface IpleCrispSetItem {
+  score: number;
+  corte: number;
+  crisp_val: number;
+  classificacao: string;
+}
+
+export interface IpleCrispSet {
+  ts: IpleCrispSetItem;
+  tmv: IpleCrispSetItem;
+  iple: IpleCrispSetItem;
+  oposicao_x1: IpleCrispSetItem;
+  fragmentacao_x2: IpleCrispSetItem;
+  polarizacao_x3: IpleCrispSetItem;
+}
+
+export interface IpleBaseIndicators {
+  proposicoes_executivo_total: number;
+  proposicoes_executivo_aprovadas: number;
+  vetos_total_apreciados: number;
+  vetos_mantidos: number;
+  vetos_pendentes_pauta: number;
+  taxa_sucesso_ts: number;
+  taxa_manutencao_vetos_tmv: number;
+  iple_score: number;
+}
+
+export interface IpleContextualVariables {
+  tamanho_oposicao_x1: number;
+  oposicao_cadeiras: number;
+  total_cadeiras: number;
+  fragmentacao_nep_x2: number;
+  polarizacao_ipp_x3: number;
+}
+
+export interface IpleData {
+  mandato_id: string;
+  presidente: string;
+  periodo: string;
+  indicadores_base: IpleBaseIndicators;
+  variaveis_contextuais: IpleContextualVariables;
+  calibragem_crisp_set: IpleCrispSet;
+  classificacao_geral: string;
+}
+
 export interface CongressCompositionResponse {
   mandato_id: string;
   presidente_republica: string;
   periodo: string;
   camara: ChamberComposition;
   senado: ChamberComposition;
+  iple?: IpleData;
 }
 
 export interface StateTransferItem {
@@ -557,6 +609,20 @@ export interface FederalTransfersResponse {
 
 export async function getWageDisparity(signal?: AbortSignal): Promise<WageDisparityResponse> {
   return fetchJson<WageDisparityResponse>("/analytics/wage-disparity", signal);
+}
+
+export async function getExecutiveIple(
+  mandateId?: string,
+  signal?: AbortSignal
+): Promise<IpleData> {
+  const q = mandateId ? `?mandate_id=${encodeURIComponent(mandateId)}` : "";
+  return fetchJson<IpleData>(`/executivo/iple${q}`, signal);
+}
+
+export async function getAllExecutiveIple(
+  signal?: AbortSignal
+): Promise<IpleData[]> {
+  return fetchJson<IpleData[]>("/executivo/iple", signal);
 }
 
 export async function getCongressComposition(
@@ -736,6 +802,11 @@ export interface ProposicaoAutorItem {
   url_oficial?: string | null;
   classificacao_relevancia?: "IMPACTO" | "SIMBOLICO" | string;
   justificativa_relevancia?: string;
+  papel_autoria?: "AUTOR_PRINCIPAL" | "COAUTOR" | string;
+  peso_participacao?: number;
+  peso_complexidade?: number;
+  bonus_tramitacao?: number;
+  score_calculado?: number;
 }
 
 export interface VotoHistoricoItem {
@@ -945,11 +1016,29 @@ export interface BasometroData {
 
 export interface RelevanciaLegislativaData {
   total_proposicoes: number;
+  total_proposicoes_registradas?: number;
+  amostra_limitada?: boolean;
   projetos_impacto: number;
   projetos_simbolicos: number;
   percentual_impacto: number;
   percentual_simbolico: number;
   diagnostico: string;
+  lideranca_legislativa_count?: number;
+  apoio_politico_count?: number;
+  taxa_eficiencia_pct?: number;
+  score_atividade_ponderada?: number;
+  distribuicao_complexidade?: {
+    alta: number;
+    media: number;
+    baixa: number;
+  };
+  score_ialp?: number;
+  desvio_foco?: {
+    estruturais: number;
+    burocraticas: number;
+    proporcao_estrutural_pct: number;
+    diagnostico?: string;
+  };
 }
 
 export interface RoiCidadaoData {
@@ -1223,9 +1312,20 @@ export interface AuthorProductivityItem {
   cargo: string;
   foto_url?: string | null;
   total_proposicoes: number;
+  autoria_principal_count?: number;
+  coautoria_count?: number;
   proposicoes_aprovadas?: number;
   proposicoes_estruturantes?: number;
+  taxa_eficiencia_pct?: number;
   score_produtividade?: number;
+  score_ponderado?: number;
+  score_ialp?: number;
+  desvio_foco?: {
+    estruturais: number;
+    burocraticas: number;
+    proporcao_estrutural_pct: number;
+    diagnostico?: string;
+  };
   classificacao_efetividade?: string;
   principal_setor: string;
   total_principal_setor: number;
@@ -1263,6 +1363,11 @@ export interface PropositionExplorerItem {
   sessao_id?: string | null;
   placar: PropositionExplorerPlacar;
   url_oficial?: string | null;
+  tipo_deliberacao?: "COMISSAO" | "SIMBOLICA" | "NOMINAL" | null;
+  total_deliberacoes?: number;
+  peso_complexidade?: number;
+  multiplicador_tramitacao?: number;
+  score_base?: number;
 }
 
 export interface LegislativeExplorerResponse {
@@ -1284,6 +1389,77 @@ export interface ParlamentarVotoNominalItem {
   cargo: string;
   foto_url?: string | null;
   decisao: string;
+}
+
+export interface OrientacaoPartidariaItem {
+  partido_bancada: string;
+  orientacao: string;
+}
+
+export interface DeliberacaoItem {
+  id: string;
+  tipo_deliberacao: "COMISSAO" | "SIMBOLICA" | "NOMINAL";
+  data_hora: string;
+  local_deliberacao: string;
+  resumo_decisao: string;
+  aprovada: boolean;
+  orientacoes_partidarias?: OrientacaoPartidariaItem[];
+  // Se COMISSAO
+  nome_comissao?: string;
+  link_ata_reuniao?: string | null;
+  relator_nome?: string | null;
+  parecer_relator_numero?: string | null;
+  parecer_relator_texto?: string | null;
+  link_parecer_relator?: string | null;
+  // Se SIMBOLICA
+  aviso_educativo?: string;
+  // Se NOMINAL
+  placar?: {
+    sim: number;
+    nao: number;
+    abstencao: number;
+    obstrucao: number;
+    total: number;
+  };
+  total_votos_nominais?: number;
+}
+
+export interface ProposicaoDeliberacoesResponse {
+  proposicao: {
+    id: string;
+    titulo: string;
+    numero: number;
+    ano: number;
+    tipo: string;
+    ementa: string;
+    setor: string;
+    autor_nome?: string | null;
+    status: string;
+    data_apresentacao?: string | null;
+    url_oficial?: string | null;
+  };
+  total_deliberacoes: number;
+  deliberacoes: DeliberacaoItem[];
+}
+
+export interface DeliberacaoDetalheResponse extends DeliberacaoItem {
+  proposicao_id: string;
+  proposicao?: {
+    id: string;
+    titulo: string;
+    numero: number;
+    ano: number;
+    tipo: string;
+    ementa: string;
+    setor?: string;
+    autor_nome?: string;
+    url_oficial?: string | null;
+  } | null;
+  votos_sim?: ParlamentarVotoNominalItem[];
+  votos_nao?: ParlamentarVotoNominalItem[];
+  votos_abstencao?: ParlamentarVotoNominalItem[];
+  votos_obstrucao?: ParlamentarVotoNominalItem[];
+  total_votos_filtrados?: number;
 }
 
 export interface PropositionNominalVotesSplitResponse {
@@ -1319,6 +1495,7 @@ export interface PropositionNominalVotesSplitResponse {
   votos_nao: ParlamentarVotoNominalItem[];
   votos_abstencao: ParlamentarVotoNominalItem[];
   votos_obstrucao: ParlamentarVotoNominalItem[];
+  deliberacoes?: DeliberacaoItem[];
 }
 
 export async function getAuthorsProductivityRanking(
@@ -1356,10 +1533,118 @@ export async function getParties(signal?: AbortSignal): Promise<PartidoCatalogoI
   return cachedFetch("parties", () => fetchJson<PartidoCatalogoItem[]>("/parties"), signal);
 }
 
+export interface CoauthorshipNetworkNode {
+  id: string;
+  name: string;
+  party: string;
+  uf: string;
+  house: "CAMARA" | "SENADO" | string;
+  photo_url?: string | null;
+  community: number;
+  betweenness_centrality: number;
+  degree: number;
+}
+
+export interface CoauthorshipNetworkEdge {
+  source: string;
+  target: string;
+  weight: number;
+}
+
+export interface CoauthorshipCommunity {
+  community_id: number;
+  total_parlamentares: number;
+  partidos_predominantes: string;
+  color: string;
+  label: string;
+}
+
+export interface CoauthorshipNetworkStats {
+  total_nodes: number;
+  total_edges: number;
+  total_communities: number;
+  density: number;
+  tipo_filtro: string;
+  top_articulators: string[];
+}
+
+export interface CoauthorshipNetworkResponse {
+  nodes: CoauthorshipNetworkNode[];
+  edges: CoauthorshipNetworkEdge[];
+  communities: CoauthorshipCommunity[];
+  stats: CoauthorshipNetworkStats;
+}
+
+export interface PoliticianProductivityIalp {
+  politician_id: string;
+  nome_eleitoral: string;
+  foto_url?: string | null;
+  score_ialp_total: number;
+  total_proposicoes: number;
+  taxa_eficacia_pct: number;
+  avancados_autor_principal: number;
+  desvio_foco: {
+    estruturais: number;
+    burocraticas: number;
+    proporcao_estrutural_pct: number;
+    diagnostico: string;
+  };
+  distribuicao_autoria: {
+    autor_principal: number;
+    relator: number;
+    coautor: number;
+  };
+  top_coautores: Array<{
+    id: string;
+    nome_eleitoral: string;
+    foto_url?: string | null;
+    projetos_compartilhados: number;
+  }>;
+  proposicoes_amostra: Array<{
+    id: string;
+    titulo: string;
+    tipo: string;
+    numero: number;
+    ano: number;
+    ementa: string;
+    papel_autoria: string;
+    status: string;
+    peso_tipo: number;
+    peso_autoria: number;
+    multiplicador_sucesso: number;
+    score_ialp: number;
+    url_oficial?: string | null;
+  }>;
+}
+
+export async function getCoauthorshipNetwork(
+  tipoProposta?: string,
+  minWeight: number = 1,
+  casa?: string,
+  limitNodes: number = 100,
+  signal?: AbortSignal
+): Promise<CoauthorshipNetworkResponse> {
+  const q = new URLSearchParams();
+  if (tipoProposta && tipoProposta !== "ALL") q.append("tipo_proposta", tipoProposta);
+  if (minWeight > 1) q.append("min_weight", String(minWeight));
+  if (casa && casa !== "ALL") q.append("casa", casa);
+  if (limitNodes) q.append("limit_nodes", String(limitNodes));
+  const qs = q.toString();
+  return fetchJson<CoauthorshipNetworkResponse>(`/legislative/network${qs ? `?${qs}` : ""}`, signal);
+}
+
+export async function getPoliticianProductivity(
+  politicianId: string,
+  signal?: AbortSignal
+): Promise<PoliticianProductivityIalp> {
+  return fetchJson<PoliticianProductivityIalp>(`/legislative/politicians/${encodeURIComponent(politicianId)}/productivity`, signal);
+}
+
 export async function getLegislativeExplorer(
   params?: {
     search?: string;
     setor?: string;
+    partido?: string;
     tipo?: string;
     status?: string;
     apenas_votadas?: boolean;
@@ -1371,6 +1656,7 @@ export async function getLegislativeExplorer(
   const q = new URLSearchParams();
   if (params?.search) q.append("search", params.search);
   if (params?.setor) q.append("setor", params.setor);
+  if (params?.partido) q.append("partido", params.partido);
   if (params?.tipo) q.append("tipo", params.tipo);
   if (params?.status) q.append("status", params.status);
   if (params?.apenas_votadas !== undefined) q.append("apenas_votadas", String(params.apenas_votadas));
@@ -1392,6 +1678,28 @@ export async function getPropositionNominalVotesSplit(
   );
 }
 
+export async function getProposicaoDeliberacoes(
+  propId: string,
+  signal?: AbortSignal
+): Promise<ProposicaoDeliberacoesResponse> {
+  return fetchJson<ProposicaoDeliberacoesResponse>(
+    `/legislative/propositions/${encodeURIComponent(propId)}/deliberacoes`,
+    signal
+  );
+}
+
+export async function getDeliberacaoDetalhe(
+  votacaoId: string,
+  search?: string,
+  signal?: AbortSignal
+): Promise<DeliberacaoDetalheResponse> {
+  const q = search ? `?search=${encodeURIComponent(search)}` : "";
+  return fetchJson<DeliberacaoDetalheResponse>(
+    `/legislative/deliberacoes/${encodeURIComponent(votacaoId)}${q}`,
+    signal
+  );
+}
+
 // ==========================================
 // DIÁRIO DO CONGRESSO (CALENDÁRIO)
 // ==========================================
@@ -1404,6 +1712,7 @@ export interface SessaoCalendarioItem {
   titulo: string;
   descricao: string;
   aprovada: boolean;
+  is_votacao_secreta?: boolean;
   placar: {
     sim: number;
     nao: number;
@@ -1456,7 +1765,28 @@ export async function getVotingCalendar(
   signal?: AbortSignal
 ): Promise<CalendarioVotacoesResponse> {
   const query = year ? `?year=${year}` : "";
-  return fetchJson<CalendarioVotacoesResponse>(`/legislative/calendar${query}`, signal);
+  try {
+    return await fetchJson<CalendarioVotacoesResponse>(`/legislative/calendar${query}`, signal);
+  } catch (err: unknown) {
+    if (year && err && typeof err === "object" && "status" in err && (err as { status: number }).status === 404) {
+      const isLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+      const totalDias = isLeap ? 366 : 365;
+      return {
+        ano_selecionado: year,
+        anos_disponiveis: [2026, 2023],
+        estatisticas_anuais: {
+          ano: year,
+          total_dias_ano: totalDias,
+          dias_com_votacao: 0,
+          percentual_dias_ativos: 0.0,
+          total_sessoes_ano: 0,
+          texto_estatistica: `Em ${year}, de ${totalDias} dias, o Congresso realizou sessões de votação nominal em 0 dias.`,
+        },
+        dias: [],
+      };
+    }
+    throw err;
+  }
 }
 
 // ==========================================

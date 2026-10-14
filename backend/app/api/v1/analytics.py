@@ -22,6 +22,7 @@ from app.schemas.analytics import (
     FederalTransfersResponse,
     WageDisparityResponse,
 )
+from app.services.iple_service import get_mandate_iple
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -179,11 +180,19 @@ def _calculate_mandate_prosperity_score(m: Dict[str, Any]) -> Dict[str, Any]:
 def get_mandates_economic_performance():
     """
     Retorna a matriz de performance econômica cruzando cada mandato presidencial
-    com inflação acumulada, crescimento real do PIB, variação cambial, evolução do salário mínimo e Score de Prosperidade.
+    com inflação acumulada, crescimento real do PIB, variação cambial, evolução do salário mínimo,
+    Score de Prosperidade e Índice de Poder Legislativo do Executivo (IPLE).
     """
     data = _load_or_404("indicadores_por_mandato.json", "Matriz de mandatos não encontrada. Execute o ETL.")
     # Cópia rasa por item: o JSON em cache é compartilhado e não pode ser modificado
-    return [{**m, "score_prosperidade": _calculate_mandate_prosperity_score(m)} for m in data]
+    return [
+        {
+            **m,
+            "score_prosperidade": _calculate_mandate_prosperity_score(m),
+            "iple": get_mandate_iple(m.get("id_mandato")),
+        }
+        for m in data
+    ]
 
 
 def _sum_by(rows: List[Dict[str, Any]], key: str = "valor_pago_brl") -> float:
@@ -407,8 +416,10 @@ def compare_mandates(
         "diagnostico": "Estados com menor contingente populacional e áreas prioritárias (Norte/Centro-Oeste) absorvem maior volume de repasses federais per capita vinculados aos pisos constitucionais de Saúde e Educação.",
     }
 
-    m1_enriched = {**m1, "sociais": s1, "score_prosperidade": score_m1}
-    m2_enriched = {**m2, "sociais": s2, "score_prosperidade": score_m2}
+    iple1 = get_mandate_iple(mandate1)
+    iple2 = get_mandate_iple(mandate2)
+    m1_enriched = {**m1, "sociais": s1, "score_prosperidade": score_m1, "iple": iple1}
+    m2_enriched = {**m2, "sociais": s2, "score_prosperidade": score_m2, "iple": iple2}
 
     def _score_delta(key: str) -> Optional[float]:
         return _delta(score_m1[key], score_m2[key], 1)
@@ -444,6 +455,17 @@ def compare_mandates(
             "delta_estabilidade": _score_delta("subscore_estabilidade"),
         },
         "termometro_repasses_apoio": termometro_repasses,
+        "iple": {
+            "mandate1": iple1,
+            "mandate2": iple2,
+            "delta_iple_score": (
+                round(
+                    float(iple2["indicadores_base"]["iple_score"]) - float(iple1["indicadores_base"]["iple_score"]), 4
+                )
+                if (iple1 and iple2 and "indicadores_base" in iple1 and "indicadores_base" in iple2)
+                else None
+            ),
+        },
         "normalized_trajectory": normalized_trajectory,
         "repasses_comparison": {
             "by_area": by_area,

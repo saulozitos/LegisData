@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   MandatoPerformance,
   PresidenteHistorico,
@@ -33,6 +33,7 @@ import {
   Minus,
   Briefcase,
   Award,
+  Scale,
 } from "lucide-react";
 import { getPresidentPhotoUrl } from "@/components/PresidentTimeline";
 import { isActiveStatus } from "@/lib/mandate";
@@ -178,6 +179,8 @@ export default function ExecutivoPanel({
       .filter((d) => d.ano != null);
   }, [mandateYears]);
 
+  const [rankingMetric, setRankingMetric] = useState<"pib" | "iple">("pib");
+
   // Comparativo de todos mandatos (para ranking)
   const rankingData = useMemo(() => {
     return allPerformances
@@ -190,6 +193,20 @@ export default function ExecutivoPanel({
         id: p.id_mandato,
       }))
       .sort((a, b) => (b.pib ?? 0) - (a.pib ?? 0));
+  }, [allPerformances]);
+
+  const rankingIpleData = useMemo(() => {
+    return allPerformances
+      .filter((p) => p.iple?.indicadores_base?.iple_score != null)
+      .map((p) => ({
+        label: p.presidente.split(" ").slice(-1)[0] + (p.anos_cobertos ? ` (${p.anos_cobertos.slice(0, 4)})` : ""),
+        fullName: p.presidente,
+        iple: p.iple?.indicadores_base?.iple_score,
+        ts: p.iple?.indicadores_base?.taxa_sucesso_ts,
+        tmv: p.iple?.indicadores_base?.taxa_manutencao_vetos_tmv,
+        id: p.id_mandato,
+      }))
+      .sort((a, b) => (b.iple ?? 0) - (a.iple ?? 0));
   }, [allPerformances]);
 
   // ── Render sem seleção ──
@@ -413,6 +430,206 @@ export default function ExecutivoPanel({
         </div>
       )}
 
+      {/* ── Seção: Poder Legislativo do Executivo (IPLE) ── */}
+      {p.iple && (
+        <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+                <Scale className="w-5 h-5" aria-hidden="true" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-slate-100">
+                    Índice de Poder Legislativo do Executivo (IPLE)
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono">
+                    Modelo Científico QCA
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Mede a capacidade de aprovação de projetos (TS) e blindagem de vetos presidenciais (TMV)
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span
+                className={`px-3 py-1 rounded-xl text-xs font-bold border flex items-center gap-1.5 ${
+                  p.iple.calibragem_crisp_set.iple.crisp_val === 1
+                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                    : "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    p.iple.calibragem_crisp_set.iple.crisp_val === 1 ? "bg-emerald-400" : "bg-rose-400"
+                  }`}
+                />
+                {p.iple.calibragem_crisp_set.iple.classificacao}
+              </span>
+            </div>
+          </div>
+
+          {/* Cards Principais: IPLE Score, TS e TMV */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* Score IPLE */}
+            <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Score IPLE Principal
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                  Corte: ≥ 0.785
+                </span>
+              </div>
+              <div className="my-2">
+                <div className="text-2xl font-black font-mono text-indigo-400">
+                  {p.iple.indicadores_base.iple_score.toFixed(3)}
+                  <span className="text-xs font-normal text-slate-400"> / 1.000</span>
+                </div>
+                <div className="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${
+                      p.iple.indicadores_base.iple_score >= 0.785 ? "bg-indigo-500" : "bg-rose-500"
+                    }`}
+                    style={{ width: `${Math.min(100, p.iple.indicadores_base.iple_score * 100)}%` }}
+                  />
+                </div>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                Média aritmética: (TS + TMV) / 2
+              </span>
+            </div>
+
+            {/* Taxa de Sucesso (TS) */}
+            <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Taxa de Sucesso (TS)
+                </span>
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded ${
+                  p.iple.calibragem_crisp_set.ts.crisp_val === 1
+                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                    : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                }`}>
+                  {p.iple.calibragem_crisp_set.ts.classificacao}
+                </span>
+              </div>
+              <div className="my-2">
+                <div className="text-2xl font-black font-mono text-emerald-400">
+                  {(p.iple.indicadores_base.taxa_sucesso_ts * 100).toFixed(1)}%
+                </div>
+                <div className="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-emerald-500"
+                    style={{ width: `${Math.min(100, p.iple.indicadores_base.taxa_sucesso_ts * 100)}%` }}
+                  />
+                </div>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                {p.iple.indicadores_base.proposicoes_executivo_aprovadas} de {p.iple.indicadores_base.proposicoes_executivo_total} proposições (Corte: ≥ 87%)
+              </span>
+            </div>
+
+            {/* Manutenção de Vetos (TMV) */}
+            <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Manutenção de Vetos (TMV)
+                </span>
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded ${
+                  p.iple.calibragem_crisp_set.tmv.crisp_val === 1
+                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                    : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                }`}>
+                  {p.iple.calibragem_crisp_set.tmv.classificacao}
+                </span>
+              </div>
+              <div className="my-2">
+                <div className="text-2xl font-black font-mono text-sky-400">
+                  {(p.iple.indicadores_base.taxa_manutencao_vetos_tmv * 100).toFixed(1)}%
+                </div>
+                <div className="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-sky-500"
+                    style={{ width: `${Math.min(100, p.iple.indicadores_base.taxa_manutencao_vetos_tmv * 100)}%` }}
+                  />
+                </div>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                {p.iple.indicadores_base.vetos_mantidos} mantidos de {p.iple.indicadores_base.vetos_total_apreciados} apreciados (Corte: ≥ 70%)
+              </span>
+            </div>
+          </div>
+
+          {/* Variáveis Contextuais QCA */}
+          <div className="p-3.5 rounded-xl bg-slate-950/40 border border-slate-800/80">
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+              Variáveis Contextuais de Calibragem QCA:
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+                <div>
+                  <span className="text-xs text-slate-300 font-medium block">
+                    X₁: Tamanho da Oposição
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    {p.iple.variaveis_contextuais.oposicao_cadeiras} de {p.iple.variaveis_contextuais.total_cadeiras} assentos
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-mono font-bold text-slate-200">
+                    {(p.iple.variaveis_contextuais.tamanho_oposicao_x1 * 100).toFixed(1)}%
+                  </span>
+                  <span className="text-[9px] block text-slate-400">
+                    {p.iple.calibragem_crisp_set.oposicao_x1.classificacao}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+                <div>
+                  <span className="text-xs text-slate-300 font-medium block">
+                    X₂: Fragmentação (NEP)
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    Laakso & Taagepera (1979)
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-mono font-bold text-slate-200">
+                    {p.iple.variaveis_contextuais.fragmentacao_nep_x2.toFixed(2)}
+                  </span>
+                  <span className="text-[9px] block text-slate-400">
+                    {p.iple.calibragem_crisp_set.fragmentacao_x2.classificacao}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+                <div>
+                  <span className="text-xs text-slate-300 font-medium block">
+                    X₃: Polarização (IPP)
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    Escala Dalton 1-10 ponderada
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-mono font-bold text-slate-200">
+                    {p.iple.variaveis_contextuais.polarizacao_ipp_x3.toFixed(2)}
+                  </span>
+                  <span className="text-[9px] block text-slate-400">
+                    {p.iple.calibragem_crisp_set.polarizacao_x3.classificacao}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Gráficos do mandato ── */}
       {mandateChartData.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -522,37 +739,92 @@ export default function ExecutivoPanel({
         </div>
       )}
 
-      {/* ── Ranking de PIB entre todos os mandatos ── */}
+      {/* ── Ranking entre todos os mandatos ── */}
       {rankingData.length > 1 && (
         <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 space-y-3">
-          <SectionHeader
-            icon={<BarChart2 className="w-4 h-4 text-cyan-400" />}
-            title="Ranking: PIB Médio Anual por Mandato"
-            desc="Comparativo histórico de crescimento econômico — contexto para avaliar o mandato atual"
-          />
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <SectionHeader
+              icon={<BarChart2 className="w-4 h-4 text-cyan-400" />}
+              title={rankingMetric === "pib" ? "Ranking: PIB Médio Anual por Mandato" : "Ranking: Poder Legislativo (IPLE)"}
+              desc={
+                rankingMetric === "pib"
+                  ? "Comparativo histórico de crescimento econômico — contexto para avaliar o mandato atual"
+                  : "Comparativo de governabilidade e blindagem legislativa (corte de Executivo Forte: 0.785)"
+              }
+            />
+            {rankingIpleData.length > 1 && (
+              <div className="flex items-center gap-1 p-1 bg-slate-950/80 rounded-xl border border-slate-800 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setRankingMetric("pib")}
+                  className={`px-3 py-1 rounded-lg font-medium transition-colors ${
+                    rankingMetric === "pib"
+                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  PIB Médio
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRankingMetric("iple")}
+                  className={`px-3 py-1 rounded-lg font-medium transition-colors ${
+                    rankingMetric === "iple"
+                      ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  IPLE (Governabilidade)
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={rankingData} layout="vertical" margin={{ top: 0, right: 30, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
-                <XAxis type="number" stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
-                <YAxis type="category" dataKey="label" stroke="#334155" tick={{ fill: "#94a3b8", fontSize: 11 }} width={110} />
-                <Tooltip {...TOOLTIP_STYLE} formatter={(v) => [`${Number(v).toFixed(2)}% a.a.`, "PIB médio"]} />
-                <ReferenceLine x={0} stroke="#475569" strokeWidth={1} />
-                <Bar dataKey="pib" name="PIB médio a.a." radius={[0, 4, 4, 0]}>
-                  {rankingData.map((d) => (
-                    <Cell
-                      key={d.id}
-                      fill={d.id === mandateId ? "#22d3ee" : (d.pib ?? 0) >= 0 ? "#34d399" : "#fb7185"}
-                      opacity={d.id === mandateId ? 1 : 0.6}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
+              {rankingMetric === "pib" ? (
+                <BarChart data={rankingData} layout="vertical" margin={{ top: 0, right: 30, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
+                  <XAxis type="number" stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
+                  <YAxis type="category" dataKey="label" stroke="#334155" tick={{ fill: "#94a3b8", fontSize: 11 }} width={110} />
+                  <Tooltip {...TOOLTIP_STYLE} formatter={(v) => [`${Number(v).toFixed(2)}% a.a.`, "PIB médio"]} />
+                  <ReferenceLine x={0} stroke="#475569" strokeWidth={1} />
+                  <Bar dataKey="pib" name="PIB médio a.a." radius={[0, 4, 4, 0]}>
+                    {rankingData.map((d) => (
+                      <Cell
+                        key={d.id}
+                        fill={d.id === mandateId ? "#22d3ee" : (d.pib ?? 0) >= 0 ? "#34d399" : "#fb7185"}
+                        opacity={d.id === mandateId ? 1 : 0.6}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              ) : (
+                <BarChart data={rankingIpleData} layout="vertical" margin={{ top: 0, right: 30, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
+                  <XAxis type="number" domain={[0, 1]} stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => `${(v * 100).toFixed(0)}%`} />
+                  <YAxis type="category" dataKey="label" stroke="#334155" tick={{ fill: "#94a3b8", fontSize: 11 }} width={110} />
+                  <Tooltip {...TOOLTIP_STYLE} formatter={(v) => [`${Number(v).toFixed(3)} (0 a 1)`, "Score IPLE"]} />
+                  <ReferenceLine x={0.785} stroke="#818cf8" strokeDasharray="3 3" strokeWidth={1.5} />
+                  <Bar dataKey="iple" name="Score IPLE" radius={[0, 4, 4, 0]}>
+                    {rankingIpleData.map((d) => (
+                      <Cell
+                        key={d.id}
+                        fill={d.id === mandateId ? "#22d3ee" : (d.iple ?? 0) >= 0.785 ? "#818cf8" : "#fb7185"}
+                        opacity={d.id === mandateId ? 1 : 0.65}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              )}
             </ResponsiveContainer>
           </div>
           <p className="text-[11px] text-slate-400 flex items-center gap-1">
             <Info className="w-3 h-3" aria-hidden="true" />
-            Mandato atual destacado em ciano · Fonte: IBGE/BCB · Anos negativos refletem recessão
+            {rankingMetric === "pib"
+              ? "Mandato atual destacado em ciano · Fonte: IBGE/BCB · Anos negativos refletem recessão"
+              : "Linha tracejada em 0.785 marca o limiar de Executivo Forte / Poderoso segundo o modelo científico QCA"
+            }
           </p>
         </div>
       )}

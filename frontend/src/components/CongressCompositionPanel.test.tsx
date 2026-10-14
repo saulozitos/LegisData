@@ -218,4 +218,55 @@ describe('CongressCompositionPanel', () => {
     expect(screen.getByTestId('tooltip-fmt').textContent).toContain('cadeiras');
     expect(document.body.textContent).not.toMatch(/undefined|NaN/);
   });
+
+  it("renderiza o painel do IPLE e permite alternar a metodologia científica", async () => {
+    const mockIple = {
+      mandato_id: "m1",
+      presidente: "Fulano da Silva",
+      periodo: "2023-2026",
+      indicadores_base: {
+        proposicoes_executivo_total: 100,
+        proposicoes_executivo_aprovadas: 85,
+        vetos_total_apreciados: 20,
+        vetos_mantidos: 16,
+        vetos_pendentes_pauta: 2,
+        taxa_sucesso_ts: 0.85,
+        taxa_manutencao_vetos_tmv: 0.80,
+        iple_score: 0.825,
+      },
+      variaveis_contextuais: {
+        tamanho_oposicao_x1: 0.25,
+        oposicao_cadeiras: 128,
+        total_cadeiras: 513,
+        fragmentacao_nep_x2: 9.5,
+        polarizacao_ipp_x3: 3.2,
+      },
+      calibragem_crisp_set: {
+        ts: { score: 0.85, corte: 0.87, crisp_val: 0, classificacao: "Sucesso Baixo" },
+        tmv: { score: 0.80, corte: 0.70, crisp_val: 1, classificacao: "Manutenção Alta" },
+        iple: { score: 0.825, corte: 0.785, crisp_val: 1, classificacao: "Executivo Forte / Poderoso" },
+        oposicao_x1: { score: 0.25, corte: 0.334, crisp_val: 0, classificacao: "Oposição Fraca" },
+        fragmentacao_x2: { score: 9.5, corte: 8.45, crisp_val: 1, classificacao: "Parlamento Fragmentado" },
+        polarizacao_x3: { score: 3.2, corte: 2.2, crisp_val: 1, classificacao: "Parlamento Polarizado" },
+      },
+      classificacao_geral: "Executivo Forte / Poderoso",
+    };
+
+    getComposition.mockResolvedValue({
+      ...composition,
+      iple: mockIple,
+    });
+
+    render(<CongressCompositionPanel mandateId="m1" />);
+    expect(await screen.findByText("Índice de Poder Legislativo do Executivo (IPLE)")).toBeInTheDocument();
+    expect(screen.getByText("0.825")).toBeInTheDocument();
+    expect(screen.getByText("85.0%")).toBeInTheDocument();
+    expect(screen.getByText("80.0%")).toBeInTheDocument();
+    expect(screen.getByText("Executivo Forte / Poderoso")).toBeInTheDocument();
+
+    const toggleBtn = screen.getByRole("button", { name: /Entenda a Metodologia IPLE/i });
+    expect(screen.queryByText(/Fórmulas & Calibragem Crisp-Set QCA/i)).not.toBeInTheDocument();
+    fireEvent.click(toggleBtn);
+    expect(screen.getByText(/Fórmulas & Calibragem Crisp-Set QCA/i)).toBeInTheDocument();
+  });
 });

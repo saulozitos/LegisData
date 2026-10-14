@@ -13,6 +13,8 @@ import { fmtNum } from "@/lib/format";
 import { ErrorState } from "@/components/StateViews";
 import PartyLink from "@/components/PartyLink";
 import PropositionVoteModal from "./propositions/PropositionVoteModal";
+import CoauthorshipNetworkGraph from "./legislative/CoauthorshipNetworkGraph";
+import { Share2 } from "lucide-react";
 import {
   Search,
   CheckCircle2,
@@ -31,7 +33,9 @@ import {
   BarChart3,
   X,
   Tag,
-  AlertTriangle
+  AlertTriangle,
+  Info,
+  Award
 } from "lucide-react";
 
 // Mapeamento de cores para os setores temáticos
@@ -70,14 +74,19 @@ export default function PropositionsExplorerPanel({
   onSelectPolitician,
   onSelectParty,
 }: PropositionsExplorerPanelProps = {}) {
+  // 0. Seletor de Visão (Visão Integrada, Ranking IALP, Grafo de Redes, Mural de Votações)
+  const [viewTab, setViewTab] = useState<"INTEGRADA" | "RANKING" | "NETWORK" | "PROPOSITIONS">("INTEGRADA");
+
   // 1. Estados do Ranking de Produtividade (Filtros por Partido, Setor e Critério IPLE)
   const [rankingParty, setRankingParty] = useState<string>("Todos");
   const [rankingSector, setRankingSector] = useState<string>("Todos");
-  const [rankingCriterio, setRankingCriterio] = useState<"efetividade" | "volume">("efetividade");
+  const [rankingCriterio, setRankingCriterio] = useState<"efetividade" | "volume" | "lideranca" | "coautoria">("efetividade");
+  const [showMetodologia, setShowMetodologia] = useState<boolean>(false);
 
   // 2. Estados do Mural Geral de Votações
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedSetor, setSelectedSetor] = useState<string>("Todos");
+  const [selectedParty, setSelectedParty] = useState<string>("Todos");
   const [selectedTipo, setSelectedTipo] = useState<string>("Todos");
   const [selectedStatus] = useState<string>("Todos");
   const [apenasVotadas, setApenasVotadas] = useState<boolean>(false);
@@ -89,7 +98,7 @@ export default function PropositionsExplorerPanel({
   const debouncedSearch = useDebounce(searchTerm, 350);
 
   // A página volta para 1 sempre que um filtro muda, sem disparar uma segunda requisição com a página antiga.
-  const filtersKey = JSON.stringify([debouncedSearch, selectedSetor, selectedTipo, selectedStatus, apenasVotadas]);
+  const filtersKey = JSON.stringify([debouncedSearch, selectedSetor, selectedParty, selectedTipo, selectedStatus, apenasVotadas]);
   const [pageState, setPageState] = useState<{ key: string; page: number }>({ key: filtersKey, page: 1 });
   const currentPage = pageState.key === filtersKey ? pageState.page : 1;
   const setCurrentPage = (next: number | ((prev: number) => number)) =>
@@ -121,6 +130,7 @@ export default function PropositionsExplorerPanel({
       {
         search: debouncedSearch || undefined,
         setor: selectedSetor !== "Todos" ? selectedSetor : undefined,
+        partido: selectedParty !== "Todos" ? selectedParty : undefined,
         tipo: selectedTipo !== "Todos" ? selectedTipo : undefined,
         status: selectedStatus !== "Todos" ? selectedStatus : undefined,
         apenas_votadas: apenasVotadas,
@@ -158,8 +168,71 @@ export default function PropositionsExplorerPanel({
       </div>
 
       {/* ========================================================================= */}
-      {/* SEÇÃO A: RANKING DE PRODUTIVIDADE DOS DEPUTADOS / SENADORES              */}
+      {/* NAVEGAÇÃO DE VISÃO: INTEGRADA | RANKING IALP | GRAFO DE REDES | VOTAÇÕES  */}
       {/* ========================================================================= */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-slate-800" role="tablist" aria-label="Seletor de Módulos Legislativos">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={viewTab === "INTEGRADA"}
+          onClick={() => setViewTab("INTEGRADA")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            viewTab === "INTEGRADA"
+              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25 border border-indigo-500"
+              : "bg-slate-900/80 text-slate-300 hover:text-white border border-slate-800"
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>Visão Integrada</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={viewTab === "RANKING"}
+          onClick={() => setViewTab("RANKING")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            viewTab === "RANKING"
+              ? "bg-amber-600 text-white shadow-lg shadow-amber-500/25 border border-amber-500"
+              : "bg-slate-900/80 text-slate-300 hover:text-white border border-slate-800"
+          }`}
+        >
+          <Trophy className="w-4 h-4" />
+          <span>Ranking IALP (Produtividade)</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={viewTab === "NETWORK"}
+          onClick={() => setViewTab("NETWORK")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            viewTab === "NETWORK"
+              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25 border border-indigo-500"
+              : "bg-slate-900/80 text-slate-300 hover:text-white border border-slate-800"
+          }`}
+        >
+          <Share2 className="w-4 h-4" />
+          <span>Grafo de Coautoria (Louvain & Redes)</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={viewTab === "PROPOSITIONS"}
+          onClick={() => setViewTab("PROPOSITIONS")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            viewTab === "PROPOSITIONS"
+              ? "bg-cyan-600 text-white shadow-lg shadow-cyan-500/25 border border-cyan-500"
+              : "bg-slate-900/80 text-slate-300 hover:text-white border border-slate-800"
+          }`}
+        >
+          <Vote className="w-4 h-4" />
+          <span>Mural Geral de Votações</span>
+        </button>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* SEÇÃO A: RANKING DE PRODUTIVIDADE DOS DEPUTADOS / SENADORES (IALP)       */}
+      {/* ========================================================================= */}
+      {(viewTab === "INTEGRADA" || viewTab === "RANKING") && (
       <section className="space-y-5">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
           <div className="flex items-center gap-3">
@@ -175,14 +248,37 @@ export default function PropositionsExplorerPanel({
                 <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${
                   rankingCriterio === "efetividade"
                     ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                    : rankingCriterio === "lideranca"
+                    ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                    : rankingCriterio === "coautoria"
+                    ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/40"
                     : "bg-slate-800 text-slate-300 border-slate-700"
                 }`}>
-                  {rankingCriterio === "efetividade" ? "Score IPLE Ativo" : "Volume Bruto"}
+                  {rankingCriterio === "efetividade"
+                    ? "Score IPLE Ativo"
+                    : rankingCriterio === "lideranca"
+                    ? "Liderança (Autor Principal)"
+                    : rankingCriterio === "coautoria"
+                    ? "Apoio Político (Coautor)"
+                    : "Volume Bruto"}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => setShowMetodologia((v) => !v)}
+                  aria-expanded={showMetodologia}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-cyan-400 hover:text-cyan-300 hover:border-cyan-500/40 transition-colors ml-auto sm:ml-2"
+                >
+                  <Info className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>{showMetodologia ? "Ocultar Metodologia" : "Entenda a Pontuação"}</span>
+                </button>
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
                 {rankingCriterio === "efetividade"
-                  ? "Classificação ponderada pelo Índice IPLE: prioriza leis aprovadas (+15 pts) e reformas estruturantes (+4 pts), coibindo 'spam legislativo'."
+                  ? "Classificação ponderada pelo Índice IPLE: pondera papel (1.0 vs 0.2 pt), complexidade (PEC 3.0 pts) e leis aprovadas (+15 pts/3.0x)."
+                  : rankingCriterio === "lideranca"
+                  ? "Classificação ordenada pela quantidade de projetos em que o parlamentar figura como Autor Principal (iniciativa própria)."
+                  : rankingCriterio === "coautoria"
+                  ? "Classificação ordenada por projetos coassinados (apoio institucional de bancada e quórum inicial)."
                   : "Classificação por volume bruto de propostas protocoladas no mandato atual."}
               </p>
             </div>
@@ -190,8 +286,8 @@ export default function PropositionsExplorerPanel({
 
           {/* BARRA SUPERIOR DE FILTROS DINÂMICOS: CRITÉRIO, PARTIDO E SETOR */}
           <div className="flex flex-wrap items-center gap-2.5 bg-slate-950/80 p-2 rounded-2xl border border-slate-800/90 shadow-inner">
-            {/* Toggle de Critério IPLE vs Volume */}
-            <div className="inline-flex p-1 bg-slate-900 border border-slate-800 rounded-xl text-xs font-semibold">
+            {/* Toggle de Critério: IPLE Ponderado, Liderança, Apoio Político, Volume */}
+            <div className="inline-flex p-1 bg-slate-900 border border-slate-800 rounded-xl text-xs font-semibold flex-wrap gap-1">
               <button
                 type="button"
                 aria-pressed={rankingCriterio === "efetividade"}
@@ -205,6 +301,34 @@ export default function PropositionsExplorerPanel({
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
                 <span>Efetividade (IPLE)</span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={rankingCriterio === "lideranca"}
+                onClick={() => setRankingCriterio("lideranca")}
+                className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                  rankingCriterio === "lideranca"
+                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
+                    : "text-slate-300 hover:text-slate-100"
+                }`}
+                title="Ordena pela autoria principal (iniciativa própria)"
+              >
+                <Trophy className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
+                <span>Liderança</span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={rankingCriterio === "coautoria"}
+                onClick={() => setRankingCriterio("coautoria")}
+                className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                  rankingCriterio === "coautoria"
+                    ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm"
+                    : "text-slate-300 hover:text-slate-100"
+                }`}
+                title="Ordena por coautorias (apoio de bancada e quórum)"
+              >
+                <Users className="w-3.5 h-3.5 text-indigo-400" aria-hidden="true" />
+                <span>Apoio Político</span>
               </button>
               <button
                 type="button"
@@ -280,6 +404,66 @@ export default function PropositionsExplorerPanel({
             )}
           </div>
         </div>
+        {/* BANNER EXPLICATIVO DA METODOLOGIA (4 PILARES) */}
+        {showMetodologia && (
+          <div className="bg-gradient-to-br from-slate-900 via-slate-950 to-indigo-950/40 border border-indigo-500/30 rounded-2xl p-5 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+              <div className="flex items-center gap-2">
+                <Award className="w-4 h-4 text-amber-400" aria-hidden="true" />
+                <h4 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">
+                  Metodologia de Atividade Legislativa Ponderada
+                </h4>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 w-fit">
+                Score = Papel × Complexidade × Tramitação
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+              <div className="bg-slate-900/80 border border-amber-500/20 rounded-xl p-3 space-y-1">
+                <span className="text-amber-300 font-bold flex items-center gap-1.5 text-[11px]">
+                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                  1. Papel na Proposta
+                </span>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  • <strong>Autor Principal (1.0 pt):</strong> Liderança direta e redação original.<br />
+                  • <strong>Coautor (0.2 pt):</strong> Apoio partidário e atingimento de quórum.
+                </p>
+              </div>
+              <div className="bg-slate-900/80 border border-cyan-500/20 rounded-xl p-3 space-y-1">
+                <span className="text-cyan-300 font-bold flex items-center gap-1.5 text-[11px]">
+                  <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                  2. Complexidade
+                </span>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  • <strong>Alta (3.0 pts):</strong> PEC.<br />
+                  • <strong>Média (2.0 pts):</strong> PL, PLP, MPV.<br />
+                  • <strong>Baixa (1.0 pt):</strong> PDL, PRC, PRS.
+                </p>
+              </div>
+              <div className="bg-slate-900/80 border border-purple-500/20 rounded-xl p-3 space-y-1">
+                <span className="text-purple-300 font-bold flex items-center gap-1.5 text-[11px]">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />
+                  3. Tramitação
+                </span>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  • <strong>Base:</strong> 1.0x (em tramitação).<br />
+                  • <strong>Aprovada:</strong> 1.5x em plenário.<br />
+                  • <strong>Virou Lei:</strong> 3.0x (+15 pts).
+                </p>
+              </div>
+              <div className="bg-slate-900/80 border border-emerald-500/20 rounded-xl p-3 space-y-1">
+                <span className="text-emerald-300 font-bold flex items-center gap-1.5 text-[11px]">
+                  <Users className="w-3.5 h-3.5 text-emerald-400" />
+                  4. Filtro Institucional
+                </span>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  • <strong>Colegiados:</strong> Comissões, Mesas Diretoras e Executivo são isolados sem inflar scores individuais.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
 
         {rankingQuery.error ? (
           <ErrorState onRetry={rankingQuery.retry} />
@@ -330,21 +514,21 @@ export default function PropositionsExplorerPanel({
                 >
                   {/* Posição / Medalha */}
                   <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="relative shrink-0 w-12 h-12">
                         {safeExternalUrl(autor.foto_url) ? (
                           <img
                             src={safeExternalUrl(autor.foto_url)}
                             alt=""
                             referrerPolicy="no-referrer"
-                            className="w-12 h-12 rounded-xl object-cover border border-slate-700 shadow-sm"
+                            className="w-12 h-12 rounded-xl object-cover border border-slate-700 shadow-sm shrink-0 aspect-square"
                             onError={(e) => {
                               // Fallback se a imagem falhar
                               e.currentTarget.style.display = "none";
                             }}
                           />
                         ) : (
-                          <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 font-bold">
+                          <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 font-bold shrink-0 aspect-square">
                             {autor.nome_eleitoral.slice(0, 2).toUpperCase()}
                           </div>
                         )}
@@ -363,7 +547,7 @@ export default function PropositionsExplorerPanel({
                         </span>
                       </div>
 
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <h4 className="text-sm font-bold text-white transition-colors line-clamp-1">
                           {autor.politico_id && onSelectPolitician ? (
                             <button
@@ -389,18 +573,44 @@ export default function PropositionsExplorerPanel({
                       </div>
                     </div>
 
-                    <div className="text-right">
+                    <div className="text-right shrink-0">
                       {rankingCriterio === "efetividade" ? (
                         <div>
                           <span className="text-base font-black text-amber-400 tracking-tight flex items-center justify-end gap-1">
                             <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" aria-hidden="true" />
-                            {fmtNum(autor.score_produtividade)}
+                            {fmtNum(autor.score_ponderado ?? autor.score_produtividade)}
                           </span>
-                          <span className="block text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
-                            Score IPLE
+                          <span className="block text-[10px] text-amber-300 uppercase tracking-wider font-semibold">
+                            Score IALP (T×A×S)
                           </span>
                           <span className="text-[10px] text-slate-400">
                             {autor.total_proposicoes} {autor.total_proposicoes === 1 ? "projeto" : "projetos"}
+                          </span>
+                        </div>
+                      ) : rankingCriterio === "lideranca" ? (
+                        <div>
+                          <span className="text-lg font-black text-amber-400 tracking-tight flex items-center justify-end gap-1">
+                            <Trophy className="w-4 h-4 text-amber-400" />
+                            {autor.autoria_principal_count ?? autor.total_proposicoes}
+                          </span>
+                          <span className="block text-[10px] text-amber-300 uppercase tracking-wider font-semibold">
+                            Liderança
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            de {autor.total_proposicoes} total
+                          </span>
+                        </div>
+                      ) : rankingCriterio === "coautoria" ? (
+                        <div>
+                          <span className="text-lg font-black text-indigo-400 tracking-tight flex items-center justify-end gap-1">
+                            <Users className="w-4 h-4 text-indigo-400" />
+                            {autor.coautoria_count ?? 0}
+                          </span>
+                          <span className="block text-[10px] text-indigo-300 uppercase tracking-wider font-semibold">
+                            Coautorias
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            de {autor.total_proposicoes} total
                           </span>
                         </div>
                       ) : (
@@ -416,8 +626,33 @@ export default function PropositionsExplorerPanel({
                     </div>
                   </div>
 
+                  {/* 3 Frentes Cidadãs: Liderança, Apoio Político, Eficiência */}
+                  <div className="grid grid-cols-3 gap-1.5 my-2 text-[10px] font-mono">
+                    <div className="bg-slate-950/70 border border-amber-500/20 rounded-lg px-1.5 py-1 flex flex-col items-center text-center">
+                      <span className="text-amber-300 font-semibold flex items-center gap-0.5">
+                        <Trophy className="w-2.5 h-2.5 text-amber-400" />
+                        Líder
+                      </span>
+                      <span className="font-bold text-white text-xs mt-0.5">{autor.autoria_principal_count ?? autor.total_proposicoes}</span>
+                    </div>
+                    <div className="bg-slate-950/70 border border-indigo-500/20 rounded-lg px-1.5 py-1 flex flex-col items-center text-center">
+                      <span className="text-indigo-300 font-semibold flex items-center gap-0.5">
+                        <Users className="w-2.5 h-2.5 text-indigo-400" />
+                        Apoio
+                      </span>
+                      <span className="font-bold text-white text-xs mt-0.5">{autor.coautoria_count ?? 0}</span>
+                    </div>
+                    <div className="bg-slate-950/70 border border-teal-500/20 rounded-lg px-1.5 py-1 flex flex-col items-center text-center">
+                      <span className="text-teal-300 font-semibold flex items-center gap-0.5">
+                        <Sparkles className="w-2.5 h-2.5 text-teal-400" />
+                        Efic.
+                      </span>
+                      <span className="font-bold text-white text-xs mt-0.5">{autor.taxa_eficiencia_pct ?? 0}%</span>
+                    </div>
+                  </div>
+
                   {/* Badges de Eficácia & Alerta de Volume */}
-                  <div className="flex items-center gap-1.5 flex-wrap my-2">
+                  <div className="flex items-center gap-1.5 flex-wrap my-1.5">
                     {autor.proposicoes_estruturantes !== undefined && autor.proposicoes_estruturantes > 0 && (
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/30">
                         {autor.proposicoes_estruturantes} Estruturantes
@@ -426,6 +661,11 @@ export default function PropositionsExplorerPanel({
                     {autor.proposicoes_aprovadas !== undefined && autor.proposicoes_aprovadas > 0 && (
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                         {autor.proposicoes_aprovadas} Aprovadas
+                      </span>
+                    )}
+                    {autor.taxa_eficiencia_pct !== undefined && autor.taxa_eficiencia_pct > 0 && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                        {autor.taxa_eficiencia_pct}% Eficiência
                       </span>
                     )}
                     {autor.classificacao_efetividade === "Volume Alto sem Leis Aprovadas" && (
@@ -442,12 +682,20 @@ export default function PropositionsExplorerPanel({
                       className={`h-full rounded-full transition-all duration-700 ${
                         rankingCriterio === "efetividade"
                           ? "bg-gradient-to-r from-amber-500 via-orange-400 to-emerald-400"
+                          : rankingCriterio === "lideranca"
+                          ? "bg-gradient-to-r from-amber-500 to-amber-300"
+                          : rankingCriterio === "coautoria"
+                          ? "bg-gradient-to-r from-indigo-500 to-violet-400"
                           : "bg-gradient-to-r from-indigo-500 to-cyan-400"
                       }`}
                       style={{
                         width: `${
                           rankingCriterio === "efetividade"
-                            ? Math.min(100, Math.max(10, autor.score_produtividade ?? 0))
+                            ? Math.min(100, Math.max(10, autor.score_ponderado ?? autor.score_produtividade ?? 0))
+                            : rankingCriterio === "lideranca"
+                            ? Math.min(100, Math.max(10, ((autor.autoria_principal_count ?? autor.total_proposicoes) / Math.max(1, maxProjetos)) * 100))
+                            : rankingCriterio === "coautoria"
+                            ? Math.min(100, Math.max(10, ((autor.coautoria_count ?? 0) / Math.max(1, maxProjetos)) * 100))
                             : Math.min(100, Math.max(10, (autor.total_proposicoes / maxProjetos) * 100))
                         }%`
                       }}
@@ -478,10 +726,21 @@ export default function PropositionsExplorerPanel({
           </div>
         )}
       </section>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SEÇÃO REDES: GRAFO DE COAUTORIA, BANCADAS LOUVAIN & PONTES DE ARTICULAÇÃO */}
+      {/* ========================================================================= */}
+      {(viewTab === "INTEGRADA" || viewTab === "NETWORK") && (
+        <section className="space-y-4" aria-label="Grafo de Coautoria e Articulação Parlamentar">
+          <CoauthorshipNetworkGraph onSelectPolitician={onSelectPolitician} />
+        </section>
+      )}
 
       {/* ========================================================================= */}
       {/* SEÇÃO B: MURAL GERAL DE VOTAÇÕES (DATAGRID COM FILTROS & MODAL SIM/NÃO)   */}
       {/* ========================================================================= */}
+      {(viewTab === "INTEGRADA" || viewTab === "PROPOSITIONS") && (
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
           <div className="flex items-center gap-3">
@@ -506,7 +765,7 @@ export default function PropositionsExplorerPanel({
 
         {/* BARRA DE CONTROLES E FILTROS */}
         <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
             {/* Campo de Busca Textual */}
             <div className="relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" aria-hidden="true" />
@@ -528,6 +787,27 @@ export default function PropositionsExplorerPanel({
                   <X className="w-3.5 h-3.5" aria-hidden="true" />
                 </button>
               )}
+            </div>
+
+            {/* Filtro de Autor por Partido */}
+            <div>
+              <select
+                id="explorer-partido-select"
+                aria-label="Filtrar por partido do autor"
+                value={selectedParty}
+                onChange={(e) => setSelectedParty(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+              >
+                <option value="Todos">Todos os Partidos (Autor)</option>
+                {partyOptions
+                  .filter((p) => p !== "Todos")
+                  .map((sigla) => (
+                    <option key={sigla} value={sigla}>
+                      {sigla}
+                    </option>
+                  ))}
+                <option value="GOV">GOV (Poder Executivo)</option>
+              </select>
             </div>
 
             {/* Filtro de Setor */}
@@ -593,6 +873,21 @@ export default function PropositionsExplorerPanel({
               <BookOpen className="w-8 h-8 text-slate-400 mx-auto" aria-hidden="true" />
               <p className="text-sm font-semibold text-slate-300">Nenhuma proposição encontrada</p>
               <p className="text-xs text-slate-400">Tente ajustar os filtros ou o termo de busca acima.</p>
+              {(searchTerm || selectedParty !== "Todos" || selectedSetor !== "Todos" || selectedTipo !== "Todos" || apenasVotadas) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm("");
+                    setSelectedParty("Todos");
+                    setSelectedSetor("Todos");
+                    setSelectedTipo("Todos");
+                    setApenasVotadas(false);
+                  }}
+                  className="mt-2 text-xs font-medium text-cyan-400 hover:text-cyan-300 underline underline-offset-4"
+                >
+                  Limpar todos os filtros
+                </button>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -632,6 +927,27 @@ export default function PropositionsExplorerPanel({
                               {prop.is_reforma_estrutural && (
                                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
                                   Reforma
+                                </span>
+                              )}
+                              {prop.tipo === "PEC" ? (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
+                                  PEC • T=3.0
+                                </span>
+                              ) : prop.tipo === "PLP" ? (
+                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/25 font-mono">
+                                  PLP • T=2.5
+                                </span>
+                              ) : ["PL", "MPV"].includes(prop.tipo) ? (
+                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/25 font-mono">
+                                  {prop.tipo} • T=2.0
+                                </span>
+                              ) : ["REQ", "INC"].includes(prop.tipo) ? (
+                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/25 font-mono">
+                                  {prop.tipo} • T=0.1
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono">
+                                  {prop.tipo} • T=1.0
                                 </span>
                               )}
                             </div>
@@ -682,9 +998,16 @@ export default function PropositionsExplorerPanel({
                             )}
                             <div>
                               <span className="font-semibold text-slate-200 block text-xs">{prop.autor_nome}</span>
-                              <span className="text-[10px] text-slate-400">
-                                {prop.autor_partido} {prop.autor_uf ? `• ${prop.autor_uf}` : ""}
-                              </span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[10px] text-slate-400">
+                                  {prop.autor_partido} {prop.autor_uf ? `• ${prop.autor_uf}` : ""}
+                                </span>
+                                {prop.iniciativa_executivo && (
+                                  <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                                    Institucional (Executivo)
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -721,20 +1044,33 @@ export default function PropositionsExplorerPanel({
                         {/* Status */}
                         <td className="py-3.5 px-4 text-center whitespace-nowrap">
                           {prop.placar.resultado === "APROVADA" || prop.status.includes("APROVADA") ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                              <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
-                              Aprovada
-                            </span>
+                            <div className="flex flex-col items-center">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
+                                Aprovada
+                              </span>
+                              <span className="text-[9px] font-mono text-emerald-400 mt-0.5">
+                                {["APROVADA_E_SANCIONADA", "APROVADA_E_PROMULGADA"].includes(prop.status)
+                                  ? "Norma Jurídica (3.0x)"
+                                  : "Aprovada (1.5x)"}
+                              </span>
+                            </div>
                           ) : prop.placar.resultado === "REJEITADA" || prop.status.includes("REJEITADA") ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30">
-                              <XCircle className="w-3 h-3" aria-hidden="true" />
-                              Rejeitada
-                            </span>
+                            <div className="flex flex-col items-center">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                                <XCircle className="w-3 h-3" aria-hidden="true" />
+                                Rejeitada
+                              </span>
+                              <span className="text-[9px] font-mono text-rose-400/80 mt-0.5">Arquivada (0.0x)</span>
+                            </div>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
-                              <HelpCircle className="w-3 h-3 text-slate-400" aria-hidden="true" />
-                              Em Tramitação
-                            </span>
+                            <div className="flex flex-col items-center">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                                <HelpCircle className="w-3 h-3 text-slate-400" aria-hidden="true" />
+                                Em Tramitação
+                              </span>
+                              <span className="text-[9px] font-mono text-slate-400 mt-0.5">Base (1.0x)</span>
+                            </div>
                           )}
                         </td>
 
@@ -789,6 +1125,7 @@ export default function PropositionsExplorerPanel({
           )}
         </div>
       </section>
+      )}
 
       {/* ========================================================================= */}
       {/* MODAL DETALHADO: "QUEM VOTOU SIM (A FAVOR)" vs "QUEM VOTOU NÃO (CONTRA)"   */}

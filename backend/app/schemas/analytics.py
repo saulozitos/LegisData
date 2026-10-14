@@ -94,6 +94,7 @@ class CongressCompositionResponse(BaseModel):
     periodo: str
     camara: ChamberComposition
     senado: ChamberComposition
+    iple: Optional[Dict[str, Any]] = None
 
 
 class StateTransferItem(BaseModel):

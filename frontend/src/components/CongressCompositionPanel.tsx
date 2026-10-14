@@ -11,7 +11,9 @@ import {
   AlertCircle,
   Search,
   X,
-  MousePointerClick
+  MousePointerClick,
+  Scale,
+  Info
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -26,6 +28,7 @@ import {
   getCongressComposition,
   searchPoliticians,
   PartySeat,
+  IpleData,
 } from "../services/api";
 import { useApi } from "@/hooks/useApi";
 import { safeExternalUrl } from "@/lib/safeUrl";
@@ -49,6 +52,7 @@ export default function CongressCompositionPanel({
   const composition = useApi(`congress-composition:${mandateId}`, (signal) => getCongressComposition(mandateId, signal));
   const data = composition.data ?? null;
   const [activeHouse, setActiveHouse] = useState<"camara" | "senado">("camara");
+  const [showIpleMetodologia, setShowIpleMetodologia] = useState<boolean>(false);
 
   // Estados do Modal Interativo de Parlamentares da Bancada
   const [selectedParty, setSelectedParty] = useState<string | null>(null);
@@ -111,6 +115,7 @@ export default function CongressCompositionPanel({
   const quorumSimples = Math.floor(totalSeats / 2) + 1;
 
   const { governabilidade } = currentHouse;
+  const iple = ((governabilidade as Record<string, unknown>)?.iple as IpleData | undefined) ?? data?.iple;
 
   return (
     <div className="space-y-6">
@@ -237,6 +242,272 @@ export default function CongressCompositionPanel({
               </span>
             </div>
           </div>
+
+          {/* ========================================================================= */}
+          {/* ÍNDICE DE PODER LEGISLATIVO DO EXECUTIVO (IPLE) - MODELO CIENTÍFICO QCA  */}
+          {/* ========================================================================= */}
+          {iple && (
+            <div className="mt-5 pt-4 border-t border-slate-800/90 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+                    <Scale className="w-4 h-4" aria-hidden="true" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-sm font-bold text-white tracking-tight">
+                        Índice de Poder Legislativo do Executivo (IPLE)
+                      </h3>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold">
+                        Modelo Científico QCA
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Avalia a governabilidade e a força política do chefe do Executivo frente ao Congresso (escala 0.0 a 1.0).
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowIpleMetodologia((v) => !v)}
+                  aria-expanded={showIpleMetodologia}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-cyan-400 hover:text-cyan-300 hover:border-cyan-500/40 transition-colors self-start sm:self-auto"
+                >
+                  <Info className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>{showIpleMetodologia ? "Ocultar Metodologia" : "Entenda a Metodologia IPLE"}</span>
+                </button>
+              </div>
+
+              {/* Painel Explicativo da Metodologia e Calibragem QCA */}
+              {showIpleMetodologia && (
+                <div className="bg-slate-950/90 border border-indigo-500/30 rounded-2xl p-4 sm:p-5 space-y-3.5 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                      <Award className="w-3.5 h-3.5 text-amber-400" />
+                      Fórmulas & Calibragem Crisp-Set QCA
+                    </h4>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      IPLE = (TS + TMV) / 2
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-300">
+                    <div className="bg-slate-900/70 p-3 rounded-xl border border-slate-800/80 space-y-1">
+                      <span className="font-bold text-cyan-300 block">1. Taxa de Sucesso Legislativo (TS)</span>
+                      <p className="text-[11px] text-slate-400">
+                        TS = |P_exec_aprov| / |P_exec|. Mede a aprovação da agenda prioritária do Executivo. <strong>Corte: ≥ 87% (Sucesso Alto)</strong>.
+                      </p>
+                    </div>
+                    <div className="bg-slate-900/70 p-3 rounded-xl border border-slate-800/80 space-y-1">
+                      <span className="font-bold text-amber-300 block">2. Taxa de Manutenção de Vetos (TMV)</span>
+                      <p className="text-[11px] text-slate-400">
+                        TMV = |V_mantidos| / |V_apreciados|. Exclui vetos pendentes de pauta. <strong>Corte: ≥ 70% (Manutenção Alta)</strong>.
+                      </p>
+                    </div>
+                    <div className="bg-slate-900/70 p-3 rounded-xl border border-slate-800/80 space-y-1">
+                      <span className="font-bold text-indigo-300 block">3. Fragmentação Partidária (NEP)</span>
+                      <p className="text-[11px] text-slate-400">
+                        NEP = 1 / Σ(p_i²), índice de Laakso & Taagepera. <strong>Corte: ≥ 8.45 (Parlamento Fragmentado)</strong>.
+                      </p>
+                    </div>
+                    <div className="bg-slate-900/70 p-3 rounded-xl border border-slate-800/80 space-y-1">
+                      <span className="font-bold text-pink-300 block">4. Polarização Ideológica Ponderada (IPP)</span>
+                      <p className="text-[11px] text-slate-400">
+                        IPP = Σ p_i·(x_i - x̄)², com escala ideológica de 1 (Esquerda) a 10 (Direita). <strong>Corte: &gt; 2.2 (Parlamento Polarizado)</strong>.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 bg-cyan-950/40 border border-cyan-500/30 rounded-xl space-y-1.5">
+                    <h5 className="font-bold text-cyan-300 text-xs flex items-center gap-1.5">
+                      <span>⚖️</span> Por que as Taxas de Sucesso (TS) e Vetos (TMV) são idênticas entre as Casas, mas as Variáveis Contextuais (X₁, X₂, X₃) variam?
+                    </h5>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      No presidencialismo bicameral brasileiro, as mensagens de veto são apreciadas exclusivamente em <strong>Sessão Conjunta do Congresso Nacional</strong> (reunião unificada de deputados e senadores, conforme o Art. 66, § 4º da Constituição Federal), e a conversão definitiva de leis e PECs exige a aprovação de ambas as Casas. Por isso, a <strong>Taxa de Sucesso (TS)</strong> e a <strong>Taxa de Manutenção de Vetos (TMV)</strong> constituem métricas estruturais bicamerais do mandato presidencial.
+                    </p>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Em contrapartida, as <strong>Variáveis de Contexto Parlamentar (Oposição X₁, Fragmentação NEP X₂ e Polarização IPP X₃)</strong> mensuram a correlação de forças específica de cada plenário, variando dinamicamente ao alternar entre a Câmara dos Deputados (513 membros) e o Senado Federal (81 membros).
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Grid dos 3 Indicadores Principais */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Card 1: IPLE Geral */}
+                <div className={`p-4 rounded-2xl border flex flex-col justify-between ${
+                  iple.calibragem_crisp_set.iple.crisp_val === 1
+                    ? "bg-gradient-to-br from-emerald-500/10 via-slate-900 to-slate-950 border-emerald-500/30"
+                    : "bg-gradient-to-br from-amber-500/10 via-slate-900 to-slate-950 border-amber-500/30"
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                      Score IPLE
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      iple.calibragem_crisp_set.iple.crisp_val === 1
+                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                        : "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                    }`}>
+                      {iple.calibragem_crisp_set.iple.classificacao}
+                    </span>
+                  </div>
+                  <div className="my-2">
+                    <span className="text-2xl sm:text-3xl font-black text-white font-mono">
+                      {iple.indicadores_base.iple_score.toFixed(3)}
+                    </span>
+                    <span className="text-[11px] text-slate-400 block mt-0.5">
+                      Média de Sucesso & Vetos (Corte ≥ 0.785)
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-800">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        iple.calibragem_crisp_set.iple.crisp_val === 1 ? "bg-emerald-400" : "bg-amber-400"
+                      }`}
+                      style={{ width: `${Math.min(100, iple.indicadores_base.iple_score * 100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Card 2: Taxa de Sucesso Legislativo (TS) */}
+                <div className={`p-4 rounded-2xl border flex flex-col justify-between ${
+                  iple.calibragem_crisp_set.ts.crisp_val === 1
+                    ? "bg-gradient-to-br from-emerald-500/10 via-slate-900 to-slate-950 border-emerald-500/30"
+                    : "bg-gradient-to-br from-slate-900 to-slate-950 border-slate-800"
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-cyan-300 uppercase tracking-wider">
+                      Sucesso Legislativo (TS)
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      iple.calibragem_crisp_set.ts.crisp_val === 1
+                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                        : "bg-slate-800 text-slate-300 border-slate-700"
+                    }`}>
+                      {iple.calibragem_crisp_set.ts.classificacao}
+                    </span>
+                  </div>
+                  <div className="my-2">
+                    <span className="text-2xl sm:text-3xl font-black text-white font-mono">
+                      {(iple.indicadores_base.taxa_sucesso_ts * 100).toFixed(1)}%
+                    </span>
+                    <span className="text-[11px] text-slate-400 block mt-0.5">
+                      {iple.indicadores_base.proposicoes_executivo_aprovadas} de {iple.indicadores_base.proposicoes_executivo_total} projetos viraram lei
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-800">
+                    <div
+                      className="h-full rounded-full bg-cyan-400 transition-all duration-500"
+                      style={{ width: `${Math.min(100, iple.indicadores_base.taxa_sucesso_ts * 100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Card 3: Taxa de Manutenção de Vetos (TMV) */}
+                <div className={`p-4 rounded-2xl border flex flex-col justify-between ${
+                  iple.calibragem_crisp_set.tmv.crisp_val === 1
+                    ? "bg-gradient-to-br from-emerald-500/10 via-slate-900 to-slate-950 border-emerald-500/30"
+                    : "bg-gradient-to-br from-slate-900 to-slate-950 border-slate-800"
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-amber-300 uppercase tracking-wider">
+                      Manutenção de Vetos (TMV)
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      iple.calibragem_crisp_set.tmv.crisp_val === 1
+                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                        : "bg-slate-800 text-slate-300 border-slate-700"
+                    }`}>
+                      {iple.calibragem_crisp_set.tmv.classificacao}
+                    </span>
+                  </div>
+                  <div className="my-2">
+                    <span className="text-2xl sm:text-3xl font-black text-white font-mono">
+                      {(iple.indicadores_base.taxa_manutencao_vetos_tmv * 100).toFixed(1)}%
+                    </span>
+                    <span className="text-[11px] text-slate-400 block mt-0.5">
+                      {iple.indicadores_base.vetos_mantidos} de {iple.indicadores_base.vetos_total_apreciados} vetos apreciados mantidos
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-800">
+                    <div
+                      className="h-full rounded-full bg-amber-400 transition-all duration-500"
+                      style={{ width: `${Math.min(100, iple.indicadores_base.taxa_manutencao_vetos_tmv * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Variáveis Contextuais de Validação QCA (X1, X2, X3) */}
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between text-xs px-1">
+                  <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                    Variáveis de Sustentabilidade na {activeHouse === "camara" ? "Câmara dos Deputados (513 assentos)" : "Senado Federal (81 assentos)"}
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
+                    NEP e Polarização calibrados para esta Casa
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                      Oposição (X₁)
+                    </span>
+                    <span className="text-sm font-bold text-white font-mono">
+                      {(iple.variaveis_contextuais.tamanho_oposicao_x1 * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                  <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border ${
+                    iple.calibragem_crisp_set.oposicao_x1.crisp_val === 1
+                      ? "bg-rose-500/15 text-rose-300 border-rose-500/30"
+                      : "bg-slate-800 text-slate-400 border-slate-700"
+                  }`}>
+                    {iple.calibragem_crisp_set.oposicao_x1.classificacao}
+                  </span>
+                </div>
+
+                <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                      Fragmentação NEP (X₂)
+                    </span>
+                    <span className="text-sm font-bold text-white font-mono">
+                      {iple.variaveis_contextuais.fragmentacao_nep_x2.toFixed(2)} partidos
+                    </span>
+                  </div>
+                  <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border ${
+                    iple.calibragem_crisp_set.fragmentacao_x2.crisp_val === 1
+                      ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                      : "bg-slate-800 text-slate-400 border-slate-700"
+                  }`}>
+                    {iple.calibragem_crisp_set.fragmentacao_x2.classificacao}
+                  </span>
+                </div>
+
+                <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                      Polarização IPP (X₃)
+                    </span>
+                    <span className="text-sm font-bold text-white font-mono">
+                      {iple.variaveis_contextuais.polarizacao_ipp_x3.toFixed(2)}
+                    </span>
+                  </div>
+                  <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border ${
+                    iple.calibragem_crisp_set.polarizacao_x3.crisp_val === 1
+                      ? "bg-purple-500/15 text-purple-300 border-purple-500/30"
+                      : "bg-slate-800 text-slate-400 border-slate-700"
+                  }`}>
+                    {iple.calibragem_crisp_set.polarizacao_x3.classificacao}
+                  </span>
+                </div>
+              </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

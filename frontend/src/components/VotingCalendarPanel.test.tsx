@@ -5,6 +5,13 @@ import VotingCalendarPanel from './VotingCalendarPanel';
 import * as api from '@/services/api';
 
 vi.mock('@/services/api', () => ({ getVotingCalendar: vi.fn() }));
+vi.mock('@/components/propositions/PropositionVoteModal', () => ({
+  default: ({ propId, onClose }: { propId: string; onClose: () => void }) => (
+    <div data-testid="PropositionVoteModal" data-prop={propId}>
+      <button onClick={onClose}>Fechar Modal</button>
+    </div>
+  ),
+}));
 const getCalendar = api.getVotingCalendar as unknown as ReturnType<typeof vi.fn>;
 
 const session = (id: string, casa: string, aprovada: boolean, url: string | null = 'https://camara.leg.br/p/1') => ({
@@ -87,13 +94,19 @@ describe('VotingCalendarPanel', () => {
     expect(screen.getByRole('button', { name: /2024-05-10-fmt/ })).toBeInTheDocument();
   });
 
-  it('troca o ano chamando a API com o ano escolhido', async () => {
+  it('troca o ano chamando a API com o ano escolhido via botão ou combobox', async () => {
     getCalendar.mockImplementation((year?: number) => Promise.resolve(calendar(year ?? 2024)));
     render(<VotingCalendarPanel />);
     await screen.findByText('Sessão a');
     fireEvent.click(screen.getByRole('button', { name: '2023' }));
     await waitFor(() => expect(getCalendar).toHaveBeenCalledWith(2023, expect.any(AbortSignal)));
     await waitFor(() => expect(screen.getByRole('button', { name: '2023' })).toHaveAttribute('aria-pressed', 'true'));
+
+    // Seleção de ano via combobox
+    const select = screen.getByRole('combobox', { name: /Selecionar ano do calendário/i });
+    expect(select).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: '2025' } });
+    await waitFor(() => expect(getCalendar).toHaveBeenCalledWith(2025, expect.any(AbortSignal)));
   });
 
   it('falha ao trocar de ano não mostra os dias do ano anterior e mantém o seletor', async () => {
@@ -126,5 +139,17 @@ describe('VotingCalendarPanel', () => {
     expect(await screen.findByText(/Nenhuma sessão de votação nominal/)).toBeInTheDocument();
     expect(screen.getByText('Nenhuma deliberação para exibir')).toBeInTheDocument();
     expect(screen.getByText('Indisponível')).toBeInTheDocument();
+  });
+
+  it('abre o modal de votos nominais ao clicar no botão da deliberação', async () => {
+    getCalendar.mockResolvedValue(calendar());
+    render(<VotingCalendarPanel />);
+    await screen.findByText('Sessão a');
+    const btnVotos = screen.getAllByRole('button', { name: /Ver Votos Nominais dos Parlamentares/i })[0];
+    expect(btnVotos).toBeInTheDocument();
+    fireEvent.click(btnVotos);
+    expect(screen.getByTestId('PropositionVoteModal')).toHaveAttribute('data-prop', 'pa');
+    fireEvent.click(screen.getByText('Fechar Modal'));
+    expect(screen.queryByTestId('PropositionVoteModal')).not.toBeInTheDocument();
   });
 });

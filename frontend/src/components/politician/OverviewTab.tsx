@@ -772,20 +772,34 @@ export default function OverviewTab({ dossier, onChangeTab, onSelectParty }: Ove
                       </p>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2.5">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                      <div className="bg-slate-950/70 border border-amber-500/20 rounded-xl p-2.5">
+                        <span className="text-[10px] text-amber-300 font-medium block">Liderança (Autor)</span>
+                        <span className="text-base font-black font-mono text-white block">
+                          {dossier?.relevancia_legislativa?.lideranca_legislativa_count ?? dossier?.relevancia_legislativa?.total_proposicoes ?? 0}
+                        </span>
+                        <span className="text-[10px] text-slate-400 block">Autor principal (1.0 pt)</span>
+                      </div>
+                      <div className="bg-slate-950/70 border border-indigo-500/20 rounded-xl p-2.5">
+                        <span className="text-[10px] text-indigo-300 font-medium block">Apoio Político</span>
+                        <span className="text-base font-black font-mono text-white block">
+                          {dossier?.relevancia_legislativa?.apoio_politico_count ?? 0}
+                        </span>
+                        <span className="text-[10px] text-slate-400 block">Coautor / quórum (0.2 pt)</span>
+                      </div>
                       <div className="bg-slate-950/70 border border-emerald-500/20 rounded-xl p-2.5">
-                        <span className="text-[10px] text-emerald-400 font-medium block">Projetos de Impacto</span>
-                        <span className="text-base font-black font-mono text-emerald-400">
+                        <span className="text-[10px] text-emerald-400 font-medium block">Matérias Impacto</span>
+                        <span className="text-base font-black font-mono text-emerald-400 block">
                           {dossier?.relevancia_legislativa?.projetos_impacto || 0}
                         </span>
-                        <span className="text-[10px] text-slate-400 block">Reformas e políticas públicas</span>
+                        <span className="text-[10px] text-slate-400 block">Economia, Saúde, Leis</span>
                       </div>
                       <div className="bg-slate-950/70 border border-amber-500/20 rounded-xl p-2.5">
-                        <span className="text-[10px] text-amber-400 font-medium block">Projetos Simbólicos</span>
-                        <span className="text-base font-black font-mono text-amber-400">
+                        <span className="text-[10px] text-amber-400 font-medium block">Simbólicos</span>
+                        <span className="text-base font-black font-mono text-amber-400 block">
                           {dossier?.relevancia_legislativa?.projetos_simbolicos || 0}
                         </span>
-                        <span className="text-[10px] text-slate-400 block">Homenagens e datas festivas</span>
+                        <span className="text-[10px] text-slate-400 block">Homenagens e datas</span>
                       </div>
                     </div>
                   </div>

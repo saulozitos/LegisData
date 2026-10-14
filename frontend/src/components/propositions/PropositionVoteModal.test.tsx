@@ -134,4 +134,129 @@ describe('PropositionVoteModal', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Fechar' })[0]);
     expect(onClose).toHaveBeenCalledTimes(2);
   });
+
+  it('renderiza corretamente deliberação SIMBOLICA com matriz de orientações partidárias e aviso educativo (Regra 6.3)', async () => {
+    getSplit.mockResolvedValue(response({
+      deliberacoes: [
+        {
+          id: 'delib-simb-1',
+          tipo_deliberacao: 'SIMBOLICA',
+          data_hora: '2024-03-05T10:00:00',
+          local_deliberacao: 'Plenário da Câmara dos Deputados',
+          resumo_decisao: 'Aprovada a redação final em votação simbólica',
+          aprovada: true,
+          aviso_educativo: 'No regime de deliberação simbólica...',
+          orientacoes_partidarias: [
+            { partido_bancada: 'PT', orientacao: 'SIM' },
+            { partido_bancada: 'PL', orientacao: 'LIBERADO' },
+            { partido_bancada: 'Governo', orientacao: 'SIM' },
+          ],
+        },
+      ],
+    }));
+
+    render(<PropositionVoteModal propId="p" onClose={() => {}} />);
+    expect(await screen.findByTestId('simbolica-view')).toBeInTheDocument();
+
+    // Aviso educativo
+    expect(screen.getByText(/Como funciona a Votação Simbólica no Congresso Nacional?/i)).toBeInTheDocument();
+    expect(screen.getByText(/sem acionamento do painel eletrônico/i)).toBeInTheDocument();
+
+    // Matriz de orientações partidárias de bancada
+    expect(screen.getByText('Matriz de Orientações Partidárias de Bancada')).toBeInTheDocument();
+    expect(screen.getByText('PT')).toBeInTheDocument();
+    expect(screen.getByText('PL')).toBeInTheDocument();
+    expect(screen.getByText('Governo')).toBeInTheDocument();
+    expect(screen.getByText('LIBERADO')).toBeInTheDocument();
+
+    // Busca nominal individual deve estar OCULTA (Regra 6.3)
+    expect(screen.queryByLabelText(/Buscar parlamentar/)).not.toBeInTheDocument();
+  });
+
+  it('renderiza corretamente deliberação em COMISSAO com ata e parecer do relator associado (Regra 6.3)', async () => {
+    getSplit.mockResolvedValue(response({
+      deliberacoes: [
+        {
+          id: 'delib-com-1',
+          tipo_deliberacao: 'COMISSAO',
+          data_hora: '2024-02-20T14:30:00',
+          local_deliberacao: 'CCJC',
+          nome_comissao: 'Comissão de Constituição e Justiça e de Cidadania - CCJC',
+          resumo_decisao: 'Aprovado parecer pela constitucionalidade',
+          link_ata_reuniao: 'https://camara.leg.br/atas/ccjc-2024',
+          relator_nome: 'Dep. Caroline de Toni',
+          parecer_relator_numero: 'Parecer nº 08/2024-CCJC',
+          parecer_relator_texto: 'Parecer favorável pela ampla constitucionalidade e técnica legislativa.',
+          link_parecer_relator: 'https://camara.leg.br/pareceres/8',
+          aprovada: true,
+        },
+      ],
+    }));
+
+    render(<PropositionVoteModal propId="p" onClose={() => {}} />);
+    expect(await screen.findByTestId('comissao-view')).toBeInTheDocument();
+
+    // Nome da comissão
+    expect(screen.getByText('Comissão de Constituição e Justiça e de Cidadania - CCJC')).toBeInTheDocument();
+
+    // Link da ata da reunião
+    const linkAta = screen.getByRole('link', { name: /Acessar Ata Oficial da Reunião/i });
+    expect(linkAta).toHaveAttribute('href', 'https://camara.leg.br/atas/ccjc-2024');
+
+    // Parecer do relator associado
+    expect(screen.getByText('Parecer do Relator Associado')).toBeInTheDocument();
+    expect(screen.getByText('Dep. Caroline de Toni')).toBeInTheDocument();
+    expect(screen.getByText('Parecer nº 08/2024-CCJC')).toBeInTheDocument();
+    expect(screen.getByText(/Parecer favorável pela ampla constitucionalidade/i)).toBeInTheDocument();
+
+    const linkParecer = screen.getByRole('link', { name: /Ver Íntegra do Parecer Técnico/i });
+    expect(linkParecer).toHaveAttribute('href', 'https://camara.leg.br/pareceres/8');
+
+    // Busca nominal individual deve estar OCULTA (Regra 6.3)
+    expect(screen.queryByLabelText(/Buscar parlamentar/)).not.toBeInTheDocument();
+  });
+
+  it('permite alternar entre deliberações de diferentes tipos no seletor histórico', async () => {
+    getSplit.mockResolvedValue(response({
+      deliberacoes: [
+        {
+          id: 'delib-nom',
+          tipo_deliberacao: 'NOMINAL',
+          data_hora: '2024-03-05T10:00:00',
+          local_deliberacao: 'Plenário da Câmara',
+          resumo_decisao: 'Aprovada em plenário',
+          aprovada: true,
+        },
+        {
+          id: 'delib-com',
+          tipo_deliberacao: 'COMISSAO',
+          data_hora: '2024-02-15T10:00:00',
+          local_deliberacao: 'CCJC',
+          nome_comissao: 'CCJC - Comissão de Constituição e Justiça',
+          resumo_decisao: 'Aprovado parecer',
+          link_ata_reuniao: 'https://camara.leg.br/ata',
+          relator_nome: 'Relator Fulano',
+          parecer_relator_numero: 'Parecer nº 01/2024',
+          parecer_relator_texto: 'Fundamentação favorável',
+          aprovada: true,
+        },
+      ],
+    }));
+
+    render(<PropositionVoteModal propId="p" onClose={() => {}} />);
+    // Inicialmente carrega NOMINAL por prioridade
+    expect(await screen.findByText('Quem votou SIM (A Favor)')).toBeInTheDocument();
+
+    // Clica no botão de Deliberação em Comissão
+    fireEvent.click(screen.getByRole('button', { name: /Deliberação em Comissão/i }));
+
+    // Agora mostra view de Comissão
+    expect(await screen.findByTestId('comissao-view')).toBeInTheDocument();
+    expect(screen.getByText('CCJC - Comissão de Constituição e Justiça')).toBeInTheDocument();
+    expect(screen.getByText('Relator Fulano')).toBeInTheDocument();
+
+    // Alterna de volta para Votação Nominal
+    fireEvent.click(screen.getByRole('button', { name: /Votação Nominal/i }));
+    expect(await screen.findByText('Quem votou SIM (A Favor)')).toBeInTheDocument();
+  });
 });
