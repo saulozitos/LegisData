@@ -1,33 +1,64 @@
 version: 2
 updates:
+  # Backend Python (Pip)
   - package-ecosystem: "pip"
     directory: "/backend"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
+    groups:
+      backend-dependencies:
+        patterns:
+          - "*"
+
+  # ETL Pipelines Python (Pip)
   - package-ecosystem: "pip"
     directory: "/etl"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
+    groups:
+      etl-dependencies:
+        patterns:
+          - "*"
+
+  # Frontend Next.js (NPM)
   - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
-  - package-ecosystem: "docker"
-    directory: "/backend"
-    schedule:
-      interval: "weekly"
-  - package-ecosystem: "docker"
-    directory: "/frontend"
-    schedule:
-      interval: "weekly"
-  - package-ecosystem: "docker"
-    directory: "/"
-    schedule:
-      interval: "weekly"
+    open-pull-requests-limit: 1
+    groups:
+      frontend-dependencies:
+        patterns:
+          - "*"
+
+  # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 1
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Dockerfiles
+  - package-ecosystem: "docker"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 1
+
+  - package-ecosystem: "docker"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 1
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 1
