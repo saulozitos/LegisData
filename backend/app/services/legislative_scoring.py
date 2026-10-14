@@ -39,7 +39,7 @@ Métricas Derivadas:
 
 import logging
 import uuid
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 import networkx as nx
 from app.models.legislative import (
@@ -254,7 +254,8 @@ def get_politician_ialp_metrics(politician_id: uuid.UUID, db: Session) -> Dict[s
     )
 
     # Top coautores do parlamentar
-    coautores_query = text("""
+    coautores_query = text(
+        """
         SELECT
             b."politicoId" AS coautor_id,
             COUNT(DISTINCT a."proposicaoId") AS projetos_compartilhados
@@ -267,7 +268,8 @@ def get_politician_ialp_metrics(politician_id: uuid.UUID, db: Session) -> Dict[s
         GROUP BY b."politicoId"
         ORDER BY projetos_compartilhados DESC
         LIMIT 10;
-    """)
+    """
+    )
     pid_param = str(politician_id)
     top_coaut_rows = db.execute(coautores_query, {"pid": pid_param}).fetchall()
     top_coautores = []
@@ -282,7 +284,7 @@ def get_politician_ialp_metrics(politician_id: uuid.UUID, db: Session) -> Dict[s
                         "id": str(p.id),
                         "nome_eleitoral": p.electoral_name,
                         "foto_url": p.photo_url,
-                        "projetos_compartilhados": int(count),
+                        "projetos_compartilhados": int(cast(Any, count)),
                     }
                 )
 
@@ -394,7 +396,7 @@ def build_coauthorship_network(
     # Monta Grafo NetworkX
     G = nx.Graph()
     for rx, ry, rw in edge_rows:
-        G.add_edge(str(rx), str(ry), weight=int(rw))
+        G.add_edge(str(rx), str(ry), weight=int(cast(Any, rw)))
 
     # Limita aos nós de maior grau caso exceda limit_nodes
     if G.number_of_nodes() > limit_nodes:
