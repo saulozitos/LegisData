@@ -542,8 +542,7 @@ def calculate_party_ippm_ranking(
 
     # Maior Eficácia: Apenas partidos com taxa estritamente positiva e projetos aprovados no período
     candidatos_eficazes = [
-        p for p in ranking
-        if p["pilares"]["taxa_eficacia_pct"] > 0 and p.get("projetos_aprovados", 0) > 0
+        p for p in ranking if p["pilares"]["taxa_eficacia_pct"] > 0 and p.get("projetos_aprovados", 0) > 0
     ]
     mais_eficaz = (
         max(

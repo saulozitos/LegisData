@@ -193,8 +193,15 @@ def test_service_sync_mandate_history_and_active_seats(db, seed):
 
 
 def test_list_parties_resolves_official_party_logos(client, seed):
+    from urllib.parse import urlparse
+
     parties = {p["sigla"]: p for p in client.get("/api/v1/parties").json()}
     assert parties["PT"]["logo_url"] is not None
-    assert "wikimedia.org" in parties["PT"]["logo_url"]
+    parsed_pt = urlparse(parties["PT"]["logo_url"])
+    assert parsed_pt.hostname is not None
+    assert parsed_pt.hostname == "wikimedia.org" or parsed_pt.hostname.endswith(".wikimedia.org")
+
     assert parties["PTB"]["logo_url"] is not None
-    assert "wikimedia.org" in parties["PTB"]["logo_url"]
+    parsed_ptb = urlparse(parties["PTB"]["logo_url"])
+    assert parsed_ptb.hostname is not None
+    assert parsed_ptb.hostname == "wikimedia.org" or parsed_ptb.hostname.endswith(".wikimedia.org")
