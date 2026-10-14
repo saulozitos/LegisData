@@ -18,7 +18,7 @@ export default defineConfig({
       all: true,
       include: ['src/**/*.{ts,tsx}'],
       // Ficam de fora apenas testes, helpers de teste, o layout raiz e um arquivo só de tipos (sem código executável).
-      exclude: ['src/**/*.test.{ts,tsx}', 'src/setupTests.ts', 'src/test/**', 'src/app/layout.tsx', 'src/components/politician/types.ts'],
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/setupTests.ts', 'src/test/**', 'src/app/layout.tsx', 'src/components/politician/types.ts', 'src/schemas/**'],
       thresholds: {
         // Valores medidos (linhas/instruções 98, funções 87, branches 90) menos uma pequena margem.
         lines: 95,

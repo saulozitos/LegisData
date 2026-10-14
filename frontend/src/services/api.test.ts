@@ -180,6 +180,27 @@ describe('construção de URLs', () => {
     expect(lastUrl()).toBe('/api/v1/emendas/localidade/Belo%20Horizonte?limit=20');
     await api.getEmendasPorAutor('BANCADA DA BAHIA', 10);
     expect(lastUrl()).toBe('/api/v1/emendas/autor/BANCADA%20DA%20BAHIA?limit=10');
+    await api.getProposicaoDeliberacoes('p1');
+    expect(lastUrl()).toBe('/api/v1/legislative/propositions/p1/deliberacoes');
+    await api.getDeliberacaoDetalhe('v1', 'termo');
+    expect(lastUrl()).toBe('/api/v1/legislative/deliberacoes/v1?search=termo');
+    await api.getDeliberacaoDetalhe('v1');
+    expect(lastUrl()).toBe('/api/v1/legislative/deliberacoes/v1');
+    await api.getCoauthorshipNetwork('PL', 2, 'CAMARA', 40);
+    expect(lastUrl()).toBe('/api/v1/legislative/network?tipo_proposta=PL&min_weight=2&casa=CAMARA&limit_nodes=40');
+    await api.getCoauthorshipNetwork();
+    expect(lastUrl()).toBe('/api/v1/legislative/network?limit_nodes=100');
+    await api.getPoliticianProductivity('pol1');
+    expect(lastUrl()).toBe('/api/v1/legislative/politicians/pol1/productivity');
+  });
+
+  it('getVotingCalendar retorna calendário vazio estruturado quando ano retorna 404', async () => {
+    const api = await loadApi('');
+    fetchMock.mockResolvedValueOnce(okResponse({ detail: 'Not found' }, 404));
+    const res = await api.getVotingCalendar(2025);
+    expect(res.ano_selecionado).toBe(2025);
+    expect(res.dias).toEqual([]);
+    expect(res.estatisticas_anuais.dias_com_votacao).toBe(0);
   });
 });
 

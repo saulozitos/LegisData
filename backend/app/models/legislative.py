@@ -369,11 +369,11 @@ class OrientacaoPartidaria(Base):
         primary_key=True,
     )
     partido_bancada: Mapped[str] = mapped_column("partido_bancada", String(50), primary_key=True)
-    orientacao: Mapped[str] = mapped_column("orientacao", String(20), nullable=False)  # 'SIM', 'NAO', 'LIBERADO', 'OBSTRUCAO'
+    orientacao: Mapped[str] = mapped_column(
+        "orientacao", String(20), nullable=False
+    )  # 'SIM', 'NAO', 'LIBERADO', 'OBSTRUCAO'
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     votacao: Mapped["VotacaoProposicao"] = relationship("VotacaoProposicao", back_populates="orientacoes_partidarias")
 
-    __table_args__ = (
-        Index("idx_orientacoes_partido", "partido_bancada"),
-    )
+    __table_args__ = (Index("idx_orientacoes_partido", "partido_bancada"),)

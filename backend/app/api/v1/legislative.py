@@ -1,7 +1,7 @@
-import re
 import json
 import logging
 import math
+import re
 import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -972,7 +972,11 @@ def get_authors_productivity_ranking(
                 "desvio_foco": {
                     "estruturais": item["estruturantes"],
                     "burocraticas": max(0, item["total_props"] - item["estruturantes"]),
-                    "proporcao_estrutural_pct": round((item["estruturantes"] / item["total_props"]) * 100, 1) if item["total_props"] > 0 else 0.0,
+                    "proporcao_estrutural_pct": (
+                        round((item["estruturantes"] / item["total_props"]) * 100, 1)
+                        if item["total_props"] > 0
+                        else 0.0
+                    ),
                 },
                 "classificacao_efetividade": item["diagnostico"],
                 "principal_setor": principal_setor,
@@ -1145,6 +1149,7 @@ def get_legislative_explorer(
         tallies = _session_tallies(db, VotingSession.proposition_id.in_(prop_ids))
 
         from app.models.legislative import VotacaoProposicao
+
         for vp in (
             db.query(VotacaoProposicao)
             .filter(VotacaoProposicao.proposicao_id.in_(prop_ids))
@@ -1261,6 +1266,7 @@ def get_proposition_nominal_votes_split(
         "url_oficial": _official_url(prop),
     }
     from app.services.deliberacoes_service import get_proposicao_deliberacoes
+
     delib_data = get_proposicao_deliberacoes(db, prop.id)
     deliberacoes_list = delib_data.get("deliberacoes", []) if delib_data else []
 
@@ -1542,6 +1548,7 @@ def get_proposicao_deliberacoes_endpoint(
     """
     prop = _resolve_proposition(db, prop_id)
     from app.services.deliberacoes_service import get_proposicao_deliberacoes
+
     data = get_proposicao_deliberacoes(db, prop.id)
     if not data:
         raise HTTPException(status_code=404, detail="Proposição não encontrada.")
@@ -1566,6 +1573,7 @@ def get_deliberacao_detalhe_endpoint(
         raise HTTPException(status_code=422, detail="votacao_id inválido.")
 
     from app.services.deliberacoes_service import get_deliberacao_detalhe
+
     data = get_deliberacao_detalhe(db, v_uuid, search=search)
     if not data:
         raise HTTPException(status_code=404, detail="Deliberação não encontrada.")

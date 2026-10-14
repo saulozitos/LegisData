@@ -1221,7 +1221,11 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             "estruturais": pecs_count + pls_count,
             "burocraticas": outros_count,
             "proporcao_estrutural_pct": round(((pecs_count + pls_count) / max(total_props, 1)) * 100, 1),
-            "diagnostico": "Foco Estrutural Predominante" if (pecs_count + pls_count) >= outros_count else "Foco Burocrático / Operacional",
+            "diagnostico": (
+                "Foco Estrutural Predominante"
+                if (pecs_count + pls_count) >= outros_count
+                else "Foco Burocrático / Operacional"
+            ),
         },
         "distribuicao_complexidade": {
             "alta": pecs_count,

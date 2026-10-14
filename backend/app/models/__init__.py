@@ -19,19 +19,19 @@ from .executivo import MandateIndicator, PresidentialMandate
 from .legislative import (
     AttendanceRecord,
     CasaLegislativaEnum,
+    OrientacaoPartidaria,
     ParliamentaryVote,
     Proposition,
     PropositionAuthor,
     StatusTramitacaoEnum,
     TipoAutoriaEnum,
+    TipoDeliberacaoEnum,
     TipoPresencaEnum,
     TipoProposicaoEnum,
-    VotingSession,
-    VotoOpcaoEnum,
-    TipoDeliberacaoEnum,
     VotacaoProposicao,
+    VotingSession,
     VotoNominal,
-    OrientacaoPartidaria,
+    VotoOpcaoEnum,
 )
 from .politician import (
     CabinetMember,

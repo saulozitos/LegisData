@@ -1,14 +1,14 @@
-from typing import Any, Dict, List, Optional
 import uuid
-from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from typing import Any, Dict, List, Optional
 
 from app.models.legislative import (
     Proposition,
     VotacaoProposicao,
     VotoNominal,
 )
-from app.models.politician import Politician, PoliticalParty, Mandate
+from app.models.politician import Mandate, PoliticalParty, Politician
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
 
 
 def _official_url(prop: Proposition) -> Optional[str]:
@@ -53,8 +53,7 @@ def get_proposicao_deliberacoes(db: Session, prop_id: uuid.UUID) -> Optional[Dic
 
     for v in votacoes:
         orientacoes = [
-            {"partido_bancada": op.partido_bancada, "orientacao": op.orientacao}
-            for op in v.orientacoes_partidarias
+            {"partido_bancada": op.partido_bancada, "orientacao": op.orientacao} for op in v.orientacoes_partidarias
         ]
 
         item: Dict[str, Any] = {
@@ -123,8 +122,7 @@ def get_deliberacao_detalhe(
         }
 
     orientacoes = [
-        {"partido_bancada": op.partido_bancada, "orientacao": op.orientacao}
-        for op in votacao.orientacoes_partidarias
+        {"partido_bancada": op.partido_bancada, "orientacao": op.orientacao} for op in votacao.orientacoes_partidarias
     ]
 
     res: Dict[str, Any] = {
@@ -153,7 +151,12 @@ def get_deliberacao_detalhe(
             "A apuração democrática é aferida pelas orientações oficiais das bancadas partidárias registradas em ata."
         )
     elif votacao.tipo_deliberacao == "NOMINAL":
-        total = (votacao.total_sim or 0) + (votacao.total_nao or 0) + (votacao.total_abstencao or 0) + (votacao.total_obstrucao or 0)
+        total = (
+            (votacao.total_sim or 0)
+            + (votacao.total_nao or 0)
+            + (votacao.total_abstencao or 0)
+            + (votacao.total_obstrucao or 0)
+        )
         res["placar"] = {
             "sim": votacao.total_sim or 0,
             "nao": votacao.total_nao or 0,

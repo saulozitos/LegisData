@@ -176,7 +176,9 @@ def get_politician_ialp_metrics(politician_id: uuid.UUID, db: Session) -> Dict[s
     proposicoes_detalhadas = []
 
     for pa, prop in records:
-        tipo_str = prop.proposition_type.value if hasattr(prop.proposition_type, "value") else str(prop.proposition_type)
+        tipo_str = (
+            prop.proposition_type.value if hasattr(prop.proposition_type, "value") else str(prop.proposition_type)
+        )
         aut_str = pa.authorship_type.value if hasattr(pa.authorship_type, "value") else str(pa.authorship_type)
         status_str = prop.status.value if hasattr(prop.status, "value") else str(prop.status)
 
@@ -194,7 +196,17 @@ def get_politician_ialp_metrics(politician_id: uuid.UUID, db: Session) -> Dict[s
         # Contagem por papel
         if aut_str == "AUTOR_PRINCIPAL":
             autor_principal_count += 1
-            if status_str in ("APROVADA_E_SANCIONADA", "APROVADA_E_PROMULGADA", "SANCIONADO", "APROVADO_PLENARIO", "APROVADO_COMISSAO") or has_approved_vote:
+            if (
+                status_str
+                in (
+                    "APROVADA_E_SANCIONADA",
+                    "APROVADA_E_PROMULGADA",
+                    "SANCIONADO",
+                    "APROVADO_PLENARIO",
+                    "APROVADO_COMISSAO",
+                )
+                or has_approved_vote
+            ):
                 avancados_autor_principal += 1
         elif aut_str == "RELATOR":
             relator_count += 1
@@ -207,26 +219,30 @@ def get_politician_ialp_metrics(politician_id: uuid.UUID, db: Session) -> Dict[s
         elif tipo_str in ("REQ", "INC", "REQUERIMENTO", "INDICACAO"):
             burocraticas_count += 1
 
-        proposicoes_detalhadas.append({
-            "id": str(prop.id),
-            "tipo": tipo_str,
-            "numero": prop.number,
-            "ano": prop.year,
-            "ementa": prop.summary,
-            "status": status_str,
-            "tipo_autoria": aut_str,
-            "peso_tipo": PESO_TIPO.get(tipo_str, 1.0),
-            "peso_autoria": PESO_AUTORIA.get(aut_str, 0.2),
-            "multiplicador_tramitacao": 3.0 if status_str in ("APROVADA_E_SANCIONADA", "APROVADA_E_PROMULGADA") else (1.5 if has_approved_vote else 1.0),
-            "score_ialp": score_p,
-            "is_reforma_estrutural": prop.is_structural_reform,
-        })
+        proposicoes_detalhadas.append(
+            {
+                "id": str(prop.id),
+                "tipo": tipo_str,
+                "numero": prop.number,
+                "ano": prop.year,
+                "ementa": prop.summary,
+                "status": status_str,
+                "tipo_autoria": aut_str,
+                "peso_tipo": PESO_TIPO.get(tipo_str, 1.0),
+                "peso_autoria": PESO_AUTORIA.get(aut_str, 0.2),
+                "multiplicador_tramitacao": (
+                    3.0
+                    if status_str in ("APROVADA_E_SANCIONADA", "APROVADA_E_PROMULGADA")
+                    else (1.5 if has_approved_vote else 1.0)
+                ),
+                "score_ialp": score_p,
+                "is_reforma_estrutural": prop.is_structural_reform,
+            }
+        )
 
     # Taxa de Eficácia (% de projetos como Autor Principal que avançaram)
     taxa_eficacia = (
-        round((avancados_autor_principal / autor_principal_count) * 100, 1)
-        if autor_principal_count > 0
-        else 0.0
+        round((avancados_autor_principal / autor_principal_count) * 100, 1) if autor_principal_count > 0 else 0.0
     )
 
     # Índice de Desvio de Foco
@@ -261,12 +277,14 @@ def get_politician_ialp_metrics(politician_id: uuid.UUID, db: Session) -> Dict[s
         for cid, count in top_coaut_rows:
             p = pols_map.get(cid)
             if p:
-                top_coautores.append({
-                    "id": str(p.id),
-                    "nome_eleitoral": p.electoral_name,
-                    "foto_url": p.photo_url,
-                    "projetos_compartilhados": int(count),
-                })
+                top_coautores.append(
+                    {
+                        "id": str(p.id),
+                        "nome_eleitoral": p.electoral_name,
+                        "foto_url": p.photo_url,
+                        "projetos_compartilhados": int(count),
+                    }
+                )
 
     # Ordenar proposições detalhadas pelo score decrescente
     proposicoes_detalhadas.sort(key=lambda x: (x["score_ialp"], x["ano"]), reverse=True)
@@ -283,9 +301,11 @@ def get_politician_ialp_metrics(politician_id: uuid.UUID, db: Session) -> Dict[s
             "diagnostico": (
                 "Foco Estrutural Predominante"
                 if proporcao_estrutural_pct >= 70
-                else "Equilíbrio Estrutural / Burocrático"
-                if proporcao_estrutural_pct >= 40
-                else "Predominância de Matérias Burocráticas"
+                else (
+                    "Equilíbrio Estrutural / Burocrático"
+                    if proporcao_estrutural_pct >= 40
+                    else "Predominância de Matérias Burocráticas"
+                )
             ),
         },
         "distribuicao_autoria": {
@@ -319,8 +339,8 @@ def build_coauthorship_network(
         'a."politicoId" IS NOT NULL',
         'b."politicoId" IS NOT NULL',
         'a."politicoId" < b."politicoId"',
-        'a."tipoAutoria" != \'INSTITUCIONAL\'',
-        'b."tipoAutoria" != \'INSTITUCIONAL\'',
+        "a.\"tipoAutoria\" != 'INSTITUCIONAL'",
+        "b.\"tipoAutoria\" != 'INSTITUCIONAL'",
     ]
     params: Dict[str, Any] = {"min_weight": max(1, min_weight)}
 
@@ -428,15 +448,9 @@ def build_coauthorship_network(
 
         mandate_info = mandate_map.get(nid)
         uf = mandate_info[0].jurisdiction_state if mandate_info else (pol.birthplace_state if pol else "DF")
-        house = (
-            "SENADO"
-            if mandate_info and "SENADOR" in str(mandate_info[0].office)
-            else "CAMARA"
-        )
+        house = "SENADO" if mandate_info and "SENADOR" in str(mandate_info[0].office) else "CAMARA"
         party_sigla = (
-            (mandate_info[1].acronym if mandate_info and mandate_info[1] else None)
-            or party_aff_map.get(nid)
-            or "S/P"
+            (mandate_info[1].acronym if mandate_info and mandate_info[1] else None) or party_aff_map.get(nid) or "S/P"
         )
 
         comm_id = node_community_map.get(nid, 1)
@@ -446,17 +460,19 @@ def build_coauthorship_network(
         bw_score = round(float(betweenness_map.get(nid, 0.0)), 4)
         degree_val = int(G.degree[nid])
 
-        nodes_payload.append({
-            "id": nid,
-            "name": name,
-            "party": party_sigla,
-            "uf": uf,
-            "house": house,
-            "photo_url": photo,
-            "community": comm_id,
-            "betweenness_centrality": bw_score,
-            "degree": degree_val,
-        })
+        nodes_payload.append(
+            {
+                "id": nid,
+                "name": name,
+                "party": party_sigla,
+                "uf": uf,
+                "house": house,
+                "photo_url": photo,
+                "community": comm_id,
+                "betweenness_centrality": bw_score,
+                "degree": degree_val,
+            }
+        )
 
     # Ordenar nós pela centralidade de intermediação
     nodes_payload.sort(key=lambda x: (x["betweenness_centrality"], x["degree"]), reverse=True)
@@ -464,11 +480,13 @@ def build_coauthorship_network(
     # Monta lista de Arestas formatadas
     edges_payload = []
     for u, v, data in G.edges(data=True):
-        edges_payload.append({
-            "source": u,
-            "target": v,
-            "weight": int(data.get("weight", 1)),
-        })
+        edges_payload.append(
+            {
+                "source": u,
+                "target": v,
+                "weight": int(data.get("weight", 1)),
+            }
+        )
 
     # Metadados das Comunidades Detectadas (Bancadas Informais)
     communities_payload = []
@@ -478,13 +496,15 @@ def build_coauthorship_network(
         sorted_parties = sorted(party_counts.items(), key=lambda x: x[1], reverse=True)
         top_parties_str = ", ".join(f"{p} ({c})" for p, c in sorted_parties[:3])
         total_in_comm = sum(party_counts.values())
-        communities_payload.append({
-            "community_id": c_idx,
-            "total_parlamentares": total_in_comm,
-            "partidos_predominantes": top_parties_str,
-            "color": comm_colors[(c_idx - 1) % len(comm_colors)],
-            "label": f"Bancada Informal {c_idx} ({sorted_parties[0][0] if sorted_parties else 'Mista'})",
-        })
+        communities_payload.append(
+            {
+                "community_id": c_idx,
+                "total_parlamentares": total_in_comm,
+                "partidos_predominantes": top_parties_str,
+                "color": comm_colors[(c_idx - 1) % len(comm_colors)],
+                "label": f"Bancada Informal {c_idx} ({sorted_parties[0][0] if sorted_parties else 'Mista'})",
+            }
+        )
 
     density = round(float(nx.density(G)), 4)
 

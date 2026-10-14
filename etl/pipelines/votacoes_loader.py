@@ -271,10 +271,21 @@ class _Contexto:
         self.contadores["mandatos_criados"] += 1
 
     # ------------------------------------------------------------------ proposições
-    @staticmethod
-    def _tipo(sigla: str) -> Optional[TipoProposicaoEnum]:
+    TIPOS_SUPORTADOS = {
+        TipoProposicaoEnum.PL,
+        TipoProposicaoEnum.PEC,
+        TipoProposicaoEnum.PLP,
+        TipoProposicaoEnum.MPV,
+        TipoProposicaoEnum.PDL,
+        TipoProposicaoEnum.DECRETO_PRES,
+        TipoProposicaoEnum.LEI_DELEGADA,
+    }
+
+    @classmethod
+    def _tipo(cls, sigla: str) -> Optional[TipoProposicaoEnum]:
         try:
-            return TipoProposicaoEnum[sigla.upper()]
+            t = TipoProposicaoEnum[sigla.upper()]
+            return t if t in cls.TIPOS_SUPORTADOS else None
         except KeyError:
             return None
 

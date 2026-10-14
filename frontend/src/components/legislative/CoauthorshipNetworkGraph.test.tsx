@@ -128,4 +128,73 @@ describe('CoauthorshipNetworkGraph', () => {
 
     expect(onSelectPolitician).toHaveBeenCalledWith('pol-1');
   });
+
+  it('controles de zoom, pan e busca textual interagem com o visualizador', async () => {
+    render(<CoauthorshipNetworkGraph />);
+    await screen.findByText('Senador Silva');
+
+    // Zoom in, zoom out, reset
+    fireEvent.click(screen.getByTitle('Aproximar'));
+    fireEvent.click(screen.getByTitle('Afastar'));
+    fireEvent.click(screen.getByTitle('Resetar Câmera'));
+
+    // Busca textual no grafo
+    const searchInput = screen.getByPlaceholderText('Buscar no grafo...');
+    fireEvent.change(searchInput, { target: { value: 'Silva' } });
+    expect(searchInput).toHaveValue('Silva');
+    fireEvent.change(searchInput, { target: { value: '' } });
+
+    // Drag / Pan no SVG
+    const svg = screen.getByLabelText('Grafo interativo de coautoria política');
+    fireEvent.mouseDown(svg, { clientX: 100, clientY: 100 });
+    fireEvent.mouseMove(svg, { clientX: 150, clientY: 120 });
+    fireEvent.mouseUp(svg);
+  });
+
+  it('permite filtrar por bancada informal (Louvain), selecionar nó no SVG e fechar o card lateral', async () => {
+    render(<CoauthorshipNetworkGraph />);
+    await screen.findByText('Senador Silva');
+
+    // Filtra por comunidade clicando na legenda
+    const commBtn = screen.getByRole('button', { name: /Bancada Informal 1/i });
+    fireEvent.click(commBtn);
+    // Clica de novo para desmarcar
+    fireEvent.click(commBtn);
+
+    // Clica no card de articulador para abrir o card lateral
+    const cardArticulador = screen.getByText('#1 Ponte').closest('button');
+    fireEvent.click(cardArticulador!);
+
+    // Card lateral aberto
+    expect(screen.getByLabelText('Fechar detalhes')).toBeInTheDocument();
+
+    // Hover e drag no SVG
+    const nodeText = screen.getByText('PSD');
+    fireEvent.mouseEnter(nodeText.closest('g')!);
+    fireEvent.mouseLeave(nodeText.closest('g')!);
+
+    // Fecha o card pelo botão X
+    const closeBtn = screen.getByLabelText('Fechar detalhes');
+    fireEvent.click(closeBtn);
+    expect(screen.queryByLabelText('Fechar detalhes')).not.toBeInTheDocument();
+  });
+
+  it('permite alternar filtros de casa legislativa, peso mínimo e nós', async () => {
+    render(<CoauthorshipNetworkGraph />);
+    await screen.findByText('Senador Silva');
+
+    // Alterna filtros
+    const casaSelect = screen.getByLabelText('Casa:');
+    fireEvent.change(casaSelect, { target: { value: 'SENADO' } });
+
+    const slider = screen.getByRole('slider');
+    fireEvent.change(slider, { target: { value: '3' } });
+
+    const limitSelect = screen.getByLabelText('Amostra:');
+    fireEvent.change(limitSelect, { target: { value: '150' } });
+
+    await waitFor(() => {
+      expect(mockGetNetwork).toHaveBeenLastCalledWith('ALL', 3, 'SENADO', 150);
+    });
+  });
 });
