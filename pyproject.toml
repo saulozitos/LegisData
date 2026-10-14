@@ -1,6 +1,6 @@
 [tool.black]
 line-length = 120
-target-version = ["py311"]
+target-version = ["py312"]
 exclude = '''
 /(
     \.git
@@ -18,7 +18,7 @@ line_length = 120
 skip = [".venv", "venv", ".next", "node_modules", "etl/data"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 ignore_missing_imports = true
 explicit_package_bases = true
 follow_imports = "silent"
