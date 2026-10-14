@@ -337,32 +337,14 @@ def build_coauthorship_network(
     clean_tipo = (tipo_proposta or "ALL").upper().strip()
     clean_casa = (casa or "ALL").upper().strip()
 
-    where_clauses = [
-        'a."politicoId" IS NOT NULL',
-        'b."politicoId" IS NOT NULL',
-        'a."politicoId" < b."politicoId"',
-        "a.\"tipoAutoria\" != 'INSTITUCIONAL'",
-        "b.\"tipoAutoria\" != 'INSTITUCIONAL'",
-    ]
-    params: Dict[str, Any] = {"min_weight": max(1, min_weight)}
+    params: Dict[str, Any] = {
+        "min_weight": max(1, min_weight),
+        "tipo_filter": clean_tipo if clean_tipo in ("PEC", "PL_PLP", "REQ_INC") else None,
+        "casa_filter": clean_casa if clean_casa in ("CAMARA", "SENADO") else None,
+    }
 
-    # Filtros de Rede Dinâmicos (Tipo de Proposta)
-    if clean_tipo == "PEC":
-        where_clauses.append("p.tipo = 'PEC'")
-    elif clean_tipo == "PL_PLP":
-        where_clauses.append("p.tipo IN ('PL', 'PLP', 'MPV')")
-    elif clean_tipo == "REQ_INC":
-        where_clauses.append("p.tipo IN ('REQ', 'INC')")
-
-    # Filtro por Casa Legislativa
-    if clean_casa == "CAMARA":
-        where_clauses.append('p."idExternoCamara" IS NOT NULL')
-    elif clean_casa == "SENADO":
-        where_clauses.append('p."idExternoSenado" IS NOT NULL')
-
-    where_sql = " AND ".join(where_clauses)
-
-    query_str = f"""
+    query = text(
+        """
         SELECT
             a."politicoId" AS pol_x,
             b."politicoId" AS pol_y,
@@ -370,13 +352,29 @@ def build_coauthorship_network(
         FROM proposicoes_autores a
         JOIN proposicoes_autores b ON a."proposicaoId" = b."proposicaoId"
         JOIN proposicoes p ON a."proposicaoId" = p.id
-        WHERE {where_sql}
+        WHERE a."politicoId" IS NOT NULL
+          AND b."politicoId" IS NOT NULL
+          AND a."politicoId" < b."politicoId"
+          AND a."tipoAutoria" != 'INSTITUCIONAL'
+          AND b."tipoAutoria" != 'INSTITUCIONAL'
+          AND (
+              :tipo_filter IS NULL
+              OR (:tipo_filter = 'PEC' AND p.tipo = 'PEC')
+              OR (:tipo_filter = 'PL_PLP' AND p.tipo IN ('PL', 'PLP', 'MPV'))
+              OR (:tipo_filter = 'REQ_INC' AND p.tipo IN ('REQ', 'INC'))
+          )
+          AND (
+              :casa_filter IS NULL
+              OR (:casa_filter = 'CAMARA' AND p."idExternoCamara" IS NOT NULL)
+              OR (:casa_filter = 'SENADO' AND p."idExternoSenado" IS NOT NULL)
+          )
         GROUP BY a."politicoId", b."politicoId"
         HAVING COUNT(DISTINCT a."proposicaoId") >= :min_weight
         ORDER BY peso DESC;
-    """
+        """
+    )
 
-    edge_rows = db.execute(text(query_str), params).fetchall()
+    edge_rows = db.execute(query, params).fetchall()
 
     if not edge_rows:
         return {

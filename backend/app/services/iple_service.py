@@ -12,9 +12,12 @@ Implementação matemática e metodológica rigorosa conforme a Especificação 
 - Calibragem Crisp-set QCA com pontos de corte científicos validados.
 """
 
+import logging
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 # Escala ideológica de 1 (Esquerda) a 10 (Direita) conforme surveys legislativos (BLS / Power & Zucco / Tarouco & Madeira)
 ESCALA_IDEOLOGICA_PADRAO: Dict[str, float] = {
@@ -349,8 +352,8 @@ def get_mandate_iple(mandate_id: str, db: Optional[Session] = None) -> Optional[
                 if len(db_substantivas) > 0:
                     p_exec = max(p_exec, len(db_substantivas))
                     p_exec_aprov = max(p_exec_aprov, len(db_aprov))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Falha ao consultar proposicoes do banco para calculo do IPLE: %s", e)
 
     ts = calculate_ts(p_exec, p_exec_aprov)
     tmv = calculate_tmv(v_mantidos, v_total, fallback_ts=ts)
@@ -381,8 +384,8 @@ def get_mandate_iple(mandate_id: str, db: Optional[Session] = None) -> Optional[
                     gov = cam.get("governabilidade", {})
                     if gov.get("oposicao_cadeiras") is not None:
                         oposicao_cadeiras = gov["oposicao_cadeiras"]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Falha ao processar arquivo composicao_congresso.json: %s", e)
 
     x1 = calculate_opposition_share(oposicao_cadeiras, total_cadeiras)
     x2 = calculate_nep(bancadas_camara)
