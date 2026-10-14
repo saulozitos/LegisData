@@ -538,9 +538,40 @@ def calculate_party_ippm_ranking(
     # Resumo Geral
     total_parties = len(ranking)
     media_ippm = round(sum(i["ippm_score_medio"] for i in ranking) / max(1, total_parties), 2)
-    mais_produtivo = ranking[0] if ranking else None
-    mais_eficaz = max(ranking, key=lambda x: x["pilares"]["taxa_eficacia_pct"]) if ranking else None
-    mais_coeso = max(ranking, key=lambda x: x["pilares"]["fidelidade_partidaria_pct"]) if ranking else None
+    mais_produtivo = ranking[0] if ranking and ranking[0].get("ippm_score_medio", 0) > 0 else None
+
+    # Maior Eficácia: Apenas partidos com taxa estritamente positiva e projetos aprovados no período
+    candidatos_eficazes = [
+        p for p in ranking
+        if p["pilares"]["taxa_eficacia_pct"] > 0 and p.get("projetos_aprovados", 0) > 0
+    ]
+    mais_eficaz = (
+        max(
+            candidatos_eficazes,
+            key=lambda x: (
+                x["pilares"]["taxa_eficacia_pct"],
+                x.get("projetos_aprovados", 0),
+                x["ippm_score_medio"],
+            ),
+        )
+        if candidatos_eficazes
+        else None
+    )
+
+    # Maior Coesão: Em empate de fidelidade (ex: 100%), priorizar bancadas com mais cadeiras ativas
+    candidatos_coeso = [p for p in ranking if p["pilares"]["fidelidade_partidaria_pct"] > 0]
+    mais_coeso = (
+        max(
+            candidatos_coeso,
+            key=lambda x: (
+                x["pilares"]["fidelidade_partidaria_pct"],
+                x.get("total_cadeiras_ativas", 0),
+                x["ippm_score_medio"],
+            ),
+        )
+        if candidatos_coeso
+        else None
+    )
 
     return {
         "periodo": {

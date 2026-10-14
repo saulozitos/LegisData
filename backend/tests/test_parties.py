@@ -121,6 +121,10 @@ def test_ippm_ranking_endpoint(client, seed):
         assert "quadrante_eficiencia" in first
         assert "titulo" in first["quadrante_eficiencia"]
 
+    resumo = data["resumo_geral"]
+    if all(p["pilares"]["taxa_eficacia_pct"] == 0 for p in data["ranking"]):
+        assert resumo["partido_mais_eficaz"] is None
+
 
 def test_ippm_ranking_filters(client, seed):
     # Test filters by house, bloc, spectrum

@@ -13,7 +13,6 @@ import {
   Briefcase,
   Calendar,
   X,
-  Compass,
 } from "lucide-react";
 import { useApi } from "@/hooks/useApi";
 import {
@@ -237,10 +236,6 @@ export default function PartyProductivityExplorer({
         <div className="absolute top-0 right-0 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
         <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
           <div className="space-y-3 max-w-3xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 text-xs font-semibold">
-              <Compass className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>Módulo 4: Produtividade e Indicadores Partidários</span>
-            </div>
             <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
               Raio-X dos Partidos & Índice de Produtividade Partidária Média (IPPM)
             </h1>
@@ -339,12 +334,24 @@ export default function PartyProductivityExplorer({
               <div className="mt-2 flex items-baseline gap-2">
                 <span
                   className="text-2xl font-black"
-                  style={{ color: rankingData.resumo_geral.partido_mais_eficaz?.cor_hex || "#10b981" }}
+                  style={{
+                    color:
+                      rankingData.resumo_geral.partido_mais_eficaz &&
+                      (rankingData.resumo_geral.partido_mais_eficaz.taxa_eficacia ?? 0) > 0
+                        ? rankingData.resumo_geral.partido_mais_eficaz.cor_hex || "#10b981"
+                        : "#94a3b8",
+                  }}
                 >
-                  {rankingData.resumo_geral.partido_mais_eficaz?.sigla || "—"}
+                  {rankingData.resumo_geral.partido_mais_eficaz &&
+                  (rankingData.resumo_geral.partido_mais_eficaz.taxa_eficacia ?? 0) > 0
+                    ? rankingData.resumo_geral.partido_mais_eficaz.sigla
+                    : "—"}
                 </span>
-                <span className="text-xs font-bold text-slate-300">
-                  {rankingData.resumo_geral.partido_mais_eficaz?.taxa_eficacia?.toFixed(1)}% aprovados
+                <span className="text-xs font-medium text-slate-400">
+                  {rankingData.resumo_geral.partido_mais_eficaz &&
+                  (rankingData.resumo_geral.partido_mais_eficaz.taxa_eficacia ?? 0) > 0
+                    ? `${(rankingData.resumo_geral.partido_mais_eficaz.taxa_eficacia ?? 0).toFixed(1)}% aprovados`
+                    : "Sem matérias aprovadas"}
                 </span>
               </div>
             </div>
@@ -362,8 +369,10 @@ export default function PartyProductivityExplorer({
                 >
                   {rankingData.resumo_geral.partido_mais_coeso?.sigla || "—"}
                 </span>
-                <span className="text-xs font-bold text-slate-300">
-                  {rankingData.resumo_geral.partido_mais_coeso?.fidelidade_pct?.toFixed(1)}% alinhados
+                <span className="text-xs font-medium text-slate-300">
+                  {rankingData.resumo_geral.partido_mais_coeso?.fidelidade_pct != null
+                    ? `${(rankingData.resumo_geral.partido_mais_coeso.fidelidade_pct ?? 0).toFixed(1)}% alinhados`
+                    : "—"}
                 </span>
               </div>
             </div>
