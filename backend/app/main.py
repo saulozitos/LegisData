@@ -124,6 +124,37 @@ def run_db_migrations() -> None:
         """
             )
         )
+        # Atualização idempotente de logotipos e metadados oficiais dos partidos
+        from app.core.party_constants import OFFICIAL_PARTY_LOGOS, OFFICIAL_PARTY_METADATA
+
+        for sigla, logo in OFFICIAL_PARTY_LOGOS.items():
+            db.execute(
+                text(
+                    'UPDATE partidos_politicos SET "logoUrl" = :logo '
+                    'WHERE UPPER(sigla) = :sigla AND ("logoUrl" IS NULL OR "logoUrl" = '
+                    ");"
+                ),
+                {"sigla": sigla.upper(), "logo": logo},
+            )
+
+        for sigla, meta in OFFICIAL_PARTY_METADATA.items():
+            db.execute(
+                text(
+                    "UPDATE partidos_politicos SET "
+                    '"numeroEleitoral" = COALESCE("numeroEleitoral", :numero), '
+                    '"ideologia" = COALESCE("ideologia", :ideologia), '
+                    '"lema" = COALESCE("lema", :lema), '
+                    '"espectroPolitico" = COALESCE("espectroPolitico", :espectro) '
+                    "WHERE UPPER(sigla) = :sigla;"
+                ),
+                {
+                    "sigla": sigla.upper(),
+                    "numero": meta.get("numero"),
+                    "ideologia": meta.get("ideologia"),
+                    "lema": meta.get("lema"),
+                    "espectro": meta.get("espectro"),
+                },
+            )
         db.commit()
 
 

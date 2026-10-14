@@ -2,6 +2,7 @@ from datetime import date
 from typing import Any, Dict, List, Optional
 
 from app.core.database import get_db
+from app.core.party_constants import OFFICIAL_PARTY_LOGOS, PARTY_COLORS
 from app.models import CargoPoliticoEnum, Mandate, PartyAffiliation, PoliticalParty, StatusMandatoEnum
 from app.models.analytics import LogExecucaoCron
 from app.schemas.parties import (
@@ -18,30 +19,6 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 router = APIRouter()
-
-PARTY_COLORS = {
-    "PT": "#ef4444",
-    "PL": "#1d4ed8",
-    "UNIÃO": "#0284c7",
-    "PP": "#3b82f6",
-    "MDB": "#15803d",
-    "PSD": "#f59e0b",
-    "REPUBLICANOS": "#0369a1",
-    "PSDB": "#38bdf8",
-    "PSB": "#ea580c",
-    "PDT": "#dc2626",
-    "PSOL": "#e11d48",
-    "PODE": "#06b6d4",
-    "PODEMOS": "#06b6d4",
-    "NOVO": "#f97316",
-    "PCdoB": "#b91c1c",
-    "PV": "#16a34a",
-    "CIDADANIA": "#fb923c",
-    "REDE": "#0d9488",
-    "AVANTE": "#6366f1",
-    "SOLIDARIEDADE": "#eab308",
-    "PRD": "#84cc16",
-}
 
 
 @router.get("", response_model=List[Dict[str, Any]])
@@ -100,7 +77,7 @@ def list_parties(db: Session = Depends(get_db)):
                 "espectro_politico": espectro,
                 "ideologia": p.ideology,
                 "lema": p.motto,
-                "logo_url": p.logo_url,
+                "logo_url": p.logo_url or OFFICIAL_PARTY_LOGOS.get(sigla_upper),
                 "total_deputados": total_dep,
                 "total_senadores": total_sen,
                 "total_parlamentares": total_parl,

@@ -186,3 +186,11 @@ def test_service_sync_mandate_history_and_active_seats(db, seed):
     assert "total_parlamentares_ativos" in seats_pt
     assert "cadeiras_dia_equivalentes" in seats_pt
     assert seats_pt["cadeiras_dia_equivalentes"] >= 0.1
+
+
+def test_list_parties_resolves_official_party_logos(client, seed):
+    parties = {p["sigla"]: p for p in client.get("/api/v1/parties").json()}
+    assert parties["PT"]["logo_url"] is not None
+    assert "wikimedia.org" in parties["PT"]["logo_url"]
+    assert parties["PTB"]["logo_url"] is not None
+    assert "wikimedia.org" in parties["PTB"]["logo_url"]

@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from app.core import config
+from app.core.party_constants import OFFICIAL_PARTY_LOGOS, PARTY_COLORS
 from app.models.analytics import LogExecucaoCron
 from app.models.politician import (
     CabinetMember,
@@ -37,30 +38,6 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-# Paleta de Cores Oficial dos Partidos Brasileiros
-PARTY_COLORS: Dict[str, str] = {
-    "PT": "#ef4444",
-    "PL": "#1d4ed8",
-    "UNIÃO": "#0284c7",
-    "PP": "#3b82f6",
-    "MDB": "#15803d",
-    "PSD": "#f59e0b",
-    "REPUBLICANOS": "#0369a1",
-    "PSDB": "#38bdf8",
-    "PSB": "#ea580c",
-    "PDT": "#dc2626",
-    "PSOL": "#e11d48",
-    "PODE": "#06b6d4",
-    "PODEMOS": "#06b6d4",
-    "NOVO": "#f97316",
-    "PCdoB": "#b91c1c",
-    "PV": "#16a34a",
-    "CIDADANIA": "#fb923c",
-    "REDE": "#0d9488",
-    "AVANTE": "#6366f1",
-    "SOLIDARIEDADE": "#eab308",
-    "PRD": "#84cc16",
-}
 
 # Pesos Oficiais do IALP para Tipos de Proposição
 PESO_TIPO: Dict[str, float] = {
@@ -490,7 +467,7 @@ def calculate_party_ippm_ranking(
                 "espectro_politico": espectro,
                 "bloco_politico": bloco_class,
                 "cor_hex": cor,
-                "logo_url": party.logo_url,
+                "logo_url": party.logo_url or OFFICIAL_PARTY_LOGOS.get(sigla.upper()),
                 "total_cadeiras_ativas": total_cadeiras,
                 "cadeiras_dia_equivalentes": cadeiras_dia,
                 "parlamentares_produtivos": prod_count,

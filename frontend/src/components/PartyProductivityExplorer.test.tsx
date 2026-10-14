@@ -144,8 +144,8 @@ describe("PartyProductivityExplorer Component", () => {
 
     render(<PartyProductivityExplorer />);
 
-    expect(await screen.findByText(/Raio-X dos Partidos & Índice de Produtividade Partidária Média/i)).toBeInTheDocument();
-    expect(screen.getByText("25.50")).toBeInTheDocument(); // Média IPPM Geral
+    expect(await screen.findByText("25.50")).toBeInTheDocument();
+    expect(screen.getByText(/Raio-X dos Partidos & Índice de Produtividade Partidária Média/i)).toBeInTheDocument(); // Média IPPM Geral
     expect(screen.getAllByText("PT")[0]).toBeInTheDocument();
     expect(screen.getAllByText("PL")[0]).toBeInTheDocument();
     expect(screen.getByText("30.20")).toBeInTheDocument(); // IPPM Score PT
