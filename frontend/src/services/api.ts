@@ -2015,3 +2015,117 @@ export async function getEmendasPorLocalidade(localidade: string, limit = 50, si
 export async function getEmendasPorAutor(autor: string, limit = 50, signal?: AbortSignal): Promise<EmendasAutorResponse> {
   return fetchJson<EmendasAutorResponse>(`/emendas/autor/${encodeURIComponent(autor)}?limit=${limit}`, signal);
 }
+
+
+// ─── IPPM & Produtividade Partidária Média ───────────────────────────────────
+
+export interface PartyPilares {
+  fidelidade_partidaria_pct: number;
+  taxa_eficacia_pct: number;
+  total_relatorias: number;
+  volume_relatorias: number;
+}
+
+export interface QuadranteEficiencia {
+  codigo: string;
+  titulo: string;
+  descricao: string;
+}
+
+export interface PartyIPPMRankingItem {
+  posicao: number;
+  partido_id: string;
+  sigla: string;
+  nome_completo: string;
+  numero_eleitoral?: number | null;
+  espectro_politico: string;
+  bloco_politico: string;
+  cor_hex: string;
+  logo_url?: string | null;
+  total_cadeiras_ativas: number;
+  cadeiras_dia_equivalentes: number;
+  parlamentares_produtivos: number;
+  pontuacao_bruta_ialp: number;
+  ippm_score_medio: number;
+  projetos_apresentados: number;
+  projetos_aprovados: number;
+  pilares: PartyPilares;
+  quadrante_eficiencia: QuadranteEficiencia;
+}
+
+export interface IPPMRankingResponse {
+  periodo: {
+    ano: number;
+    data_inicio: string;
+    data_fim: string;
+    casa: string;
+    bloco: string;
+    espectro: string;
+  };
+  resumo_geral: {
+    total_partidos: number;
+    media_ippm_geral: number;
+    partido_mais_produtivo?: {
+      sigla: string;
+      ippm_score?: number;
+      cor_hex: string;
+    } | null;
+    partido_mais_eficaz?: {
+      sigla: string;
+      taxa_eficacia?: number;
+      cor_hex: string;
+    } | null;
+    partido_mais_coeso?: {
+      sigla: string;
+      fidelidade_pct?: number;
+      cor_hex: string;
+    } | null;
+  };
+  ranking: PartyIPPMRankingItem[];
+}
+
+export interface PartyMandateTimelineItem {
+  id: string;
+  politico_id: string;
+  nome_eleitoral: string;
+  foto_url?: string | null;
+  casa: string;
+  situacao: string;
+  data_inicio: string;
+  data_fim?: string | null;
+  observacao?: string | null;
+}
+
+export interface PartyMandateTimelineResponse {
+  partido: string;
+  total_membros_registrados: number;
+  titulares_exercicio: PartyMandateTimelineItem[];
+  ministros_licenciados: PartyMandateTimelineItem[];
+  suplentes_ativos: PartyMandateTimelineItem[];
+}
+
+export async function getPartyIPPMRanking(
+  params?: { ano?: number; casa?: string; bloco?: string; espectro?: string },
+  signal?: AbortSignal
+): Promise<IPPMRankingResponse> {
+  const query = new URLSearchParams();
+  if (params?.ano) query.set("ano", String(params.ano));
+  if (params?.casa && params.casa !== "ALL") query.set("casa", params.casa);
+  if (params?.bloco && params.bloco !== "ALL") query.set("bloco", params.bloco);
+  if (params?.espectro && params.espectro !== "ALL") query.set("espectro", params.espectro);
+  const qStr = query.toString() ? `?${query.toString()}` : "";
+  const cacheKey = `party_ippm_ranking_${query.toString()}`;
+  return cachedFetch(cacheKey, () => fetchJson<IPPMRankingResponse>(`/parties/ippm-ranking${qStr}`), signal);
+}
+
+export async function getPartyMandateHistory(
+  sigla: string,
+  signal?: AbortSignal
+): Promise<PartyMandateTimelineResponse> {
+  const enc = encodeURIComponent(sigla);
+  return cachedFetch(
+    `party_mandate_history_${enc}`,
+    () => fetchJson<PartyMandateTimelineResponse>(`/parties/${enc}/historico-bancada`),
+    signal
+  );
+}

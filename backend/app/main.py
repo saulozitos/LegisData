@@ -91,6 +91,36 @@ def run_db_migrations() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_processo_politico ON processos_judiciais ("politicoId");
             CREATE INDEX IF NOT EXISTS idx_processo_numero ON processos_judiciais ("numeroProcesso");
+
+            CREATE TABLE IF NOT EXISTS historico_mandatos (
+                id UUID PRIMARY KEY,
+                "politicoId" UUID NOT NULL REFERENCES politicos(id) ON DELETE CASCADE,
+                "partidoId" UUID REFERENCES partidos_politicos(id),
+                "partidoSigla" VARCHAR(20) NOT NULL,
+                "casa" VARCHAR(20) NOT NULL,
+                "situacao" VARCHAR(50) NOT NULL DEFAULT 'EXERCICIO',
+                "dataInicio" DATE NOT NULL,
+                "dataFim" DATE,
+                "observacao" TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_hist_mandato_politico ON historico_mandatos ("politicoId");
+            CREATE INDEX IF NOT EXISTS idx_hist_mandato_partido ON historico_mandatos ("partidoSigla");
+            CREATE INDEX IF NOT EXISTS idx_hist_mandato_periodo ON historico_mandatos ("dataInicio", "dataFim");
+            CREATE INDEX IF NOT EXISTS idx_hist_mandato_situacao ON historico_mandatos ("situacao");
+
+            CREATE TABLE IF NOT EXISTS log_execucao_cron (
+                id UUID PRIMARY KEY,
+                "dataExecucao" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                "statusExecucao" VARCHAR(20) NOT NULL,
+                "registrosAtualizados" INTEGER NOT NULL DEFAULT 0,
+                "tempoProcessamentoSegundos" INTEGER NOT NULL DEFAULT 0,
+                "erroMensagem" TEXT,
+                "etapa" VARCHAR(50)
+            );
+            CREATE INDEX IF NOT EXISTS idx_cron_data ON log_execucao_cron ("dataExecucao");
+            CREATE INDEX IF NOT EXISTS idx_cron_status ON log_execucao_cron ("statusExecucao");
         """
             )
         )

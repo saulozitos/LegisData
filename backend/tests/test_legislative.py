@@ -586,6 +586,7 @@ def test_politician_productivity_ialp_endpoint(client, seed):
 
     # Test 404 for non-existent UUID
     import uuid
+
     random_uuid = str(uuid.uuid4())
     resp_404 = client.get(f"{BASE}/politicians/{random_uuid}/productivity")
     assert resp_404.status_code == 404
@@ -598,12 +599,13 @@ def test_deliberacoes_history_and_module_3_specification(client, seed, db):
     6.2 Modelagem relacional votacoes_proposicao, votos_nominais, orientacoes_partidarias.
     6.3 Regras de exibição para cada tipo de deliberação.
     """
-    from datetime import datetime, timezone
     import uuid
+    from datetime import datetime, timezone
+
     from app.models.legislative import (
+        OrientacaoPartidaria,
         VotacaoProposicao,
         VotoNominal,
-        OrientacaoPartidaria,
     )
 
     prop = seed.proposition

@@ -48,6 +48,7 @@ const PoliticianProfile = dynamic(() => import("@/components/PoliticianProfile")
 const SocialClassesExplainer = dynamic(() => import("@/components/SocialClassesExplainer"), { loading: panelLoading });
 const DeepBrazilPanel = dynamic(() => import("@/components/DeepBrazilPanel"), { loading: panelLoading });
 const PropositionsExplorerPanel = dynamic(() => import("@/components/PropositionsExplorerPanel"), { loading: panelLoading });
+const PartyProductivityExplorer = dynamic(() => import("@/components/PartyProductivityExplorer"), { loading: panelLoading });
 const PartiesPanel = dynamic(() => import("@/components/PartiesPanel"), { loading: panelLoading });
 const VotingCalendarPanel = dynamic(() => import("@/components/VotingCalendarPanel"), { loading: panelLoading });
 
@@ -273,8 +274,19 @@ export default function DashboardPage() {
               )}
 
               {activeTab === "partidos" && (
-                <section>
-                  <PartiesPanel targetParty={globalSelectedParty} onSelectParty={handleOpenPartyMembers} />
+                <section className="space-y-8">
+                  <PartyProductivityExplorer
+                    onSelectPartyMembers={handleOpenPartyMembers}
+                  />
+                  <div className="pt-6 border-t border-slate-800/80">
+                    <div className="mb-4">
+                      <h2 className="text-lg font-bold text-white">Catálogo Geral & Estatutos Partidários</h2>
+                      <p className="text-xs text-slate-400">
+                        Diretórios partidários, número eleitoral, ideologias doutrinárias e lemas oficiais registrados no TSE.
+                      </p>
+                    </div>
+                    <PartiesPanel targetParty={globalSelectedParty} onSelectParty={handleOpenPartyMembers} />
+                  </div>
                 </section>
               )}
 
