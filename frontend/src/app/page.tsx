@@ -260,9 +260,6 @@ export default function DashboardPage() {
                   <section>
                     <DeepBrazilPanel key={globalMandate ?? "todos"} mandate={selectedRange} />
                   </section>
-                  <section>
-                    <SocialClassesExplainer />
-                  </section>
                 </div>
               )}
 
@@ -329,7 +326,10 @@ export default function DashboardPage() {
 
               {activeTab === "calendario" && (
                 <section>
-                  <VotingCalendarPanel />
+                  <VotingCalendarPanel
+                    onSelectPolitician={openPolitician}
+                    onSelectParty={handleOpenPartyMembers}
+                  />
                 </section>
               )}
 

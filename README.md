@@ -14,7 +14,11 @@
 
 ---
 
-## 🛡️ Princípio de Confiabilidade Oficial
+## 🛡️ Princípio de Confiabilidade Oficial & Fase de Desenvolvimento
+
+> [!WARNING]
+> ### ⚠️ Aviso Importante (Fase de Desenvolvimento)
+> **O projeto LegisData encontra-se em fase ativa de desenvolvimento e prototipagem contínua. Em virtude do processo iterativo de consolidação de dados e integração das APIs oficiais do Congresso Nacional e dos ministérios, a plataforma pode conter erros ou inconsistências pontuais na apresentação dos dados.**
 
 > ### ⚠️ Nenhum dado é inventado ou preenchido com dados sintéticos.
 > **Quando uma informação não é fornecida pelas APIs e relatórios oficiais, o campo permanece estritamente `null` e a interface exibe "Dado indisponível", assegurando total conformidade jurídica e técnica.**
@@ -48,13 +52,16 @@ O **LegisData** foi concebido como uma resposta técnica, visual e independente 
 
 1. **Quem Paga a Conta? (Financiamento Eleitoral):** De onde veio o dinheiro que elegeu o parlamentar? Quais foram seus maiores doadores (partidos, fundos públicos e pessoas físicas)?
 2. **O Basômetro (Adesão ao Governo):** O parlamentar vota alinhado com a base governista ou faz oposição sistemática nas matérias de interesse do Palácio do Planalto?
-3. **Detector de Leis Inúteis (Taxa de Relevância / Score IPLE):** O congressista atua em reformas econômicas e políticas públicas estruturais ou concentra o mandato em homenagens, títulos honorários e datas comemorativas?
+3. **Atividade Legislativa Ponderada (IALP) & Grafo de Redes de Coautoria:** O congressista exerce liderança intelectual em projetos substantivos ou atua apenas como signatário para quórum regimental?
+   - **Módulo 1 — Índice de Atividade Legislativa Ponderado (IALP):** $\text{Score}(P) = T \times A \times S$. Pondera o Tipo ($T$: PEC 3.0, PLP 2.5, PL 2.0, PDL 1.0, REQ/INC 0.1), o Grau de Autoria ($A$: Autor Principal 1.0, Relator 0.8, Coautor 0.2, Institucional 0.0) e o Sucesso de Tramitação ($S$: Sancionado 3.0x, Plenário 2.0x, Comissão 1.5x, Tramitando 1.0x). Mensura a **Taxa de Eficácia** (% de avanço como autor principal) e o **Índice de Desvio de Foco** (Proporção Estrutural vs. Burocrática).
+   - **Módulo 2 — Grafo Não-Direcionado Ponderado de Coautoria:** Mapeia bancadas informais transpartidárias via **Algoritmo de Louvain** e identifica as maiores pontes de articulação política via **Centralidade de Intermediação (Betweenness Centrality)**, com filtros dinâmicos por tipo de proposição e peso mínimo de coautoria ($W$).
 4. **Custo do Mandato (Cota Parlamentar - CEAP & Remuneração):** Quanto o gabinete gasta em passagens aéreas, divulgação e locações, e qual o contracheque mensal oficial do parlamentar?
 5. **A Trilha do Dinheiro (Emendas Orçamentárias):** Para onde vão as emendas individuais, de bancada, de comissão e do relator-geral? Classificação por localidade, tipo de autor e estágio de desembolso (Orçado, Empenhado e Pago).
 6. **Raio-X Judicial & Ficha Limpa (DataJud / CNJ):** Auditoria de certidões cíveis e criminais do TSE, STF, STJ e tribunais regionais com numeração CNJ de 20 dígitos e metadados oficiais das Tabelas Processuais Unificadas (TPU), à luz da Lei Complementar nº 135/2010.
 7. **Macropolítica e Indicadores Reais:** Cruzamento histórico da atuação política com PIB real, inflação (IPCA), taxa Selic, câmbio USD, salário mínimo, desigualdade (Gini), classes de renda (PNAD Contínua), desmatamento (INPE/PRODES) e violência (IPEA/FBSP).
 8. **Linha do Tempo Presidencial (1992 - Presente):** Raio-X comparativo dinâmico de todos os mandatos presidenciais com métricas fiscais, monetárias e sociais ano a ano, unificado por serviço centralizado.
-9. **Cidadania Ativa & Votação Direta:** O cidadão não apenas fiscaliza o passado, mas intervém no presente. A plataforma lista consultas públicas e enquetes oficiais em tramitação em tempo real no Congresso Nacional (e-Cidadania e e-Democracia), permitindo votar diretamente nas instâncias legislativas.
+9. **Índice de Poder Legislativo do Executivo (IPLE — Modelo Científico QCA):** Grau de governabilidade e força política do chefe do Executivo frente ao Congresso Nacional (escala normalizada de 0.000 a 1.000). Integra a **Taxa de Sucesso Legislativo ($TS = |P_{exec\_aprov}| / |P_{exec}|$)**, a **Taxa de Manutenção de Vetos ($TMV = |V_{mantidos}| / |V_{total\_apreciados}|$)** e variáveis contextuais QCA: Tamanho da Oposição ($X_1$), Fragmentação Partidária ($X_2$ - NEP de Laakso & Taagepera) e Polarização Ideológica Ponderada ($X_3$ - IPP), calibradas por lógica Crisp-set validada cientificamente. Veja a especificação completa em [`docs/ESPECIFICACAO_TECNICA_IPLE.md`](docs/ESPECIFICACAO_TECNICA_IPLE.md).
+10. **Cidadania Ativa & Votação Direta:** O cidadão não apenas fiscaliza o passado, mas intervém no presente. A plataforma lista consultas públicas e enquetes oficiais em tramitação em tempo real no Congresso Nacional (e-Cidadania e e-Democracia), permitindo votar diretamente nas instâncias legislativas.
 
 ---
 
@@ -249,7 +256,7 @@ Você também pode executar as validações de forma granular:
 | `GET` | `/api/v1/analytics/social-classes` | Distribuição de classes por salário mínimo baseada em microdados da PNAD Contínua |
 | `GET` | `/api/v1/analytics/federal-transfers` | Repasses federais diretos da União por Unidade da Federação |
 | `GET` | `/api/v1/cidadania/consultas` | Consultas públicas e enquetes ao vivo (Senado e Câmara) |
-| `GET` | `/api/v1/legislative/ranking/authors` | Produtividade legislativa com Score IPLE (ponderação por relevância formal) |
+| `GET` | `/api/v1/legislative/ranking/authors` | Produtividade legislativa ponderada: Score IPLE com critério (`efetividade`, `lideranca`, `coautoria`, `volume`), separação de autor principal vs coautor e taxa de eficiência |
 | `GET` | `/api/v1/legislative/calendar` | Calendário deliberativo anual com votações nominais e apuração de votos secretos |
 
 ---
@@ -258,6 +265,7 @@ Você também pode executar as validações de forma granular:
 
 - [`docs/FONTES_URLS_E_APIS.md`](docs/FONTES_URLS_E_APIS.md): Registro exaustivo de 100% das URLs, endpoints, parâmetros e periodicidade de todas as fontes.
 - [`docs/AUDITORIA_PROPOSICOES.md`](docs/AUDITORIA_PROPOSICOES.md): Auditoria técnica sobre proposições do Senado e caso do deputado Duda Ramos.
+- [`docs/METODOLOGIA_ATIVIDADE_LEGISLATIVA.md`](docs/METODOLOGIA_ATIVIDADE_LEGISLATIVA.md): Metodologia de atividade legislativa ponderada, separação de papéis, pesos por complexidade e tramitação.
 - [`docs/CONFERENCIA_PNAD.md`](docs/CONFERENCIA_PNAD.md): Comparativo metodológico dos microdados da PNAD Contínua com as publicações do IBGE (SIS).
 - [`docs/SERIES_CURADAS_E_FONTES.md`](docs/SERIES_CURADAS_E_FONTES.md): Rastreamento de fontes oficiais e justificativas para séries históricas institucionais.
 - [`docs/DECISOES_E_DUVIDAS_PENDENTES.md`](docs/DECISOES_E_DUVIDAS_PENDENTES.md): Registro de pontos em aberto para validação e direcionamento do mantenedor.

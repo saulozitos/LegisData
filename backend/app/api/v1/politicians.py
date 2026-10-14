@@ -25,10 +25,15 @@ from app.models import (
     PoliticianRemuneration,
     ProcessoJudicial,
     Proposition,
+    PropositionAuthor,
+    StatusTramitacaoEnum,
+    TipoAutoriaEnum,
     TipoPresencaEnum,
+    TipoProposicaoEnum,
     VotingSession,
 )
 from app.services.basometro import calcular_basometro
+from app.services.legislative_scoring import PESO_COMPLEXIDADE
 from app.services.presidential_service import get_all_presidents, get_mandate_date_range, get_president_by_reference
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, asc, desc, func, or_
@@ -1023,40 +1028,168 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             exec_clause = and_(exec_clause, Proposition.presentation_date <= p_end)
         prop_conditions.append(exec_clause)
 
-    props_filter = or_(*prop_conditions)
-    total_props_db = db.query(func.count(Proposition.id)).filter(props_filter).scalar() or 0
-    proposicoes_db = (
-        db.query(Proposition)
-        .filter(props_filter)
-        .order_by(desc(Proposition.presentation_date), Proposition.id)
-        .limit(MAX_PROPOSITIONS_LISTED)
-        .all()
+    # D. Atividade Legislativa e Ponderação de Proposições
+    author_records_count = (
+        db.query(func.count(PropositionAuthor.id)).filter(PropositionAuthor.politician_id == pol.id).scalar() or 0
     )
 
     materias_propostas = []
-    for p in proposicoes_db:
-        txt_full = f"{p.title} {p.summary or ''} {p.thematic_area or ''}".lower()
-        is_simb = any(k in txt_full for k in SIMBOLICO_KEYWORDS)
-        classif = "SIMBOLICO" if is_simb else "IMPACTO"
-        justif = "Matéria de cunho honorífico/simbólico" if is_simb else "Matéria com impacto estrutural e substantivo"
+    pecs_count = 0
+    pls_count = 0
+    outros_count = 0
+    total_score_ponderado = 0.0
+    props_aprovadas = 0
 
-        materias_propostas.append(
-            {
-                "id": str(p.id),
-                "tipo": p.proposition_type.value,
-                "numero": p.number,
-                "ano": p.year,
-                "titulo": p.title,
-                "ementa": p.summary,
-                "status": p.status.value,
-                "area_tematica": p.thematic_area,
-                "data_apresentacao": (p.presentation_date.isoformat() if p.presentation_date else None),
-                "is_reforma_estrutural": p.is_structural_reform,
-                "url_oficial": _official_url(p),
-                "classificacao_relevancia": classif,
-                "justificativa_relevancia": justif,
-            }
+    if author_records_count > 0:
+        lideranca_count = (
+            db.query(func.count(PropositionAuthor.id))
+            .filter(
+                PropositionAuthor.politician_id == pol.id,
+                PropositionAuthor.authorship_type == TipoAutoriaEnum.AUTOR_PRINCIPAL,
+            )
+            .scalar()
+            or 0
         )
+        coautoria_count = (
+            db.query(func.count(PropositionAuthor.id))
+            .filter(
+                PropositionAuthor.politician_id == pol.id,
+                PropositionAuthor.authorship_type == TipoAutoriaEnum.COAUTOR,
+            )
+            .scalar()
+            or 0
+        )
+        total_props_db = author_records_count
+
+        author_items = (
+            db.query(PropositionAuthor, Proposition)
+            .join(Proposition, PropositionAuthor.proposition_id == Proposition.id)
+            .filter(PropositionAuthor.politician_id == pol.id)
+            .order_by(desc(Proposition.presentation_date), PropositionAuthor.order.asc())
+            .limit(MAX_PROPOSITIONS_LISTED)
+            .all()
+        )
+
+        for pa, p in author_items:
+            txt_full = f"{p.title} {p.summary or ''} {p.thematic_area or ''}".lower()
+            is_simb = any(k in txt_full for k in SIMBOLICO_KEYWORDS)
+            classif = "SIMBOLICO" if is_simb else "IMPACTO"
+            justif = (
+                "Matéria de cunho honorífico/simbólico" if is_simb else "Matéria com impacto estrutural e substantivo"
+            )
+
+            is_principal = pa.authorship_type == TipoAutoriaEnum.AUTOR_PRINCIPAL
+            papel = "AUTOR_PRINCIPAL" if is_principal else "COAUTOR"
+            peso_part = 1.0 if is_principal else 0.2
+            peso_comp = PESO_COMPLEXIDADE.get(p.proposition_type, 1.0)
+
+            is_aprovada = p.status in (
+                StatusTramitacaoEnum.APROVADA_E_SANCIONADA,
+                StatusTramitacaoEnum.APROVADA_E_PROMULGADA,
+            )
+            if is_aprovada:
+                props_aprovadas += 1
+                bonus_tram = 3.0
+            else:
+                bonus_tram = 1.0
+
+            prop_score = round(peso_part * peso_comp * bonus_tram, 2)
+            total_score_ponderado += prop_score
+
+            if p.proposition_type == TipoProposicaoEnum.PEC:
+                pecs_count += 1
+            elif p.proposition_type in (TipoProposicaoEnum.PL, TipoProposicaoEnum.PLP, TipoProposicaoEnum.MPV):
+                pls_count += 1
+            else:
+                outros_count += 1
+
+            materias_propostas.append(
+                {
+                    "id": str(p.id),
+                    "tipo": p.proposition_type.value,
+                    "numero": p.number,
+                    "ano": p.year,
+                    "titulo": p.title,
+                    "ementa": p.summary,
+                    "status": p.status.value,
+                    "area_tematica": p.thematic_area,
+                    "data_apresentacao": (p.presentation_date.isoformat() if p.presentation_date else None),
+                    "is_reforma_estrutural": p.is_structural_reform,
+                    "url_oficial": _official_url(p),
+                    "classificacao_relevancia": classif,
+                    "justificativa_relevancia": justif,
+                    "papel_autoria": papel,
+                    "peso_participacao": peso_part,
+                    "peso_complexidade": peso_comp,
+                    "bonus_tramitacao": bonus_tram,
+                    "score_calculado": prop_score,
+                }
+            )
+    else:
+        props_filter = or_(*prop_conditions)
+        total_props_db = db.query(func.count(Proposition.id)).filter(props_filter).scalar() or 0
+        lideranca_count = total_props_db
+        coautoria_count = 0
+
+        proposicoes_db = (
+            db.query(Proposition)
+            .filter(props_filter)
+            .order_by(desc(Proposition.presentation_date), Proposition.id)
+            .limit(MAX_PROPOSITIONS_LISTED)
+            .all()
+        )
+
+        for p in proposicoes_db:
+            txt_full = f"{p.title} {p.summary or ''} {p.thematic_area or ''}".lower()
+            is_simb = any(k in txt_full for k in SIMBOLICO_KEYWORDS)
+            classif = "SIMBOLICO" if is_simb else "IMPACTO"
+            justif = (
+                "Matéria de cunho honorífico/simbólico" if is_simb else "Matéria com impacto estrutural e substantivo"
+            )
+
+            peso_comp = PESO_COMPLEXIDADE.get(p.proposition_type, 1.0)
+            is_aprovada = p.status in (
+                StatusTramitacaoEnum.APROVADA_E_SANCIONADA,
+                StatusTramitacaoEnum.APROVADA_E_PROMULGADA,
+            )
+            if is_aprovada:
+                props_aprovadas += 1
+                bonus_tram = 3.0
+            else:
+                bonus_tram = 1.0
+
+            prop_score = round(1.0 * peso_comp * bonus_tram, 2)
+            total_score_ponderado += prop_score
+
+            if p.proposition_type == TipoProposicaoEnum.PEC:
+                pecs_count += 1
+            elif p.proposition_type in (TipoProposicaoEnum.PL, TipoProposicaoEnum.PLP, TipoProposicaoEnum.MPV):
+                pls_count += 1
+            else:
+                outros_count += 1
+
+            materias_propostas.append(
+                {
+                    "id": str(p.id),
+                    "tipo": p.proposition_type.value,
+                    "numero": p.number,
+                    "ano": p.year,
+                    "titulo": p.title,
+                    "ementa": p.summary,
+                    "status": p.status.value,
+                    "area_tematica": p.thematic_area,
+                    "data_apresentacao": (p.presentation_date.isoformat() if p.presentation_date else None),
+                    "is_reforma_estrutural": p.is_structural_reform,
+                    "url_oficial": _official_url(p),
+                    "classificacao_relevancia": classif,
+                    "justificativa_relevancia": justif,
+                    "papel_autoria": "AUTOR_PRINCIPAL",
+                    "peso_participacao": 1.0,
+                    "peso_complexidade": peso_comp,
+                    "bonus_tramitacao": bonus_tram,
+                    "score_calculado": prop_score,
+                }
+            )
 
     total_props = len(materias_propostas)
     props_simb = sum(1 for p in materias_propostas if p.get("classificacao_relevancia") == "SIMBOLICO")
@@ -1073,10 +1206,32 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     else:
         diagnostico_legislativo = "Foco em Pautas Simbólicas"
 
+    taxa_eficiencia = round((props_aprovadas / max(lideranca_count, 1)) * 100, 1) if lideranca_count > 0 else 0.0
+
     relevancia_legislativa = {
         "total_proposicoes": total_props,
         "total_proposicoes_registradas": int(total_props_db),
         "amostra_limitada": int(total_props_db) > total_props,
+        "lideranca_legislativa_count": int(lideranca_count),
+        "apoio_politico_count": int(coautoria_count),
+        "taxa_eficiencia_pct": taxa_eficiencia,
+        "score_atividade_ponderada": round(total_score_ponderado, 1),
+        "score_ialp": round(total_score_ponderado, 1),
+        "desvio_foco": {
+            "estruturais": pecs_count + pls_count,
+            "burocraticas": outros_count,
+            "proporcao_estrutural_pct": round(((pecs_count + pls_count) / max(total_props, 1)) * 100, 1),
+            "diagnostico": (
+                "Foco Estrutural Predominante"
+                if (pecs_count + pls_count) >= outros_count
+                else "Foco Burocrático / Operacional"
+            ),
+        },
+        "distribuicao_complexidade": {
+            "alta": pecs_count,
+            "media": pls_count,
+            "baixa": outros_count,
+        },
         "projetos_impacto": props_imp,
         "projetos_simbolicos": props_simb,
         "percentual_impacto": pct_imp,
@@ -1336,7 +1491,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     # 1. ROI do Cidadão (custo por impacto legislativo)
     total_gasto_mandato = float(custos_ceap.get("gasto_total_recente") or 0.0)
     custo_total_operacional = total_gasto_mandato + salario_acumulado_registrado
-    proj_impacto = int(relevancia_legislativa.get("projetos_impacto") or 0)
+    proj_impacto = props_imp
     roi_dados_ok = bool(custos_ceap.get("possui_dados")) and salario_acumulado_registrado > 0 and total_sessoes > 0
 
     if roi_dados_ok:

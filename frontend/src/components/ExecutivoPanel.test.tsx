@@ -186,4 +186,121 @@ describe('ExecutivoPanel', () => {
     fireEvent.error(img);
     expect(img.style.display).toBe('none');
   });
+
+  it("renderiza a seção de IPLE quando o mandato possui os indicadores de poder legislativo", () => {
+    const mockIple = {
+      mandato_id: "lula-2023",
+      presidente: "Luiz Inácio Lula da Silva",
+      periodo: "2023 - 2027",
+      indicadores_base: {
+        proposicoes_executivo_total: 84,
+        proposicoes_executivo_aprovadas: 69,
+        vetos_total_apreciados: 48,
+        vetos_mantidos: 33,
+        vetos_pendentes_pauta: 12,
+        taxa_sucesso_ts: 0.8214,
+        taxa_manutencao_vetos_tmv: 0.6875,
+        iple_score: 0.7545,
+      },
+      variaveis_contextuais: {
+        tamanho_oposicao_x1: 0.2359,
+        oposicao_cadeiras: 121,
+        total_cadeiras: 513,
+        fragmentacao_nep_x2: 9.93,
+        polarizacao_ipp_x3: 4.55,
+      },
+      calibragem_crisp_set: {
+        ts: { score: 0.8214, corte: 0.87, crisp_val: 0, classificacao: "Sucesso Baixo" },
+        tmv: { score: 0.6875, corte: 0.7, crisp_val: 0, classificacao: "Manutenção Baixa" },
+        iple: { score: 0.7545, corte: 0.785, crisp_val: 0, classificacao: "Executivo Fraco" },
+        oposicao_x1: { score: 0.2359, corte: 0.334, crisp_val: 0, classificacao: "Oposição Fraca" },
+        fragmentacao_x2: { score: 9.93, corte: 8.45, crisp_val: 1, classificacao: "Parlamento Fragmentado" },
+        polarizacao_x3: { score: 4.55, corte: 2.2, crisp_val: 1, classificacao: "Parlamento Polarizado" },
+      },
+      classificacao_geral: "Executivo Fraco",
+    };
+
+    render(
+      <ExecutivoPanel
+        performance={perf({ iple: mockIple })}
+        presidentMeta={meta()}
+        annualData={annual}
+        mandateId="lula-2023"
+        allPerformances={[]}
+      />
+    );
+
+    expect(screen.getByText("Índice de Poder Legislativo do Executivo (IPLE)")).toBeInTheDocument();
+    expect(screen.getByText(/0\.754/)).toBeInTheDocument();
+    expect(screen.getByText("82.1%")).toBeInTheDocument();
+    expect(screen.getByText("68.8%")).toBeInTheDocument();
+    expect(screen.getByText(/X₁: Tamanho da Oposição/)).toBeInTheDocument();
+    expect(screen.getByText(/X₂: Fragmentação \(NEP\)/)).toBeInTheDocument();
+    expect(screen.getByText(/X₃: Polarização \(IPP\)/)).toBeInTheDocument();
+  });
+
+  it("permite alternar entre ranking de PIB e ranking de IPLE", () => {
+    const mockIple1 = {
+      mandato_id: "lula-2023",
+      presidente: "Lula",
+      periodo: "2023-2027",
+      indicadores_base: {
+        proposicoes_executivo_total: 80,
+        proposicoes_executivo_aprovadas: 65,
+        vetos_total_apreciados: 40,
+        vetos_mantidos: 28,
+        vetos_pendentes_pauta: 0,
+        taxa_sucesso_ts: 0.82,
+        taxa_manutencao_vetos_tmv: 0.68,
+        iple_score: 0.7545,
+      },
+      variaveis_contextuais: {
+        tamanho_oposicao_x1: 0.23,
+        oposicao_cadeiras: 120,
+        total_cadeiras: 513,
+        fragmentacao_nep_x2: 9.9,
+        polarizacao_ipp_x3: 4.5,
+      },
+      calibragem_crisp_set: {
+        ts: { score: 0.82, corte: 0.87, crisp_val: 0, classificacao: "Sucesso Baixo" },
+        tmv: { score: 0.68, corte: 0.7, crisp_val: 0, classificacao: "Manutenção Baixa" },
+        iple: { score: 0.7545, corte: 0.785, crisp_val: 0, classificacao: "Executivo Fraco" },
+        oposicao_x1: { score: 0.23, corte: 0.334, crisp_val: 0, classificacao: "Oposição Fraca" },
+        fragmentacao_x2: { score: 9.9, corte: 8.45, crisp_val: 1, classificacao: "Parlamento Fragmentado" },
+        polarizacao_x3: { score: 4.5, corte: 2.2, crisp_val: 1, classificacao: "Parlamento Polarizado" },
+      },
+      classificacao_geral: "Executivo Fraco",
+    };
+    const mockIple2 = {
+      ...mockIple1,
+      mandato_id: "fhc-1995",
+      presidente: "FHC",
+      indicadores_base: { ...mockIple1.indicadores_base, iple_score: 0.9036 },
+      calibragem_crisp_set: {
+        ...mockIple1.calibragem_crisp_set,
+        iple: { score: 0.9036, corte: 0.785, crisp_val: 1, classificacao: "Executivo Forte / Poderoso" },
+      },
+    };
+
+    const others = [
+      perf({ id_mandato: "lula-2023", presidente: "Lula", iple: mockIple1 }),
+      perf({ id_mandato: "fhc-1995", presidente: "FHC", anos_cobertos: "1995-1998", pib_medio_anual_pct: 2.5, iple: mockIple2 }),
+    ];
+
+    render(
+      <ExecutivoPanel
+        performance={others[0]}
+        presidentMeta={meta()}
+        annualData={annual}
+        mandateId="lula-2023"
+        allPerformances={others}
+      />
+    );
+
+    expect(screen.getByText("Ranking: PIB Médio Anual por Mandato")).toBeInTheDocument();
+    const btnIple = screen.getByRole("button", { name: "IPLE (Governabilidade)" });
+    fireEvent.click(btnIple);
+    expect(screen.getByText("Ranking: Poder Legislativo (IPLE)")).toBeInTheDocument();
+    expect(screen.getByText(/Linha tracejada em 0.785/)).toBeInTheDocument();
+  });
 });

@@ -258,3 +258,58 @@ def test_attendance_without_records_has_no_source_and_no_rate(client, seed):
     att = client.get(f"{BASE}/{seed.fulano.id}").json()["assiduidade"]
     assert att["taxa_presenca_pct"] is None and att["total_sessoes"] == 0
     assert att["periodo_inicio"] is None and att["unidade"] is None and att["fonte"] is None
+
+
+def test_dossier_weighted_legislative_indicators(client, db, seed):
+
+    from app.models.legislative import Proposition, PropositionAuthor, TipoAutoriaEnum, TipoProposicaoEnum
+
+    # Add a co-authored proposition for fulano
+    prop_co = Proposition(
+        proposition_type=TipoProposicaoEnum.PEC,
+        number=99,
+        year=2024,
+        title="PEC 99/2024",
+        summary="PEC importante",
+        presentation_date=date(2024, 1, 1),
+        external_camara_id=8899,
+    )
+    db.add(prop_co)
+    db.flush()
+
+    pa1 = PropositionAuthor(
+        proposition_id=prop_co.id,
+        politician_id=seed.fulano.id,
+        author_name="Fulano",
+        authorship_type=TipoAutoriaEnum.COAUTOR,
+        order=2,
+    )
+    pa2 = PropositionAuthor(
+        proposition_id=seed.proposition.id,
+        politician_id=seed.fulano.id,
+        author_name="Fulano",
+        authorship_type=TipoAutoriaEnum.AUTOR_PRINCIPAL,
+        order=1,
+    )
+    db.add_all([pa1, pa2])
+    db.commit()
+
+    dossier = client.get(f"{BASE}/{seed.fulano.id}").json()
+    rel = dossier["relevancia_legislativa"]
+    assert "lideranca_legislativa_count" in rel
+    assert "apoio_politico_count" in rel
+    assert "taxa_eficiencia_pct" in rel
+    assert "score_atividade_ponderada" in rel
+    assert "distribuicao_complexidade" in rel
+    assert rel["lideranca_legislativa_count"] >= 1
+    assert rel["apoio_politico_count"] >= 1
+
+    props = dossier["materias_propostas"]
+    assert len(props) >= 2
+    p_dict = {p["titulo"]: p for p in props}
+    assert "PEC 99/2024" in p_dict
+    pec_item = p_dict["PEC 99/2024"]
+    assert pec_item["papel_autoria"] == "COAUTOR"
+    assert pec_item["peso_participacao"] == 0.2
+    assert pec_item["peso_complexidade"] == 3.0  # PEC = 3.0
+    assert pec_item["score_calculado"] == 0.6  # 0.2 * 3.0 * 1.0 = 0.6

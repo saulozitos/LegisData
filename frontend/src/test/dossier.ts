@@ -80,7 +80,7 @@ export function fullDossier(): PoliticoDossier {
       ],
     },
     basometro: { taxa_governismo_pct: 72, total_votacoes_analisadas: 50, votos_alinhados: 36, votos_divergentes: 14, classificacao: 'GOVERNISTA' },
-    relevancia_legislativa: { total_proposicoes: 10, projetos_impacto: 4, projetos_simbolicos: 6, percentual_impacto: 40, percentual_simbolico: 60, diagnostico: 'Diagnóstico de relevância.' },
+    relevancia_legislativa: { total_proposicoes: 10, total_proposicoes_registradas: 10, projetos_impacto: 4, projetos_simbolicos: 6, percentual_impacto: 40, percentual_simbolico: 60, diagnostico: 'Diagnóstico de relevância.', lideranca_legislativa_count: 7, apoio_politico_count: 3, taxa_eficiencia_pct: 14.3, score_atividade_ponderada: 18.6, distribuicao_complexidade: { alta: 2, media: 7, baixa: 1 } },
     materias_propostas: [
       { id: 'pr1', tipo: 'PL', numero: 100, ano: 2023, titulo: 'PL 100/2023', ementa: 'Ementa do PL 100', status: 'Em tramitação', area_tematica: 'Saúde', data_apresentacao: '2023-03-01', is_reforma_estrutural: true, url_oficial: 'https://camara.leg.br/pl100', classificacao_relevancia: 'IMPACTO', justificativa_relevancia: 'Muda o SUS.' },
       { id: 'pr2', tipo: 'PL', numero: 200, ano: 2022, titulo: 'PL 200/2022', ementa: 'Dia nacional', status: 'Aprovada', area_tematica: null, data_apresentacao: null, is_reforma_estrutural: false, url_oficial: null, classificacao_relevancia: 'SIMBOLICO' },

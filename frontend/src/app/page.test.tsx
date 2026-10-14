@@ -123,7 +123,7 @@ describe('Home (dashboard)', () => {
     await screen.findByTestId('ExecutivoPanel');
     fireEvent.click(tab('Sociedade & Eleições'));
     expect(await screen.findByTestId('DeepBrazilPanel')).toHaveAttribute('data-mandate', 'lula-2023');
-    expect(screen.getByTestId('SocialClassesExplainer')).toBeInTheDocument();
+    expect(screen.queryByTestId('SocialClassesExplainer')).not.toBeInTheDocument();
   });
 
   it('renda, partidos, produtividade e calendário renderizam suas seções', async () => {
@@ -131,6 +131,7 @@ describe('Home (dashboard)', () => {
     await screen.findByTestId('ExecutivoPanel');
     fireEvent.click(tab('Renda & Classes Sociais'));
     expect(await screen.findByTestId('WageDisparityPanel')).toBeInTheDocument();
+    expect(screen.getByTestId('SocialClassesExplainer')).toBeInTheDocument();
     fireEvent.click(tab('Partidos'));
     expect(await screen.findByTestId('PartiesPanel')).toHaveAttribute('data-target', 'null');
     fireEvent.click(tab('Produtividade & Votações'));

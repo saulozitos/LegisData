@@ -9,6 +9,7 @@ vi.mock('@/services/api', () => ({
   searchPoliticians: vi.fn(),
   getPoliticianDossier: vi.fn(),
   getParties: vi.fn(),
+  getPoliticianProductivity: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('recharts', async () => (await import('@/test/recharts')).rechartsMock);
 

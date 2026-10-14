@@ -8,6 +8,19 @@ vi.mock('@/services/api', () => ({
   getAuthorsProductivityRanking: vi.fn(),
   getLegislativeExplorer: vi.fn(),
   getParties: vi.fn(),
+  getCoauthorshipNetwork: vi.fn().mockResolvedValue({
+    nodes: [],
+    edges: [],
+    communities: [],
+    stats: {
+      total_nodes: 0,
+      total_edges: 0,
+      total_communities: 0,
+      density: 0,
+      tipo_filtro: 'ALL',
+      top_articulators: [],
+    },
+  }),
 }));
 vi.mock('./propositions/PropositionVoteModal', () => ({
   default: ({ propId, onClose, onSelectPolitician }: { propId: string; onClose: () => void; onSelectPolitician?: (id: string) => void }) => (
@@ -153,6 +166,9 @@ describe('PropositionsExplorerPanel', () => {
     fireEvent.change(screen.getByLabelText('Buscar por título, ementa ou autor'), { target: { value: 'saúde' } });
     await waitFor(() => expect(getExplorer).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'saúde', page: 1 }), expect.any(AbortSignal)));
 
+    fireEvent.change(screen.getByLabelText('Filtrar por partido do autor'), { target: { value: 'PT' } });
+    await waitFor(() => expect(getExplorer).toHaveBeenLastCalledWith(expect.objectContaining({ partido: 'PT' }), expect.any(AbortSignal)));
+
     fireEvent.change(screen.getByLabelText('Filtrar por setor'), { target: { value: 'Educação' } });
     await waitFor(() => expect(getExplorer).toHaveBeenLastCalledWith(expect.objectContaining({ setor: 'Educação' }), expect.any(AbortSignal)));
     fireEvent.change(screen.getByLabelText('Filtrar por tipo de proposição'), { target: { value: 'PEC' } });
@@ -213,5 +229,29 @@ describe('PropositionsExplorerPanel', () => {
     getExplorer.mockResolvedValue(page({ items: [], total: 0 }));
     render(<PropositionsExplorerPanel />);
     expect(await screen.findByText('Nenhuma proposição encontrada')).toBeInTheDocument();
+  });
+
+  it('alterna para critério de liderança e apoio político chamando a API com os parâmetros certos', async () => {
+    render(<PropositionsExplorerPanel />);
+    await screen.findByText('Baleia Rossi');
+    fireEvent.click(screen.getByRole('button', { name: /Liderança/ }));
+    await waitFor(() => expect(getRanking).toHaveBeenLastCalledWith(20, undefined, undefined, 'lideranca', expect.any(AbortSignal)));
+    expect(await screen.findByText('Liderança (Autor Principal)')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Apoio Político/ }));
+    await waitFor(() => expect(getRanking).toHaveBeenLastCalledWith(20, undefined, undefined, 'coautoria', expect.any(AbortSignal)));
+    expect(await screen.findByText('Apoio Político (Coautor)')).toBeInTheDocument();
+  });
+
+  it('exibe e oculta o banner explicativo dos 4 pilares da metodologia', async () => {
+    render(<PropositionsExplorerPanel />);
+    await screen.findByText('Baleia Rossi');
+    expect(screen.queryByText('Metodologia de Atividade Legislativa Ponderada')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Entenda a Pontuação/ }));
+    expect(screen.getByText('Metodologia de Atividade Legislativa Ponderada')).toBeInTheDocument();
+    expect(screen.getByText(/Autor Principal \(1.0 pt\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Alta \(3.0 pts\)/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Ocultar Metodologia/ }));
+    expect(screen.queryByText('Metodologia de Atividade Legislativa Ponderada')).not.toBeInTheDocument();
   });
 });

@@ -1278,6 +1278,272 @@ export default function ComparadorPage() {
                 </table>
               </div>
             </div>
+
+            {/* SEÇÃO 4: RELAÇÃO COM O LEGISLATIVO & GOVERNABILIDADE (IPLE) */}
+            {(m1.iple || m2.iple) && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 px-1 text-xs font-extrabold uppercase tracking-wider text-indigo-400">
+                  <Scale className="w-4 h-4" />
+                  <span>Dimensão 4: Governabilidade & Poder Legislativo (IPLE — Modelo QCA)</span>
+                </div>
+                <div className="overflow-x-auto rounded-xl border border-slate-800">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-950/80">
+                      <tr className="border-b border-slate-800 text-xs text-slate-400 uppercase tracking-wider">
+                        <th scope="col" className="py-2.5 px-4 font-semibold">Indicador de Governabilidade</th>
+                        <th scope="col" className="py-2.5 px-4 font-semibold text-cyan-400">
+                          {m1.presidente}
+                        </th>
+                        <th scope="col" className="py-2.5 px-4 font-semibold text-amber-400">
+                          {m2.presidente}
+                        </th>
+                        <th scope="col" className="py-2.5 px-4 font-semibold text-right">Diferença (Delta B − A)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                      {/* Score IPLE Principal */}
+                      <tr className="hover:bg-slate-800/20 transition-colors">
+                        <td className="py-3 px-4 font-medium">
+                          <span className="inline-flex items-center gap-2">
+                            <Scale className="w-4 h-4 text-indigo-400" />
+                            <div>
+                              <span>Índice de Poder Legislativo do Executivo (IPLE)</span>
+                              <span className="text-[11px] text-slate-400 block">
+                                Score sintético (0.0 a 1.0). Corte Executivo Forte: ≥ 0.785
+                              </span>
+                            </div>
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 font-mono font-bold text-cyan-300">
+                          {m1.iple ? (
+                            <div>
+                              <span>{m1.iple.indicadores_base.iple_score.toFixed(3)}</span>
+                              <span className={`text-[10px] block px-1.5 py-0.5 rounded-full w-fit mt-0.5 ${
+                                m1.iple.calibragem_crisp_set.iple.crisp_val === 1
+                                  ? "bg-emerald-500/10 text-emerald-400"
+                                  : "bg-rose-500/10 text-rose-400"
+                              }`}>
+                                {m1.iple.calibragem_crisp_set.iple.classificacao}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">N/D</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 font-mono font-bold text-amber-300">
+                          {m2.iple ? (
+                            <div>
+                              <span>{m2.iple.indicadores_base.iple_score.toFixed(3)}</span>
+                              <span className={`text-[10px] block px-1.5 py-0.5 rounded-full w-fit mt-0.5 ${
+                                m2.iple.calibragem_crisp_set.iple.crisp_val === 1
+                                  ? "bg-emerald-500/10 text-emerald-400"
+                                  : "bg-rose-500/10 text-rose-400"
+                              }`}>
+                                {m2.iple.calibragem_crisp_set.iple.classificacao}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">N/D</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          {m1.iple && m2.iple ? (
+                            <span
+                              className={deltaPillClass(
+                                m2.iple.indicadores_base.iple_score - m1.iple.indicadores_base.iple_score
+                              )}
+                            >
+                              {fmtSigned(
+                                m2.iple.indicadores_base.iple_score - m1.iple.indicadores_base.iple_score,
+                                "",
+                                3
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-xs">N/D</span>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* Taxa de Sucesso (TS) */}
+                      <tr className="hover:bg-slate-800/20 transition-colors">
+                        <td className="py-3 px-4 font-medium">
+                          <div>
+                            <span>Taxa de Sucesso Legislativo (TS)</span>
+                            <span className="text-[11px] text-slate-400 block">
+                              Aprovação de projetos do Executivo (|P_exec_aprov| / |P_exec|). Corte: ≥ 87%
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 font-mono font-semibold text-slate-300">
+                          {m1.iple ? `${(m1.iple.indicadores_base.taxa_sucesso_ts * 100).toFixed(1)}%` : "N/D"}
+                        </td>
+                        <td className="py-3 px-4 font-mono font-semibold text-slate-300">
+                          {m2.iple ? `${(m2.iple.indicadores_base.taxa_sucesso_ts * 100).toFixed(1)}%` : "N/D"}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          {m1.iple && m2.iple ? (
+                            <span
+                              className={deltaPillClass(
+                                (m2.iple.indicadores_base.taxa_sucesso_ts - m1.iple.indicadores_base.taxa_sucesso_ts) * 100
+                              )}
+                            >
+                              {fmtSigned(
+                                (m2.iple.indicadores_base.taxa_sucesso_ts - m1.iple.indicadores_base.taxa_sucesso_ts) * 100,
+                                " p.p."
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-xs">N/D</span>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* Taxa de Manutenção de Vetos (TMV) */}
+                      <tr className="hover:bg-slate-800/20 transition-colors">
+                        <td className="py-3 px-4 font-medium">
+                          <div>
+                            <span>Taxa de Manutenção de Vetos (TMV)</span>
+                            <span className="text-[11px] text-slate-400 block">
+                              Vetos mantidos pelo Congresso (|V_mantidos| / |V_apreciados|). Corte: ≥ 70%
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 font-mono font-semibold text-slate-300">
+                          {m1.iple ? `${(m1.iple.indicadores_base.taxa_manutencao_vetos_tmv * 100).toFixed(1)}%` : "N/D"}
+                        </td>
+                        <td className="py-3 px-4 font-mono font-semibold text-slate-300">
+                          {m2.iple ? `${(m2.iple.indicadores_base.taxa_manutencao_vetos_tmv * 100).toFixed(1)}%` : "N/D"}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          {m1.iple && m2.iple ? (
+                            <span
+                              className={deltaPillClass(
+                                (m2.iple.indicadores_base.taxa_manutencao_vetos_tmv - m1.iple.indicadores_base.taxa_manutencao_vetos_tmv) * 100
+                              )}
+                            >
+                              {fmtSigned(
+                                (m2.iple.indicadores_base.taxa_manutencao_vetos_tmv - m1.iple.indicadores_base.taxa_manutencao_vetos_tmv) * 100,
+                                " p.p."
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-xs">N/D</span>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* Fragmentação Partidária (NEP) */}
+                      <tr className="hover:bg-slate-800/20 transition-colors">
+                        <td className="py-3 px-4 font-medium">
+                          <div>
+                            <span>Fragmentação Partidária (NEP - Laakso & Taagepera)</span>
+                            <span className="text-[11px] text-slate-400 block">
+                              Número Efetivo de Partidos na Câmara. Limiar de fragmentação: ≥ 8.45
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 font-mono font-semibold text-slate-300">
+                          {m1.iple ? m1.iple.variaveis_contextuais.fragmentacao_nep_x2.toFixed(2) : "N/D"}
+                        </td>
+                        <td className="py-3 px-4 font-mono font-semibold text-slate-300">
+                          {m2.iple ? m2.iple.variaveis_contextuais.fragmentacao_nep_x2.toFixed(2) : "N/D"}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          {m1.iple && m2.iple ? (
+                            <span
+                              className={deltaPillClass(
+                                m2.iple.variaveis_contextuais.fragmentacao_nep_x2 - m1.iple.variaveis_contextuais.fragmentacao_nep_x2,
+                                true
+                              )}
+                            >
+                              {fmtSigned(
+                                m2.iple.variaveis_contextuais.fragmentacao_nep_x2 - m1.iple.variaveis_contextuais.fragmentacao_nep_x2,
+                                "",
+                                2
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-xs">N/D</span>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* Polarização Ideológica (IPP) */}
+                      <tr className="hover:bg-slate-800/20 transition-colors">
+                        <td className="py-3 px-4 font-medium">
+                          <div>
+                            <span>Polarização Ideológica Ponderada (IPP)</span>
+                            <span className="text-[11px] text-slate-400 block">
+                              Dispersão ideológica ponderada (1 a 10). Parlamento Polarizado: &gt; 2.2
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 font-mono font-semibold text-slate-300">
+                          {m1.iple ? m1.iple.variaveis_contextuais.polarizacao_ipp_x3.toFixed(2) : "N/D"}
+                        </td>
+                        <td className="py-3 px-4 font-mono font-semibold text-slate-300">
+                          {m2.iple ? m2.iple.variaveis_contextuais.polarizacao_ipp_x3.toFixed(2) : "N/D"}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          {m1.iple && m2.iple ? (
+                            <span
+                              className={deltaPillClass(
+                                m2.iple.variaveis_contextuais.polarizacao_ipp_x3 - m1.iple.variaveis_contextuais.polarizacao_ipp_x3,
+                                true
+                              )}
+                            >
+                              {fmtSigned(
+                                m2.iple.variaveis_contextuais.polarizacao_ipp_x3 - m1.iple.variaveis_contextuais.polarizacao_ipp_x3,
+                                "",
+                                2
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-xs">N/D</span>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* Tamanho da Oposição (X1) */}
+                      <tr className="hover:bg-slate-800/20 transition-colors">
+                        <td className="py-3 px-4 font-medium">
+                          <div>
+                            <span>Tamanho da Oposição Declarada (X₁)</span>
+                            <span className="text-[11px] text-slate-400 block">
+                              % assentos de bancada de oposição. Quórum de CPI: &gt; 33.4%
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 font-mono font-semibold text-slate-300">
+                          {m1.iple ? `${(m1.iple.variaveis_contextuais.tamanho_oposicao_x1 * 100).toFixed(1)}%` : "N/D"}
+                        </td>
+                        <td className="py-3 px-4 font-mono font-semibold text-slate-300">
+                          {m2.iple ? `${(m2.iple.variaveis_contextuais.tamanho_oposicao_x1 * 100).toFixed(1)}%` : "N/D"}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          {m1.iple && m2.iple ? (
+                            <span
+                              className={deltaPillClass(
+                                (m2.iple.variaveis_contextuais.tamanho_oposicao_x1 - m1.iple.variaveis_contextuais.tamanho_oposicao_x1) * 100,
+                                true
+                              )}
+                            >
+                              {fmtSigned(
+                                (m2.iple.variaveis_contextuais.tamanho_oposicao_x1 - m1.iple.variaveis_contextuais.tamanho_oposicao_x1) * 100,
+                                " p.p."
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-xs">N/D</span>
+                          )}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

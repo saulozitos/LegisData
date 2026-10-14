@@ -6,6 +6,7 @@ import { useApi } from "@/hooks/useApi";
 import { safeExternalUrl } from "@/lib/safeUrl";
 import { fmtNum } from "@/lib/format";
 import { EmptyState, ErrorState } from "@/components/StateViews";
+import PropositionVoteModal from "@/components/propositions/PropositionVoteModal";
 import {
   CalendarDays,
   Calendar,
@@ -37,10 +38,19 @@ const MESES_NOMES = [
   "Dezembro",
 ];
 
-export default function VotingCalendarPanel() {
+interface VotingCalendarPanelProps {
+  onSelectPolitician?: (id: string) => void;
+  onSelectParty?: (sigla: string) => void;
+}
+
+export default function VotingCalendarPanel({
+  onSelectPolitician,
+  onSelectParty,
+}: VotingCalendarPanelProps = {}) {
   const [selectedYear, setSelectedYear] = useState<number | undefined>(undefined);
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
   const [monthFilter, setMonthFilter] = useState<number | "TODOS">("TODOS");
+  const [selectedVotePropId, setSelectedVotePropId] = useState<string | null>(null);
 
   const calendar = useApi(`voting-calendar:${selectedYear ?? "default"}`, (signal) =>
     getVotingCalendar(selectedYear, signal)
@@ -49,7 +59,9 @@ export default function VotingCalendarPanel() {
   const data = calendar.data ?? null;
   const isLoading = calendar.loading;
   // A lista de anos permanece disponível mesmo durante a troca/erro.
-  const availableYears = (data ?? calendar.previousData)?.anos_disponiveis ?? [];
+  const availableYears = useMemo(() => {
+    return (data ?? calendar.previousData)?.anos_disponiveis ?? [];
+  }, [data, calendar.previousData]);
   const shownYear = selectedYear ?? data?.ano_selecionado;
 
   // Filtrar dias exibidos pelo mês selecionado
@@ -64,6 +76,15 @@ export default function VotingCalendarPanel() {
     if (!data || !data.dias) return null;
     return data.dias.find((d) => d.data === selectedDateStr) || data.dias[0] || null;
   }, [data, selectedDateStr]);
+
+  // Lista consolidada de anos para o Combobox
+  const allSelectableYears = useMemo(() => {
+    const defaultYears = [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019];
+    const s = new Set<number>(defaultYears);
+    for (const y of availableYears) s.add(y);
+    if (shownYear) s.add(shownYear);
+    return Array.from(s).sort((a, b) => b - a);
+  }, [availableYears, shownYear]);
 
   return (
     <div className="space-y-6">
@@ -89,30 +110,48 @@ export default function VotingCalendarPanel() {
             </div>
           </div>
 
-          {/* Seletor de Ano */}
-          {availableYears.length > 0 && (
-            <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
-              <span className="text-xs font-semibold text-slate-400 px-2 flex items-center gap-1.5">
+          {/* Seletor de Ano com Combobox e Botões de Acesso Rápido */}
+          <div className="flex flex-wrap items-center gap-3 bg-slate-950 p-2 rounded-2xl border border-slate-800">
+            <div className="flex items-center gap-2">
+              <label htmlFor="calendar-year-select" className="text-xs font-semibold text-slate-400 px-1 flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-cyan-400" aria-hidden="true" />
                 Ano:
-              </span>
-              {availableYears.map((ano) => (
-                <button
-                  type="button"
-                  key={ano}
-                  aria-pressed={shownYear === ano}
-                  onClick={() => setSelectedYear(ano)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold font-mono transition-all ${
-                    shownYear === ano
-                      ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
-                      : "text-slate-300 hover:text-slate-100 hover:bg-slate-800/60"
-                  }`}
-                >
-                  {ano}
-                </button>
-              ))}
+              </label>
+              <select
+                id="calendar-year-select"
+                aria-label="Selecionar ano do calendário"
+                value={shownYear ?? 2026}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="bg-slate-900 border border-slate-700 text-slate-100 text-xs font-bold font-mono rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-emerald-500 cursor-pointer"
+              >
+                {allSelectableYears.map((ano) => (
+                  <option key={ano} value={ano}>
+                    {ano} {availableYears.includes(ano) ? "• Com Votações" : ""}
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
+
+            {availableYears.length > 0 && (
+              <div className="flex items-center gap-1 border-l border-slate-800 pl-2">
+                {availableYears.map((ano) => (
+                  <button
+                    type="button"
+                    key={ano}
+                    aria-pressed={shownYear === ano}
+                    onClick={() => setSelectedYear(ano)}
+                    className={`px-3 py-1 rounded-xl text-xs font-bold font-mono transition-all ${
+                      shownYear === ano
+                        ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
+                        : "text-slate-300 hover:text-slate-100 hover:bg-slate-800/60"
+                    }`}
+                  >
+                    {ano}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {calendar.error && <ErrorState onRetry={calendar.retry} />}
@@ -534,6 +573,41 @@ export default function VotingCalendarPanel() {
                               title={`Abstenção: ${sess.placar.abstencao}`}
                             />
                           </div>
+
+                          {/* Botão de Ação: Ver Votos Nominais */}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedVotePropId(sess.proposicao.id)}
+                            className="w-full mt-3 py-2 px-3.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 hover:border-indigo-500/50 text-indigo-300 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-2 group cursor-pointer shadow-sm"
+                            title={`Consultar como cada parlamentar votou em ${sess.proposicao.titulo}`}
+                          >
+                            <Vote className="w-3.5 h-3.5 text-indigo-400 group-hover:scale-110 transition-transform" />
+                            <span>Ver Votos Nominais dos Parlamentares ({sess.placar.total} votos)</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Notificação Explícita: Votação Secreta */}
+                      {sess.is_votacao_secreta && (
+                        <div className="mt-3 p-3 bg-purple-950/30 border border-purple-500/30 rounded-xl text-xs space-y-1">
+                          <span className="font-bold text-purple-300 flex items-center gap-1.5">
+                            <span>🔒</span> Votação Secreta (Sigilo Regimental)
+                          </span>
+                          <p className="text-[11px] text-slate-400 leading-relaxed">
+                            Conforme o Regimento Interno, o voto de cada parlamentar é protegido por sigilo de urna. Apenas a apuração global do placar é tornada pública.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Notificação Explícita: Votação Simbólica */}
+                      {(!sess.placar || sess.placar.total === 0) && !sess.is_votacao_secreta && (
+                        <div className="mt-3 p-3 bg-slate-950/60 border border-slate-800 rounded-xl text-xs space-y-1">
+                          <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                            <span>📢</span> Votação Simbólica
+                          </span>
+                          <p className="text-[11px] text-slate-400 leading-relaxed">
+                            Matéria deliberada por acordo de liderança ou aclamação em plenário, sem abertura de votação nominal individual no painel eletrônico.
+                          </p>
                         </div>
                       )}
                     </div>
@@ -549,6 +623,16 @@ export default function VotingCalendarPanel() {
           ) : null}
         </div>
       </div>
+
+      {/* Modal de Votos Nominais Individuais dos Parlamentares */}
+      {selectedVotePropId && (
+        <PropositionVoteModal
+          propId={selectedVotePropId}
+          onClose={() => setSelectedVotePropId(null)}
+          onSelectPolitician={onSelectPolitician}
+          onSelectParty={onSelectParty}
+        />
+      )}
     </div>
   );
 }

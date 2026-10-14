@@ -142,6 +142,13 @@ export default function Header() {
           </a>
         </div>
       </div>
+      {/* Banner de Aviso: Fase de Desenvolvimento */}
+      <div className="bg-amber-500/10 border-t border-amber-500/20 px-4 py-1.5 text-center text-[11px] sm:text-xs text-amber-300 font-medium flex items-center justify-center gap-2">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" aria-hidden="true" />
+        <span>
+          <strong>Aviso:</strong> O projeto encontra-se em fase de desenvolvimento e pode conter erros na apresentação dos dados.
+        </span>
+      </div>
     </header>
   );
 }
