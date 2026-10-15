@@ -291,10 +291,20 @@ def test_dossier_weighted_legislative_indicators(client, db, seed):
         authorship_type=TipoAutoriaEnum.AUTOR_PRINCIPAL,
         order=1,
     )
-    db.add_all([pa1, pa2])
+    # a fonte repete o mesmo parlamentar como coautor da proposição em que já é autor principal
+    pa3 = PropositionAuthor(
+        proposition_id=seed.proposition.id,
+        politician_id=seed.fulano.id,
+        author_name="Fulano",
+        authorship_type=TipoAutoriaEnum.COAUTOR,
+        order=2,
+    )
+    db.add_all([pa1, pa2, pa3])
     db.commit()
 
     dossier = client.get(f"{BASE}/{seed.fulano.id}").json()
+    ids = [m["id"] for m in dossier["materias_propostas"]]
+    assert len(ids) == len(set(ids))
     rel = dossier["relevancia_legislativa"]
     assert "lideranca_legislativa_count" in rel
     assert "apoio_politico_count" in rel

@@ -1025,8 +1025,15 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     pesos = carregar_pesos_ialp(db)
 
     author_filter = [Autoria.pessoa_id == pessoa_id, Autoria.tipo_codigo != "INSTITUCIONAL"]
+    # a fonte às vezes repete o mesmo parlamentar como autor principal e coautor da mesma proposição:
+    # conta-se uma vez por proposição, prevalecendo o papel de autor principal
+    principais_sq = (
+        db.query(Autoria.proposicao_id).filter(*author_filter, Autoria.tipo_codigo == "AUTOR_PRINCIPAL").subquery()
+    )
     author_records_count = (
-        db.query(func.count(Autoria.id)).filter(*author_filter).scalar() or 0 if pessoa_id is not None else 0
+        db.query(func.count(func.distinct(Autoria.proposicao_id))).filter(*author_filter).scalar() or 0
+        if pessoa_id is not None
+        else 0
     )
 
     def _classificar(p: Proposicao) -> Dict[str, str]:
@@ -1075,13 +1082,8 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         }
 
     if author_records_count > 0:
-        lideranca_count = (
-            db.query(func.count(Autoria.id)).filter(*author_filter, Autoria.tipo_codigo == "AUTOR_PRINCIPAL").scalar()
-            or 0
-        )
-        coautoria_count = (
-            db.query(func.count(Autoria.id)).filter(*author_filter, Autoria.tipo_codigo == "COAUTOR").scalar() or 0
-        )
+        lideranca_count = db.query(func.count(func.distinct(principais_sq.c.proposicao_id))).scalar() or 0
+        coautoria_count = int(author_records_count) - int(lideranca_count)
         total_props_db = author_records_count
 
         author_items = (
@@ -1092,8 +1094,16 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             .limit(MAX_PROPOSITIONS_LISTED)
             .all()
         )
+        papeis: Dict[int, str] = {}
         for pa, p in author_items:
-            materias_propostas.append(_item(p, "AUTOR_PRINCIPAL" if pa.tipo_codigo == "AUTOR_PRINCIPAL" else "COAUTOR"))
+            if pa.tipo_codigo == "AUTOR_PRINCIPAL" or p.id not in papeis:
+                papeis[p.id] = pa.tipo_codigo
+        vistos: set = set()
+        for pa, p in author_items:
+            if p.id in vistos:
+                continue
+            vistos.add(p.id)
+            materias_propostas.append(_item(p, "AUTOR_PRINCIPAL" if papeis[p.id] == "AUTOR_PRINCIPAL" else "COAUTOR"))
     else:
         prop_conditions = [Proposicao.autor_pessoa_id == pessoa_id] if pessoa_id is not None else []
         for p_start, p_end in presidential_periods:
