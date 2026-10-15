@@ -73,3 +73,6 @@ etl/data/raw/checkpoint_*.json
 # Ativos pesados de mídia (hospedados em Releases / Git LFS)
 assets/*.mp4
 assets/*.webm
+
+# fazai (efêmero)
+.fazai/session/
