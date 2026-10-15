@@ -130,9 +130,12 @@ def run_db_migrations() -> None:
         for sigla, logo in OFFICIAL_PARTY_LOGOS.items():
             db.execute(
                 text(
-                    'UPDATE partidos_politicos SET "logoUrl" = :logo '
-                    'WHERE UPPER(sigla) = :sigla AND ("logoUrl" IS NULL OR "logoUrl" = '
-                    ");"
+                    """
+                    UPDATE partidos_politicos
+                    SET "logoUrl" = :logo
+                    WHERE UPPER(sigla) = :sigla
+                      AND COALESCE("logoUrl", '') = '';
+                    """
                 ),
                 {"sigla": sigla.upper(), "logo": logo},
             )
@@ -140,12 +143,22 @@ def run_db_migrations() -> None:
         for sigla, meta in OFFICIAL_PARTY_METADATA.items():
             db.execute(
                 text(
-                    "UPDATE partidos_politicos SET "
-                    '"numeroEleitoral" = COALESCE("numeroEleitoral", :numero), '
-                    '"ideologia" = COALESCE("ideologia", :ideologia), '
-                    '"lema" = COALESCE("lema", :lema), '
-                    '"espectroPolitico" = COALESCE("espectroPolitico", :espectro) '
-                    "WHERE UPPER(sigla) = :sigla;"
+                    """
+                    UPDATE partidos_politicos SET
+                        "numeroEleitoral" = CASE
+                            WHEN :numero IS NOT NULL
+                             AND NOT EXISTS (
+                                 SELECT 1 FROM partidos_politicos p2
+                                 WHERE p2."numeroEleitoral" = :numero AND UPPER(p2.sigla) != :sigla
+                             )
+                            THEN COALESCE("numeroEleitoral", :numero)
+                            ELSE "numeroEleitoral"
+                        END,
+                        "ideologia" = COALESCE("ideologia", :ideologia),
+                        "lema" = COALESCE("lema", :lema),
+                        "espectroPolitico" = COALESCE("espectroPolitico", :espectro)
+                    WHERE UPPER(sigla) = :sigla;
+                    """
                 ),
                 {
                     "sigla": sigla.upper(),
