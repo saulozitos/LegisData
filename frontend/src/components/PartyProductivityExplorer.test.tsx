@@ -404,6 +404,8 @@ describe("PartyProductivityExplorer Component", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Entenda: Média IPPM Geral" }));
 
     const dialogo = await screen.findByRole("dialog");
+    // Fora do cartão (portal em document.body): contêineres com blur/overflow cortariam um diálogo `fixed`
+    expect(dialogo.parentElement?.parentElement).toBe(document.body);
     expect(dialogo).toHaveTextContent("O que significa");
     expect(dialogo).toHaveTextContent("Como é calculado");
     expect(dialogo).toHaveTextContent("cadeiras-dia");
