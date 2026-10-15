@@ -7,7 +7,6 @@ def test_execute_cron_pipeline():
     with (
         patch("etl.pipelines.cron_daily_consolidation.SessionLocal") as mock_session_cls,
         patch("etl.pipelines.cron_daily_consolidation.sync_mandate_history", return_value=10),
-        patch("etl.pipelines.cron_daily_consolidation.sync_proposition_authors", return_value=50),
         patch(
             "etl.pipelines.cron_daily_consolidation.calculate_party_ippm_ranking", return_value={"ranking": [1, 2, 3]}
         ),
@@ -19,6 +18,7 @@ def test_execute_cron_pipeline():
 
         mock_db = MagicMock()
         mock_session_cls.return_value = mock_db
+        mock_db.execute.return_value.scalar.return_value = 50
 
         result = execute_cron_pipeline()
 

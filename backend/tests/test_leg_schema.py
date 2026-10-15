@@ -514,3 +514,22 @@ def test_government_orientation_applies_to_the_party_of_the_sitting_president(cl
     ranking = {r["sigla"]: r for r in client.get("/api/v1/parties/ippm-ranking?ano=2023").json()["ranking"]}
     assert ranking["PL"]["pilares"]["fidelidade_partidaria_pct"] == 0.0  # Bia (PL) se absteve contra SIM do Governo
     assert ranking["PT"]["pilares"]["fidelidade_partidaria_pct"] == 100.0  # PT segue a própria orientação (SIM)
+
+
+def test_modelos_migrados_coincidem_com_o_banco(db):
+    """Guarda: toda coluna mapeada em um modelo MigratedBase existe na tabela criada pelas migrações."""
+    from app.models.base import MigratedBase
+    from sqlalchemy import text
+
+    faltando = []
+    for tabela in MigratedBase.metadata.tables.values():
+        existentes = {
+            r[0]
+            for r in db.execute(
+                text("SELECT column_name FROM information_schema.columns WHERE table_schema = :s AND table_name = :t"),
+                {"s": tabela.schema, "t": tabela.name},
+            )
+        }
+        assert existentes, f"tabela {tabela.fullname} não existe no banco"
+        faltando += [f"{tabela.fullname}.{c.name}" for c in tabela.columns if c.name not in existentes]
+    assert faltando == []

@@ -10,27 +10,20 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.core.config import PROCESSED_DATA_DIR
 from app.core.database import get_db
 from app.models import (
+    Casa,
     CasaLegislativaEnum,
     Mandate,
-    ParliamentaryVote,
-    PartyAffiliation,
-    PoliticalParty,
-    Politician,
-    Proposition,
-    PropositionAuthor,
-    StatusTramitacaoEnum,
-    TipoAutoriaEnum,
-    TipoProposicaoEnum,
-    VotingSession,
     VotoOpcaoEnum,
 )
+from app.models.core import Mandato, Partido, Pessoa, PessoaNome
+from app.models.leg import Autoria, Proposicao, Votacao, Voto
 from app.services.ialp_pesos import carregar_pesos_ialp
 from app.services.legislative_scoring import (
     build_coauthorship_network,
     get_politician_ialp_metrics,
 )
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import and_, case, desc, exists, extract, func, literal, or_
+from sqlalchemy import and_, bindparam, desc, exists, extract, func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -59,13 +52,13 @@ def _to_brt(dt: datetime) -> datetime:
     return dt.astimezone(BRT) if dt.tzinfo else dt
 
 
-def _official_url(prop: Proposition) -> Optional[str]:
-    if prop.official_url:
-        return prop.official_url
-    if prop.external_camara_id:
-        return f"https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao={prop.external_camara_id}"
-    if prop.external_senado_id:
-        return f"https://www25.senado.leg.br/web/atividade/materias/-/materia/{prop.external_senado_id}"
+def _official_url(prop: Proposicao) -> Optional[str]:
+    if prop.url_oficial:
+        return prop.url_oficial
+    if prop.id_camara:
+        return f"https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao={prop.id_camara}"
+    if prop.id_senado:
+        return f"https://www25.senado.leg.br/web/atividade/materias/-/materia/{prop.id_senado}"
     return None
 
 
@@ -99,22 +92,56 @@ def _placar_from_counts(counts: Dict[VotoOpcaoEnum, int]) -> Dict[str, int]:
     }
 
 
-def _session_tallies(db: Session, *conditions) -> Dict[uuid.UUID, Dict[str, int]]:
-    """Contagem de votos por sessão em UMA consulta (evita N+1)."""
+# Votações que a API trata como "sessões": votação nominal (ou secreta, só com totais) em plenário.
+# Deliberações simbólicas e de comissão têm endpoints próprios (/deliberacoes).
+TIPOS_SESSAO = ("NOMINAL", "SECRETA")
+
+
+def _titulo_votacao(v: Votacao) -> str:
+    return v.titulo_pauta or v.resumo_decisao or v.local_deliberacao or "Votação"
+
+
+def _casa_codigo(v: Votacao) -> Optional[str]:
+    return v.casa.codigo if v.casa else None
+
+
+def _totais_fonte(v: Votacao) -> Tuple[int, int, int, int]:
+    return (
+        v.total_sim_fonte or 0,
+        v.total_nao_fonte or 0,
+        v.total_abstencao_fonte or 0,
+        v.total_obstrucao_fonte or 0,
+    )
+
+
+def _placar_da_fonte(v: Votacao) -> Dict[str, int]:
+    sim, nao, abst, obs = _totais_fonte(v)
+    return {
+        "SIM": sim,
+        "NAO": nao,
+        "ABSTENCAO": abst + obs,
+        "TOTAL": sim + nao + abst + obs,
+        "OBSTRUCAO": obs,
+        "AUSENTE": 0,
+    }
+
+
+def _session_tallies(db: Session, *conditions) -> Dict[int, Dict[str, int]]:
+    """Contagem de votos por votação em UMA consulta (evita N+1)."""
     rows = (
-        db.query(ParliamentaryVote.voting_session_id, ParliamentaryVote.vote_choice, func.count(ParliamentaryVote.id))
-        .join(VotingSession, ParliamentaryVote.voting_session_id == VotingSession.id)
+        db.query(Voto.votacao_id, Voto.opcao_codigo, func.count())
+        .join(Votacao, Voto.votacao_id == Votacao.id)
         .filter(*conditions)
-        .group_by(ParliamentaryVote.voting_session_id, ParliamentaryVote.vote_choice)
+        .group_by(Voto.votacao_id, Voto.opcao_codigo)
         .all()
     )
-    grouped: Dict[uuid.UUID, Dict[VotoOpcaoEnum, int]] = defaultdict(dict)
-    for sid, choice, qty in rows:
-        grouped[sid][choice] = qty
-    return {sid: _placar_from_counts(c) for sid, c in grouped.items()}
+    grouped: Dict[int, Dict[VotoOpcaoEnum, int]] = defaultdict(dict)
+    for votacao_id, opcao, qty in rows:
+        grouped[votacao_id][VotoOpcaoEnum(opcao)] = qty
+    return {vid: _placar_from_counts(c) for vid, c in grouped.items()}
 
 
-def _build_house_placar(sessions: List[VotingSession], tallies: Dict[uuid.UUID, Dict[str, int]]) -> tuple:
+def _build_house_placar(sessions: List[Votacao], tallies: Dict[int, Dict[str, int]]) -> tuple:
     """
     Devolve (placar_principal, sessao_principal, detalhes_de_todas_as_sessoes).
     A sessão principal é a de maior quórum nominal (desempate: aprovada, depois a mais recente), e não
@@ -123,90 +150,78 @@ def _build_house_placar(sessions: List[VotingSession], tallies: Dict[uuid.UUID, 
     if not sessions:
         return dict(EMPTY_PLACAR), None, []
 
-    def total_of(s: VotingSession) -> int:
+    def total_of(s: Votacao) -> int:
         t = tallies.get(s.id)
         if t and t.get("TOTAL", 0) > 0:
             return t["TOTAL"]
-        return (
-            (s.votes_yes_count or 0)
-            + (s.votes_no_count or 0)
-            + (s.votes_abstain_count or 0)
-            + (s.votes_obstruction_count or 0)
-        )
+        return sum(_totais_fonte(s))
 
-    ordered = sorted(sessions, key=lambda s: (total_of(s), 1 if s.is_approved else 0, s.session_datetime), reverse=True)
+    ordered = sorted(sessions, key=lambda s: (total_of(s), 1 if s.aprovada else 0, s.data_hora), reverse=True)
     details = []
     for s in ordered:
         placar = tallies.get(s.id)
-        if (not placar or placar.get("TOTAL", 0) == 0) and (s.votes_yes_count or s.votes_no_count or s.is_secret_vote):
-            abst = (s.votes_abstain_count or 0) + (s.votes_obstruction_count or 0)
-            placar = {
-                "SIM": s.votes_yes_count or 0,
-                "NAO": s.votes_no_count or 0,
-                "ABSTENCAO": abst,
-                "TOTAL": (s.votes_yes_count or 0) + (s.votes_no_count or 0) + abst,
-                "OBSTRUCAO": s.votes_obstruction_count or 0,
-                "AUSENTE": 0,
-            }
+        sim, nao, _, _ = _totais_fonte(s)
+        if (not placar or placar.get("TOTAL", 0) == 0) and (sim or nao or s.secreta):
+            placar = _placar_da_fonte(s)
         details.append(
             {
-                "sessao_id": str(s.id),
-                "external_id": s.external_id,
-                "data_hora": s.session_datetime.isoformat(),
-                "titulo": s.agenda_title,
-                "descricao": s.detailed_description or s.agenda_title,
-                "aprovada": s.is_approved,
-                "is_votacao_secreta": s.is_secret_vote,
+                "sessao_id": str(s.uid),
+                "external_id": s.id_externo,
+                "data_hora": s.data_hora.isoformat(),
+                "titulo": _titulo_votacao(s),
+                "descricao": s.descricao or _titulo_votacao(s),
+                "aprovada": s.aprovada,
+                "is_votacao_secreta": s.secreta,
                 "placar": placar or dict(EMPTY_PLACAR),
             }
         )
 
     best = ordered[0]
     best_session = {
-        "sessao_id": str(best.id),
-        "data_hora": best.session_datetime.isoformat(),
-        "titulo": best.agenda_title,
-        "descricao": best.detailed_description or best.agenda_title,
-        "aprovada": best.is_approved,
-        "is_votacao_secreta": best.is_secret_vote,
+        "sessao_id": str(best.uid),
+        "data_hora": best.data_hora.isoformat(),
+        "titulo": _titulo_votacao(best),
+        "descricao": best.descricao or _titulo_votacao(best),
+        "aprovada": best.aprovada,
+        "is_votacao_secreta": best.secreta,
     }
     return details[0]["placar"], best_session, details
 
 
-def _mandate_context(
-    db: Session, politician_ids: List[uuid.UUID], ref_date: Optional[date] = None
-) -> Dict[uuid.UUID, Tuple[str, str]]:
+_MANDATO_CONTEXTO_SQL = text(
     """
-    (UF, cargo) por político. Escolhe o mandato vigente na data de referência; sem ele, o mais recente.
-    Não existe valor padrão inventado: político sem mandato simplesmente não aparece no mapa.
+    SELECT m.pessoa_id, coalesce(ci.uf, 'BR') AS uf, c.codigo AS cargo, m.inicio, m.fim
+    FROM core.mandato m
+    JOIN ref.cargo c ON c.id = m.cargo_id
+    JOIN ref.circunscricao ci ON ci.id = m.circunscricao_id
+    WHERE m.pessoa_id = ANY(:ids) AND m.condicao <> 'NOMEADO'
+    ORDER BY m.inicio DESC
     """
-    if not politician_ids:
+)
+
+
+def _mandate_context(db: Session, pessoa_ids: List[int], ref_date: Optional[date] = None) -> Dict[int, Tuple[str, str]]:
+    """
+    (UF, cargo) por pessoa. Escolhe o mandato vigente na data de referência; sem ele, o mais recente.
+    Não existe valor padrão inventado: pessoa sem mandato simplesmente não aparece no mapa.
+    """
+    if not pessoa_ids:
         return {}
-    rows = (
-        db.query(
-            Mandate.politician_id, Mandate.jurisdiction_state, Mandate.office, Mandate.start_date, Mandate.end_date
-        )
-        .filter(Mandate.politician_id.in_(politician_ids))
-        .order_by(Mandate.start_date.desc())
-        .all()
-    )
-    result: Dict[uuid.UUID, Tuple[str, str]] = {}
+    result: Dict[int, Tuple[str, str]] = {}
     covering: set = set()
-    for pid, uf, office, start, end in rows:
-        is_covering = bool(
-            ref_date and start and start <= ref_date and (end is None or end >= ref_date)  # mandato na data
-        )
+    for pid, uf, cargo, start, end in db.execute(_MANDATO_CONTEXTO_SQL, {"ids": list(pessoa_ids)}):
+        is_covering = bool(ref_date and start and start <= ref_date and (end is None or end >= ref_date))
         if pid not in result or (is_covering and pid not in covering):
-            result[pid] = (uf, office.value)
+            result[pid] = (uf, cargo)
         if is_covering:
             covering.add(pid)
     return result
 
 
-def _resolve_proposition(db: Session, prop_id: str) -> Proposition:
-    """Resolve por UUID ou por ID externo (Câmara/Senado). Número de matéria NÃO identifica: não é único."""
+def _resolve_proposition(db: Session, prop_id: str) -> Proposicao:
+    """Resolve por UUID público ou por ID externo (Câmara/Senado). Número de matéria NÃO identifica: não é único."""
     try:
-        prop = db.query(Proposition).filter(Proposition.id == uuid.UUID(prop_id)).first()
+        prop = db.query(Proposicao).filter(Proposicao.uid == uuid.UUID(prop_id)).first()
         if prop:
             return prop
     except ValueError:
@@ -215,9 +230,9 @@ def _resolve_proposition(db: Session, prop_id: str) -> Proposition:
     if prop_id.isdigit():
         num_val = int(prop_id)
         prop = (
-            db.query(Proposition)
-            .filter(or_(Proposition.external_camara_id == num_val, Proposition.external_senado_id == num_val))
-            .order_by(Proposition.external_camara_id.is_(None), Proposition.presentation_date.desc())
+            db.query(Proposicao)
+            .filter(or_(Proposicao.id_camara == num_val, Proposicao.id_senado == num_val))
+            .order_by(Proposicao.id_camara.is_(None), Proposicao.data_apresentacao.desc())
             .first()
         )
         if prop:
@@ -247,6 +262,13 @@ def _parse_enum(enum_cls, value: Optional[str], label: str):
         raise HTTPException(status_code=422, detail=f"{label} inválido '{value}'. Valores aceitos: {valid}.")
 
 
+def _sessoes_da_casa(query, casa: Optional[CasaLegislativaEnum]):
+    query = query.filter(Votacao.tipo_deliberacao.in_(TIPOS_SESSAO))
+    if casa:
+        query = query.join(Casa, Casa.id == Votacao.casa_id).filter(Casa.codigo == casa.value)
+    return query
+
+
 @router.get("/propositions", response_model=List[Dict[str, Any]])
 def get_propositions_with_voting(
     response: Response,
@@ -259,14 +281,14 @@ def get_propositions_with_voting(
     autor oficial da matéria e status de aprovação discriminados por Câmara dos Deputados e Senado Federal.
     O total de registros é informado no header X-Total-Count.
     """
-    sessions_by_prop: Dict[uuid.UUID, List[VotingSession]] = defaultdict(list)
-    tallies: Dict[uuid.UUID, Dict[str, int]] = {}
+    sessions_by_prop: Dict[int, List[Votacao]] = defaultdict(list)
+    tallies: Dict[int, Dict[str, int]] = {}
     try:
-        total = db.query(func.count(Proposition.id)).scalar() or 0
-        has_session = exists().where(VotingSession.proposition_id == Proposition.id)
+        total = db.query(func.count(Proposicao.id)).scalar() or 0
+        has_session = exists().where(Votacao.proposicao_id == Proposicao.id, Votacao.tipo_deliberacao.in_(TIPOS_SESSAO))
         props = (
-            db.query(Proposition)
-            .order_by(has_session.desc(), Proposition.presentation_date.desc(), Proposition.id)
+            db.query(Proposicao)
+            .order_by(has_session.desc(), Proposicao.data_apresentacao.desc(), Proposicao.id)
             .offset(offset)
             .limit(limit)
             .all()
@@ -275,9 +297,11 @@ def get_propositions_with_voting(
         )
         if props:
             prop_ids = [p.id for p in props]
-            for s in db.query(VotingSession).filter(VotingSession.proposition_id.in_(prop_ids)).all():
-                sessions_by_prop[s.proposition_id].append(s)
-            tallies = _session_tallies(db, VotingSession.proposition_id.in_(prop_ids))
+            for s in _sessoes_da_casa(db.query(Votacao), None).filter(Votacao.proposicao_id.in_(prop_ids)).all():
+                sessions_by_prop[s.proposicao_id].append(s)
+            tallies = _session_tallies(
+                db, Votacao.proposicao_id.in_(prop_ids), Votacao.tipo_deliberacao.in_(TIPOS_SESSAO)
+            )
     except SQLAlchemyError as e:
         logger.error("Falha ao consultar proposições no banco: %s", e)
         raise HTTPException(status_code=503, detail="Banco de dados indisponível.")
@@ -287,8 +311,8 @@ def get_propositions_with_voting(
         result = []
         for p in props:
             sessoes = sessions_by_prop.get(p.id, [])
-            sessoes_camara = [s for s in sessoes if s.legislative_house == CasaLegislativaEnum.CAMARA_DOS_DEPUTADOS]
-            sessoes_senado = [s for s in sessoes if s.legislative_house == CasaLegislativaEnum.SENADO_FEDERAL]
+            sessoes_camara = [s for s in sessoes if _casa_codigo(s) == CasaLegislativaEnum.CAMARA_DOS_DEPUTADOS.value]
+            sessoes_senado = [s for s in sessoes if _casa_codigo(s) == CasaLegislativaEnum.SENADO_FEDERAL.value]
 
             placar_camara, sessao_camara, lista_camara = _build_house_placar(sessoes_camara, tallies)
             placar_senado, sessao_senado, lista_senado = _build_house_placar(sessoes_senado, tallies)
@@ -301,25 +325,25 @@ def get_propositions_with_voting(
             else:
                 default_placar, default_sessao = dict(EMPTY_PLACAR), None
 
-            author_display = p.author_name or (
-                "Poder Executivo" if p.is_executive_initiative else "Comissão / Parlamentares"
+            author_display = p.autor_nome or (
+                "Poder Executivo" if p.iniciativa_executivo else "Comissão / Parlamentares"
             )
 
             result.append(
                 {
-                    "id": str(p.id),
-                    "camara_id": p.external_camara_id,
-                    "tipo": p.proposition_type.value,
-                    "numero": p.number,
-                    "ano": p.year,
-                    "titulo": p.title,
-                    "ementa": p.summary,
+                    "id": str(p.uid),
+                    "camara_id": p.id_camara,
+                    "tipo": p.tipo_codigo,
+                    "numero": p.numero,
+                    "ano": p.ano,
+                    "titulo": p.titulo,
+                    "ementa": p.ementa,
                     "autor_nome": author_display,
-                    "area_tematica": p.thematic_area,
-                    "data_apresentacao": p.presentation_date.isoformat(),
-                    "status": p.status.value,
-                    "is_reforma_estrutural": p.is_structural_reform,
-                    "iniciativa_executivo": p.is_executive_initiative,
+                    "area_tematica": p.area_tematica,
+                    "data_apresentacao": p.data_apresentacao.isoformat(),
+                    "status": p.status_codigo,
+                    "is_reforma_estrutural": p.reforma_estrutural,
+                    "iniciativa_executivo": p.iniciativa_executivo,
                     "placar": default_placar,
                     "sessao": default_sessao,
                     "placar_camara": placar_camara,
@@ -419,20 +443,18 @@ def get_proposition_nominal_votes(
     house_enum = _parse_house(house)
     choice_enum = _parse_enum(VotoOpcaoEnum, vote_choice, "Voto")
 
-    sessions_query = db.query(VotingSession).filter(VotingSession.proposition_id == prop.id)
-    if house_enum:
-        sessions_query = sessions_query.filter(VotingSession.legislative_house == house_enum)
-
-    all_house_sessions = sessions_query.order_by(VotingSession.session_datetime.desc()).all()
+    sessions_query = _sessoes_da_casa(db.query(Votacao), house_enum).filter(Votacao.proposicao_id == prop.id)
+    all_house_sessions = sessions_query.order_by(Votacao.data_hora.desc()).all()
+    proposicao_resumo = {
+        "id": str(prop.uid),
+        "titulo": prop.titulo,
+        "numero": prop.numero,
+        "ano": prop.ano,
+        "autor_nome": prop.autor_nome or ("Poder Executivo" if prop.iniciativa_executivo else None),
+    }
     if not all_house_sessions:
         return {
-            "proposicao": {
-                "id": str(prop.id),
-                "titulo": prop.title,
-                "numero": prop.number,
-                "ano": prop.year,
-                "autor_nome": prop.author_name or ("Poder Executivo" if prop.is_executive_initiative else None),
-            },
+            "proposicao": proposicao_resumo,
             "sessoes_disponiveis": [],
             "sessao_ativa": None,
             "total": 0,
@@ -441,12 +463,12 @@ def get_proposition_nominal_votes(
 
     sessoes_disponiveis = [
         {
-            "id": str(s.id),
-            "titulo": s.agenda_title,
-            "data_hora": s.session_datetime.isoformat(),
-            "casa": s.legislative_house.value,
-            "aprovada": s.is_approved,
-            "is_votacao_secreta": s.is_secret_vote,
+            "id": str(s.uid),
+            "titulo": _titulo_votacao(s),
+            "data_hora": s.data_hora.isoformat(),
+            "casa": _casa_codigo(s),
+            "aprovada": s.aprovada,
+            "is_votacao_secreta": s.secreta,
         }
         for s in all_house_sessions
     ]
@@ -457,47 +479,33 @@ def get_proposition_nominal_votes(
             sess_uuid = uuid.UUID(session_id)
         except (ValueError, TypeError):
             raise HTTPException(status_code=422, detail="session_id inválido.")
-        selected_session = next((s for s in all_house_sessions if s.id == sess_uuid), None)
+        selected_session = next((s for s in all_house_sessions if s.uid == sess_uuid), None)
         if not selected_session:
             raise HTTPException(status_code=404, detail="Sessão não pertence a esta proposição/casa.")
 
     if not selected_session:
         # Sessão de maior quórum, calculada em uma única consulta agregada
-        tallies = _session_tallies(db, VotingSession.id.in_([s.id for s in all_house_sessions]))
+        tallies = _session_tallies(db, Votacao.id.in_([s.id for s in all_house_sessions]))
         selected_session = max(
             all_house_sessions,
             key=lambda s: (
-                tallies.get(s.id, EMPTY_PLACAR)["TOTAL"] or ((s.votes_yes_count or 0) + (s.votes_no_count or 0)),
-                s.session_datetime,
+                tallies.get(s.id, EMPTY_PLACAR)["TOTAL"] or (_totais_fonte(s)[0] + _totais_fonte(s)[1]),
+                s.data_hora,
             ),
         )
 
-    if selected_session.is_secret_vote:
-        abst = (selected_session.votes_abstain_count or 0) + (selected_session.votes_obstruction_count or 0)
-        placar_secreto = {
-            "SIM": selected_session.votes_yes_count or 0,
-            "NAO": selected_session.votes_no_count or 0,
-            "ABSTENCAO": abst,
-            "TOTAL": (selected_session.votes_yes_count or 0) + (selected_session.votes_no_count or 0) + abst,
-            "OBSTRUCAO": selected_session.votes_obstruction_count or 0,
-            "AUSENTE": 0,
-        }
+    proposicao_com_area = {**proposicao_resumo, "area_tematica": prop.area_tematica}
+    if selected_session.secreta:
+        placar_secreto = _placar_da_fonte(selected_session)
         return {
-            "proposicao": {
-                "id": str(prop.id),
-                "titulo": prop.title,
-                "numero": prop.number,
-                "ano": prop.year,
-                "autor_nome": prop.author_name or ("Poder Executivo" if prop.is_executive_initiative else None),
-                "area_tematica": prop.thematic_area,
-            },
+            "proposicao": proposicao_com_area,
             "sessao_ativa": {
-                "id": str(selected_session.id),
-                "titulo": selected_session.agenda_title,
-                "descricao": selected_session.detailed_description or selected_session.agenda_title,
-                "data_hora": selected_session.session_datetime.isoformat(),
-                "casa": selected_session.legislative_house.value,
-                "aprovada": selected_session.is_approved,
+                "id": str(selected_session.uid),
+                "titulo": _titulo_votacao(selected_session),
+                "descricao": selected_session.descricao or _titulo_votacao(selected_session),
+                "data_hora": selected_session.data_hora.isoformat(),
+                "casa": _casa_codigo(selected_session),
+                "aprovada": selected_session.aprovada,
                 "is_votacao_secreta": True,
                 "placar": placar_secreto,
             },
@@ -511,70 +519,63 @@ def get_proposition_nominal_votes(
             "votos": [],
         }
 
+    nome_civil = (
+        select(PessoaNome.nome)
+        .where(PessoaNome.pessoa_id == Pessoa.id, PessoaNome.tipo == "CIVIL")
+        .limit(1)
+        .scalar_subquery()
+    )
     votes_query = (
-        db.query(ParliamentaryVote, Politician, PoliticalParty, VotingSession)
-        .join(Politician, ParliamentaryVote.politician_id == Politician.id)
-        .outerjoin(PoliticalParty, ParliamentaryVote.party_id == PoliticalParty.id)
-        .join(VotingSession, ParliamentaryVote.voting_session_id == VotingSession.id)
-        .filter(ParliamentaryVote.voting_session_id == selected_session.id)
+        db.query(Voto, Pessoa, Partido, nome_civil)
+        .join(Pessoa, Voto.pessoa_id == Pessoa.id)
+        .outerjoin(Partido, Voto.partido_id == Partido.id)
+        .filter(Voto.votacao_id == selected_session.id)
     )
 
     if choice_enum:
-        votes_query = votes_query.filter(ParliamentaryVote.vote_choice == choice_enum)
+        votes_query = votes_query.filter(Voto.opcao_codigo == choice_enum.value)
 
     if search and search.strip():
-        votes_query = votes_query.filter(
-            or_(_contains(Politician.electoral_name, search), _contains(PoliticalParty.acronym, search))
-        )
+        votes_query = votes_query.filter(or_(_contains(Pessoa.nome_exibicao, search), _contains(Partido.sigla, search)))
 
     total_matching = votes_query.count()
-    raw_results = votes_query.order_by(Politician.electoral_name.asc(), Politician.id).limit(MAX_NOMINAL_VOTES).all()
+    raw_results = votes_query.order_by(Pessoa.nome_exibicao.asc(), Pessoa.id).limit(MAX_NOMINAL_VOTES).all()
 
-    session_date = _to_brt(selected_session.session_datetime).date()
-    context = _mandate_context(db, [p.id for _, p, _, _ in raw_results], session_date)
-    fallback_cargo = (
-        "DEPUTADO_FEDERAL"
-        if selected_session.legislative_house == CasaLegislativaEnum.CAMARA_DOS_DEPUTADOS
-        else "SENADOR"
-    )
+    session_date = _to_brt(selected_session.data_hora).date()
+    context = _mandate_context(db, [pessoa.id for _, pessoa, _, _ in raw_results], session_date)
+    casa_sessao = _casa_codigo(selected_session)
+    fallback_cargo = "DEPUTADO_FEDERAL" if casa_sessao == CasaLegislativaEnum.CAMARA_DOS_DEPUTADOS.value else "SENADOR"
 
     items = []
-    for vote, pol, party, sess in raw_results:
-        uf, cargo = context.get(pol.id, (None, fallback_cargo))
+    for vote, pessoa, partido, civil in raw_results:
+        uf, cargo = context.get(pessoa.id, (None, fallback_cargo))
         items.append(
             {
-                "voto_id": str(vote.id),
-                "politico_id": str(pol.id),
-                "nome_eleitoral": pol.electoral_name,
-                "nome_civil": pol.civil_name,
-                "partido_sigla": party.acronym if party else "S.PART.",
+                "voto_id": f"{selected_session.uid}:{pessoa.uid}",
+                "politico_id": str(pessoa.uid),
+                "nome_eleitoral": pessoa.nome_exibicao,
+                "nome_civil": civil or pessoa.nome_exibicao,
+                "partido_sigla": partido.sigla if partido else "S.PART.",
                 "uf": uf,
                 "cargo": cargo,
-                "foto_url": pol.photo_url,
-                "decisao": vote.vote_choice.value,
-                "sessao_id": str(sess.id),
-                "sessao_titulo": sess.agenda_title,
-                "casa_legislativa": sess.legislative_house.value,
-                "data_sessao": sess.session_datetime.isoformat(),
+                "foto_url": pessoa.foto_url,
+                "decisao": vote.opcao_codigo,
+                "sessao_id": str(selected_session.uid),
+                "sessao_titulo": _titulo_votacao(selected_session),
+                "casa_legislativa": casa_sessao,
+                "data_sessao": selected_session.data_hora.isoformat(),
             }
         )
 
     return {
-        "proposicao": {
-            "id": str(prop.id),
-            "titulo": prop.title,
-            "numero": prop.number,
-            "ano": prop.year,
-            "autor_nome": prop.author_name or ("Poder Executivo" if prop.is_executive_initiative else None),
-            "area_tematica": prop.thematic_area,
-        },
+        "proposicao": proposicao_com_area,
         "sessao_ativa": {
-            "id": str(selected_session.id),
-            "titulo": selected_session.agenda_title,
-            "descricao": selected_session.detailed_description or selected_session.agenda_title,
-            "data_hora": selected_session.session_datetime.isoformat(),
-            "casa": selected_session.legislative_house.value,
-            "aprovada": selected_session.is_approved,
+            "id": str(selected_session.uid),
+            "titulo": _titulo_votacao(selected_session),
+            "descricao": selected_session.descricao or _titulo_votacao(selected_session),
+            "data_hora": selected_session.data_hora.isoformat(),
+            "casa": casa_sessao,
+            "aprovada": selected_session.aprovada,
         },
         "sessoes_disponiveis": sessoes_disponiveis,
         "total": len(items),
@@ -582,6 +583,46 @@ def get_proposition_nominal_votes(
         "truncado": total_matching > len(items),
         "votos": items,
     }
+
+
+_STATUS_LEI = ("APROVADA_E_SANCIONADA", "APROVADA_E_PROMULGADA")
+
+_PARTIDO_ATUAL_SQL = """
+    AND (
+        EXISTS (SELECT 1 FROM core.mandato m JOIN core.vw_partido_canonico c ON c.id = m.partido_id
+                 WHERE m.pessoa_id = v.pessoa_id AND (m.fim IS NULL OR m.fim >= current_date)
+                   AND c.canonico_sigla_normalizada = ref.normalizar_texto(:partido))
+        OR EXISTS (SELECT 1 FROM core.filiacao f JOIN core.vw_partido_canonico c ON c.id = f.partido_id
+                    WHERE f.pessoa_id = v.pessoa_id AND upper_inf(f.periodo)
+                      AND c.canonico_sigla_normalizada = ref.normalizar_texto(:partido))
+        OR EXISTS (SELECT 1 FROM core.mandato m2 JOIN core.mandato_partido mp ON mp.mandato_id = m2.id
+                    JOIN core.vw_partido_canonico c ON c.id = mp.partido_id
+                    WHERE m2.pessoa_id = v.pessoa_id AND mp.periodo @> current_date
+                      AND c.canonico_sigla_normalizada = ref.normalizar_texto(:partido))
+    )
+"""
+
+_AUTORES_DETALHE_SQL = text(
+    """
+    SELECT pe.id, pe.uid, pe.nome_exibicao,
+           (SELECT n.nome FROM core.pessoa_nome n WHERE n.pessoa_id = pe.id AND n.tipo = 'CIVIL' LIMIT 1) AS nome_civil,
+           fm.url_origem AS foto,
+           coalesce(
+               (SELECT cp.canonico_id FROM core.mandato m JOIN core.vw_partido_canonico cp ON cp.id = m.partido_id
+                 WHERE m.pessoa_id = pe.id ORDER BY m.inicio DESC LIMIT 1),
+               (SELECT cp.canonico_id FROM core.filiacao f JOIN core.vw_partido_canonico cp ON cp.id = f.partido_id
+                 WHERE f.pessoa_id = pe.id AND upper_inf(f.periodo) LIMIT 1)) AS partido_id,
+           mand.uf, mand.cargo
+    FROM core.pessoa pe
+    LEFT JOIN core.midia fm ON fm.id = pe.foto_midia_id
+    LEFT JOIN LATERAL (
+        SELECT coalesce(ci.uf, 'BR') AS uf, c.codigo AS cargo
+        FROM core.mandato m JOIN ref.cargo c ON c.id = m.cargo_id JOIN ref.circunscricao ci ON ci.id = m.circunscricao_id
+        WHERE m.pessoa_id = pe.id AND m.condicao <> 'NOMEADO' ORDER BY m.inicio DESC LIMIT 1
+    ) mand ON true
+    WHERE pe.id = ANY(:ids)
+    """
+)
 
 
 @router.get("/ranking/authors")
@@ -596,218 +637,58 @@ def get_authors_productivity_ranking(
     db: Session = Depends(get_db),
 ):
     """
-    Retorna o ranking de produtividade parlamentar com metodologia ponderada de 4 pilares:
-    - Ponderação por Papel: Autor Principal (1.0x) vs Coautor (0.2x) vs Produção Institucional (isolada).
-    - Complexidade: Alta (PEC, peso 3.0), Média (PL/PLP/MPV, peso 2.0), Baixa (PDL/Resoluções, peso 1.0).
-    - Tramitação: Sucesso legislativo (leis aprovadas/promulgadas +6 pts, avanço em votação 1.5x).
-    - Critérios de ordenação: 'efetividade' (Score Ponderado), 'lideranca' (Autores Principais), 'coautoria' (Apoio Político), 'volume' (Total Bruto).
+    Retorna o ranking de produtividade parlamentar. O score é a soma do IALP (metodologia única em param.peso):
+    tipo da proposição x papel do autor x andamento da tramitação.
+    - Critérios de ordenação: 'efetividade' (Score IALP), 'lideranca' (Autores Principais), 'coautoria' (Apoio Político),
+      'volume' (Total Bruto).
     """
     crit_clean = criterio.lower().strip()
     valid_criterios = ("efetividade", "volume", "lideranca", "coautoria")
     if crit_clean not in valid_criterios:
         raise HTTPException(status_code=422, detail=f"Critério inválido. Use um de: {', '.join(valid_criterios)}.")
 
-    has_authors_detail = (db.query(func.count(PropositionAuthor.id)).scalar() or 0) > 0
-
-    if has_authors_detail:
-        query = db.query(
-            PropositionAuthor.politician_id.label("author_id"),
-            func.count(Proposition.id).label("total_props"),
-            func.sum(case((PropositionAuthor.authorship_type == TipoAutoriaEnum.AUTOR_PRINCIPAL, 1), else_=0)).label(
-                "lideranca"
-            ),
-            func.sum(case((PropositionAuthor.authorship_type == TipoAutoriaEnum.COAUTOR, 1), else_=0)).label(
-                "coautoria"
-            ),
-            func.sum(
-                case(
-                    (
-                        Proposition.status.in_(
-                            [
-                                StatusTramitacaoEnum.APROVADA_E_SANCIONADA,
-                                StatusTramitacaoEnum.APROVADA_E_PROMULGADA,
-                            ]
-                        ),
-                        1,
-                    ),
-                    else_=0,
-                )
-            ).label("aprovadas"),
-            func.sum(
-                case(
-                    (Proposition.is_structural_reform.is_(True), 1),
-                    (
-                        Proposition.proposition_type.in_([TipoProposicaoEnum.PEC, TipoProposicaoEnum.PLP]),
-                        1,
-                    ),
-                    else_=0,
-                )
-            ).label("estruturantes"),
-            func.sum(
-                case(
-                    (
-                        and_(
-                            PropositionAuthor.authorship_type == TipoAutoriaEnum.AUTOR_PRINCIPAL,
-                            Proposition.proposition_type == TipoProposicaoEnum.PEC,
-                        ),
-                        1,
-                    ),
-                    else_=0,
-                )
-            ).label("pec_lider"),
-            func.sum(
-                case(
-                    (
-                        and_(
-                            PropositionAuthor.authorship_type == TipoAutoriaEnum.COAUTOR,
-                            Proposition.proposition_type == TipoProposicaoEnum.PEC,
-                        ),
-                        1,
-                    ),
-                    else_=0,
-                )
-            ).label("pec_coautor"),
-            func.sum(
-                case(
-                    (
-                        and_(
-                            PropositionAuthor.authorship_type == TipoAutoriaEnum.AUTOR_PRINCIPAL,
-                            Proposition.proposition_type.in_(
-                                [TipoProposicaoEnum.PL, TipoProposicaoEnum.PLP, TipoProposicaoEnum.MPV]
-                            ),
-                        ),
-                        1,
-                    ),
-                    else_=0,
-                )
-            ).label("pl_lider"),
-            func.sum(
-                case(
-                    (
-                        and_(
-                            PropositionAuthor.authorship_type == TipoAutoriaEnum.COAUTOR,
-                            Proposition.proposition_type.in_(
-                                [TipoProposicaoEnum.PL, TipoProposicaoEnum.PLP, TipoProposicaoEnum.MPV]
-                            ),
-                        ),
-                        1,
-                    ),
-                    else_=0,
-                )
-            ).label("pl_coautor"),
-        ).join(Proposition, PropositionAuthor.proposition_id == Proposition.id)
-        query = query.filter(
-            PropositionAuthor.politician_id.isnot(None),
-            PropositionAuthor.authorship_type != TipoAutoriaEnum.INSTITUCIONAL,
-        )
-        filter_author_col = PropositionAuthor.politician_id
-    else:
-        query = db.query(
-            Proposition.author_politician_id.label("author_id"),
-            func.count(Proposition.id).label("total_props"),
-            func.count(Proposition.id).label("lideranca"),
-            literal(0).label("coautoria"),
-            func.sum(
-                case(
-                    (
-                        Proposition.status.in_(
-                            [
-                                StatusTramitacaoEnum.APROVADA_E_SANCIONADA,
-                                StatusTramitacaoEnum.APROVADA_E_PROMULGADA,
-                            ]
-                        ),
-                        1,
-                    ),
-                    else_=0,
-                )
-            ).label("aprovadas"),
-            func.sum(
-                case(
-                    (Proposition.is_structural_reform.is_(True), 1),
-                    (
-                        Proposition.proposition_type.in_([TipoProposicaoEnum.PEC, TipoProposicaoEnum.PLP]),
-                        1,
-                    ),
-                    else_=0,
-                )
-            ).label("estruturantes"),
-            func.sum(case((Proposition.proposition_type == TipoProposicaoEnum.PEC, 1), else_=0)).label("pec_lider"),
-            literal(0).label("pec_coautor"),
-            func.sum(
-                case(
-                    (
-                        Proposition.proposition_type.in_(
-                            [TipoProposicaoEnum.PL, TipoProposicaoEnum.PLP, TipoProposicaoEnum.MPV]
-                        ),
-                        1,
-                    ),
-                    else_=0,
-                )
-            ).label("pl_lider"),
-            literal(0).label("pl_coautor"),
-        ).filter(Proposition.author_politician_id.isnot(None))
-        filter_author_col = Proposition.author_politician_id
-
+    params: Dict[str, Any] = {"leis": list(_STATUS_LEI)}
+    filtros = ""
     if not _is_filter_all(setor):
         clean_setor = setor.strip()
         termo_principal = clean_setor.split("&")[0].split("/")[0].strip()
-        conditions = [_contains(Proposition.thematic_area, clean_setor)]
-        if termo_principal and termo_principal != clean_setor:
-            conditions.append(_contains(Proposition.thematic_area, termo_principal))
-        query = query.filter(or_(*conditions))
-
+        termos = [clean_setor] + ([termo_principal] if termo_principal and termo_principal != clean_setor else [])
+        condicoes = []
+        for i, termo in enumerate(termos):
+            params[f"setor{i}"] = f"%{_escape_like(termo)}%"
+            condicoes.append(f"p.area_tematica ILIKE :setor{i} ESCAPE '\\'")
+        filtros += " AND (" + " OR ".join(condicoes) + ")"
     if not _is_filter_all(partido):
-        clean_partido = partido.strip().upper()
-        matching_party_ids = db.query(PoliticalParty.id).filter(func.upper(PoliticalParty.acronym) == clean_partido)
-        pols_mandate = db.query(Mandate.politician_id).filter(
-            Mandate.party_id.in_(matching_party_ids), _current_mandate_clause()
-        )
-        pols_aff = db.query(PartyAffiliation.politician_id).filter(
-            PartyAffiliation.party_id.in_(matching_party_ids), PartyAffiliation.is_current.is_(True)
-        )
-        query = query.filter(
-            or_(
-                filter_author_col.in_(pols_mandate),
-                filter_author_col.in_(pols_aff),
-            )
-        )
+        params["partido"] = partido.strip()
+        filtros += _PARTIDO_ATUAL_SQL
 
-    all_authors = query.group_by(filter_author_col).all()
-
+    agregado = text(
+        f"""
+        SELECT v.pessoa_id AS author_id,
+               count(*) AS total_props,
+               count(*) FILTER (WHERE v.tipo_autoria = 'AUTOR_PRINCIPAL') AS lideranca,
+               count(*) FILTER (WHERE v.tipo_autoria = 'COAUTOR') AS coautoria,
+               count(*) FILTER (WHERE v.status_codigo IN :leis) AS aprovadas,
+               count(*) FILTER (WHERE p.reforma_estrutural OR v.tipo_proposicao IN ('PEC', 'PLP')) AS estruturantes,
+               round(sum(v.pontos_ialp)::numeric, 1) AS score
+        FROM leg.vw_autoria_pontuada v
+        JOIN leg.proposicao p ON p.id = v.proposicao_id
+        WHERE v.pessoa_id IS NOT NULL {filtros}
+        GROUP BY v.pessoa_id
+        """
+    ).bindparams(bindparam("leis", expanding=True))
+    all_authors = db.execute(agregado, params).mappings().all()
     if not all_authors:
         return []
 
-    # Calcular Score Ponderado para cada parlamentar
     scored_authors = []
     for row in all_authors:
-        aid = row.author_id
-        total_val = int(row.total_props or 0)
-        lider_val = int(row.lideranca or 0)
-        coaut_val = int(row.coautoria or 0)
-        apr_val = int(row.aprovadas or 0)
-        est_val = int(row.estruturantes or 0)
-        pec_lid = int(row.pec_lider or 0)
-        pec_coa = int(row.pec_coautor or 0)
-        pl_lid = int(row.pl_lider or 0)
-        pl_coa = int(row.pl_coautor or 0)
-
-        outros_lid = max(0, lider_val - pec_lid - pl_lid)
-        outros_coa = max(0, coaut_val - pec_coa - pl_coa)
-
-        if has_authors_detail:
-            # Fórmula de Atividade Ponderada:
-            # Liderança (Autor Principal): PEC (+3.0 pts), PL/PLP (+2.0 pts), Outros (+1.0 pt), Leis Aprovadas (+6.0 pts)
-            # Apoio Político (Coautor): PEC (+0.6 pt), PL/PLP (+0.4 pt), Outros (+0.2 pt)
-            pts_lider = (pec_lid * 3.0) + (pl_lid * 2.0) + (outros_lid * 1.0) + (apr_val * 6.0)
-            pts_coaut = (pec_coa * 0.6) + (pl_coa * 0.4) + (outros_coa * 0.2)
-            score = round(pts_lider + pts_coaut, 1)
-        else:
-            # Compatibilidade com fórmula IPLE padrão caso a tabela detalhada esteja ausente
-            score = min(
-                100.0,
-                round((apr_val * 15.0) + (est_val * 4.0) + (min(total_val, 50) * 0.6), 1),
-            )
-
+        total_val = int(row["total_props"] or 0)
+        lider_val = int(row["lideranca"] or 0)
+        coaut_val = int(row["coautoria"] or 0)
+        apr_val = int(row["aprovadas"] or 0)
+        est_val = int(row["estruturantes"] or 0)
+        score = float(row["score"] or 0)
         taxa_eficiencia = round((apr_val / max(lider_val, 1)) * 100, 1) if lider_val > 0 else 0.0
 
         if apr_val >= 2:
@@ -825,7 +706,7 @@ def get_authors_productivity_ranking(
 
         scored_authors.append(
             {
-                "author_id": aid,
+                "author_id": row["author_id"],
                 "total_props": total_val,
                 "autoria_principal_count": lider_val,
                 "coautoria_count": coaut_val,
@@ -839,15 +720,14 @@ def get_authors_productivity_ranking(
 
     # Ordenação por critério (desempate determinístico pelo ID do autor)
     if crit_clean == "volume":
-        scored_authors.sort(key=lambda x: (x["total_props"], x["score"], str(x["author_id"])), reverse=True)
+        scored_authors.sort(key=lambda x: (x["total_props"], x["score"], x["author_id"]), reverse=True)
     elif crit_clean == "lideranca":
         scored_authors.sort(
-            key=lambda x: (x["autoria_principal_count"], x["score"], x["total_props"], str(x["author_id"])),
-            reverse=True,
+            key=lambda x: (x["autoria_principal_count"], x["score"], x["total_props"], x["author_id"]), reverse=True
         )
     elif crit_clean == "coautoria":
         scored_authors.sort(
-            key=lambda x: (x["coautoria_count"], x["score"], x["total_props"], str(x["author_id"])), reverse=True
+            key=lambda x: (x["coautoria_count"], x["score"], x["total_props"], x["author_id"]), reverse=True
         )
     else:
         scored_authors.sort(
@@ -857,85 +737,47 @@ def get_authors_productivity_ranking(
                 x["autoria_principal_count"],
                 x["estruturantes"],
                 x["total_props"],
-                str(x["author_id"]),
+                x["author_id"],
             ),
             reverse=True,
         )
 
     author_counts = scored_authors[:limit]
-    politician_ids = [a["author_id"] for a in author_counts]
-    politicians = {p.id: p for p in db.query(Politician).filter(Politician.id.in_(politician_ids)).all()}
+    pessoa_ids = [a["author_id"] for a in author_counts]
+    detalhes = {r["id"]: r for r in db.execute(_AUTORES_DETALHE_SQL, {"ids": pessoa_ids}).mappings()}
+    partidos = {
+        r["id"]: r
+        for r in db.execute(
+            text("SELECT id, sigla, espectro_politico FROM core.vw_partido WHERE id = ANY(:ids)"),
+            {"ids": [d["partido_id"] for d in detalhes.values() if d["partido_id"]]},
+        ).mappings()
+    }
 
-    # Mandato mais recente de cada autor
-    mandates = (
-        db.query(Mandate).filter(Mandate.politician_id.in_(politician_ids)).order_by(Mandate.start_date.asc()).all()
-    )
-    mandate_map: Dict[uuid.UUID, Mandate] = {}
-    for m in mandates:  # ordem crescente: o último sobrescreve e fica com o mais recente
-        mandate_map[m.politician_id] = m
-
-    current_affs = (
-        db.query(PartyAffiliation)
-        .filter(
-            PartyAffiliation.politician_id.in_(politician_ids),
-            PartyAffiliation.is_current.is_(True),
-        )
-        .all()
-    )
-    aff_map = {aff.politician_id: aff for aff in current_affs}
-
-    party_ids = list(
-        set(
-            [m.party_id for m in mandate_map.values() if m.party_id]
-            + [a.party_id for a in aff_map.values() if a.party_id]
-        )
-    )
-    parties = {p.id: p for p in db.query(PoliticalParty).filter(PoliticalParty.id.in_(party_ids)).all()}
-
-    if has_authors_detail:
-        sector_rows = (
-            db.query(
-                PropositionAuthor.politician_id,
-                Proposition.thematic_area,
-                func.count(Proposition.id).label("total_setor"),
-            )
-            .join(Proposition, PropositionAuthor.proposition_id == Proposition.id)
-            .filter(PropositionAuthor.politician_id.in_(politician_ids))
-            .group_by(PropositionAuthor.politician_id, Proposition.thematic_area)
-            .order_by(PropositionAuthor.politician_id, desc("total_setor"))
-            .all()
-        )
-    else:
-        sector_rows = (
-            db.query(
-                Proposition.author_politician_id,
-                Proposition.thematic_area,
-                func.count(Proposition.id).label("total_setor"),
-            )
-            .filter(Proposition.author_politician_id.in_(politician_ids))
-            .group_by(Proposition.author_politician_id, Proposition.thematic_area)
-            .order_by(Proposition.author_politician_id, desc("total_setor"))
-            .all()
-        )
-
-    sectors_by_author: Dict[uuid.UUID, List[Tuple[str, int]]] = {}
+    sector_rows = db.execute(
+        text(
+            """
+            SELECT a.pessoa_id, p.area_tematica, count(*) AS total_setor
+            FROM leg.autoria a JOIN leg.proposicao p ON p.id = a.proposicao_id
+            WHERE a.pessoa_id = ANY(:ids) AND a.tipo_codigo <> 'INSTITUCIONAL'
+            GROUP BY a.pessoa_id, p.area_tematica
+            ORDER BY a.pessoa_id, total_setor DESC
+            """
+        ),
+        {"ids": pessoa_ids},
+    ).all()
+    sectors_by_author: Dict[int, List[Tuple[str, int]]] = {}
     for aid, st, cnt in sector_rows:
         sectors_by_author.setdefault(aid, []).append((st or "Geral", cnt))
 
     ranking = []
     for idx, item in enumerate(author_counts, start=1):
-        pol_id = item["author_id"]
-        pol = politicians.get(pol_id)
+        pessoa_id = item["author_id"]
+        pol = detalhes.get(pessoa_id)
         if not pol:
             continue
+        party = partidos.get(pol["partido_id"]) if pol["partido_id"] else None
 
-        mand = mandate_map.get(pol_id)
-        aff = aff_map.get(pol_id)
-        party = parties.get(mand.party_id) if (mand and mand.party_id) else (parties.get(aff.party_id) if aff else None)
-        partido_sigla = party.acronym if party else "S.PART."
-        espectro = party.political_spectrum.value if (party and party.political_spectrum) else None
-
-        author_sectors = sectors_by_author.get(pol_id, [])
+        author_sectors = sectors_by_author.get(pessoa_id, [])
         principal_setor = author_sectors[0][0] if author_sectors else "Geral"
         total_principal = author_sectors[0][1] if author_sectors else item["total_props"]
 
@@ -951,14 +793,14 @@ def get_authors_productivity_ranking(
         ranking.append(
             {
                 "posicao": idx,
-                "politico_id": str(pol.id),
-                "nome_eleitoral": pol.electoral_name,
-                "nome_civil": pol.civil_name,
-                "partido_sigla": partido_sigla,
-                "espectro_politico": espectro,
-                "uf": mand.jurisdiction_state if mand else None,
-                "cargo": mand.office.value if mand else None,
-                "foto_url": pol.photo_url,
+                "politico_id": str(pol["uid"]),
+                "nome_eleitoral": pol["nome_exibicao"],
+                "nome_civil": pol["nome_civil"] or pol["nome_exibicao"],
+                "partido_sigla": party["sigla"] if party else "S.PART.",
+                "espectro_politico": party["espectro_politico"] if party else None,
+                "uf": pol["uf"],
+                "cargo": pol["cargo"],
+                "foto_url": pol["foto"],
                 "total_proposicoes": item["total_props"],
                 "autoria_principal_count": item["autoria_principal_count"],
                 "coautoria_count": item["coautoria_count"],
@@ -1026,16 +868,51 @@ def get_politician_productivity(
     - Top parceiros de coautoria
     - Proposições detalhadas com detalhamento T, A, S e score
     """
-    pol = db.query(Politician).filter(Politician.id == politician_id).first()
-    if not pol:
+    pessoa = db.query(Pessoa).filter(Pessoa.uid == politician_id).first()
+    if not pessoa:
         raise HTTPException(status_code=404, detail="Parlamentar não encontrado.")
     metrics = get_politician_ialp_metrics(politician_id, db)
     return {
         "politician_id": str(politician_id),
-        "nome_eleitoral": pol.electoral_name,
-        "foto_url": pol.photo_url,
+        "nome_eleitoral": pessoa.nome_exibicao,
+        "foto_url": pessoa.foto_url,
         **metrics,
     }
+
+
+def _parse_codigo(db: Session, tabela: str, value: Optional[str], label: str) -> Optional[str]:
+    """Valida um código de referência (tipo de proposição ou status) contra a tabela, sem lista fixa no código."""
+    if _is_filter_all(value):
+        return None
+    codigo = value.strip().upper()
+    validos = [r[0] for r in db.execute(text(f"SELECT codigo FROM {tabela} ORDER BY codigo"))]
+    if codigo not in validos:
+        raise HTTPException(
+            status_code=422, detail=f"{label} inválido '{value}'. Valores aceitos: {', '.join(validos)}."
+        )
+    return codigo
+
+
+_AUTOR_PRINCIPAL_SQL = text(
+    """
+    SELECT p.id AS proposicao_id, pe.uid AS pessoa_uid, pe.nome_exibicao, fm.url_origem AS foto,
+           coalesce(pc.canonico_sigla,
+                    (SELECT cp.canonico_sigla FROM core.mandato m JOIN core.vw_partido_canonico cp ON cp.id = m.partido_id
+                      WHERE m.pessoa_id = pe.id ORDER BY m.inicio DESC LIMIT 1)) AS partido,
+           coalesce(a.uf,
+                    (SELECT ci.uf FROM core.mandato m JOIN ref.circunscricao ci ON ci.id = m.circunscricao_id
+                      WHERE m.pessoa_id = pe.id AND m.condicao <> 'NOMEADO' ORDER BY m.inicio DESC LIMIT 1)) AS uf
+    FROM leg.proposicao p
+    LEFT JOIN LATERAL (
+        SELECT x.pessoa_id, x.partido_id, x.uf FROM leg.autoria x
+        WHERE x.proposicao_id = p.id AND x.tipo_codigo = 'AUTOR_PRINCIPAL' ORDER BY x.ordem LIMIT 1
+    ) a ON true
+    LEFT JOIN core.pessoa pe ON pe.id = coalesce(a.pessoa_id, p.autor_pessoa_id)
+    LEFT JOIN core.midia fm ON fm.id = pe.foto_midia_id
+    LEFT JOIN core.vw_partido_canonico pc ON pc.id = a.partido_id
+    WHERE p.id = ANY(:ids)
+    """
+)
 
 
 @router.get("/explorer")
@@ -1053,77 +930,88 @@ def get_legislative_explorer(
     """
     Retorna a lista geral de proposições com filtros, cruzada com Setor/Tema, Autor e Placar Geral (Sim/Não).
     """
-    tipo_enum = _parse_enum(TipoProposicaoEnum, tipo, "Tipo")
-    status_enum = _parse_enum(StatusTramitacaoEnum, status, "Status")
+    tipo_codigo = _parse_codigo(db, "ref.tipo_proposicao", tipo, "Tipo")
+    status_codigo = _parse_codigo(db, "ref.status_tramitacao", status, "Status")
 
-    query = db.query(Proposition)
+    query = db.query(Proposicao)
 
     if search and search.strip():
         query = query.filter(
             or_(
-                _contains(Proposition.title, search),
-                _contains(Proposition.summary, search),
-                _contains(Proposition.author_name, search),
-                _contains(Proposition.thematic_area, search),
+                _contains(Proposicao.titulo, search),
+                _contains(Proposicao.ementa, search),
+                _contains(Proposicao.autor_nome, search),
+                _contains(Proposicao.area_tematica, search),
             )
         )
 
     if not _is_filter_all(setor):
-        query = query.filter(_contains(Proposition.thematic_area, setor))
+        query = query.filter(_contains(Proposicao.area_tematica, setor))
 
     if not _is_filter_all(partido):
         clean_partido = partido.strip().upper()
         if clean_partido in {"GOV", "GOVERNO", "PODER EXECUTIVO"}:
-            query = query.filter(Proposition.is_executive_initiative.is_(True))
+            query = query.filter(Proposicao.iniciativa_executivo.is_(True))
         elif clean_partido in {"S.PART.", "SEM PARTIDO"}:
             query = query.filter(
                 and_(
-                    Proposition.author_politician_id.is_(None),
-                    Proposition.is_executive_initiative.is_(False),
+                    Proposicao.autor_pessoa_id.is_(None),
+                    Proposicao.iniciativa_executivo.is_(False),
+                    ~exists().where(and_(Autoria.proposicao_id == Proposicao.id, Autoria.partido_id.isnot(None))),
                 )
             )
         else:
-            party_ids = db.query(PoliticalParty.id).filter(func.upper(PoliticalParty.acronym) == clean_partido)
-            pols = db.query(Mandate.politician_id).filter(Mandate.party_id.in_(party_ids))
+            # partido vigente da linhagem: PMDB e MDB, por exemplo, respondem ao mesmo filtro
+            lineage_ids = (
+                select(text("c.id"))
+                .select_from(text("core.vw_partido_canonico c"))
+                .where(
+                    text("c.canonico_sigla_normalizada = ref.normalizar_texto(:sigla)").bindparams(sigla=clean_partido)
+                )
+            )
             query = query.filter(
                 or_(
-                    Proposition.author_politician_id.in_(pols),
                     exists().where(
                         and_(
-                            PropositionAuthor.proposition_id == Proposition.id,
-                            PropositionAuthor.politician_id.in_(pols),
-                            PropositionAuthor.authorship_type == TipoAutoriaEnum.AUTOR_PRINCIPAL,
+                            Autoria.proposicao_id == Proposicao.id,
+                            Autoria.tipo_codigo == "AUTOR_PRINCIPAL",
+                            Autoria.partido_id.in_(lineage_ids),
                         )
                     ),
-                    Proposition.author_name.ilike(f"%({clean_partido}/%"),
-                    Proposition.author_name.ilike(f"%/{clean_partido})%"),
+                    Proposicao.autor_pessoa_id.in_(
+                        select(Mandato.pessoa_id).where(Mandato.partido_id.in_(lineage_ids))
+                    ),
+                    Proposicao.autor_nome.ilike(f"%({clean_partido}/%"),
+                    Proposicao.autor_nome.ilike(f"%/{clean_partido})%"),
                 )
             )
 
-    if tipo_enum:
-        query = query.filter(Proposition.proposition_type == tipo_enum)
+    if tipo_codigo:
+        query = query.filter(Proposicao.tipo_codigo == tipo_codigo)
 
-    if status_enum:
-        query = query.filter(Proposition.status == status_enum)
+    if status_codigo:
+        query = query.filter(Proposicao.status_codigo == status_codigo)
 
     if apenas_votadas:
-        # EXISTS evita a duplicação de linhas de um JOIN com várias sessões por proposição
-        query = query.filter(exists().where(VotingSession.proposition_id == Proposition.id))
+        # EXISTS evita a duplicação de linhas de um JOIN com várias votações por proposição
+        query = query.filter(
+            exists().where(Votacao.proposicao_id == Proposicao.id, Votacao.tipo_deliberacao.in_(TIPOS_SESSAO))
+        )
 
     total_items = query.count()
 
     todos_setores = [
         row[0]
-        for row in db.query(Proposition.thematic_area)
-        .filter(Proposition.thematic_area.isnot(None))
+        for row in db.query(Proposicao.area_tematica)
+        .filter(Proposicao.area_tematica.isnot(None))
         .distinct()
-        .order_by(Proposition.thematic_area.asc())
+        .order_by(Proposicao.area_tematica.asc())
         .all()
     ]
 
     offset = (page - 1) * limit
     proposicoes = (
-        query.order_by(Proposition.presentation_date.desc(), Proposition.number.desc(), Proposition.id)
+        query.order_by(Proposicao.data_apresentacao.desc(), Proposicao.numero.desc(), Proposicao.id)
         .offset(offset)
         .limit(limit)
         .all()
@@ -1131,92 +1019,78 @@ def get_legislative_explorer(
 
     pesos = carregar_pesos_ialp(db)
     prop_ids = [p.id for p in proposicoes]
-    author_ids = [p.author_politician_id for p in proposicoes if p.author_politician_id]
-    politicians = {p.id: p for p in db.query(Politician).filter(Politician.id.in_(author_ids)).all()}
-    mandates = db.query(Mandate).filter(Mandate.politician_id.in_(author_ids)).order_by(Mandate.start_date.asc()).all()
-    mandate_map: Dict[uuid.UUID, Mandate] = {}
-    for m in mandates:
-        mandate_map[m.politician_id] = m
-    party_ids = [m.party_id for m in mandate_map.values() if m.party_id]
-    parties = {p.id: p for p in db.query(PoliticalParty).filter(PoliticalParty.id.in_(party_ids)).all()}
-
-    sessions_by_prop: Dict[uuid.UUID, List[VotingSession]] = defaultdict(list)
-    tallies: Dict[uuid.UUID, Dict[str, int]] = {}
-    delibs_by_prop: Dict[uuid.UUID, List[Any]] = defaultdict(list)
+    sessions_by_prop: Dict[int, List[Votacao]] = defaultdict(list)
+    tallies: Dict[int, Dict[str, int]] = {}
+    delibs_by_prop: Dict[int, List[Votacao]] = defaultdict(list)
+    autores: Dict[int, Any] = {}
     if prop_ids:
-        for s in db.query(VotingSession).filter(VotingSession.proposition_id.in_(prop_ids)).all():
-            sessions_by_prop[s.proposition_id].append(s)
-        tallies = _session_tallies(db, VotingSession.proposition_id.in_(prop_ids))
-
-        from app.models.legislative import VotacaoProposicao
-
-        for vp in (
-            db.query(VotacaoProposicao)
-            .filter(VotacaoProposicao.proposicao_id.in_(prop_ids))
-            .order_by(VotacaoProposicao.data_hora.desc())
-            .all()
-        ):
-            delibs_by_prop[vp.proposicao_id].append(vp)
+        for v in db.query(Votacao).filter(Votacao.proposicao_id.in_(prop_ids)).order_by(Votacao.data_hora.desc()).all():
+            delibs_by_prop[v.proposicao_id].append(v)
+            if v.tipo_deliberacao in TIPOS_SESSAO:
+                sessions_by_prop[v.proposicao_id].append(v)
+        tallies = _session_tallies(db, Votacao.proposicao_id.in_(prop_ids), Votacao.tipo_deliberacao.in_(TIPOS_SESSAO))
+        autores = {r.proposicao_id: r for r in db.execute(_AUTOR_PRINCIPAL_SQL, {"ids": prop_ids})}
 
     items = []
     for p in proposicoes:
         placar, sessao, _ = _build_house_placar(sessions_by_prop.get(p.id, []), tallies)
         tem_votacao = placar["TOTAL"] > 0
 
-        autor_pol = politicians.get(p.author_politician_id) if p.author_politician_id else None
-        autor_mand = mandate_map.get(p.author_politician_id) if p.author_politician_id else None
-        autor_party = parties.get(autor_mand.party_id) if (autor_mand and autor_mand.party_id) else None
-
-        if autor_party:
-            partido_sigla = autor_party.acronym
-        elif p.is_executive_initiative:
+        autor = autores.get(p.id)
+        if autor is not None and autor.partido:
+            partido_sigla = autor.partido
+        elif p.iniciativa_executivo:
             partido_sigla = "GOV"
-        elif p.author_name:
-            m = _PARTY_SIGLA_RE.search(p.author_name)
+        elif p.autor_nome:
+            m = _PARTY_SIGLA_RE.search(p.autor_nome)
             partido_sigla = m.group(1).strip() if m else "S.PART."
         else:
             partido_sigla = "S.PART."
-        autor_display = p.author_name or (
-            autor_pol.electoral_name
-            if autor_pol
-            else ("Poder Executivo" if p.is_executive_initiative else "Parlamentar")
+        autor_display = p.autor_nome or (
+            autor.nome_exibicao
+            if autor is not None and autor.nome_exibicao
+            else ("Poder Executivo" if p.iniciativa_executivo else "Parlamentar")
         )
 
-        peso_comp = pesos.peso_tipo(p.proposition_type)
-        mult_tram = pesos.peso_status(p.status)
+        peso_comp = pesos.peso_tipo(p.tipo_codigo)
+        mult_tram = pesos.peso_status(p.status_codigo)
 
         resultado_str = "EM_TRAMITACAO"
         if sessao:
             resultado_str = "APROVADA" if sessao.get("aprovada") else "REJEITADA"
-        elif p.status.value in ("APROVADA_E_SANCIONADA", "APROVADA_E_PROMULGADA"):
+        elif p.status_codigo in ("APROVADA_E_SANCIONADA", "APROVADA_E_PROMULGADA"):
             resultado_str = "APROVADA"
 
         prop_delibs = delibs_by_prop.get(p.id, [])
-        tipo_delib = prop_delibs[0].tipo_deliberacao if prop_delibs else ("NOMINAL" if tem_votacao else None)
+        tipo_delib = (
+            ("NOMINAL" if prop_delibs[0].tipo_deliberacao == "SECRETA" else prop_delibs[0].tipo_deliberacao)
+            if prop_delibs
+            else ("NOMINAL" if tem_votacao else None)
+        )
         total_delib = len(prop_delibs) or (1 if tem_votacao else 0)
 
         items.append(
             {
-                "id": str(p.id),
+                "id": str(p.uid),
                 "tipo_deliberacao": tipo_delib,
                 "total_deliberacoes": total_delib,
-                "camara_id": p.external_camara_id,
-                "tipo": p.proposition_type.value,
-                "numero": p.number,
-                "ano": p.year,
-                "titulo": p.title,
-                "ementa": p.summary,
-                "setor": p.thematic_area or "Não classificado",
-                "eixo_impacto": p.impact_axis or "Geral",
+                "camara_id": p.id_camara,
+                "tipo": p.tipo_codigo,
+                "numero": p.numero,
+                "ano": p.ano,
+                "titulo": p.titulo,
+                "ementa": p.ementa,
+                "setor": p.area_tematica or "Não classificado",
+                "eixo_impacto": p.eixo_impacto or "Geral",
                 "autor_nome": autor_display,
-                "autor_politico_id": (str(p.author_politician_id) if p.author_politician_id else None),
+                "autor_politico_id": str(autor.pessoa_uid) if autor is not None and autor.pessoa_uid else None,
                 "autor_partido": partido_sigla,
-                "autor_uf": autor_mand.jurisdiction_state if autor_mand else None,
-                "autor_foto": autor_pol.photo_url if autor_pol else None,
-                "status": p.status.value,
-                "data_apresentacao": p.presentation_date.isoformat(),
-                "is_reforma_estrutural": p.is_structural_reform,
-                "iniciativa_executivo": p.is_executive_initiative,
+                "autor_uf": autor.uf if autor is not None else None,
+                "autor_foto": autor.foto if autor is not None else None,
+                "status": p.status_codigo,
+                "data_apresentacao": p.data_apresentacao.isoformat(),
+                "is_reforma_estrutural": p.reforma_estrutural,
+                "iniciativa_executivo": p.iniciativa_executivo,
                 "peso_complexidade": peso_comp,
                 "multiplicador_tramitacao": mult_tram,
                 "score_base": round(peso_comp * mult_tram, 2),
@@ -1254,15 +1128,15 @@ def get_proposition_nominal_votes_split(
     prop = _resolve_proposition(db, prop_id)
 
     prop_info = {
-        "id": str(prop.id),
-        "titulo": prop.title,
-        "numero": prop.number,
-        "ano": prop.year,
-        "ementa": prop.summary,
-        "setor": prop.thematic_area,
-        "autor_nome": prop.author_name or ("Poder Executivo" if prop.is_executive_initiative else None),
-        "status": prop.status.value,
-        "data_apresentacao": prop.presentation_date.isoformat(),
+        "id": str(prop.uid),
+        "titulo": prop.titulo,
+        "numero": prop.numero,
+        "ano": prop.ano,
+        "ementa": prop.ementa,
+        "setor": prop.area_tematica,
+        "autor_nome": prop.autor_nome or ("Poder Executivo" if prop.iniciativa_executivo else None),
+        "status": prop.status_codigo,
+        "data_apresentacao": prop.data_apresentacao.isoformat(),
         "url_oficial": _official_url(prop),
     }
     from app.services.deliberacoes_service import get_proposicao_deliberacoes
@@ -1281,38 +1155,49 @@ def get_proposition_nominal_votes_split(
         "deliberacoes": deliberacoes_list,
     }
 
-    sessions = db.query(VotingSession).filter(VotingSession.proposition_id == prop.id).all()
+    sessions = _sessoes_da_casa(db.query(Votacao), None).filter(Votacao.proposicao_id == prop.id).all()
     if not sessions:
         return empty
 
     # Sessão prioritária: maior quórum nominal (uma consulta agregada, sem N+1)
-    tallies = _session_tallies(db, VotingSession.id.in_([s.id for s in sessions]))
-    selected_session = max(sessions, key=lambda s: (tallies.get(s.id, EMPTY_PLACAR)["TOTAL"], s.session_datetime))
+    tallies = _session_tallies(db, Votacao.id.in_([s.id for s in sessions]))
+    selected_session = max(sessions, key=lambda s: (tallies.get(s.id, EMPTY_PLACAR)["TOTAL"], s.data_hora))
 
+    nome_civil = (
+        select(PessoaNome.nome)
+        .where(PessoaNome.pessoa_id == Pessoa.id, PessoaNome.tipo == "CIVIL")
+        .limit(1)
+        .scalar_subquery()
+    )
     votes_query = (
-        db.query(ParliamentaryVote, Politician, PoliticalParty)
-        .join(Politician, ParliamentaryVote.politician_id == Politician.id)
-        .outerjoin(PoliticalParty, ParliamentaryVote.party_id == PoliticalParty.id)
-        .filter(ParliamentaryVote.voting_session_id == selected_session.id)
+        db.query(Voto, Pessoa, Partido, nome_civil)
+        .join(Pessoa, Voto.pessoa_id == Pessoa.id)
+        .outerjoin(Partido, Voto.partido_id == Partido.id)
+        .filter(Voto.votacao_id == selected_session.id)
     )
 
     if search and search.strip():
         votes_query = votes_query.filter(
             or_(
-                _contains(Politician.electoral_name, search),
-                _contains(Politician.civil_name, search),
-                _contains(PoliticalParty.acronym, search),
+                _contains(Pessoa.nome_exibicao, search),
+                _contains(nome_civil, search),
+                _contains(Partido.sigla, search),
             )
         )
 
-    all_votes = votes_query.order_by(Politician.electoral_name.asc(), Politician.id).all()
+    all_votes = votes_query.order_by(Pessoa.nome_exibicao.asc(), Pessoa.id).all()
 
-    session_date = _to_brt(selected_session.session_datetime).date()
-    context = _mandate_context(db, [p.id for _, p, _ in all_votes], session_date)
-    fallback_cargo = (
-        "DEPUTADO_FEDERAL"
-        if selected_session.legislative_house == CasaLegislativaEnum.CAMARA_DOS_DEPUTADOS
-        else "SENADOR"
+    session_date = _to_brt(selected_session.data_hora).date()
+    context = _mandate_context(db, [pessoa.id for _, pessoa, _, _ in all_votes], session_date)
+    casa_sessao = _casa_codigo(selected_session)
+    fallback_cargo = "DEPUTADO_FEDERAL" if casa_sessao == CasaLegislativaEnum.CAMARA_DOS_DEPUTADOS.value else "SENADOR"
+    espectros = dict(
+        db.execute(
+            text(
+                "SELECT DISTINCT ON (partido_id) partido_id, espectro FROM core.partido_posicao_ideologica "
+                "WHERE escala = 'ESPECTRO_5' ORDER BY partido_id, ano_referencia DESC NULLS LAST, id DESC"
+            )
+        ).all()
     )
 
     votos_sim: List[Dict[str, Any]] = []
@@ -1320,28 +1205,28 @@ def get_proposition_nominal_votes_split(
     votos_abstencao: List[Dict[str, Any]] = []
     votos_obstrucao: List[Dict[str, Any]] = []
     buckets = {
-        VotoOpcaoEnum.SIM: votos_sim,
-        VotoOpcaoEnum.NAO: votos_nao,
-        VotoOpcaoEnum.ABSTENCAO: votos_abstencao,
-        VotoOpcaoEnum.OBSTRUCAO: votos_obstrucao,
+        VotoOpcaoEnum.SIM.value: votos_sim,
+        VotoOpcaoEnum.NAO.value: votos_nao,
+        VotoOpcaoEnum.ABSTENCAO.value: votos_abstencao,
+        VotoOpcaoEnum.OBSTRUCAO.value: votos_obstrucao,
     }
 
-    for vote, pol, party in all_votes:
-        bucket = buckets.get(vote.vote_choice)
+    for vote, pessoa, partido, civil in all_votes:
+        bucket = buckets.get(vote.opcao_codigo)
         if bucket is None:  # AUSENTE / Art. 17 não votaram
             continue
-        uf, cargo = context.get(pol.id, (None, fallback_cargo))
+        uf, cargo = context.get(pessoa.id, (None, fallback_cargo))
         bucket.append(
             {
-                "politico_id": str(pol.id),
-                "nome_eleitoral": pol.electoral_name,
-                "nome_civil": pol.civil_name,
-                "partido_sigla": party.acronym if party else "S.PART.",
-                "espectro_politico": party.political_spectrum.value if (party and party.political_spectrum) else None,
+                "politico_id": str(pessoa.uid),
+                "nome_eleitoral": pessoa.nome_exibicao,
+                "nome_civil": civil or pessoa.nome_exibicao,
+                "partido_sigla": partido.sigla if partido else "S.PART.",
+                "espectro_politico": espectros.get(partido.id) if partido else None,
                 "uf": uf,
                 "cargo": cargo,
-                "foto_url": pol.photo_url,
-                "decisao": vote.vote_choice.value,
+                "foto_url": pessoa.foto_url,
+                "decisao": vote.opcao_codigo,
             }
         )
 
@@ -1349,12 +1234,12 @@ def get_proposition_nominal_votes_split(
     return {
         "proposicao": prop_info,
         "sessao": {
-            "id": str(selected_session.id),
-            "titulo": selected_session.agenda_title,
-            "descricao": selected_session.detailed_description or selected_session.agenda_title,
-            "data_hora": selected_session.session_datetime.isoformat(),
-            "casa_legislativa": selected_session.legislative_house.value,
-            "aprovada": selected_session.is_approved,
+            "id": str(selected_session.uid),
+            "titulo": _titulo_votacao(selected_session),
+            "descricao": selected_session.descricao or _titulo_votacao(selected_session),
+            "data_hora": selected_session.data_hora.isoformat(),
+            "casa_legislativa": casa_sessao,
+            "aprovada": selected_session.aprovada,
             "total_votos": total_votantes,
         },
         "placar": {
@@ -1412,8 +1297,11 @@ def get_voting_calendar(
     3. Detalhes das matérias deliberadas pela Câmara e pelo Senado em cada data, com links oficiais na íntegra.
     Sem o parâmetro `year`, usa o ano mais recente com votações.
     """
-    year_col = extract("year", VotingSession.session_datetime)
-    anos_disponiveis = sorted((int(r[0]) for r in db.query(year_col).distinct().all()), reverse=True)
+    year_col = extract("year", Votacao.data_hora)
+    anos_disponiveis = sorted(
+        (int(r[0]) for r in db.query(year_col).filter(Votacao.tipo_deliberacao.in_(TIPOS_SESSAO)).distinct().all()),
+        reverse=True,
+    )
 
     if not anos_disponiveis:
         ano = year or date.today().year
@@ -1439,20 +1327,24 @@ def get_voting_calendar(
     # Filtro de ano feito no banco (não carrega todas as sessões de todos os anos)
     year_start = datetime(selected_year, 1, 1, tzinfo=BRT)
     year_end = datetime(selected_year + 1, 1, 1, tzinfo=BRT)
-    year_filter = (VotingSession.session_datetime >= year_start, VotingSession.session_datetime < year_end)
+    year_filter = (
+        Votacao.data_hora >= year_start,
+        Votacao.data_hora < year_end,
+        Votacao.tipo_deliberacao.in_(TIPOS_SESSAO),
+    )
 
     sessoes_ano = (
-        db.query(VotingSession, Proposition)
-        .join(Proposition, VotingSession.proposition_id == Proposition.id)
+        db.query(Votacao, Proposicao)
+        .join(Proposicao, Votacao.proposicao_id == Proposicao.id)
         .filter(*year_filter)
-        .order_by(desc(VotingSession.session_datetime), VotingSession.id)
+        .order_by(desc(Votacao.data_hora), Votacao.id)
         .all()
     )
     tallies = _session_tallies(db, *year_filter)
 
     dias_dict: Dict[str, Dict[str, Any]] = {}
     for sess, prop in sessoes_ano:
-        local_dt = _to_brt(sess.session_datetime)
+        local_dt = _to_brt(sess.data_hora)
         dt_str = local_dt.strftime("%Y-%m-%d")
         if dt_str not in dias_dict:
             d_obj = local_dt.date()
@@ -1470,7 +1362,7 @@ def get_voting_calendar(
             }
 
         placar = tallies.get(sess.id, EMPTY_PLACAR)
-        casa_str = sess.legislative_house.value
+        casa_str = _casa_codigo(sess)
         if casa_str == "CAMARA_DOS_DEPUTADOS":
             dias_dict[dt_str]["camara_count"] += 1
         else:
@@ -1479,14 +1371,14 @@ def get_voting_calendar(
 
         dias_dict[dt_str]["sessoes"].append(
             {
-                "sessao_id": str(sess.id),
+                "sessao_id": str(sess.uid),
                 "casa": casa_str,
                 "casa_nome": ("Câmara dos Deputados" if casa_str == "CAMARA_DOS_DEPUTADOS" else "Senado Federal"),
                 "hora": local_dt.strftime("%H:%M"),
-                "titulo": sess.agenda_title,
-                "descricao": sess.detailed_description or sess.agenda_title,
-                "aprovada": sess.is_approved,
-                "is_votacao_secreta": bool(sess.is_secret_vote),
+                "titulo": _titulo_votacao(sess),
+                "descricao": sess.descricao or _titulo_votacao(sess),
+                "aprovada": sess.aprovada,
+                "is_votacao_secreta": bool(sess.secreta),
                 "placar": {
                     "sim": placar["SIM"],
                     "nao": placar["NAO"],
@@ -1494,15 +1386,15 @@ def get_voting_calendar(
                     "total": placar["TOTAL"],
                 },
                 "proposicao": {
-                    "id": str(prop.id),
-                    "titulo": prop.title,
-                    "tipo": prop.proposition_type.value,
-                    "numero": prop.number,
-                    "ano": prop.year,
-                    "ementa": prop.summary,
-                    "setor": prop.thematic_area,
-                    "autor_nome": prop.author_name or ("Poder Executivo" if prop.is_executive_initiative else None),
-                    "status": prop.status.value,
+                    "id": str(prop.uid),
+                    "titulo": prop.titulo,
+                    "tipo": prop.tipo_codigo,
+                    "numero": prop.numero,
+                    "ano": prop.ano,
+                    "ementa": prop.ementa,
+                    "setor": prop.area_tematica,
+                    "autor_nome": prop.autor_nome or ("Poder Executivo" if prop.iniciativa_executivo else None),
+                    "status": prop.status_codigo,
                     "url_oficial": _official_url(prop),
                 },
             }

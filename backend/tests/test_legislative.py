@@ -467,14 +467,17 @@ def test_calculate_proposition_score_ialp_formula(db):
     )
     assert score_pec_sanc == 9.0
 
-    # 2. Coautor (0.2) em PEC (3.0) Tramitando (1.0): 3.0 * 0.2 * 1.0 = 0.6
+    # 2. Assinatura de apoio a PEC (coautor, 0.05) (3.0) Tramitando (1.0): 3.0 * 0.05 * 1.0 = 0.15
     score_pec_coaut = calculate_proposition_score(
         TipoProposicaoEnum.PEC,
         TipoAutoriaEnum.COAUTOR,
         StatusTramitacaoEnum.EM_TRAMITACAO,
         pesos,
     )
-    assert score_pec_coaut == 0.6
+    assert score_pec_coaut == 0.15
+
+    # Coautor em PL mantém o peso geral de coautoria (0.2)
+    assert pesos.peso_autoria(TipoAutoriaEnum.COAUTOR, TipoProposicaoEnum.PL) == 0.2
 
     # 3. Relator (0.8) em PLP (2.5) Aprovado em Plenário (2.0): 2.5 * 0.8 * 2.0 = 4.0
     score_plp_relator = calculate_proposition_score(

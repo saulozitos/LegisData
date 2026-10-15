@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 
 from app.models import CasaLegislativaEnum, ParliamentaryVote, VotingSession, VotoOpcaoEnum
 from app.services.basometro import MIN_VOTACOES_AMOSTRA, calcular_basometro, classificar_governismo
+from app.services.core_sync import sync_legacy_to_core
+from sqlalchemy import text
 
 BASE = "/api/v1/politicians"
 SIM, NAO = VotoOpcaoEnum.SIM, VotoOpcaoEnum.NAO
@@ -22,6 +24,12 @@ def _votar(db, seed, politico, orientacao, voto, indice):
     db.add(sessao)
     db.flush()
     db.add(ParliamentaryVote(voting_session_id=sessao.id, politician_id=politico.id, vote_choice=voto))
+
+
+def _pessoa_id(db, politico):
+    """Id interno em core.pessoa do político legado (a ponte carrega o legado para o schema novo)."""
+    sync_legacy_to_core(db)
+    return db.execute(text("SELECT id FROM core.pessoa WHERE uid = :u"), {"u": politico.id}).scalar()
 
 
 def _popular_fulano(db, seed):
@@ -43,7 +51,7 @@ def _popular_fulano(db, seed):
 
 def test_basometro_counts_only_votes_with_government_orientation(db, seed):
     _popular_fulano(db, seed)
-    baso = calcular_basometro(db, seed.fulano.id, "PT", votos_sim=20, votos_nao=5)
+    baso = calcular_basometro(db, _pessoa_id(db, seed.fulano), "PT", votos_sim=20, votos_nao=5)
     assert (baso["votos_alinhados"], baso["votos_divergentes"]) == (8, 3)
     assert baso["total_votacoes_analisadas"] == 11
     assert baso["taxa_governismo_pct"] == 72.7
@@ -56,14 +64,14 @@ def test_basometro_is_unavailable_below_minimum_sample(db, seed):
     for i in range(MIN_VOTACOES_AMOSTRA - 1):
         _votar(db, seed, seed.lula_fonte, "SIM", SIM, i)
     db.commit()
-    baso = calcular_basometro(db, seed.lula_fonte.id, "PT")
+    baso = calcular_basometro(db, _pessoa_id(db, seed.lula_fonte), "PT")
     assert baso["dados_suficientes"] is False
     assert baso["taxa_governismo_pct"] is None and baso["classificacao"] is None
     assert baso["votos_alinhados"] == MIN_VOTACOES_AMOSTRA - 1  # contagem real, sem taxa inventada
 
 
 def test_basometro_without_any_orientation_has_no_counts(db, seed):
-    baso = calcular_basometro(db, seed.beltrano.id, "PTB")  # só votos em sessões sem orientação de governo
+    baso = calcular_basometro(db, _pessoa_id(db, seed.beltrano), "PTB")  # só votos em sessões sem orientação de governo
     assert baso["votos_alinhados"] is None and baso["votos_divergentes"] is None
     assert baso["total_votacoes_analisadas"] == 0 and baso["taxa_governismo_pct"] is None
 

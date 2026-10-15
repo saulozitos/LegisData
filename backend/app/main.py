@@ -190,11 +190,6 @@ def startup_db_migrations() -> None:
     try:
         run_db_migrations()
         upgrade_schema()
-        from app.core.database import SessionLocal
-        from app.services.legislative_scoring import sync_proposition_authors
-
-        with SessionLocal() as db:
-            sync_proposition_authors(db)
     except Exception as e:
         logger.error("DB auto-migration failed: %s", e)
 

@@ -310,6 +310,6 @@ def test_dossier_weighted_legislative_indicators(client, db, seed):
     assert "PEC 99/2024" in p_dict
     pec_item = p_dict["PEC 99/2024"]
     assert pec_item["papel_autoria"] == "COAUTOR"
-    assert pec_item["peso_participacao"] == 0.2
+    assert pec_item["peso_participacao"] == 0.05  # assinatura de apoio a PEC
     assert pec_item["peso_complexidade"] == 3.0  # PEC = 3.0
-    assert pec_item["score_calculado"] == 0.6  # 0.2 * 3.0 * 1.0 = 0.6
+    assert pec_item["score_calculado"] == 0.15  # 0.05 * 3.0 * 1.0

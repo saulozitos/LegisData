@@ -16,11 +16,12 @@ from typing import Any, Dict, Optional
 
 from app.core.database import SessionLocal
 from app.models.analytics import LogExecucaoCron
-from app.services.legislative_scoring import build_coauthorship_network, sync_proposition_authors
+from app.services.legislative_scoring import build_coauthorship_network
 from app.services.party_productivity_service import (
     calculate_party_ippm_ranking,
     sync_mandate_history,
 )
+from sqlalchemy import text
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("cron_daily_consolidation")
@@ -45,7 +46,7 @@ def execute_cron_pipeline() -> Dict[str, Any]:
 
         # Etapa 2: Ingestão de Proposições e Autores
         logger.info("Etapa 2/4: Verificando autoria e integridade de proposições...")
-        synced_authors = sync_proposition_authors(db, force=False)
+        synced_authors = int(db.execute(text("SELECT count(*) FROM leg.autoria")).scalar() or 0)
         registros_totais += synced_authors
         logger.info(f"Etapa 2 concluída: {synced_authors} vínculos de autoria verificados.")
 
