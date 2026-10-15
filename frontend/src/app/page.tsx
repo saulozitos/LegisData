@@ -31,6 +31,7 @@ import {
   Compass,
   BarChart3,
   CalendarDays,
+  CalendarX2,
   Coins,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -44,6 +45,7 @@ const PartyFidelityPanel = dynamic(() => import("@/components/PartyFidelityPanel
 const WageDisparityPanel = dynamic(() => import("@/components/WageDisparityPanel"), { loading: panelLoading });
 const CongressCompositionPanel = dynamic(() => import("@/components/CongressCompositionPanel"), { loading: panelLoading });
 const FederalTransfersPanel = dynamic(() => import("@/components/FederalTransfersPanel"), { loading: panelLoading });
+const AttendanceRankingPanel = dynamic(() => import("@/components/AttendanceRankingPanel"), { loading: panelLoading });
 const EmendasExplorerPanel = dynamic(() => import("@/components/EmendasExplorerPanel"), { loading: panelLoading });
 const PoliticianProfile = dynamic(() => import("@/components/PoliticianProfile"), { loading: panelLoading });
 const SocialClassesExplainer = dynamic(() => import("@/components/SocialClassesExplainer"), { loading: panelLoading });
@@ -66,6 +68,7 @@ type TabType =
   | "legislativo"
   | "produtividade"
   | "calendario"
+  | "faltas"
   | "raiox";
 
 const TABS: Array<{ id: TabType; label: string; icon: LucideIcon; active: string }> = [
@@ -80,6 +83,7 @@ const TABS: Array<{ id: TabType; label: string; icon: LucideIcon; active: string
   { id: "legislativo", label: "Monitor do Congresso", icon: ScrollText, active: "bg-blue-500 text-slate-950 shadow-md shadow-blue-500/20" },
   { id: "produtividade", label: "Produtividade & Votações", icon: Layers, active: "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" },
   { id: "calendario", label: "Calendário de Votações", icon: CalendarDays, active: "bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20" },
+  { id: "faltas", label: "Presença & Faltas", icon: CalendarX2, active: "bg-rose-400 text-slate-950 shadow-md shadow-rose-400/20" },
   { id: "raiox_partidos", label: "Raio-X dos Partidos", icon: BarChart3, active: "bg-violet-400 text-slate-950 shadow-md shadow-violet-400/20" },
   { id: "raiox", label: "Raio-X do Político", icon: Scan, active: "bg-cyan-400 text-slate-950 shadow-md shadow-cyan-400/20" },
 ];
@@ -349,6 +353,12 @@ export default function DashboardPage() {
                     onSelectPolitician={openPolitician}
                     onSelectParty={handleOpenPartyMembers}
                   />
+                </section>
+              )}
+
+              {activeTab === "faltas" && (
+                <section>
+                  <AttendanceRankingPanel onSelectPolitician={openPolitician} onSelectParty={handleOpenPartyMembers} />
                 </section>
               )}
 

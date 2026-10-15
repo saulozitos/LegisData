@@ -9,7 +9,6 @@ from app.core.config import PROCESSED_DATA_DIR
 from app.core.data_files import load_json_cached
 from app.core.database import get_db
 from app.models import (
-    AttendanceRecord,
     CargoPoliticoEnum,
     CasaLegislativaEnum,
     CertidaoJudicial,
@@ -23,7 +22,6 @@ from app.models import (
     PoliticianAssetDeclaration,
     PoliticianRemuneration,
     ProcessoJudicial,
-    TipoPresencaEnum,
 )
 from app.models.leg import Autoria, Proposicao, Votacao, Voto
 from app.services.basometro import calcular_basometro
@@ -40,6 +38,8 @@ DATA_DIR = PROCESSED_DATA_DIR
 BRT = timezone(timedelta(hours=-3))
 # Limites de listas devolvidas no dossiê (os agregados são sempre calculados no banco, sobre todos os registros)
 MAX_VOTES_LISTED = 300
+# Na Câmara, falta (oficial ou inferida) só existe a partir da 52ª legislatura; antes há apenas presença
+PRESENCA_FALTA_CONHECIDA_DESDE = date(2003, 2, 3)
 # ROI do Cidadão: pontos IALP que dão a nota máxima na parte de entrega e custo por ponto que zera a parte de custo
 ROI_PONTOS_IALP_REFERENCIA = 100.0
 ROI_CUSTO_POR_PONTO_REFERENCIA = 100000.0
@@ -1283,59 +1283,81 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     # Basômetro: alinhamento à orientação do governo em cada votação nominal (sem baseline inventado).
     basometro = calcular_basometro(db, pessoa_id, partido_atual_sigla, votos_sim_total, votos_nao_total)
 
-    # F. Contabilização de Presenças e Faltas (Assiduidade) — uma única consulta agregada
+    # F. Contabilização de Presenças e Faltas (Assiduidade) a partir de leg.presenca. Na Câmara, antes de
+    # PRESENCA_FALTA_CONHECIDA_DESDE só há presença (nenhuma falta é publicada nem inferida): esses dias ficam fora
+    # da taxa para não inflá-la, e entram apenas na contagem de presenças sem falta registrada.
     att_rows = (
-        db.query(AttendanceRecord.legislative_house, AttendanceRecord.attendance_status, func.count())
-        .filter(AttendanceRecord.politician_id == pol.id)
-        .group_by(AttendanceRecord.legislative_house, AttendanceRecord.attendance_status)
+        db.execute(
+            text(
+                """
+                SELECT c.codigo AS casa, p.tipo_codigo AS tipo, (p.data_sessao >= :corte OR c.codigo <> 'CAMARA_DOS_DEPUTADOS') AS mensuravel,
+                       count(*) AS n, min(p.data_sessao) AS inicio, max(p.data_sessao) AS fim
+                FROM leg.presenca p JOIN ref.casa_legislativa c ON c.id = p.casa_id
+                WHERE p.pessoa_id = :pid GROUP BY 1, 2, 3
+                """
+            ),
+            {"pid": pessoa_param, "corte": PRESENCA_FALTA_CONHECIDA_DESDE},
+        )
+        .mappings()
         .all()
     )
     att_counts: Dict[str, int] = {}
     att_casas = set()
-    for casa_att, status_att, n_att in att_rows:
-        chave_status = status_att.value if hasattr(status_att, "value") else str(status_att)
-        att_counts[chave_status] = att_counts.get(chave_status, 0) + n_att
-        att_casas.add(casa_att.value if hasattr(casa_att, "value") else str(casa_att))
-    att_inicio, att_fim = (
-        db.query(func.min(AttendanceRecord.session_date), func.max(AttendanceRecord.session_date))
-        .filter(AttendanceRecord.politician_id == pol.id)
-        .one()
-    )
+    presencas_sem_falta = 0
+    att_inicio = att_fim = None
+    for r in att_rows:
+        if not r["mensuravel"]:
+            presencas_sem_falta += r["n"]
+            continue
+        att_counts[r["tipo"]] = att_counts.get(r["tipo"], 0) + r["n"]
+        att_casas.add(r["casa"])
+        att_inicio = r["inicio"] if att_inicio is None else min(att_inicio, r["inicio"])
+        att_fim = r["fim"] if att_fim is None else max(att_fim, r["fim"])
     total_sessoes = sum(att_counts.values())
-    presencas_count = att_counts.get(TipoPresencaEnum.PRESENTE.value, 0)
+    presencas_count = att_counts.get("PRESENTE", 0)
     faltas_justif_count = sum(
-        att_counts.get(t.value, 0)
-        for t in (
-            TipoPresencaEnum.AUSENCIA_JUSTIFICADA,
-            TipoPresencaEnum.LICENCA_MEDICA,
-            TipoPresencaEnum.MISSAO_OFICIAL,
-        )
+        att_counts.get(t, 0) for t in ("AUSENCIA_JUSTIFICADA", "LICENCA_MEDICA", "MISSAO_OFICIAL")
     )
-    faltas_injustif_count: Optional[int] = att_counts.get(TipoPresencaEnum.AUSENCIA_NAO_JUSTIFICADA.value, 0)
-    # A fonte do Senado (votações nominais) não distingue ausência não justificada: null, nunca 0 presumido.
-    if att_casas == {CasaLegislativaEnum.SENADO_FEDERAL.value}:
-        faltas_injustif_count = None
+    faltas_inferidas_count = att_counts.get("AUSENCIA_INFERIDA", 0)
+    faltas_injustif_count: Optional[int] = att_counts.get("AUSENCIA_NAO_JUSTIFICADA", 0)
     taxa_presenca = round((presencas_count / total_sessoes * 100), 1) if total_sessoes > 0 else None
 
     amostra_faltas = (
-        db.query(AttendanceRecord)
-        .filter(
-            AttendanceRecord.politician_id == pol.id,
-            AttendanceRecord.attendance_status != TipoPresencaEnum.PRESENTE,
+        db.execute(
+            text(
+                """
+                SELECT p.data_sessao, p.tipo_codigo, p.justificativa, c.codigo AS casa
+                FROM leg.presenca p JOIN ref.casa_legislativa c ON c.id = p.casa_id
+                WHERE p.pessoa_id = :pid AND p.tipo_codigo <> 'PRESENTE'
+                ORDER BY p.data_sessao DESC, c.codigo LIMIT 10
+                """
+            ),
+            {"pid": pessoa_param},
         )
-        .order_by(desc(AttendanceRecord.session_date), AttendanceRecord.id)
-        .limit(10)
+        .mappings()
         .all()
     )
     faltas_registros = [
         {
-            "data": a.session_date.isoformat(),
-            "tipo": a.attendance_status.value,
-            "justificativa": a.justification,
-            "casa": a.legislative_house.value,
+            "data": a["data_sessao"].isoformat(),
+            "tipo": a["tipo_codigo"],
+            "justificativa": a["justificativa"],
+            "casa": a["casa"],
         }
         for a in amostra_faltas
     ]
+    observacao_assiduidade = None
+    if faltas_inferidas_count:
+        observacao_assiduidade = (
+            "Antes de 2020 a Câmara não publica falta nem justificativa. As faltas inferidas são dias de sessão "
+            "deliberativa do plenário em que o deputado estava em exercício e não consta entre os presentes; não há "
+            "justificativa para elas."
+        )
+    elif presencas_sem_falta:
+        observacao_assiduidade = (
+            f"{presencas_sem_falta} presenças anteriores a 2003 não entram na taxa: a Câmara não publica as faltas "
+            "desse período."
+        )
 
     # G. Evolução Patrimonial (TSE DivulgaCand)
     assets_db = (
@@ -1687,6 +1709,8 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             "total_presencas": presencas_count,
             "faltas_justificadas": faltas_justif_count,
             "faltas_nao_justificadas": faltas_injustif_count,
+            "faltas_inferidas": faltas_inferidas_count,
+            "observacao": observacao_assiduidade,
             "taxa_presenca_pct": taxa_presenca,
             "amostra_faltas": faltas_registros,
             "periodo_inicio": att_inicio.isoformat() if att_inicio else None,

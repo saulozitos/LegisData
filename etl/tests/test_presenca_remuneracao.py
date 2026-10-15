@@ -177,6 +177,7 @@ def test_classificar_voto_senado():
     assert pe.classificar_voto_senado("Ausente")[0] == pe.AUSENCIA_NAO_JUSTIFICADA
     assert pe.classificar_voto_senado("NA") is None  # dispositivo não citado: não informa presença
     assert pe.classificar_voto_senado("XYZ") is None
+    assert pe.classificar_voto_senado("NCom")[0] == "AUSENCIA_NAO_JUSTIFICADA"
 
 
 def votacao(codigo, data, votos):
@@ -203,7 +204,9 @@ def test_parse_votacoes_senado_aceita_lista_dict_unico_e_ignora_sem_votos():
         }
     }
     saida = pe.parse_votacoes_senado(payload)
-    assert saida == [{"codigo": "1", "data": "2024-03-05", "votos": [[10, "Sen 10", "Sim"], [11, "Sen 11", "AP"]]}]
+    assert saida == [
+        {"codigo": "1", "data": "2024-03-05", "votos": [[10, "Sen 10", "Sim"], [11, "Sen 11", "AP"]], "partidos": {}}
+    ]
     unico = {"ListaVotacoes": {"Votacoes": {"Votacao": votacao("3", "2024-03-07", [(10, "Não")])}}}
     assert len(pe.parse_votacoes_senado(unico)) == 1
     assert pe.parse_votacoes_senado({}) == []
@@ -425,8 +428,8 @@ def test_run_grava_resumo_e_dias_preserva_outra_casa_e_recusa_resultado_vazio(tm
     casas = {r["casa"] for r in resumo["resumos"]}
     assert casas == {"CAMARA", "SENADO"}  # a Câmara já gravada não foi apagada
     sen = next(r for r in resumo["resumos"] if r["casa"] == "SENADO" and r["parlamentar_id"] == 8)
-    assert sen["faltas_justificadas"] == 1 and sen["faltas_nao_justificadas"] is None  # nunca 0 presumido
-    assert "null" in resumo["metodologia"]["SENADO"]
+    assert sen["faltas_justificadas"] == 1 and sen["faltas_nao_justificadas"] == 0
+    assert "NCom" in resumo["metodologia"]["SENADO"]
 
     dias = pe.carregar_dias(tmp_path / "proc")
     assert dias["is_synthetic"] is False and len(dias["camara"]) == 6 and len(dias["senado"]) == 2
@@ -768,3 +771,16 @@ def test_load_remunerations_recusa_sem_proveniencia_e_tolera_arquivo_ausente(ses
     gravar_remuneracao(tmp_path / "x", [{"camara_id": 101, "ano": 2024, "mes": 1, "salario_bruto": 1.0}], oficial=False)
     with pytest.raises(ValueError, match="proveniência"):
         loader.load_remunerations(sessao, tmp_path / "x")
+
+
+def test_partidos_por_data_registra_so_as_mudancas():
+    votacoes = [
+        {"codigo": "b", "data": "2024-03-06", "votos": [], "partidos": {1: "PSD", 2: "PT"}},
+        {"codigo": "a", "data": "2024-03-05", "votos": [], "partidos": {1: "PSD"}},
+        {"codigo": "c", "data": "2024-08-01", "votos": [], "partidos": {1: "PL"}},
+    ]
+    assert pe.partidos_por_data(votacoes) == [
+        [1, "2024-03-05", "PSD"],
+        [1, "2024-08-01", "PL"],
+        [2, "2024-03-06", "PT"],
+    ]

@@ -1154,6 +1154,10 @@ export interface PoliticoDossier {
     faltas_justificadas: number;
     /** null no Senado: a fonte (votações nominais) não distingue ausência não justificada. */
     faltas_nao_justificadas: number | null;
+    /** Faltas deduzidas (antes de 2020 a Câmara só publica presença): deputado em exercício sem presença em dia de sessão. */
+    faltas_inferidas?: number;
+    /** Aviso sobre a origem/limite dos dados de assiduidade. */
+    observacao?: string | null;
     taxa_presenca_pct: number | null;
     amostra_faltas: FaltaRegistro[];
     periodo_inicio?: string | null;
@@ -2175,4 +2179,82 @@ export async function getPartyMandateHistory(
     () => fetchJson<PartyMandateTimelineResponse>(`/parties/${enc}/historico-bancada`),
     signal
   );
+}
+
+
+// ─── Presença & Faltas no Congresso ──────────────────────────────────────────
+
+export type AttendanceCasa = "ALL" | "CAMARA" | "SENADO";
+export type AttendanceOrdenacao = "faltas" | "taxa" | "nao_justificadas" | "baixa_producao";
+
+export interface AttendanceRankingItem {
+  politico_id: string;
+  nome_eleitoral: string;
+  foto_url: string | null;
+  partido_sigla: string;
+  casas: string[];
+  dias_registrados: number;
+  presencas: number;
+  faltas: number;
+  faltas_justificadas: number;
+  faltas_nao_justificadas: number;
+  /** Câmara antes de 2020: deduzidas, sem justificativa publicada. */
+  faltas_inferidas: number;
+  taxa_ausencia_pct: number | null;
+  pontos_ialp: number;
+  indice_baixa_producao: number | null;
+}
+
+export interface AttendanceRankingResponse {
+  criterio: AttendanceOrdenacao;
+  minimo_dias_para_taxa: number;
+  itens: AttendanceRankingItem[];
+  aviso: string;
+}
+
+export interface AttendancePartyItem {
+  sigla: string;
+  parlamentares: number;
+  dias_registrados: number;
+  faltas: number;
+  faltas_justificadas: number;
+  faltas_nao_justificadas: number;
+  faltas_inferidas: number;
+  taxa_ausencia_pct: number | null;
+}
+
+export interface AttendancePartyResponse {
+  itens: AttendancePartyItem[];
+  dias_sem_partido_identificado: number;
+  aviso: string;
+}
+
+function attendanceQuery(casa: AttendanceCasa, anoInicio?: number, anoFim?: number): string {
+  const params = new URLSearchParams({ casa });
+  if (anoInicio) params.set("ano_inicio", String(anoInicio));
+  if (anoFim) params.set("ano_fim", String(anoFim));
+  return params.toString();
+}
+
+export async function getAttendanceRanking(
+  casa: AttendanceCasa,
+  ordenar: AttendanceOrdenacao,
+  anoInicio?: number,
+  anoFim?: number,
+  limit = 30,
+  signal?: AbortSignal
+): Promise<AttendanceRankingResponse> {
+  return fetchJson<AttendanceRankingResponse>(
+    `/attendance/ranking/politicians?${attendanceQuery(casa, anoInicio, anoFim)}&ordenar=${ordenar}&limit=${limit}`,
+    signal
+  );
+}
+
+export async function getAttendancePartyRanking(
+  casa: AttendanceCasa,
+  anoInicio?: number,
+  anoFim?: number,
+  signal?: AbortSignal
+): Promise<AttendancePartyResponse> {
+  return fetchJson<AttendancePartyResponse>(`/attendance/ranking/parties?${attendanceQuery(casa, anoInicio, anoFim)}`, signal);
 }

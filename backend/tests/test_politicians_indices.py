@@ -245,13 +245,13 @@ def test_attendance_exposes_source_unit_and_period_for_the_chamber(client, db, s
     assert att["unidade"] == "dia com sessão deliberativa" and "Ato da Mesa" in att["fonte"]
 
 
-def test_senate_attendance_never_reports_unjustified_absences_as_zero(client, db, seed):
-    """O Senado só expõe presença derivada das votações nominais: ausência não justificada é desconhecida."""
+def test_senate_attendance_counts_unjustified_absences(client, db, seed):
+    """No Senado a presença vem das votações nominais; o código NCom (não compareceu) é a falta não justificada."""
     _attend(db, seed, CasaLegislativaEnum.SENADO_FEDERAL, 5, TipoPresencaEnum.PRESENTE)
     _attend(db, seed, CasaLegislativaEnum.SENADO_FEDERAL, 6, TipoPresencaEnum.LICENCA_MEDICA)
     db.commit()
     att = client.get(f"{BASE}/{seed.fulano.id}").json()["assiduidade"]
-    assert att["faltas_nao_justificadas"] is None and att["faltas_justificadas"] == 1
+    assert att["faltas_nao_justificadas"] == 0 and att["faltas_justificadas"] == 1
     assert att["unidade"] == "dia com votação nominal em plenário" and "Senado" in att["fonte"]
 
 
@@ -357,3 +357,37 @@ def test_roi_rewards_ialp_delivery_not_proposition_count(client, db, seed):
     roi = client.get(f"{BASE}/{seed.fulano.id}").json()["indices_inteligencia"]["roi_cidadao"]
     assert roi["pontos_ialp"] < 10
     assert roi["score"] != "A+"
+
+
+def test_attendance_reads_leg_presenca_with_inferred_absences(client, db, seed):
+    """Falta inferida entra na taxa e é separada da oficial; presença anterior a 2003 não entra na taxa."""
+    from sqlalchemy import text
+
+    client.get(f"{BASE}/{seed.fulano.id}")  # a ponte do conftest cria a pessoa no schema novo
+    pessoa_id = db.execute(text("SELECT id FROM core.pessoa WHERE uid = :u"), {"u": seed.fulano.id}).scalar()
+    casa = db.execute(text("SELECT id FROM ref.casa_legislativa WHERE codigo = 'CAMARA_DOS_DEPUTADOS'")).scalar()
+    linhas = [
+        ("1999-05-04", "PRESENTE"),
+        ("2005-03-01", "PRESENTE"),
+        ("2005-03-02", "PRESENTE"),
+        ("2005-03-03", "AUSENCIA_INFERIDA"),
+        ("2005-03-04", "AUSENCIA_INFERIDA"),
+        ("2024-03-05", "AUSENCIA_JUSTIFICADA"),
+    ]
+    for dia, tipo in linhas:
+        db.execute(
+            text(
+                "INSERT INTO leg.presenca (pessoa_id, casa_id, data_sessao, tipo_codigo) VALUES (:p, :c, :d, :t) "
+                "ON CONFLICT DO NOTHING"
+            ),
+            {"p": pessoa_id, "c": casa, "d": dia, "t": tipo},
+        )
+    db.commit()
+
+    att = client.get(f"{BASE}/{seed.fulano.id}").json()["assiduidade"]
+    assert att["total_sessoes"] == 5  # a presença de 1999 fica fora
+    assert (att["total_presencas"], att["faltas_inferidas"], att["faltas_justificadas"]) == (2, 2, 1)
+    assert att["taxa_presenca_pct"] == 40.0
+    assert att["periodo_inicio"] == "2005-03-01" and "inferidas" in (att["observacao"] or "")
+    tipos = {f["tipo"] for f in att["amostra_faltas"]}
+    assert "AUSENCIA_INFERIDA" in tipos

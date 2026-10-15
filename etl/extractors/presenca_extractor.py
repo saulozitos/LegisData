@@ -11,8 +11,8 @@ Fontes
 * Senado: o Senado não expõe um relatório de presença consumível. A presença é DERIVADA das votações nominais
   de plenário (https://legis.senado.leg.br/dadosabertos/plenario/lista/votacao/{ini}/{fim}), onde cada uma das
   votações lista todos os senadores com o voto (Sim/Não/Votou/P-NRV = presente) ou o código de justificativa
-  (AP, MIS, LS, LP). A unidade é o "dia com votação nominal em plenário" e a API não distingue ausência não
-  justificada, que por isso NÃO é inferida (fica `None` no resumo).
+  (AP, MIS, LS, LP) ou "NCom" (não compareceu = ausência não justificada). A unidade é o "dia com votação nominal em
+  plenário". Códigos sem significado confirmado (REP, LA, LAP, LG, MERC, P-OD) não entram na contagem.
 
 Nada aqui é sorteado ou estimado: o que a fonte não informa permanece ausente.
 """
@@ -46,7 +46,7 @@ SENADO = "SENADO"
 
 # O portal da Câmara só publica o relatório de presença a partir de 2020.
 CAMARA_PRIMEIRO_ANO = 2020
-SENADO_PRIMEIRO_ANO = 2019
+SENADO_PRIMEIRO_ANO = 1995
 # Legislatura -> (primeiro ano, último ano) de sessões legislativas
 LEGISLATURAS = {56: (2019, 2022), 57: (2023, 2026)}
 
@@ -211,7 +211,8 @@ _VOTO_JUSTIFICADO = {
     "ls": (LICENCA_MEDICA, "Licença saúde"),
     "lp": (AUSENCIA_JUSTIFICADA, "Licença particular"),
 }
-_VOTO_NAO_JUSTIFICADO = frozenset({"ausente", "aus", "falta"})
+# "NCom" = não compareceu (código do painel do Senado): ausência sem justificativa
+_VOTO_NAO_JUSTIFICADO = frozenset({"ausente", "aus", "falta", "ncom"})
 # "NA" = dispositivo não citado: não informa presença nem ausência (ignorado).
 _VOTOS_NEUTROS = frozenset({"na"})
 # Presidente da sessão (art. 51 RISF) conduz os trabalhos: está presente.
@@ -256,7 +257,14 @@ def parse_votacoes_senado(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
         ]
         if not data or not votos:
             continue
-        saida.append({"codigo": str(v.get("CodigoSessaoVotacao") or ""), "data": data, "votos": votos})
+        partidos = {
+            int(x["CodigoParlamentar"]): x["SiglaPartido"].strip()
+            for x in votos_raw
+            if isinstance(x, dict) and str(x.get("CodigoParlamentar") or "").isdigit() and x.get("SiglaPartido")
+        }
+        saida.append(
+            {"codigo": str(v.get("CodigoSessaoVotacao") or ""), "data": data, "votos": votos, "partidos": partidos}
+        )
     return saida
 
 
@@ -298,6 +306,22 @@ def agregar_dias_senado(votacoes: Iterable[Dict[str, Any]]) -> Tuple[Dict[Tuple[
                 status, just = AUSENCIA_NAO_JUSTIFICADA, None
         dias[(codigo, data)] = {"status": status, "justificativa": just, "nome": nomes.get(codigo, "")}
     return dias, desconhecidos
+
+
+def partidos_por_data(votacoes: Iterable[Dict[str, Any]]) -> List[List[Any]]:
+    """Pontos de mudança de partido de cada senador: [codigo, 'AAAA-MM-DD' da primeira aparição, sigla]."""
+    por_senador: Dict[int, List[Tuple[str, str]]] = defaultdict(list)
+    for vot in sorted(votacoes, key=lambda v: v["data"]):
+        for codigo, sigla in (vot.get("partidos") or {}).items():
+            por_senador[codigo].append((vot["data"], sigla))
+    saida: List[List[Any]] = []
+    for codigo in sorted(por_senador):
+        anterior = None
+        for data, sigla in por_senador[codigo]:
+            if sigla != anterior:
+                saida.append([codigo, data, sigla])
+                anterior = sigla
+    return saida
 
 
 def janelas_mensais(ano: int, hoje: Optional[date] = None) -> List[Tuple[date, date]]:
@@ -602,16 +626,14 @@ class PresencaExtractor:
                     "total_dias": total,
                     "presencas": c.get(PRESENTE, 0),
                     "faltas_justificadas": sum(c.get(s, 0) for s in STATUS_JUSTIFICADOS),
-                    # A API não expõe ausência não justificada de forma distinguível: None, nunca 0 presumido.
-                    "faltas_nao_justificadas": (
-                        c.get(AUSENCIA_NAO_JUSTIFICADA) if AUSENCIA_NAO_JUSTIFICADA in c else None
-                    ),
+                    "faltas_nao_justificadas": c.get(AUSENCIA_NAO_JUSTIFICADA, 0),
                     "taxa_presenca_pct": taxa_presenca(c.get(PRESENTE, 0), total),
                 }
             )
         return {
             "resumos": resumos,
             "dias": dias,
+            "partidos": partidos_por_data(votacoes),
             "votos_desconhecidos": dict(desconhecidos),
             "falhas": falhas,
             "votacoes": len({(v["data"], v["codigo"]) for v in votacoes}),
@@ -668,19 +690,21 @@ class PresencaExtractor:
                 "missão autorizada, licença e demais justificativas regimentais; não justificada = 'Ausência'. "
                 "Série publicada pelo portal a partir de 2020.",
                 SENADO: f"Unidade: {UNIDADE_SENADO}. Presença derivada das votações nominais (voto, P-NRV ou "
-                "presidência = presente; AP/MIS/LS/LP = ausência justificada). A API não informa ausência não "
-                "justificada (faltas_nao_justificadas = null).",
+                "presidência = presente; AP/MIS/LS/LP = ausência justificada; NCom = não compareceu, ausência não "
+                "justificada).",
             },
             "cobertura": cobertura,
         }
         atomic_write_json(self.processed_dir / ARQ_RESUMO, {**cabecalho, "resumos": resumos})
 
         dias = {casa: casas[casa]["dias"] for casa in casas}
+        partidos_senado = casas[SENADO].get("partidos", []) if SENADO in casas else []
         corpo = {
             "is_synthetic": False,
             "fonte": cabecalho["fonte"],
             "formato": "[parlamentar_id, 'AAAA-MM-DD', status, justificativa|null]",
             **{casa.lower(): linhas for casa, linhas in dias.items()},
+            "senado_partidos": partidos_senado,
         }
         atomic_write_bytes(
             self.processed_dir / ARQ_DIAS,
@@ -701,6 +725,7 @@ class PresencaExtractor:
                 existente[casa] = {
                     "resumos": rs,
                     "dias": dias[casa.lower()],
+                    "partidos": dias.get("senado_partidos", []) if casa == SENADO else [],
                     "falhas": (resumo.get("cobertura", {}).get(casa, {}) or {}).get("falhas", []),
                 }
         return existente

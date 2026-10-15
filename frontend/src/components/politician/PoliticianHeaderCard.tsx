@@ -390,7 +390,9 @@ export default function PoliticianHeaderCard({ dossier, onBack, onChangeTab, onS
                       {hasAttendance
                         ? assiduidade?.faltas_nao_justificadas == null
                           ? "n/d"
-                          : (assiduidade?.faltas_justificadas ?? 0) + assiduidade.faltas_nao_justificadas
+                          : (assiduidade?.faltas_justificadas ?? 0) +
+                            assiduidade.faltas_nao_justificadas +
+                            (assiduidade?.faltas_inferidas ?? 0)
                         : "—"}
                     </span>
                     <span className="text-[10px] text-slate-400 mt-1 block">
