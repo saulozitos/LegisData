@@ -67,3 +67,7 @@ registrada como FALHA em `LogExecucaoCron`, sem interromper as demais etapas.
 Para agendar no servidor, copie `scripts/systemd/legisdata-diario.service` e `.timer` para `/etc/systemd/system/`,
 ajuste o diretório do projeto e rode `systemctl enable --now legisdata-diario.timer`. O processo precisa alcançar o
 Postgres (no compose de produção a porta não é publicada; use `docker-compose.dev.yml` ou rode dentro da rede do compose).
+
+A mesma consolidação atualiza as votações nominais (`etl.pipelines.votacoes_atualizacao`): extrai o ano anterior e o
+corrente, carrega só as votações e sincroniza com `leg`. O extrator do Senado completa a lista anual da API (que atrasa
+semanas) com as votações nominais por data do plenário, mas essas sessões chegam sem ementa e sem orientação de bancada.

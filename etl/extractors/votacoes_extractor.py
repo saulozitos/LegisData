@@ -20,7 +20,7 @@ import time
 import unicodedata
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Set, Tuple
 
@@ -469,6 +469,73 @@ class VotacoesSenadoExtractor:
             atomic_write_json(destino, dados, indent=None)
         return dados
 
+    def _sessoes_plenario(
+        self, ano: int, force: bool, partidos: Dict[str, int], parlamentares: Dict[int, Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Votações nominais do ano pela API de plenário (janelas mensais), no formato das sessões do extrator."""
+        sessoes: List[Dict[str, Any]] = []
+        hoje = date.today()
+        for mes in range(1, 13):
+            ini = date(ano, mes, 1)
+            if ini > hoje:
+                break
+            fim = (date(ano + (mes == 12), mes % 12 + 1, 1) - timedelta(days=1)) if mes < 12 else date(ano, 12, 31)
+            url = f"{SENADO_API_URL}/plenario/lista/votacao/{ini:%Y%m%d}/{min(fim, hoje):%Y%m%d}"
+            payload = self._json_com_cache(url, f"plenario_lista_{mes:02d}", ano, force)
+            bloco = ((payload or {}).get("ListaVotacoes") or {}).get("Votacoes") or {}
+            itens = bloco.get("Votacao") or []
+            for r in itens if isinstance(itens, list) else [itens]:
+                tipo = (r.get("SiglaMateria") or "").upper()
+                numero, ano_materia = _inteiro(r.get("NumeroMateria")), _inteiro(r.get("AnoMateria"))
+                if tipo not in TIPOS_SUPORTADOS or not numero or not ano_materia:
+                    continue
+                secreta = (r.get("Secreta") or "N").upper() == "S"
+                votos: List[List[Any]] = []
+                if not secreta:
+                    brutos = (r.get("Votos") or {}).get("VotoParlamentar") or []
+                    for v in brutos if isinstance(brutos, list) else [brutos]:
+                        codigo, opcao = _inteiro(v.get("CodigoParlamentar")), classificar_voto_senado(v.get("Voto"))
+                        if codigo is None or opcao is None:
+                            continue
+                        sigla = (v.get("SiglaPartido") or "").strip()
+                        idx = partidos.setdefault(sigla, len(partidos)) if sigla else -1
+                        votos.append([codigo, opcao, idx])
+                        parlamentares.setdefault(
+                            codigo,
+                            {
+                                "nome": v.get("NomeParlamentar"),
+                                "partido": sigla or None,
+                                "uf": v.get("SiglaUF") or None,
+                            },
+                        )
+                if not votos and not secreta:
+                    continue
+                totais = Counter(item[1] for item in votos)
+                hora = (r.get("HoraInicio") or "00:00")[:5]
+                sessoes.append(
+                    {
+                        "id": f"SEN-{r.get('CodigoSessaoVotacao')}",
+                        "data_hora": _data_hora(f"{r.get('DataSessao')}T{hora}:00", r.get("DataSessao")),
+                        "descricao": (r.get("DescricaoVotacao") or "")[:2000],
+                        "aprovada": {"A": True, "R": False}.get((r.get("Resultado") or "").upper()),
+                        "secreta": secreta,
+                        "proposicao": {
+                            "senado_id": _inteiro(r.get("CodigoMateria")),
+                            "tipo": tipo,
+                            "numero": numero,
+                            "ano": ano_materia,
+                            "titulo": f"{tipo} {numero}/{ano_materia}",
+                            "ementa": "",
+                            "data_apresentacao": None,
+                        },
+                        "orientacao_governo": None,
+                        "orientacoes": {},
+                        "totais": {k2: totais.get(k2, 0) for k2 in ("SIM", "NAO", "ABSTENCAO", "OBSTRUCAO")},
+                        "votos": votos,
+                    }
+                )
+        return sessoes
+
     def extrair_ano(self, ano: int, force: bool = False) -> Optional[Dict[str, Any]]:
         lista = self._json_com_cache(f"{SENADO_API_URL}/votacao?ano={ano}", "votacao", ano, force)
         if not isinstance(lista, list):
@@ -558,6 +625,14 @@ class VotacoesSenadoExtractor:
                     "votos": votos,
                 }
             )
+
+        # A lista anual (`/votacao?ano=`) costuma ficar semanas atrasada. As votações nominais do plenário por data
+        # (`/plenario/lista/votacao`) são atuais, então completam o que a lista anual ainda não trouxe.
+        conhecidas = {s["id"] for s in sessoes}
+        for sessao in self._sessoes_plenario(ano, force, partidos, parlamentares):
+            if sessao["id"] not in conhecidas:
+                sessoes.append(sessao)
+                conhecidas.add(sessao["id"])
         logger.info(
             "Senado %s: %d votações de %d registros (%d tipo não suportado, %d outra casa, %d sem voto nominal).",
             ano,
@@ -642,7 +717,11 @@ def extrair_parlamentares_historicos(
             codigo = _inteiro(ident.get("CodigoParlamentar"))
             if codigo is None:
                 continue
-            foto_url = f"https://legis.senado.leg.br/senadores/fotos-oficiais/{codigo}" if codigo else ident.get("UrlFotoParlamentar")
+            foto_url = (
+                f"https://legis.senado.leg.br/senadores/fotos-oficiais/{codigo}"
+                if codigo
+                else ident.get("UrlFotoParlamentar")
+            )
             reg = senadores.setdefault(
                 codigo,
                 {

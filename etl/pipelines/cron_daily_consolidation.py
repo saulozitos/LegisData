@@ -58,6 +58,17 @@ def execute_cron_pipeline() -> Dict[str, Any]:
             erros_etapas.append(f"presença: {e}")
             logger.error(f"Falha na atualização de presença: {e}", exc_info=True)
 
+        # Etapa 1c: votações nominais do ano anterior e do corrente (alimenta o Calendário de Votações)
+        logger.info("Etapa 1c: atualizando votações nominais...")
+        try:
+            from etl.pipelines.votacoes_atualizacao import atualizar as atualizar_votacoes
+
+            votacoes = atualizar_votacoes()
+            logger.info(f"Etapa 1c concluída: {votacoes.get('carga')}")
+        except Exception as e:
+            erros_etapas.append(f"votações: {e}")
+            logger.error(f"Falha na atualização de votações: {e}", exc_info=True)
+
         # Etapa 2: Ingestão de Proposições e Autores
         logger.info("Etapa 2/4: Verificando autoria e integridade de proposições...")
         synced_authors = int(db.execute(text("SELECT count(*) FROM leg.autoria")).scalar() or 0)

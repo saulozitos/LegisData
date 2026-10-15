@@ -347,6 +347,58 @@ def test_senado_extrai_votos_orientacao_e_voto_secreto(tmp_path, monkeypatch):
     assert resumo["anos"][2023]["sessoes"] == 2 and (tmp_path / "p" / "votacoes" / "senado_2023.json.gz").exists()
 
 
+def test_senado_completa_a_lista_anual_com_as_votacoes_do_plenario(tmp_path, monkeypatch):
+    lista = [_votacao_senado(10, 100, votos=[_voto(1, "Sim")])]
+
+    def plenario(codigo, materia, votos):
+        return {
+            "CodigoSessaoVotacao": str(codigo),
+            "DataSessao": "2023-10-14",
+            "HoraInicio": "14:00",
+            "Secreta": "N",
+            "DescricaoVotacao": "Votação nominal da PEC 221/2019, em primeiro turno.",
+            "Resultado": "A",
+            "CodigoMateria": "174386",
+            "SiglaMateria": materia,
+            "NumeroMateria": "221",
+            "AnoMateria": "2019",
+            "Votos": {"VotoParlamentar": votos},
+        }
+
+    voto = lambda cod, v: {  # noqa: E731
+        "CodigoParlamentar": str(cod),
+        "NomeParlamentar": f"Sen {cod}",
+        "SiglaPartido": "PL",
+        "SiglaUF": "BA",
+        "Voto": v,
+    }
+    mensal = {
+        "ListaVotacoes": {
+            "Votacoes": {
+                "Votacao": [
+                    plenario(10, "PEC", [voto(1, "Sim")]),  # já veio na lista anual: não duplica
+                    plenario(7106, "PEC", [voto(1, "Sim"), voto(2, "NCom"), voto(3, "Não")]),
+                    plenario(7108, "MSF", [voto(1, "Sim")]),  # tipo não suportado
+                ]
+            }
+        }
+    }
+
+    def falso(self, url, nome, ano, force):
+        if nome == "votacao":
+            return lista
+        return mensal if nome == "plenario_lista_10" else {}
+
+    monkeypatch.setattr(ve.VotacoesSenadoExtractor, "_json_com_cache", falso)
+    ext = ve.VotacoesSenadoExtractor(raw_dir=tmp_path, processed_dir=tmp_path / "p", http=object())
+    ids = [s["id"] for s in ext.extrair_ano(2023)["sessoes"]]
+    assert ids == ["SEN-10", "SEN-7106"]
+    nova = ext.extrair_ano(2023)["sessoes"][1]
+    assert nova["data_hora"] == "2023-10-14T14:00:00" and nova["aprovada"] is True
+    assert [v[:2] for v in nova["votos"]] == [[1, "SIM"], [2, "AUSENTE"], [3, "NAO"]]
+    assert nova["proposicao"]["titulo"] == "PEC 221/2019" and nova["proposicao"]["senado_id"] == 174386
+
+
 def test_senado_falha_de_rede_nao_gera_arquivo(tmp_path, monkeypatch):
     monkeypatch.setattr(ve.VotacoesSenadoExtractor, "_json_com_cache", lambda *a, **k: None)
     ext = ve.VotacoesSenadoExtractor(raw_dir=tmp_path, processed_dir=tmp_path / "p", http=object())

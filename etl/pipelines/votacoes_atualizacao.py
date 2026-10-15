@@ -1,0 +1,50 @@
+"""
+Atualização das votações nominais (Câmara e Senado) sem refazer a carga completa do banco.
+
+Extrai os anos pedidos, carrega só as votações no schema legado (mesmos mapas de partidos, deputados e senadores que a
+carga completa monta) e sincroniza o resultado para `leg` pela ponte. Idempotente.
+"""
+
+import logging
+from datetime import date
+from typing import Any, Dict, Optional
+
+from etl.config import PROCESSED_DATA_DIR
+from etl.extractors.votacoes_extractor import run_votacoes
+from etl.pipelines.db_loader import DatabaseLoader
+from etl.pipelines.votacoes_loader import carregar_votacoes
+from etl.utils.bootstrap import ensure_backend_on_path
+
+ensure_backend_on_path()
+
+from app.core.database import SessionLocal  # noqa: E402
+from app.services.core_sync import sync_legacy_to_core  # noqa: E402
+
+logger = logging.getLogger("VotacoesAtualizacao")
+
+
+def atualizar(ano_inicio: Optional[int] = None, force: bool = False) -> Dict[str, Any]:
+    """Extrai de `ano_inicio` (padrão: ano anterior) até hoje, carrega e sincroniza com o schema novo."""
+    hoje = date.today()
+    anos = list(range(ano_inicio or hoje.year - 1, hoje.year + 1))
+    extracao = run_votacoes(anos=anos, force=force)
+    carregador = DatabaseLoader(data_dir=PROCESSED_DATA_DIR)
+    with SessionLocal() as sessao:
+        sessao.autoflush = True
+        mapa_partidos = carregador._load_political_parties(sessao)
+        _, mapa_deputados, mapa_senadores = carregador._load_politicians(sessao)
+        contadores = carregar_votacoes(
+            sessao, PROCESSED_DATA_DIR, mapa_deputados, mapa_senadores, mapa_partidos, carregador._ensure_party
+        )
+        sessao.commit()
+        ponte = sync_legacy_to_core(sessao)
+    resumo = {"anos": anos, "extracao": {k: v for k, v in extracao.items() if k != "parlamentares_historicos"}}
+    resumo["carga"] = contadores
+    resumo["ponte"] = ponte
+    logger.info("Votações atualizadas: %s", resumo)
+    return resumo
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    atualizar()

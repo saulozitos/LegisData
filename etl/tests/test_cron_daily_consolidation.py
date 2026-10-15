@@ -8,6 +8,7 @@ def test_execute_cron_pipeline():
         patch("etl.pipelines.cron_daily_consolidation.SessionLocal") as mock_session_cls,
         patch("etl.pipelines.cron_daily_consolidation.sync_mandate_history", return_value=10),
         patch("etl.pipelines.presenca_atualizacao.atualizar", return_value={"camara_portal": {}}),
+        patch("etl.pipelines.votacoes_atualizacao.atualizar", return_value={"carga": {}}),
         patch(
             "etl.pipelines.cron_daily_consolidation.calculate_party_ippm_ranking", return_value={"ranking": [1, 2, 3]}
         ),
@@ -38,6 +39,7 @@ def test_cron_marks_failure_when_presence_update_fails_but_runs_other_stages():
         patch("etl.pipelines.cron_daily_consolidation.SessionLocal") as mock_session_cls,
         patch("etl.pipelines.cron_daily_consolidation.sync_mandate_history", return_value=10),
         patch("etl.pipelines.presenca_atualizacao.atualizar", side_effect=RuntimeError("portal fora do ar")),
+        patch("etl.pipelines.votacoes_atualizacao.atualizar", return_value={"carga": {}}),
         patch("etl.pipelines.cron_daily_consolidation.calculate_party_ippm_ranking", return_value={"ranking": [1]}),
         patch(
             "etl.pipelines.cron_daily_consolidation.build_coauthorship_network",
