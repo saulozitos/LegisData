@@ -1,4 +1,4 @@
-"""Fixtures compartilhadas: banco SQLite em memória, override único de get_db e diretório de dados isolado."""
+"""Fixtures compartilhadas: Postgres de teste, override único de get_db e diretório de dados isolado."""
 
 import json
 import os
@@ -37,9 +37,9 @@ from app.models import (  # noqa: E402
 )
 from app.services import cidadania_service  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy import create_engine, text  # noqa: E402
+from sqlalchemy.exc import OperationalError  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
-from sqlalchemy.pool import StaticPool  # noqa: E402
 
 FAR_FUTURE = date(2999, 1, 31)
 
@@ -59,14 +59,39 @@ def _isolation(monkeypatch):
     main_module._rate_limiter._hits.clear()
 
 
-@pytest.fixture()
-def session_factory():
-    """Banco SQLite em memória, novo a cada teste (isolamento total, sem ordem de execução relevante)."""
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL", "postgresql+psycopg2://test:test_pass@localhost:5433/legis_test"
+)
+
+
+@pytest.fixture(scope="session")
+def pg_engine():
+    """Engine do Postgres de teste: o schema é criado uma vez por sessão (extensões + metadata)."""
+    engine = create_engine(TEST_DATABASE_URL, pool_pre_ping=True)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("DROP SCHEMA public CASCADE"))
+            conn.execute(text("CREATE SCHEMA public"))
+            for extension in ("btree_gist", "pg_trgm", "unaccent"):
+                conn.execute(text(f"CREATE EXTENSION IF NOT EXISTS {extension}"))
+    except OperationalError as exc:  # pragma: no cover - ambiente sem banco de teste
+        pytest.exit(
+            f"Postgres de teste indisponível em {TEST_DATABASE_URL}: {exc}. Suba-o com `make test-db-up`.",
+            returncode=2,
+        )
     Base.metadata.create_all(engine)
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
-    yield factory
+    yield engine
     engine.dispose()
+
+
+@pytest.fixture()
+def session_factory(pg_engine):
+    """Postgres real, limpo a cada teste via TRUNCATE (isolamento total, sem ordem de execução relevante)."""
+    factory = sessionmaker(bind=pg_engine, expire_on_commit=False)
+    yield factory
+    tables = ", ".join(f'"{t.schema}"."{t.name}"' if t.schema else f'"{t.name}"' for t in Base.metadata.sorted_tables)
+    with pg_engine.begin() as conn:
+        conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
 
 
 @pytest.fixture()
