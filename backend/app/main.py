@@ -184,8 +184,6 @@ def run_db_migrations() -> None:
         db.commit()
 
 
-
-
 def startup_db_migrations() -> None:
     """Executa a migração leve; falha de banco não impede o boot, mas é registrada como erro."""
     try:
@@ -193,6 +191,7 @@ def startup_db_migrations() -> None:
         from app.core.database import SessionLocal
         from app.services.legislative_scoring import sync_proposition_authors
         from app.services.party_productivity_service import sync_mandate_history
+
         with SessionLocal() as db:
             sync_proposition_authors(db)
             sync_mandate_history(db)
