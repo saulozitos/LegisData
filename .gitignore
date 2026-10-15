@@ -75,4 +75,4 @@ assets/*.mp4
 assets/*.webm
 
 # fazai (efêmero)
-.fazai/session/
+.fazai/*
