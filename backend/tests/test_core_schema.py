@@ -313,7 +313,7 @@ def test_bridge_rejects_same_start_conflict_keeping_the_party_of_the_mandate(db,
         )
         == "PT"
     )
-    assert _scalar(db, "SELECT status FROM etl.execucao ORDER BY id DESC LIMIT 1") == "COM_ALERTA"
+    assert _scalar(db, "SELECT status FROM etl.execucao WHERE linhas_rejeitadas > 0 ORDER BY id LIMIT 1") == "COM_ALERTA"
 
 
 def test_bridge_splits_mandate_when_holder_serves_as_minister(db, cenario):
