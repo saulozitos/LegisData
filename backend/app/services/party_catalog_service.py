@@ -24,6 +24,7 @@ _CATALOG_SQL = text(
            ON sen.partido_id = p.id AND sen.cargo_id = (SELECT id FROM ref.cargo WHERE codigo = 'SENADOR')
     LEFT JOIN core.vw_filiados_ativos fil ON fil.partido_id = p.id
     WHERE p.sigla <> :sem_partido
+      AND p.catalogo AND p.linhagem_id IS NULL
     ORDER BY coalesce(dep.total, 0) + coalesce(sen.total, 0) DESC, coalesce(fil.total, 0) DESC, p.sigla
     """
 )

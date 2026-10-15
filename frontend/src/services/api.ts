@@ -2020,10 +2020,13 @@ export async function getEmendasPorAutor(autor: string, limit = 50, signal?: Abo
 // ─── IPPM & Produtividade Partidária Média ───────────────────────────────────
 
 export interface PartyPilares {
-  fidelidade_partidaria_pct: number;
+  /** null: sem votação nominal com orientação de bancada no período. */
+  fidelidade_partidaria_pct: number | null;
   taxa_eficacia_pct: number;
   total_relatorias: number;
   volume_relatorias: number;
+  /** Assinaturas de apoio a PEC (peso reduzido no índice). */
+  assinaturas_apoio_quorum?: number;
 }
 
 export interface QuadranteEficiencia {
@@ -2061,6 +2064,8 @@ export interface IPPMRankingResponse {
     casa: string;
     bloco: string;
     espectro: string;
+    /** Explica partidos fora do ranking (ex.: período sem histórico de cadeiras na fonte). */
+    aviso?: string | null;
   };
   resumo_geral: {
     total_partidos: number;
@@ -2116,6 +2121,46 @@ export async function getPartyIPPMRanking(
   const qStr = query.toString() ? `?${query.toString()}` : "";
   const cacheKey = `party_ippm_ranking_${query.toString()}`;
   return cachedFetch(cacheKey, () => fetchJson<IPPMRankingResponse>(`/parties/ippm-ranking${qStr}`), signal);
+}
+
+export interface PartyEvolutionPoint {
+  ano: number;
+  ippm: number;
+  pontuacao_bruta_ialp: number;
+  cadeiras_dia_equivalentes: number;
+  parlamentares: number;
+  projetos_apresentados: number;
+  projetos_aprovados: number;
+  taxa_eficacia_pct: number;
+}
+
+export interface PartyEvolutionSeries {
+  sigla: string;
+  nome_completo: string;
+  cor_hex: string;
+  serie: PartyEvolutionPoint[];
+}
+
+export interface IPPMEvolutionResponse {
+  periodo: { ano_inicio: number; ano_fim: number; casa: string };
+  anos: number[];
+  partidos: PartyEvolutionSeries[];
+}
+
+export async function getPartyIPPMEvolution(
+  params?: { casa?: string; ano_inicio?: number; ano_fim?: number },
+  signal?: AbortSignal
+): Promise<IPPMEvolutionResponse> {
+  const query = new URLSearchParams();
+  if (params?.casa && params.casa !== "ALL") query.set("casa", params.casa);
+  if (params?.ano_inicio) query.set("ano_inicio", String(params.ano_inicio));
+  if (params?.ano_fim) query.set("ano_fim", String(params.ano_fim));
+  const qStr = query.toString() ? `?${query.toString()}` : "";
+  return cachedFetch(
+    `party_ippm_evolution_${query.toString()}`,
+    () => fetchJson<IPPMEvolutionResponse>(`/parties/ippm-evolucao${qStr}`),
+    signal
+  );
 }
 
 export async function getPartyMandateHistory(

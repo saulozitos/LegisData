@@ -90,24 +90,36 @@ def sync_mandate_history(db: Session) -> int:
 _CADEIRAS_DIA_SQL = text(
     """
     WITH exercicio AS (
-        -- partido pela filiação vigente em cada dia
-        SELECT m.pessoa_id, s.periodo * f.periodo * daterange(:inicio, :fim, '[]') AS periodo
+        -- 1) partido que ocupa a cadeira em cada dia, segundo o histórico do mandato (fonte oficial)
+        SELECT m.pessoa_id, s.periodo * mp.periodo * daterange(:inicio, :fim, '[]') AS periodo
+        FROM core.mandato_situacao s
+        JOIN core.mandato m ON m.id = s.mandato_id
+        JOIN ref.cargo c ON c.id = m.cargo_id
+        JOIN core.mandato_partido mp ON mp.mandato_id = m.id
+        JOIN core.vw_partido_canonico pa ON pa.id = mp.partido_id
+        WHERE pa.canonico_sigla_normalizada = ref.normalizar_texto(:sigla)
+          AND s.situacao IN ('EXERCICIO', 'SUPLENCIA') AND c.codigo = ANY(:cargos)
+        UNION ALL
+        -- 2) mandatos sem histórico de partido: filiação vigente em cada dia
+        SELECT m.pessoa_id, s.periodo * f.periodo * daterange(:inicio, :fim, '[]')
         FROM core.mandato_situacao s
         JOIN core.mandato m ON m.id = s.mandato_id
         JOIN ref.cargo c ON c.id = m.cargo_id
         JOIN core.filiacao f ON f.pessoa_id = m.pessoa_id
-        JOIN core.partido pa ON pa.id = f.partido_id
-        WHERE pa.sigla_normalizada = ref.normalizar_texto(:sigla)
+        JOIN core.vw_partido_canonico pa ON pa.id = f.partido_id
+        WHERE pa.canonico_sigla_normalizada = ref.normalizar_texto(:sigla)
           AND s.situacao IN ('EXERCICIO', 'SUPLENCIA') AND c.codigo = ANY(:cargos)
+          AND NOT EXISTS (SELECT 1 FROM core.mandato_partido x WHERE x.mandato_id = m.id)
         UNION ALL
-        -- quem não tem nenhuma filiação registrada herda o partido do mandato
+        -- 3) quem não tem histórico de partido nem filiação registrada herda o partido do mandato
         SELECT m.pessoa_id, s.periodo * daterange(:inicio, :fim, '[]')
         FROM core.mandato_situacao s
         JOIN core.mandato m ON m.id = s.mandato_id
         JOIN ref.cargo c ON c.id = m.cargo_id
-        JOIN core.partido pa ON pa.id = m.partido_id
-        WHERE pa.sigla_normalizada = ref.normalizar_texto(:sigla)
+        JOIN core.vw_partido_canonico pa ON pa.id = m.partido_id
+        WHERE pa.canonico_sigla_normalizada = ref.normalizar_texto(:sigla)
           AND s.situacao IN ('EXERCICIO', 'SUPLENCIA') AND c.codigo = ANY(:cargos)
+          AND NOT EXISTS (SELECT 1 FROM core.mandato_partido x WHERE x.mandato_id = m.id)
           AND NOT EXISTS (SELECT 1 FROM core.filiacao x WHERE x.pessoa_id = m.pessoa_id)
     )
     SELECT count(DISTINCT pessoa_id) AS parlamentares, coalesce(sum(upper(periodo) - lower(periodo)), 0) AS dias
@@ -144,6 +156,20 @@ def calculate_party_active_seats(
     }
 
 
+def _aviso_cobertura(ranking: List[Dict[str, Any]], partidos_sem_cadeiras: List[str]) -> Optional[str]:
+    """Explica ao leitor por que partidos com proposições ficaram fora do ranking."""
+    if not partidos_sem_cadeiras:
+        return None
+    if not ranking:
+        return (
+            "Sem histórico de cadeiras para este período: a Câmara só publica posse, licença e troca de partido a "
+            "partir da 52ª legislatura (2003). O IPPM não é calculado sem o divisor de cadeiras-dia."
+        )
+    return "Partidos sem cadeiras registradas no período ficaram fora do ranking: " + ", ".join(
+        sorted(partidos_sem_cadeiras)
+    )
+
+
 def calculate_party_ippm_ranking(
     db: Session,
     ano: Optional[int] = None,
@@ -167,10 +193,16 @@ def calculate_party_ippm_ranking(
     clean_espectro = (espectro or "ALL").upper().strip()
 
     bloc_map = get_party_bloc_alignments()
-    parties = db.execute(text("SELECT * FROM core.vw_partido WHERE sigla <> 'S.PART.' ORDER BY sigla")).mappings().all()
+    parties = (
+        db.execute(
+            text("SELECT * FROM core.vw_partido WHERE sigla <> 'S.PART.' AND linhagem_id IS NULL ORDER BY sigla")
+        )
+        .mappings()
+        .all()
+    )
 
     casa_param = clean_casa if clean_casa in ("CAMARA", "SENADO") else None
-    params = {"casa": casa_param}
+    params = {"casa": casa_param, "inicio": start_date, "fim": end_date}
 
     # 1. Agregação IALP por Partido: Score = tipo x autoria x tramitação (pesos em param.peso, metodologia IALP),
     # com o partido do autor na data de apresentação da proposição (core.filiacao)
@@ -178,8 +210,10 @@ def calculate_party_ippm_ranking(
         text(
             """
             SELECT pa.sigla, COUNT(DISTINCT v.pessoa_id), ROUND(SUM(v.pontos_ialp)::numeric, 2)
-            FROM leg.vw_autoria_pontuada v JOIN core.partido pa ON pa.id = v.partido_id
-            WHERE (:casa IS NULL OR (:casa = 'CAMARA' AND v.da_camara) OR (:casa = 'SENADO' AND v.do_senado))
+            FROM leg.vw_autoria_pontuada v JOIN core.vw_partido_canonico pc ON pc.id = v.partido_id
+            JOIN core.partido pa ON pa.id = pc.canonico_id
+            WHERE v.data_apresentacao BETWEEN :inicio AND :fim
+              AND (:casa IS NULL OR (:casa = 'CAMARA' AND v.da_camara) OR (:casa = 'SENADO' AND v.do_senado))
             GROUP BY pa.sigla
             """
         ),
@@ -195,17 +229,19 @@ def calculate_party_ippm_ranking(
             SELECT pa.sigla, COUNT(*), COUNT(*) FILTER (WHERE v.opcao_codigo = o.orientacao)
             FROM leg.voto v
             JOIN leg.votacao vo ON vo.id = v.votacao_id
-            JOIN core.partido pa ON pa.id = v.partido_id
+            JOIN core.vw_partido_canonico pc ON pc.id = v.partido_id
+            JOIN core.partido pa ON pa.id = pc.canonico_id
             JOIN leg.orientacao o ON o.votacao_id = v.votacao_id
              AND (o.partido_id = pa.id
                   OR (o.bancada = 'Governo' AND EXISTS (
                         SELECT 1 FROM core.mandato mp JOIN ref.cargo cp ON cp.id = mp.cargo_id
                          WHERE cp.codigo = 'PRESIDENTE' AND mp.partido_id = pa.id
                            AND vo.data_hora::date BETWEEN mp.inicio AND coalesce(mp.fim, DATE '9999-12-31'))))
-            WHERE o.orientacao IN ('SIM', 'NAO', 'OBSTRUCAO')
+            WHERE o.orientacao IN ('SIM', 'NAO', 'OBSTRUCAO') AND vo.data_hora::date BETWEEN :inicio AND :fim
             GROUP BY pa.sigla
             """
-        )
+        ),
+        params,
     ).fetchall()
     fidelity_by_party: Dict[str, float] = {}
     for r in fidelity_rows:
@@ -213,14 +249,16 @@ def calculate_party_ippm_ranking(
         if tot > 0:
             fidelity_by_party[str(r[0]).upper()] = round((alin / tot) * 100.0, 1)
 
-    # 3. Pilar B: Taxa de Eficácia de Bancada (Projetos Aprovados vs Apresentados)
+    # 3. Pilar B: Taxa de Eficácia de Bancada (projetos aprovados vs apresentados; requerimentos e indicações ficam de fora)
     eff_rows = db.execute(
         text(
             """
             SELECT pa.sigla, COUNT(DISTINCT v.proposicao_id),
                    COUNT(DISTINCT v.proposicao_id) FILTER (WHERE v.status_codigo IN :aprovados)
-            FROM leg.vw_autoria_pontuada v JOIN core.partido pa ON pa.id = v.partido_id
-            WHERE v.tipo_autoria = 'AUTOR_PRINCIPAL'
+            FROM leg.vw_autoria_pontuada v JOIN core.vw_partido_canonico pc ON pc.id = v.partido_id
+            JOIN core.partido pa ON pa.id = pc.canonico_id
+            WHERE v.tipo_autoria = 'AUTOR_PRINCIPAL' AND v.categoria_proposicao = 'PROJETO'
+              AND v.data_apresentacao BETWEEN :inicio AND :fim
               AND (:casa IS NULL OR (:casa = 'CAMARA' AND v.da_camara) OR (:casa = 'SENADO' AND v.do_senado))
             GROUP BY pa.sigla
             """
@@ -234,8 +272,9 @@ def calculate_party_ippm_ranking(
         text(
             """
             SELECT pa.sigla, COUNT(DISTINCT v.proposicao_id), ROUND(SUM(v.pontos_relatoria)::numeric, 1)
-            FROM leg.vw_autoria_pontuada v JOIN core.partido pa ON pa.id = v.partido_id
-            WHERE v.tipo_autoria = 'RELATOR'
+            FROM leg.vw_autoria_pontuada v JOIN core.vw_partido_canonico pc ON pc.id = v.partido_id
+            JOIN core.partido pa ON pa.id = pc.canonico_id
+            WHERE v.tipo_autoria = 'RELATOR' AND v.data_apresentacao BETWEEN :inicio AND :fim
               AND (:casa IS NULL OR (:casa = 'CAMARA' AND v.da_camara) OR (:casa = 'SENADO' AND v.do_senado))
             GROUP BY pa.sigla
             """
@@ -244,7 +283,24 @@ def calculate_party_ippm_ranking(
     ).fetchall()
     relatoria_by_party = {str(r[0]).upper(): (int(r[1]), float(r[2])) for r in rel_rows}
 
+    # Assinaturas de apoio a PEC (coautor): contadas à parte, com peso reduzido no IALP
+    apoio_rows = db.execute(
+        text(
+            """
+            SELECT pa.sigla, COUNT(*)
+            FROM leg.vw_autoria_pontuada v JOIN core.vw_partido_canonico pc ON pc.id = v.partido_id
+            JOIN core.partido pa ON pa.id = pc.canonico_id
+            WHERE v.apoio_quorum AND v.data_apresentacao BETWEEN :inicio AND :fim
+              AND (:casa IS NULL OR (:casa = 'CAMARA' AND v.da_camara) OR (:casa = 'SENADO' AND v.do_senado))
+            GROUP BY pa.sigla
+            """
+        ),
+        params,
+    ).fetchall()
+    apoio_by_party = {str(r[0]).upper(): int(r[1]) for r in apoio_rows}
+
     # Montagem dos Resultados por Partido
+    partidos_sem_cadeiras: List[str] = []
     ranking: List[Dict[str, Any]] = []
     for party in parties:
         sigla = party["sigla"].upper()
@@ -277,12 +333,15 @@ def calculate_party_ippm_ranking(
         tot_proj, aprov_proj = efficacy_by_party.get(sigla, (0, 0))
         tot_rel, peso_rel = relatoria_by_party.get(sigla, (0, 0.0))
 
-        if total_cadeiras == 0 and ialp_total == 0.0 and tot_proj == 0:
+        if total_cadeiras == 0:
+            # Sem cadeiras registradas no período o divisor do IPPM não existe: o partido não entra (nada de divisor inventado)
+            if ialp_total > 0 or tot_proj > 0:
+                partidos_sem_cadeiras.append(sigla)
             continue
 
         # IPPM = IALP / Cadeiras-Dia
         ippm_score = round(ialp_total / max(0.1, cadeiras_dia), 2)
-        fidelidade = fidelity_by_party.get(sigla, 100.0 if total_cadeiras > 0 else 0.0)
+        fidelidade = fidelity_by_party.get(sigla)  # None: sem votação nominal com orientação no período
         taxa_eficacia = round((aprov_proj / max(1, tot_proj)) * 100.0, 1)
 
         ranking.append(
@@ -307,6 +366,7 @@ def calculate_party_ippm_ranking(
                     "taxa_eficacia_pct": taxa_eficacia,
                     "total_relatorias": tot_rel,
                     "volume_relatorias": peso_rel,
+                    "assinaturas_apoio_quorum": apoio_by_party.get(sigla, 0),
                 },
                 # Placeholder preenchido no pós-processamento
                 "quadrante_eficiencia": {
@@ -397,7 +457,7 @@ def calculate_party_ippm_ranking(
     )
 
     # Maior Coesão: Em empate de fidelidade (ex: 100%), priorizar bancadas com mais cadeiras ativas
-    candidatos_coeso = [p for p in ranking if p["pilares"]["fidelidade_partidaria_pct"] > 0]
+    candidatos_coeso = [p for p in ranking if (p["pilares"]["fidelidade_partidaria_pct"] or 0) > 0]
     mais_coeso = (
         max(
             candidatos_coeso,
@@ -419,6 +479,7 @@ def calculate_party_ippm_ranking(
             "casa": clean_casa,
             "bloco": clean_bloco,
             "espectro": clean_espectro,
+            "aviso": _aviso_cobertura(ranking, partidos_sem_cadeiras),
         },
         "resumo_geral": {
             "total_partidos": total_parties,

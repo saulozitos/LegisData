@@ -156,6 +156,45 @@ def _processos(allow_unverified_legal: bool):
         return populate_processos_judiciais(session, allow_unverified=allow_unverified_legal)
 
 
+def _camara_bulk(force: bool, ano_inicio: int):
+    from datetime import date
+
+    from etl.utils.bootstrap import ensure_backend_on_path
+
+    ensure_backend_on_path()
+    from app.core.database import engine
+    from app.core.migrations import upgrade_schema
+
+    from etl.extractors.camara_bulk_extractor import CamaraBulkExtractor
+    from etl.pipelines.camara_bulk_loader import carregar
+
+    upgrade_schema()
+    arquivos = CamaraBulkExtractor(anos=range(ano_inicio, date.today().year + 1)).run(force=force)
+    resumo = carregar(engine, arquivos)
+    print(f"    {resumo['merge']}")
+    return resumo
+
+
+def _camara_historico(force: bool):
+    from etl.utils.bootstrap import ensure_backend_on_path
+
+    ensure_backend_on_path()
+    from app.core.database import engine
+    from app.core.migrations import upgrade_schema
+
+    from etl.extractors.camara_historico_extractor import CamaraHistoricoExtractor
+    from etl.pipelines.camara_historico_loader import carregar
+
+    upgrade_schema()
+    extrator = CamaraHistoricoExtractor()
+    baixado = extrator.run(force=force)
+    if baixado["falhas"]:
+        raise RuntimeError(f"{len(baixado['falhas'])} históricos não baixados (ex.: {baixado['falhas'][0]})")
+    resumo = carregar(engine, extrator.raw_dir)
+    print(f"    {resumo['merge']}")
+    return resumo
+
+
 def _presenca(no_cache: bool, max_paginas: Optional[int]):
     from etl.extractors.presenca_extractor import PresencaExtractor, ids_deputados_conhecidos
 
@@ -220,6 +259,8 @@ def montar_parser() -> argparse.ArgumentParser:
         ("votacoes", "Votações nominais em plenário (Câmara e Senado) com orientação do governo e ex-parlamentares"),
         ("presenca", "Presença em plenário (Câmara: portal oficial; Senado: votações nominais)"),
         ("remuneracao", "Remuneração mensal dos deputados (portal da Câmara)"),
+        ("camara-bulk", "Proposições e autores de todos os anos (CSV em lote da Câmara) direto no PostgreSQL"),
+        ("camara-historico", "Histórico de mandatos dos deputados (posse, licença, suplência, partido) desde 1995"),
         ("load-db", "Carga e upsert no PostgreSQL"),
         ("load-presenca", "Carga de presença e remuneração oficiais no PostgreSQL"),
         ("processos", "Carga do acervo manual de processos judiciais (exige --allow-unverified-legal)"),
@@ -231,6 +272,9 @@ def montar_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Máximo de páginas novas do portal da Câmara por execução (o portal limita a taxa; a extração é retomável)",
+    )
+    p.add_argument(
+        "--bulk-ano-inicio", type=int, default=1995, help="Ano inicial das proposições em lote (padrão: 1995)"
     )
     p.add_argument("--votacoes-ano-inicio", type=int, default=2019, help="Ano inicial das votações (padrão: 2019)")
     p.add_argument(
@@ -269,6 +313,8 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         "votacoes",
         "presenca",
         "remuneracao",
+        "camara_bulk",
+        "camara_historico",
         "load_db",
         "load_presenca",
         "processos",
@@ -311,6 +357,16 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
             lambda: _presenca(args.no_cache, args.presenca_max_paginas),
         ),
         Etapa("remuneracao", "Remuneração mensal dos deputados", lambda: _remuneracao(args.no_cache)),
+        Etapa(
+            "camara_bulk",
+            "Proposições e autores de todos os anos (CSV em lote da Câmara)",
+            lambda: _camara_bulk(args.no_cache, args.bulk_ano_inicio),
+        ),
+        Etapa(
+            "camara_historico",
+            "Histórico de mandatos dos deputados (Câmara)",
+            lambda: _camara_historico(args.no_cache),
+        ),
         Etapa(
             "load_db",
             "Carga e upsert relacional no PostgreSQL",
@@ -398,6 +454,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             "votacoes",
             "presenca",
             "remuneracao",
+            "camara_bulk",
+            "camara_historico",
             "load_db",
             "load_presenca",
             "processos",

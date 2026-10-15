@@ -157,8 +157,8 @@ def _votacao_completa(db, c):
 
 
 def test_leg_reference_tables_are_seeded(db):
-    assert _scalar(db, "SELECT count(*) FROM ref.tipo_proposicao") == 12
-    assert _scalar(db, "SELECT count(*) FROM ref.status_tramitacao") == 9
+    assert _scalar(db, "SELECT count(*) FROM ref.tipo_proposicao") == 21
+    assert _scalar(db, "SELECT count(*) FROM ref.status_tramitacao") == 10
     assert _scalar(db, "SELECT rotulo FROM ref.opcao_voto WHERE codigo = 'ARTIGO_17'") == "Art. 17"
     assert _scalar(db, "SELECT tem_posicao FROM ref.opcao_voto WHERE codigo = 'AUSENTE'") is False
 
@@ -331,7 +331,8 @@ def test_peso_de_fails_when_the_weight_is_missing_there_is_no_silent_default(db)
 
 def test_single_methodology_has_a_weight_for_every_reference_code_and_no_wildcard(db):
     assert _rows(db, "SELECT codigo, versao FROM param.metodologia WHERE codigo IN ('IALP', 'IPPM') ORDER BY 1, 2") == [
-        ("IALP", 2)
+        ("IALP", 2),
+        ("IALP", 3),
     ]
     assert _scalar(db, "SELECT count(*) FROM param.peso WHERE chave = '*'") == 0
     sem_peso = _rows(
@@ -339,13 +340,13 @@ def test_single_methodology_has_a_weight_for_every_reference_code_and_no_wildcar
         """
         SELECT 'PESO_TIPO', codigo FROM ref.tipo_proposicao t
           WHERE NOT EXISTS (SELECT 1 FROM param.peso p JOIN param.metodologia m ON m.id = p.metodologia_id
-                             WHERE m.codigo = 'IALP' AND p.dimensao = 'PESO_TIPO' AND p.chave = t.codigo)
+                             WHERE m.codigo = 'IALP' AND m.versao = 3 AND p.dimensao = 'PESO_TIPO' AND p.chave = t.codigo)
         UNION ALL SELECT 'PESO_STATUS', codigo FROM ref.status_tramitacao t
           WHERE NOT EXISTS (SELECT 1 FROM param.peso p JOIN param.metodologia m ON m.id = p.metodologia_id
-                             WHERE m.codigo = 'IALP' AND p.dimensao = 'PESO_STATUS' AND p.chave = t.codigo)
+                             WHERE m.codigo = 'IALP' AND m.versao = 3 AND p.dimensao = 'PESO_STATUS' AND p.chave = t.codigo)
         UNION ALL SELECT 'PESO_AUTORIA', codigo FROM ref.tipo_autoria t
           WHERE NOT EXISTS (SELECT 1 FROM param.peso p JOIN param.metodologia m ON m.id = p.metodologia_id
-                             WHERE m.codigo = 'IALP' AND p.dimensao = 'PESO_AUTORIA' AND p.chave = t.codigo)""",
+                             WHERE m.codigo = 'IALP' AND m.versao = 3 AND p.dimensao = 'PESO_AUTORIA' AND p.chave = t.codigo)""",
     )
     assert sem_peso == []
 
@@ -510,6 +511,6 @@ def test_government_orientation_applies_to_the_party_of_the_sitting_president(cl
     _votacao_completa(db, cenario)
     sync_legacy_to_core(db)
     # A orientação "Governo" (SIM) vale para o partido do presidente em exercício (PL, aqui), não para o PT
-    ranking = {r["sigla"]: r for r in client.get("/api/v1/parties/ippm-ranking").json()["ranking"]}
+    ranking = {r["sigla"]: r for r in client.get("/api/v1/parties/ippm-ranking?ano=2023").json()["ranking"]}
     assert ranking["PL"]["pilares"]["fidelidade_partidaria_pct"] == 0.0  # Bia (PL) se absteve contra SIM do Governo
     assert ranking["PT"]["pilares"]["fidelidade_partidaria_pct"] == 100.0  # PT segue a própria orientação (SIM)

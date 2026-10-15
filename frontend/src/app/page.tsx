@@ -29,6 +29,7 @@ import {
   Vote,
   Layers,
   Compass,
+  BarChart3,
   CalendarDays,
   Coins,
 } from "lucide-react";
@@ -58,6 +59,7 @@ type TabType =
   | "sociedade"
   | "composicao"
   | "partidos"
+  | "raiox_partidos"
   | "orcamento"
   | "emendas"
   | "fidelidade"
@@ -78,6 +80,7 @@ const TABS: Array<{ id: TabType; label: string; icon: LucideIcon; active: string
   { id: "legislativo", label: "Monitor do Congresso", icon: ScrollText, active: "bg-blue-500 text-slate-950 shadow-md shadow-blue-500/20" },
   { id: "produtividade", label: "Produtividade & Votações", icon: Layers, active: "bg-indigo-500 text-white shadow-md shadow-indigo-500/20" },
   { id: "calendario", label: "Calendário de Votações", icon: CalendarDays, active: "bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20" },
+  { id: "raiox_partidos", label: "Raio-X dos Partidos", icon: BarChart3, active: "bg-violet-400 text-slate-950 shadow-md shadow-violet-400/20" },
   { id: "raiox", label: "Raio-X do Político", icon: Scan, active: "bg-cyan-400 text-slate-950 shadow-md shadow-cyan-400/20" },
 ];
 
@@ -274,19 +277,23 @@ export default function DashboardPage() {
               )}
 
               {activeTab === "partidos" && (
-                <section className="space-y-8">
+                <section className="space-y-4">
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Catálogo Geral & Estatutos Partidários</h2>
+                    <p className="text-xs text-slate-400">
+                      Diretórios partidários, número eleitoral, ideologias doutrinárias e lemas oficiais registrados no TSE.
+                    </p>
+                  </div>
+                  <PartiesPanel targetParty={globalSelectedParty} onSelectParty={handleOpenPartyMembers} />
+                </section>
+              )}
+
+              {activeTab === "raiox_partidos" && (
+                <section>
                   <PartyProductivityExplorer
                     onSelectPartyMembers={handleOpenPartyMembers}
+                    onOpenCatalog={() => setActiveTab("partidos")}
                   />
-                  <div className="pt-6 border-t border-slate-800/80">
-                    <div className="mb-4">
-                      <h2 className="text-lg font-bold text-white">Catálogo Geral & Estatutos Partidários</h2>
-                      <p className="text-xs text-slate-400">
-                        Diretórios partidários, número eleitoral, ideologias doutrinárias e lemas oficiais registrados no TSE.
-                      </p>
-                    </div>
-                    <PartiesPanel targetParty={globalSelectedParty} onSelectParty={handleOpenPartyMembers} />
-                  </div>
                 </section>
               )}
 

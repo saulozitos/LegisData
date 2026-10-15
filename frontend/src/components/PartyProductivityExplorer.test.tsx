@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import PartyProductivityExplorer from "./PartyProductivityExplorer";
 import * as api from "@/services/api";
@@ -94,6 +94,26 @@ const mockRankingResponse: api.IPPMRankingResponse = {
   ],
 };
 
+const ponto = (ano: number, ippm: number): api.PartyEvolutionPoint => ({
+  ano,
+  ippm,
+  pontuacao_bruta_ialp: ippm * 10,
+  cadeiras_dia_equivalentes: 10,
+  parlamentares: 10,
+  projetos_apresentados: 100,
+  projetos_aprovados: 5,
+  taxa_eficacia_pct: 5,
+});
+
+const mockEvolucao: api.IPPMEvolutionResponse = {
+  periodo: { ano_inicio: 2023, ano_fim: 2025, casa: "ALL" },
+  anos: [2023, 2024, 2025],
+  partidos: [
+    { sigla: "PT", nome_completo: "Partido dos Trabalhadores", cor_hex: "#ef4444", serie: [ponto(2023, 20), ponto(2024, 25), ponto(2025, 30)] },
+    { sigla: "PL", nome_completo: "Partido Liberal", cor_hex: "#1d4ed8", serie: [ponto(2023, 30), ponto(2024, 22), ponto(2025, 18)] },
+  ],
+};
+
 const mockTimelineResponse: api.PartyMandateTimelineResponse = {
   partido: "PT",
   total_membros_registrados: 3,
@@ -138,6 +158,10 @@ const mockTimelineResponse: api.PartyMandateTimelineResponse = {
   ],
 };
 
+const abrirTabela = async () => {
+  fireEvent.click(await screen.findByRole("tab", { name: /Tabela/i }));
+};
+
 describe("PartyProductivityExplorer Component", () => {
   it("renderiza cabeçalho executivo, resumo geral e tabela de ranking por IPPM", async () => {
     vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(mockRankingResponse);
@@ -145,6 +169,7 @@ describe("PartyProductivityExplorer Component", () => {
     render(<PartyProductivityExplorer />);
 
     expect(await screen.findByText("25.50")).toBeInTheDocument();
+    await abrirTabela();
     expect(screen.getByText(/Raio-X dos Partidos & Índice de Produtividade Partidária Média/i)).toBeInTheDocument(); // Média IPPM Geral
     expect(screen.getAllByText("PT")[0]).toBeInTheDocument();
     expect(screen.getAllByText("PL")[0]).toBeInTheDocument();
@@ -156,6 +181,7 @@ describe("PartyProductivityExplorer Component", () => {
 
     render(<PartyProductivityExplorer />);
 
+    await abrirTabela();
     expect(await screen.findByText("Partido dos Trabalhadores")).toBeInTheDocument();
     expect(screen.getByText("Partido Liberal")).toBeInTheDocument();
 
@@ -176,6 +202,7 @@ describe("PartyProductivityExplorer Component", () => {
 
     render(<PartyProductivityExplorer />);
 
+    await abrirTabela();
     expect(await screen.findByText("Partido dos Trabalhadores")).toBeInTheDocument();
 
     // Clicar no cabeçalho de Bancada
@@ -192,23 +219,39 @@ describe("PartyProductivityExplorer Component", () => {
     expect(screen.getAllByText("PT").length).toBeGreaterThan(0);
   });
 
-  it("alterna entre visão de Tabela e Matriz de Eficiência (Quadrantes)", async () => {
+  it("mantém a Matriz de Eficiência como última parte da página, recolhida até ser aberta", async () => {
     vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(mockRankingResponse);
 
     render(<PartyProductivityExplorer />);
 
-    expect(await screen.findByText("Partido dos Trabalhadores")).toBeInTheDocument();
+    const alternar = await screen.findByRole("button", { name: /Matriz de Eficiência/i });
+    expect(alternar).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(/Técnicos & Articuladores/i)).not.toBeInTheDocument();
 
-    const quadranteBtn = screen.getByRole("button", { name: /Matriz de Eficiência/i });
-    fireEvent.click(quadranteBtn);
+    // fica depois do conteúdo da aba (última parte da página)
+    const comparar = document.getElementById("compare-charts") as HTMLElement;
+    expect(comparar.compareDocumentPosition(alternar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
+    fireEvent.click(alternar);
     expect(await screen.findByText(/Técnicos & Articuladores/i)).toBeInTheDocument();
     expect(screen.getByText(/Dispersão: Volume de Projetos vs. Eficácia de Aprovação/i)).toBeInTheDocument();
+    expect(alternar).toHaveAttribute("aria-expanded", "true");
 
-    const rankingBtn = screen.getByRole("button", { name: /Ranking Geral/i });
-    fireEvent.click(rankingBtn);
-
+    // continua disponível ao trocar de aba
+    await abrirTabela();
     expect(await screen.findByText("Partido dos Trabalhadores")).toBeInTheDocument();
+    expect(screen.getByText(/Técnicos & Articuladores/i)).toBeInTheDocument();
+  });
+
+  it("a bolha da matriz cresce com o IPPM do partido", async () => {
+    vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(mockRankingResponse);
+
+    render(<PartyProductivityExplorer />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Matriz de Eficiência/i }));
+    const bolhaPT = screen.getByTitle(/^PT:/i).firstElementChild as HTMLElement; // IPPM 30,2 (maior)
+    const bolhaPL = screen.getByTitle(/^PL:/i).firstElementChild as HTMLElement; // IPPM 20,0
+    expect(parseInt(bolhaPT.style.width)).toBeGreaterThan(parseInt(bolhaPL.style.width));
   });
 
   it("abre e fecha o modal de histórico dinâmico de mandatos e licenças", async () => {
@@ -217,6 +260,7 @@ describe("PartyProductivityExplorer Component", () => {
 
     render(<PartyProductivityExplorer />);
 
+    await abrirTabela();
     expect(await screen.findByText("Partido dos Trabalhadores")).toBeInTheDocument();
 
     const timelineBtns = screen.getAllByText("Licenças / Suplentes");
@@ -245,6 +289,7 @@ describe("PartyProductivityExplorer Component", () => {
       />
     );
 
+    await abrirTabela();
     expect(await screen.findByText("Partido dos Trabalhadores")).toBeInTheDocument();
 
     const catalogBtn = screen.getByRole("button", { name: /Catálogo de Estatutos & Filiados/i });
@@ -270,6 +315,7 @@ describe("PartyProductivityExplorer Component", () => {
 
     render(<PartyProductivityExplorer />);
 
+    await abrirTabela();
     expect(await screen.findByText("Partido dos Trabalhadores")).toBeInTheDocument();
 
     const selects = screen.getAllByRole("combobox");
@@ -290,6 +336,7 @@ describe("PartyProductivityExplorer Component", () => {
 
     render(<PartyProductivityExplorer />);
 
+    await abrirTabela();
     expect(await screen.findByText("Partido dos Trabalhadores")).toBeInTheDocument();
 
     // Posicao
@@ -318,7 +365,7 @@ describe("PartyProductivityExplorer Component", () => {
     fireEvent.click(relatoriasHeader);
   });
 
-  it("na visão de quadrantes, permite clicar em um partido para abrir o modal de mandato", async () => {
+  it("na matriz, permite clicar em um partido para abrir o modal de mandato", async () => {
     vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(mockRankingResponse);
     vi.spyOn(api, "getPartyMandateHistory").mockResolvedValue({
       partido: "PT",
@@ -340,6 +387,7 @@ describe("PartyProductivityExplorer Component", () => {
 
     render(<PartyProductivityExplorer />);
 
+    await abrirTabela();
     expect(await screen.findByText("Partido dos Trabalhadores")).toBeInTheDocument();
 
     const quadranteBtn = screen.getByRole("button", { name: /Matriz de Eficiência/i });
@@ -368,5 +416,147 @@ describe("PartyProductivityExplorer Component", () => {
     render(<PartyProductivityExplorer />);
 
     expect(await screen.findByText(/Nenhum partido localizado/i)).toBeInTheDocument();
+  });
+
+  it("mostra o aviso do período e traço quando a coesão está indisponível", async () => {
+    const semVotos = structuredClone(mockRankingResponse);
+    semVotos.periodo.aviso = "Partidos sem cadeiras registradas no período ficaram fora do ranking: PRD";
+    semVotos.ranking[0].pilares.fidelidade_partidaria_pct = null;
+    semVotos.ranking[0].pilares.assinaturas_apoio_quorum = 7;
+    vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(semVotos);
+
+    render(<PartyProductivityExplorer />);
+
+    expect(await screen.findByText(/ficaram fora do ranking: PRD/)).toBeInTheDocument();
+    await abrirTabela();
+    expect(screen.getByText("—", { selector: "span.font-mono" })).toBeInTheDocument();
+  });
+
+  it("explica cada aba em linguagem simples e troca o texto ao alternar", async () => {
+    vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(mockRankingResponse);
+    vi.spyOn(api, "getPartyIPPMEvolution").mockResolvedValue(mockEvolucao);
+
+    render(<PartyProductivityExplorer />);
+
+    expect(await screen.findByText(/Barras para comparar os partidos de uma olhada/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: /Tabela/i }));
+    expect(await screen.findByText(/Todos os números de cada partido lado a lado/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: /Evolução/i }));
+    expect(await screen.findByText(/Como a produtividade \(IPPM\) de cada partido mudou ano a ano/i)).toBeInTheDocument();
+  });
+
+  it("Comparar: barras ordenadas pelo indicador escolhido e projetos aprovados por partido", async () => {
+    vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(mockRankingResponse);
+
+    render(<PartyProductivityExplorer />);
+
+    const lista = await screen.findByRole("list", { name: /ordenados por Produtividade/i });
+    const siglas = () => within(lista).getAllByRole("button").map((b) => b.textContent);
+    expect(siglas()).toEqual(["PT", "PL"]); // 30,2 e 20,0
+    expect(within(lista).getByText("30,20")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Aprovação" }));
+    const porAprovacao = screen.getByRole("list", { name: /ordenados por Aprovação/i });
+    expect(within(porAprovacao).getAllByRole("button").map((b) => b.textContent)).toEqual(["PT", "PL"]); // 12,5% e 5,0%
+    expect(within(porAprovacao).getByText("12,5%")).toBeInTheDocument();
+
+    expect(screen.getByRole("img", { name: "PT: 15 de 120 projetos aprovados" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "PL: 10 de 200 projetos aprovados" })).toBeInTheDocument();
+  });
+
+  it("Comparar: coesão indisponível não vira barra e é informada", async () => {
+    const semVotos = structuredClone(mockRankingResponse);
+    semVotos.ranking[1].pilares.fidelidade_partidaria_pct = null;
+    vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(semVotos);
+
+    render(<PartyProductivityExplorer />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Coesão nas votações" }));
+    const lista = screen.getByRole("list", { name: /ordenados por Coesão/i });
+    expect(within(lista).getAllByRole("button").map((b) => b.textContent)).toEqual(["PT"]);
+    expect(screen.getByText(/Sem dado neste período: PL/)).toBeInTheDocument();
+  });
+
+  it("Evolução: mostra o gráfico de linhas e permite escolher os partidos", async () => {
+    vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(mockRankingResponse);
+    vi.spyOn(api, "getPartyIPPMEvolution").mockResolvedValue(mockEvolucao);
+
+    render(<PartyProductivityExplorer />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: /Evolução/i }));
+
+    const grafico = await screen.findByRole("img", { name: /Gráfico de linhas do IPPM de PT, PL entre 2023 e 2025/i });
+    expect(grafico.querySelectorAll("polyline").length).toBe(2);
+    expect(screen.getByText(/antes de 2003 a Câmara não publica o histórico de cadeiras/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "PL" })); // desmarca o PL
+    expect(await screen.findByRole("img", { name: /Gráfico de linhas do IPPM de PT entre/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "PL" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("Evolução: erro da API aparece com botão de nova tentativa", async () => {
+    vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(mockRankingResponse);
+    vi.spyOn(api, "getPartyIPPMEvolution").mockRejectedValue(new Error("falha na evolução"));
+
+    render(<PartyProductivityExplorer />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: /Evolução/i }));
+    expect(await screen.findByText(/falha na evolução/i)).toBeInTheDocument();
+  });
+
+  it("abre a explicação da média com a conta que levou ao resultado", async () => {
+    vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(mockRankingResponse);
+
+    render(<PartyProductivityExplorer />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Entenda: Média IPPM Geral" }));
+
+    const dialogo = await screen.findByRole("dialog");
+    // Fora do cartão (portal em document.body): contêineres com blur/overflow cortariam um diálogo `fixed`
+    expect(dialogo.parentElement?.parentElement).toBe(document.body);
+    expect(dialogo).toHaveTextContent("O que significa");
+    expect(dialogo).toHaveTextContent("Como é calculado");
+    expect(dialogo).toHaveTextContent("cadeiras-dia");
+    expect(dialogo).toHaveTextContent("Soma 50,20 ÷ 2 partidos = 25,50");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("mostra os números do líder em produtividade e marca o vencedor", async () => {
+    vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(mockRankingResponse);
+
+    render(<PartyProductivityExplorer />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Entenda: Líder em Produtividade" }));
+
+    const dialogo = await screen.findByRole("dialog");
+    expect(dialogo).toHaveTextContent("Os números por trás deste resultado");
+    expect(dialogo).toHaveTextContent("vencedor");
+    expect(dialogo).toHaveTextContent("1980,0"); // pontos brutos do PT
+    expect(dialogo).toHaveTextContent("30,20");
+  });
+
+  it("explica eficácia e coesão e informa quando não há dado", async () => {
+    const semDados = structuredClone(mockRankingResponse);
+    semDados.resumo_geral.partido_mais_eficaz = null;
+    semDados.resumo_geral.partido_mais_coeso = null;
+    semDados.ranking.forEach((p) => {
+      p.projetos_aprovados = 0;
+      p.pilares.taxa_eficacia_pct = 0;
+      p.pilares.fidelidade_partidaria_pct = null;
+    });
+    vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(semDados);
+
+    render(<PartyProductivityExplorer />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Entenda: Maior Eficácia Real" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Nenhum partido teve projeto aprovado neste período");
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Entenda: Maior Coesão de Bancada" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Sem votações nominais com orientação de bancada");
   });
 });
