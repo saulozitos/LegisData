@@ -76,3 +76,4 @@ assets/*.webm
 
 # fazai (efêmero)
 .fazai/*
+.claude/*
