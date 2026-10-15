@@ -294,3 +294,45 @@ describe('getApiHealth', () => {
     await expect(api.getApiHealth()).rejects.toBe(abort);
   });
 });
+
+
+describe('getPartyIPPMRanking', () => {
+  it('faz requisição ao endpoint /parties/ippm-ranking com parâmetros corretos', async () => {
+    const api = await loadApi('https://api.exemplo.org');
+    const mockData = {
+      periodo: { ano: 2026, data_inicio: '2026-01-01', data_fim: '2026-12-31', casa: 'CAMARA', bloco: 'GOVERNO', espectro: 'ESQUERDA' },
+      resumo_geral: { total_partidos: 1, media_ippm_geral: 25.5 },
+      ranking: [],
+    };
+    fetchMock.mockResolvedValue(okResponse(mockData));
+
+    const res = await api.getPartyIPPMRanking({ ano: 2026, casa: 'CAMARA', bloco: 'GOVERNO', espectro: 'ESQUERDA' });
+    expect(res).toEqual(mockData);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.exemplo.org/api/v1/parties/ippm-ranking?ano=2026&casa=CAMARA&bloco=GOVERNO&espectro=ESQUERDA');
+  });
+
+  it('faz requisição sem parâmetros para o default', async () => {
+    const api = await loadApi('https://api.exemplo.org');
+    fetchMock.mockResolvedValue(okResponse({ ranking: [] }));
+    await api.getPartyIPPMRanking();
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.exemplo.org/api/v1/parties/ippm-ranking');
+  });
+});
+
+describe('getPartyMandateHistory', () => {
+  it('faz requisição ao endpoint /parties/:sigla/historico-bancada', async () => {
+    const api = await loadApi('https://api.exemplo.org');
+    const mockData = {
+      partido: 'PT',
+      total_membros_registrados: 1,
+      titulares_exercicio: [],
+      ministros_licenciados: [],
+      suplentes_ativos: [],
+    };
+    fetchMock.mockResolvedValue(okResponse(mockData));
+
+    const res = await api.getPartyMandateHistory('PT');
+    expect(res).toEqual(mockData);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.exemplo.org/api/v1/parties/PT/historico-bancada');
+  });
+});

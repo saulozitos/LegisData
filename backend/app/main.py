@@ -91,7 +91,77 @@ def run_db_migrations() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_processo_politico ON processos_judiciais ("politicoId");
             CREATE INDEX IF NOT EXISTS idx_processo_numero ON processos_judiciais ("numeroProcesso");
+
+            CREATE TABLE IF NOT EXISTS historico_mandatos (
+                id UUID PRIMARY KEY,
+                "politicoId" UUID NOT NULL REFERENCES politicos(id) ON DELETE CASCADE,
+                "partidoId" UUID REFERENCES partidos_politicos(id),
+                "partidoSigla" VARCHAR(20) NOT NULL,
+                "casa" VARCHAR(20) NOT NULL,
+                "situacao" VARCHAR(50) NOT NULL DEFAULT 'EXERCICIO',
+                "dataInicio" DATE NOT NULL,
+                "dataFim" DATE,
+                "observacao" TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_hist_mandato_politico ON historico_mandatos ("politicoId");
+            CREATE INDEX IF NOT EXISTS idx_hist_mandato_partido ON historico_mandatos ("partidoSigla");
+            CREATE INDEX IF NOT EXISTS idx_hist_mandato_periodo ON historico_mandatos ("dataInicio", "dataFim");
+            CREATE INDEX IF NOT EXISTS idx_hist_mandato_situacao ON historico_mandatos ("situacao");
+
+            CREATE TABLE IF NOT EXISTS log_execucao_cron (
+                id UUID PRIMARY KEY,
+                "dataExecucao" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                "statusExecucao" VARCHAR(20) NOT NULL,
+                "registrosAtualizados" INTEGER NOT NULL DEFAULT 0,
+                "tempoProcessamentoSegundos" INTEGER NOT NULL DEFAULT 0,
+                "erroMensagem" TEXT,
+                "etapa" VARCHAR(50)
+            );
+            CREATE INDEX IF NOT EXISTS idx_cron_data ON log_execucao_cron ("dataExecucao");
+            CREATE INDEX IF NOT EXISTS idx_cron_status ON log_execucao_cron ("statusExecucao");
         """
+            )
+        )
+        # Atualização idempotente de logotipos e metadados oficiais dos partidos
+        from app.core.party_constants import OFFICIAL_PARTY_LOGOS, OFFICIAL_PARTY_METADATA
+
+        for sigla, logo in OFFICIAL_PARTY_LOGOS.items():
+            db.execute(
+                text(
+                    'UPDATE partidos_politicos SET "logoUrl" = :logo '
+                    'WHERE UPPER(sigla) = :sigla AND ("logoUrl" IS NULL OR "logoUrl" = '
+                    ");"
+                ),
+                {"sigla": sigla.upper(), "logo": logo},
+            )
+
+        for sigla, meta in OFFICIAL_PARTY_METADATA.items():
+            db.execute(
+                text(
+                    "UPDATE partidos_politicos SET "
+                    '"numeroEleitoral" = COALESCE("numeroEleitoral", :numero), '
+                    '"ideologia" = COALESCE("ideologia", :ideologia), '
+                    '"lema" = COALESCE("lema", :lema), '
+                    '"espectroPolitico" = COALESCE("espectroPolitico", :espectro) '
+                    "WHERE UPPER(sigla) = :sigla;"
+                ),
+                {
+                    "sigla": sigla.upper(),
+                    "numero": meta.get("numero"),
+                    "ideologia": meta.get("ideologia"),
+                    "lema": meta.get("lema"),
+                    "espectro": meta.get("espectro"),
+                },
+            )
+        # Saneamento de mandatos espúrios de legendas sem registro oficial no TSE (ex: MISSÃO)
+        db.execute(
+            text(
+                """
+                DELETE FROM historico_mandatos WHERE UPPER("partidoSigla") = 'MISSÃO';
+                DELETE FROM mandatos WHERE "partidoId" IN (SELECT id FROM partidos_politicos WHERE UPPER(sigla) = 'MISSÃO');
+                """
             )
         )
         db.commit()

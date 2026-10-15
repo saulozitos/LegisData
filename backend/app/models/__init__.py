@@ -1,5 +1,6 @@
 from .analytics import (
     FederalTransferByState,
+    LogExecucaoCron,
     MandateEconomicPerformance,
     PolicyEconomicImpact,
 )
@@ -41,6 +42,7 @@ from .politician import (
     DoacaoCampanha,
     EmendaParlamentar,
     EspectroPoliticoEnum,
+    HistoricoMandato,
     Mandate,
     MotivoDesfiliacaoEnum,
     PartyAffiliation,
@@ -49,6 +51,7 @@ from .politician import (
     PoliticianAssetDeclaration,
     PoliticianRemuneration,
     ProcessoJudicial,
+    SituacaoMandatoEnum,
     StatusMandatoEnum,
     TipoEsferaEnum,
 )
@@ -100,4 +103,7 @@ __all__ = [
     "MandateEconomicPerformance",
     "PolicyEconomicImpact",
     "FederalTransferByState",
+    "HistoricoMandato",
+    "SituacaoMandatoEnum",
+    "LogExecucaoCron",
 ]

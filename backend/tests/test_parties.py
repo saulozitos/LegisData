@@ -96,3 +96,117 @@ def test_senators_are_counted_separately(client, db, seed):
 
 def test_list_parties_empty_database(client):
     assert client.get("/api/v1/parties").json() == []
+
+
+def test_ippm_ranking_endpoint(client, seed):
+    response = client.get("/api/v1/parties/ippm-ranking?ano=2026")
+    assert response.status_code == 200
+    data = response.json()
+    assert "periodo" in data
+    assert "resumo_geral" in data
+    assert "ranking" in data
+    assert data["periodo"]["ano"] == 2026
+    assert isinstance(data["ranking"], list)
+
+    if data["ranking"]:
+        first = data["ranking"][0]
+        assert "sigla" in first
+        assert "ippm_score_medio" in first
+        assert "cadeiras_dia_equivalentes" in first
+        assert "pontuacao_bruta_ialp" in first
+        assert "pilares" in first
+        assert "fidelidade_partidaria_pct" in first["pilares"]
+        assert "taxa_eficacia_pct" in first["pilares"]
+        assert "volume_relatorias" in first["pilares"]
+        assert "quadrante_eficiencia" in first
+        assert "titulo" in first["quadrante_eficiencia"]
+
+    resumo = data["resumo_geral"]
+    if all(p["pilares"]["taxa_eficacia_pct"] == 0 for p in data["ranking"]):
+        assert resumo["partido_mais_eficaz"] is None
+
+    if resumo.get("partido_mais_produtivo") and any(p["total_cadeiras_ativas"] >= 3 for p in data["ranking"]):
+        produtivo_sigla = resumo["partido_mais_produtivo"]["sigla"]
+        party_in_ranking = next(p for p in data["ranking"] if p["sigla"] == produtivo_sigla)
+        assert party_in_ranking["total_cadeiras_ativas"] >= 3
+
+
+def test_ippm_ranking_filters(client, seed):
+    # Test filters by house, bloc, spectrum
+    resp_camara = client.get("/api/v1/parties/ippm-ranking?casa=CAMARA&bloco=ALL&espectro=ALL")
+    assert resp_camara.status_code == 200
+    assert resp_camara.json()["periodo"]["casa"] == "CAMARA"
+
+    resp_bloco = client.get("/api/v1/parties/ippm-ranking?bloco=GOVERNO")
+    assert resp_bloco.status_code == 200
+    for p in resp_bloco.json()["ranking"]:
+        assert p["bloco_politico"] == "BASE_GOVERNO"
+
+    resp_espectro = client.get("/api/v1/parties/ippm-ranking?espectro=ESQUERDA")
+    assert resp_espectro.status_code == 200
+    for p in resp_espectro.json()["ranking"]:
+        assert "ESQUERDA" in p["espectro_politico"].upper()
+
+
+def test_party_timeline_endpoint(client, seed):
+    response = client.get("/api/v1/parties/PT/historico-bancada")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["partido"] == "PT"
+    assert "titulares_exercicio" in data
+    assert "ministros_licenciados" in data
+    assert "suplentes_ativos" in data
+
+
+def test_cron_consolidation_and_logs(client, db, seed):
+    from app.services.party_productivity_service import run_daily_cron_job
+
+    # Run cron service directly (as the API is strictly read-only GET)
+    run_data = run_daily_cron_job(db)
+    assert run_data["status"] == "SUCESSO"
+    assert run_data["tempo_processamento_segundos"] >= 0
+
+    # Get cron logs via API GET endpoint
+    logs_resp = client.get("/api/v1/parties/cron/logs")
+    assert logs_resp.status_code == 200
+    logs_data = logs_resp.json()
+    assert len(logs_data) >= 1
+    assert logs_data[0]["status_execucao"] == "SUCESSO"
+
+
+def test_service_sync_mandate_history_and_active_seats(db, seed):
+    from datetime import date
+
+    from app.services.party_productivity_service import (
+        calculate_party_active_seats,
+        sync_mandate_history,
+    )
+
+    synced = sync_mandate_history(db)
+    assert synced >= 0
+
+    seats_pt = calculate_party_active_seats(
+        partido_sigla="PT",
+        casa="CAMARA",
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 12, 31),
+        db=db,
+    )
+    assert "total_parlamentares_ativos" in seats_pt
+    assert "cadeiras_dia_equivalentes" in seats_pt
+    assert seats_pt["cadeiras_dia_equivalentes"] >= 0.1
+
+
+def test_list_parties_resolves_official_party_logos(client, seed):
+    from urllib.parse import urlparse
+
+    parties = {p["sigla"]: p for p in client.get("/api/v1/parties").json()}
+    assert parties["PT"]["logo_url"] is not None
+    parsed_pt = urlparse(parties["PT"]["logo_url"])
+    assert parsed_pt.hostname is not None
+    assert parsed_pt.hostname == "wikimedia.org" or parsed_pt.hostname.endswith(".wikimedia.org")
+
+    assert parties["PTB"]["logo_url"] is not None
+    parsed_ptb = urlparse(parties["PTB"]["logo_url"])
+    assert parsed_ptb.hostname is not None
+    assert parsed_ptb.hostname == "wikimedia.org" or parsed_ptb.hostname.endswith(".wikimedia.org")

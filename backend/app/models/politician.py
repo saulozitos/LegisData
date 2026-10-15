@@ -67,6 +67,14 @@ class EspectroPoliticoEnum(str, enum.Enum):
     DIREITA = "DIREITA"
 
 
+class SituacaoMandatoEnum(str, enum.Enum):
+    EXERCICIO = "EXERCICIO"
+    AFASTADO_MINISTERIO = "AFASTADO_MINISTERIO"
+    LICENCA_MEDICA = "LICENCA_MEDICA"
+    SUPLENCIA = "SUPLENCIA"
+    ENCERRADO = "ENCERRADO"
+
+
 class Politician(TimeStampedModel):
     __tablename__ = "politicos"
 
@@ -119,6 +127,9 @@ class Politician(TimeStampedModel):
     )
     doacoes_campanha: Mapped[List["DoacaoCampanha"]] = relationship(
         "DoacaoCampanha", back_populates="politician", cascade="all, delete-orphan"
+    )
+    historico_mandatos: Mapped[List["HistoricoMandato"]] = relationship(
+        "HistoricoMandato", back_populates="politician", cascade="all, delete-orphan"
     )
     processos_judiciais: Mapped[List["ProcessoJudicial"]] = relationship(
         "ProcessoJudicial", back_populates="politician", cascade="all, delete-orphan"
@@ -484,4 +495,38 @@ class ProcessoJudicial(TimeStampedModel):
     __table_args__ = (
         Index("idx_processo_politico", "politicoId"),
         Index("idx_processo_numero", "numeroProcesso"),
+    )
+
+
+class HistoricoMandato(TimeStampedModel):
+    __tablename__ = "historico_mandatos"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    politician_id: Mapped[uuid.UUID] = mapped_column(
+        "politicoId",
+        UUID(as_uuid=True),
+        ForeignKey("politicos.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    party_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        "partidoId",
+        UUID(as_uuid=True),
+        ForeignKey("partidos_politicos.id"),
+        nullable=True,
+    )
+    party_acronym: Mapped[str] = mapped_column("partidoSigla", String(20), nullable=False)
+    house: Mapped[str] = mapped_column("casa", String(20), nullable=False)
+    situation: Mapped[str] = mapped_column("situacao", String(50), default="EXERCICIO", nullable=False)
+    start_date: Mapped[date] = mapped_column("dataInicio", Date, nullable=False)
+    end_date: Mapped[Optional[date]] = mapped_column("dataFim", Date, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column("observacao", Text, nullable=True)
+
+    politician: Mapped["Politician"] = relationship("Politician", back_populates="historico_mandatos")
+    party: Mapped[Optional["PoliticalParty"]] = relationship("PoliticalParty")
+
+    __table_args__ = (
+        Index("idx_hist_mandato_politico", "politicoId"),
+        Index("idx_hist_mandato_partido", "partidoSigla"),
+        Index("idx_hist_mandato_periodo", "dataInicio", "dataFim"),
+        Index("idx_hist_mandato_situacao", "situacao"),
     )
