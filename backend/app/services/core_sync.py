@@ -1,0 +1,17 @@
+"""Ponte transitória legado -> core: roda após cada carga do ETL atual (some quando o novo ETL assumir)."""
+
+import logging
+from typing import Any, Dict
+
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
+
+
+def sync_legacy_to_core(db: Session) -> Dict[str, Any]:
+    """Executa etl.sincronizar_legado() (idempotente) e devolve o resumo da execução."""
+    summary = db.execute(text("SELECT etl.sincronizar_legado()")).scalar_one()
+    db.commit()
+    logger.info("Sincronização legado -> core: %s", summary)
+    return dict(summary)

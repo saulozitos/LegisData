@@ -77,3 +77,4 @@ assets/*.webm
 # fazai (efêmero)
 .fazai/*
 .claude/*
+etl/data/golden/

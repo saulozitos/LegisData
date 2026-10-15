@@ -72,6 +72,7 @@ $PIP_AUDIT -r backend/requirements.txt
 (cd frontend && npm audit --omit=dev --audit-level=high)
 echo -e "${GREEN}✓ Auditoria de segurança sem vulnerabilidades detectadas.${RESET}\n"
 
+make test-db-up >/dev/null
 echo -e "${BOLD}[5/6] Execução da Suíte de Testes Automatizados (pytest & vitest)...${RESET}"
 PYTHONPATH=backend $PYTEST --cov=backend/app --cov-branch --cov-fail-under=85 backend/tests/
 (cd frontend && npm run test:coverage)

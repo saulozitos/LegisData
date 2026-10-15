@@ -1,4 +1,4 @@
-"""Fixtures compartilhadas: banco SQLite em memória, override único de get_db e diretório de dados isolado."""
+"""Fixtures compartilhadas: Postgres de teste, override único de get_db e diretório de dados isolado."""
 
 import json
 import os
@@ -15,6 +15,7 @@ from app import main as main_module  # noqa: E402
 from app.api.v1 import analytics, economic, legislative, politicians  # noqa: E402
 from app.core import data_files  # noqa: E402
 from app.core.config import settings  # noqa: E402
+from app.core.migrations import upgrade_schema  # noqa: E402
 from app.core.database import get_db  # noqa: E402
 from app.models import (  # noqa: E402
     Base,
@@ -37,9 +38,9 @@ from app.models import (  # noqa: E402
 )
 from app.services import cidadania_service  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy import create_engine, text  # noqa: E402
+from sqlalchemy.exc import OperationalError  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
-from sqlalchemy.pool import StaticPool  # noqa: E402
 
 FAR_FUTURE = date(2999, 1, 31)
 
@@ -59,14 +60,61 @@ def _isolation(monkeypatch):
     main_module._rate_limiter._hits.clear()
 
 
-@pytest.fixture()
-def session_factory():
-    """Banco SQLite em memória, novo a cada teste (isolamento total, sem ordem de execução relevante)."""
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    Base.metadata.create_all(engine)
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
-    yield factory
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL", "postgresql+psycopg2://test:test_pass@localhost:5433/legis_test"
+)
+
+
+# Tabelas de dados (não de referência) fora do schema public, esvaziadas a cada teste
+_ETL_DATA_TABLES = ("etl.execucao", "etl.arquivo_bruto", "etl.rejeito", "etl.verificacao")
+
+
+@pytest.fixture(scope="session")
+def pg_engine():
+    """Engine do Postgres de teste: o schema é criado uma vez por sessão, pelas migrações Alembic."""
+    engine = create_engine(TEST_DATABASE_URL, pool_pre_ping=True)
+    try:
+        with engine.begin() as conn:
+            for schema in ("api", "stg", "param", "etl", "core", "ref", "public"):
+                conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
+            conn.execute(text("CREATE SCHEMA public"))
+    except OperationalError as exc:  # pragma: no cover - ambiente sem banco de teste
+        pytest.exit(
+            f"Postgres de teste indisponível em {TEST_DATABASE_URL}: {exc}. Suba-o com `make test-db-up`.",
+            returncode=2,
+        )
+    previous = os.environ.get("ALEMBIC_DATABASE_URL")
+    os.environ["ALEMBIC_DATABASE_URL"] = TEST_DATABASE_URL
+    try:
+        upgrade_schema()
+    finally:
+        if previous is None:
+            os.environ.pop("ALEMBIC_DATABASE_URL", None)
+        else:
+            os.environ["ALEMBIC_DATABASE_URL"] = previous
+    yield engine
     engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def _truncate_sql(pg_engine):
+    """TRUNCATE de todas as tabelas de dados: legado (public), core e tabelas de execução do ETL."""
+    with pg_engine.connect() as conn:
+        core = [
+            r[0]
+            for r in conn.execute(text("SELECT format('core.%I', tablename) FROM pg_tables WHERE schemaname = 'core'"))
+        ]
+    legacy = [f'"{t.name}"' for t in Base.metadata.sorted_tables if not t.schema]
+    return "TRUNCATE " + ", ".join(legacy + core + list(_ETL_DATA_TABLES)) + " RESTART IDENTITY CASCADE"
+
+
+@pytest.fixture()
+def session_factory(pg_engine, _truncate_sql):
+    """Postgres real, limpo a cada teste via TRUNCATE (isolamento total, sem ordem de execução relevante)."""
+    factory = sessionmaker(bind=pg_engine, expire_on_commit=False)
+    yield factory
+    with pg_engine.begin() as conn:
+        conn.execute(text(_truncate_sql))
 
 
 @pytest.fixture()

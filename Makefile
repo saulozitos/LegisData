@@ -1,8 +1,9 @@
-.PHONY: help ci lint format typecheck security test run-all run-etl run-camara run-senado run-tse run-load-db up-db down-db backend-dev run-frontend build-frontend docker-up docker-down
+.PHONY: help ci test-db-up test-db-down db-migrate db-revision lint format typecheck security test run-all run-etl run-camara run-senado run-tse run-load-db up-db down-db backend-dev run-frontend build-frontend docker-up docker-down
 
 # Identificação de ambiente Python
 PYTHON_BIN := $(shell if [ -d "backend/venv/bin" ]; then echo "backend/venv/bin"; elif [ -d ".venv/bin" ]; then echo ".venv/bin"; else echo ""; fi)
 ifeq ($(PYTHON_BIN),)
+    PYTHON_BIN_ALEMBIC :=
     PY := python3
     PYTEST := pytest
     FLAKE8 := flake8
@@ -12,6 +13,7 @@ ifeq ($(PYTHON_BIN),)
     BANDIT := bandit
     PIP_AUDIT := pip-audit
 else
+    PYTHON_BIN_ALEMBIC := ../$(PYTHON_BIN)/
     PY := $(PYTHON_BIN)/python
     PYTEST := $(PYTHON_BIN)/pytest
     FLAKE8 := $(PYTHON_BIN)/flake8
@@ -32,7 +34,9 @@ help:
 	@echo "  make format           - Autoformata o código Python (isort e black)"
 	@echo "  make typecheck        - Checa tipagem estática (mypy e tsc)"
 	@echo "  make security         - Executa varredura estática de segurança (bandit)"
+	@echo "  make test-db-up       - Sobe o Postgres descartável de teste (porta 5433)"
 	@echo "  make test             - Executa as suítes de testes (pytest e vitest)"
+	@echo "  make db-migrate       - Aplica as migrações Alembic (upgrade head)"
 	@echo ""
 	@echo "Ambiente Local & Infraestrutura:"
 	@echo "  make up-db            - Sobe o banco PostgreSQL local via Docker Compose"
@@ -76,6 +80,24 @@ security:
 	$(BANDIT) -r backend/app -q
 	$(PIP_AUDIT) -r backend/requirements.txt
 	cd frontend && npm audit --omit=dev --audit-level=high
+
+# Postgres descartável para a suíte (porta 5433, separado do banco de desenvolvimento)
+test-db-up:
+	@docker inspect legisdata_test_pg >/dev/null 2>&1 && docker start legisdata_test_pg >/dev/null || \
+		docker run -d --name legisdata_test_pg -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test_pass \
+		-e POSTGRES_DB=legis_test -p 127.0.0.1:5433:5432 postgres:16.15-alpine >/dev/null
+	@until docker exec legisdata_test_pg pg_isready -U test >/dev/null 2>&1; do sleep 1; done
+	@echo "Postgres de teste pronto em localhost:5433"
+
+test-db-down:
+	-docker rm -f legisdata_test_pg
+
+# Migrações Alembic (usa DATABASE_URL/POSTGRES_* do ambiente)
+db-migrate:
+	cd backend && PYTHONPATH=. $(PYTHON_BIN_ALEMBIC)alembic upgrade head
+
+db-revision:
+	cd backend && PYTHONPATH=. $(PYTHON_BIN_ALEMBIC)alembic revision -m "$(m)"
 
 test:
 	POSTGRES_PASSWORD=test_ci_db_pass_123 ENVIRONMENT=test PYTHONPATH=backend $(PYTEST) --cov=backend/app --cov-branch --cov-fail-under=85 backend/tests/

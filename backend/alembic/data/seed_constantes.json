@@ -1,0 +1,415 @@
+{
+ "aliases_partido": {
+  "PATRI": "PATRIOTA",
+  "PC DO B": "PCDOB",
+  "PC_DO_B": "PCDOB",
+  "PODEMOS": "PODE",
+  "PRB": "REPUBLICANOS",
+  "PRB/REP": "REPUBLICANOS",
+  "SD": "SOLIDARIEDADE"
+ },
+ "cores_partido": {
+  "AVANTE": "#6366f1",
+  "CIDADANIA": "#fb923c",
+  "DC": "#0284c7",
+  "DEM": "#1d4ed8",
+  "DEMOCRATAS": "#1d4ed8",
+  "MDB": "#15803d",
+  "MISSAO": "#f59e0b",
+  "MISSÃO": "#f59e0b",
+  "NOVO": "#f97316",
+  "PATRI": "#15803d",
+  "PATRIOTA": "#15803d",
+  "PCDOB": "#b91c1c",
+  "PCdoB": "#b91c1c",
+  "PDC": "#0284c7",
+  "PDS": "#15803d",
+  "PDT": "#dc2626",
+  "PFL": "#1d4ed8",
+  "PHS": "#6366f1",
+  "PL": "#1d4ed8",
+  "PMDB": "#15803d",
+  "PMN": "#dc2626",
+  "PODE": "#06b6d4",
+  "PODEMOS": "#06b6d4",
+  "PP": "#3b82f6",
+  "PPS": "#ea580c",
+  "PR": "#0284c7",
+  "PRB": "#0369a1",
+  "PRD": "#84cc16",
+  "PRONA": "#15803d",
+  "PROS": "#f97316",
+  "PRTB": "#16a34a",
+  "PSB": "#ea580c",
+  "PSC": "#16a34a",
+  "PSD": "#f59e0b",
+  "PSDB": "#38bdf8",
+  "PSDC": "#0284c7",
+  "PSL": "#0369a1",
+  "PSOL": "#e11d48",
+  "PT": "#ef4444",
+  "PV": "#16a34a",
+  "REDE": "#0d9488",
+  "REPUBLICANOS": "#0369a1",
+  "S.PART.": "#64748b",
+  "SD": "#eab308",
+  "SOLIDARIEDADE": "#eab308",
+  "UNIAO": "#0284c7",
+  "UNIÃO": "#0284c7"
+ },
+ "escala_ideologica": {
+  "AVANTE": 5.8,
+  "CIDADANIA": 5.2,
+  "DEM": 7.5,
+  "MDB": 5.5,
+  "NOVO": 8.7,
+  "PATRIOTA": 7.8,
+  "PC do B": 2.5,
+  "PCB": 1.0,
+  "PCO": 1.0,
+  "PCdoB": 2.5,
+  "PDS": 7.4,
+  "PDT": 3.8,
+  "PFL": 7.5,
+  "PHS": 6.0,
+  "PL": 8.5,
+  "PMDB": 5.5,
+  "PODE": 5.9,
+  "PODEMOS": 5.9,
+  "PP": 7.4,
+  "PPB": 7.4,
+  "PPR": 7.4,
+  "PPS": 5.0,
+  "PR": 8.0,
+  "PRD": 7.3,
+  "PRONA": 9.0,
+  "PROS": 5.5,
+  "PSB": 4.0,
+  "PSC": 7.7,
+  "PSD": 5.7,
+  "PSDB": 6.8,
+  "PSL": 8.8,
+  "PSOL": 1.5,
+  "PSTU": 1.0,
+  "PT": 2.5,
+  "PTB": 7.2,
+  "PV": 4.2,
+  "REDE": 2.0,
+  "REPUBLICANOS": 7.6,
+  "SOLIDARIEDADE": 4.8,
+  "UNIAO": 7.2,
+  "UNIÃO": 7.2,
+  "UP": 1.0
+ },
+ "ialp": {
+  "MULTIPLICADOR_TRAMITACAO": {
+   "APROVADA_E_PROMULGADA": 3.0,
+   "APROVADA_E_SANCIONADA": 3.0,
+   "APROVADO_COMISSAO": 1.5,
+   "APROVADO_PLENARIO": 2.0,
+   "ARQUIVADA": 0.8,
+   "EM_TRAMITACAO": 1.0,
+   "REJEITADA": 0.5,
+   "SANCIONADO": 3.0,
+   "VETADA_PARCIAL": 1.5,
+   "VETADA_TOTAL": 1.0
+  },
+  "PESO_AUTORIA": {
+   "AUTOR_PRINCIPAL": 1.0,
+   "COAUTOR": 0.2,
+   "INSTITUCIONAL": 0.0,
+   "RELATOR": 0.8
+  },
+  "PESO_COMPLEXIDADE": {
+   "DECRETO_PRES": 1.0,
+   "INC": 0.1,
+   "INDICACAO": 0.1,
+   "LEI_DELEGADA": 1.0,
+   "MPV": 2.0,
+   "PDL": 1.0,
+   "PDS": 1.0,
+   "PEC": 3.0,
+   "PL": 2.0,
+   "PLP": 2.5,
+   "PR": 1.0,
+   "PRC": 1.0,
+   "REQ": 0.1,
+   "REQUERIMENTO": 0.1
+  },
+  "PESO_STATUS_PRODUTIVIDADE_PARTIDARIA": {
+   "APROVADA_E_PROMULGADA": 3.0,
+   "APROVADA_E_SANCIONADA": 3.0,
+   "APROVADO_COMISSAO": 1.5,
+   "APROVADO_PLENARIO": 2.0,
+   "ARQUIVADA": 0.8,
+   "EM_TRAMITACAO": 1.0,
+   "REJEITADA": 0.5,
+   "VETADA_PARCIAL": 1.2,
+   "VETADA_TOTAL": 0.8
+  },
+  "PESO_TIPO_PRODUTIVIDADE_PARTIDARIA": {
+   "INC": 0.1,
+   "MPV": 2.0,
+   "PDL": 1.0,
+   "PDS": 1.0,
+   "PEC": 3.0,
+   "PL": 2.0,
+   "PLP": 2.5,
+   "PR": 1.0,
+   "PRC": 1.0,
+   "REQ": 0.1
+  }
+ },
+ "ipl_cortes": {
+  "CORTE_FRAGMENTACAO_X2": 8.45,
+  "CORTE_IPLE": 0.785,
+  "CORTE_OPOSICAO_X1": 0.334,
+  "CORTE_POLARIZACAO_X3": 2.2,
+  "CORTE_TMV": 0.7,
+  "CORTE_TS": 0.87
+ },
+ "logos_partido": {
+  "AVANTE": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f9/Avante_70_%28Brasil%29_logo.svg/250px-Avante_70_%28Brasil%29_logo.svg.png",
+  "CIDADANIA": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9e/Cidadania_%28Brasil%29_logo_%28variant_1%29.svg/250px-Cidadania_%28Brasil%29_logo_%28variant_1%29.svg.png",
+  "DC": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ed/Logomarca_Democracia_Crist%C3%A3.svg/250px-Logomarca_Democracia_Crist%C3%A3.svg.png",
+  "DEM": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/39/Democratas_%28Brazil%29_logo_%282018-2022%29_%28horizontal%29.svg/250px-Democratas_%28Brazil%29_logo_%282018-2022%29_%28horizontal%29.svg.png",
+  "DEMOCRATAS": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/39/Democratas_%28Brazil%29_logo_%282018-2022%29_%28horizontal%29.svg/250px-Democratas_%28Brazil%29_logo_%282018-2022%29_%28horizontal%29.svg.png",
+  "MDB": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ef/Movimento_Democr%C3%A1tico_Brasileiro_%282017%29.svg/250px-Movimento_Democr%C3%A1tico_Brasileiro_%282017%29.svg.png",
+  "MISSAO": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/67/Partido_Miss%C3%A3o_logo_%28light%29.svg/250px-Partido_Miss%C3%A3o_logo_%28light%29.svg.png",
+  "MISSÃO": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/67/Partido_Miss%C3%A3o_logo_%28light%29.svg/250px-Partido_Miss%C3%A3o_logo_%28light%29.svg.png",
+  "NOVO": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d3/Partido_Novo_logo_%282023%29.svg/250px-Partido_Novo_logo_%282023%29.svg.png",
+  "PATRI": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f9/Logomarca_do_Partido_Patriota.png/250px-Logomarca_do_Partido_Patriota.png",
+  "PATRIOTA": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f9/Logomarca_do_Partido_Patriota.png/250px-Logomarca_do_Partido_Patriota.png",
+  "PCDOB": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b2/Logomarca_do_Partido_Comunista_do_Brasil.png/250px-Logomarca_do_Partido_Comunista_do_Brasil.png",
+  "PCdoB": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b2/Logomarca_do_Partido_Comunista_do_Brasil.png/250px-Logomarca_do_Partido_Comunista_do_Brasil.png",
+  "PDC": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/65/Bandeirapdc85melhorada.png/250px-Bandeirapdc85melhorada.png",
+  "PDS": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a9/Partido_Democr%C3%A1tico_Social_logo.svg/250px-Partido_Democr%C3%A1tico_Social_logo.svg.png",
+  "PDT": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1f/Bandeira.PDT.png/250px-Bandeira.PDT.png",
+  "PFL": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e7/Partido_da_Frente_Liberal_logo_%281985-2005%29.svg/250px-Partido_da_Frente_Liberal_logo_%281985-2005%29.svg.png",
+  "PHS": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/75/Logo_-_Partido_Humanista_da_Solidariedade.png/250px-Logo_-_Partido_Humanista_da_Solidariedade.png",
+  "PL": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/12/Partido_Liberal_%28Brazil%29_logo.svg/250px-Partido_Liberal_%28Brazil%29_logo.svg.png",
+  "PMDB": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cc/PMDB_2000_a_2017.svg/250px-PMDB_2000_a_2017.svg.png",
+  "PMN": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/dd/PMN_logo.svg/250px-PMN_logo.svg.png",
+  "PODE": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2d/Podemos_%28Brasil%29_logo.svg/250px-Podemos_%28Brasil%29_logo.svg.png",
+  "PODEMOS": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2d/Podemos_%28Brasil%29_logo.svg/250px-Podemos_%28Brasil%29_logo.svg.png",
+  "PP": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/87/Progressistas_%28Brazil%29_logo.svg/250px-Progressistas_%28Brazil%29_logo.svg.png",
+  "PPS": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d3/Logomarca_do_Partido_Popular_Socialista.png/250px-Logomarca_do_Partido_Popular_Socialista.png",
+  "PR": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fe/Logomarca_do_Partido_da_Rep%C3%BAblica.png/250px-Logomarca_do_Partido_da_Rep%C3%BAblica.png",
+  "PRB": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a2/Logomarca_do_Partido_Republicano_Brasileiro_%282012%E2%80%932019%29.png/250px-Logomarca_do_Partido_Republicano_Brasileiro_%282012%E2%80%932019%29.png",
+  "PRD": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/dc/Partido_Renova%C3%A7%C3%A3o_Democr%C3%A1tica_logo.svg/250px-Partido_Renova%C3%A7%C3%A3o_Democr%C3%A1tica_logo.svg.png",
+  "PRONA": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/ca/Partido_de_Reedifica%C3%A7%C3%A3o_da_Ordem_Nacional_logo_%282004%E2%80%932006%29.png/250px-Partido_de_Reedifica%C3%A7%C3%A3o_da_Ordem_Nacional_logo_%282004%E2%80%932006%29.png",
+  "PROS": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ee/Logomarca_do_Partido_Republicano_da_Ordem_Social_%28PROS%29%2C_do_Brasil.png/250px-Logomarca_do_Partido_Republicano_da_Ordem_Social_%28PROS%29%2C_do_Brasil.png",
+  "PRTB": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d5/Logomarca_do_Partido_Renovador_Trabalhista_Brasileiro_2.png/250px-Logomarca_do_Partido_Renovador_Trabalhista_Brasileiro_2.png",
+  "PSB": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/19/Partido_Socialista_Brasileiro_logo.png/250px-Partido_Socialista_Brasileiro_logo.png",
+  "PSC": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a9/PSC_logo%28cortado%29.png/250px-PSC_logo%28cortado%29.png",
+  "PSD": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0c/PSD_Brazil_logo.svg/250px-PSD_Brazil_logo.svg.png",
+  "PSDB": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/22/Logo_of_the_Brazilian_Social_Democracy_Party_%282023%29.svg/250px-Logo_of_the_Brazilian_Social_Democracy_Party_%282023%29.svg.png",
+  "PSDC": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/aa/Bandeira_do_Partido_Social_Democrata_Crist%C3%A3o.svg/250px-Bandeira_do_Partido_Social_Democrata_Crist%C3%A3o.svg.png",
+  "PSL": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c2/Partido_Social_Liberal_logo.svg/250px-Partido_Social_Liberal_logo.svg.png",
+  "PSOL": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f4/Logo_PSOL_roxo.svg/250px-Logo_PSOL_roxo.svg.png",
+  "PT": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c3/PT_%28Brazil%29_logo_2021.svg/250px-PT_%28Brazil%29_logo_2021.svg.png",
+  "PTB": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6a/Logomarca_Partido_Trabalhista_Brasileiro.png/250px-Logomarca_Partido_Trabalhista_Brasileiro.png",
+  "PV": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/46/Logomarca_do_Partido_Verde.svg/250px-Logomarca_do_Partido_Verde.svg.png",
+  "REDE": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/39/Rede_Sustentabilidade_logo.svg/250px-Rede_Sustentabilidade_logo.svg.png",
+  "REPUBLICANOS": "https://thumb.wikimedia.org/wikipedia/pt/thumb/0/0d/Republicanos_logo.png/250px-Republicanos_logo.png",
+  "SD": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/77/Solidariedade_77_%28Brasil%29_logo.svg/250px-Solidariedade_77_%28Brasil%29_logo.svg.png",
+  "SOLIDARIEDADE": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/77/Solidariedade_77_%28Brasil%29_logo.svg/250px-Solidariedade_77_%28Brasil%29_logo.svg.png",
+  "UNIAO": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/73/Uni%C3%A3o_Brasil_logo.svg/250px-Uni%C3%A3o_Brasil_logo.svg.png",
+  "UNIÃO": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/73/Uni%C3%A3o_Brasil_logo.svg/250px-Uni%C3%A3o_Brasil_logo.svg.png"
+ },
+ "metadata_partido": {
+  "AVANTE": {
+   "espectro": "CENTRO",
+   "ideologia": "Humanismo cívico / Municipalismo",
+   "lema": "O Brasil precisa seguir avante",
+   "numero": 70
+  },
+  "CIDADANIA": {
+   "espectro": "CENTRO",
+   "ideologia": "Social-liberalismo / Terceira via",
+   "lema": "Construindo cidadania plena e oportunidades",
+   "numero": 23
+  },
+  "DC": {
+   "espectro": "DIREITA",
+   "ideologia": "Democracia cristã / Conservadorismo social",
+   "lema": "Deus, pátria e família",
+   "numero": 27
+  },
+  "DEM": {
+   "espectro": "CENTRO_DIREITA",
+   "ideologia": "Liberalismo / Conservadorismo liberal",
+   "lema": "A favor do Brasil",
+   "numero": 25
+  },
+  "MDB": {
+   "espectro": "CENTRO",
+   "ideologia": "Centrismo / Ponto de equilíbrio democrático",
+   "lema": "O partido que equilibra o Brasil",
+   "numero": 15
+  },
+  "MISSÃO": {
+   "espectro": "CENTRO_DIREITA",
+   "ideologia": "Liberalismo econômico / Renovação política",
+   "lema": "Missão pelo futuro do Brasil",
+   "numero": 99
+  },
+  "NOVO": {
+   "espectro": "DIREITA",
+   "ideologia": "Liberalismo clássico / Estado mínimo",
+   "lema": "Menos governo, mais liberdade individual",
+   "numero": 30
+  },
+  "PATRIOTA": {
+   "espectro": "DIREITA",
+   "ideologia": "Conservadorismo / Nacionalismo",
+   "lema": "Brasil acima de tudo",
+   "numero": 51
+  },
+  "PCdoB": {
+   "espectro": "ESQUERDA",
+   "ideologia": "Comunismo democrático / Antimperialismo",
+   "lema": "Pela soberania nacional e o socialismo",
+   "numero": 65
+  },
+  "PDT": {
+   "espectro": "CENTRO_ESQUERDA",
+   "ideologia": "Trabalhismo brizolista / Nacionalismo desenvolvimentista",
+   "lema": "A educação emancipa, o trabalho dignifica",
+   "numero": 12
+  },
+  "PFL": {
+   "espectro": "CENTRO_DIREITA",
+   "ideologia": "Liberalismo conservador",
+   "lema": "Construindo o futuro",
+   "numero": 25
+  },
+  "PL": {
+   "espectro": "DIREITA",
+   "ideologia": "Conservadorismo social / Liberalismo econômico",
+   "lema": "Deus, Pátria, Família e Liberdade",
+   "numero": 22
+  },
+  "PMDB": {
+   "espectro": "CENTRO",
+   "ideologia": "Centrismo / Democracia partidária",
+   "lema": "O partido do Brasil",
+   "numero": 15
+  },
+  "PODE": {
+   "espectro": "CENTRO",
+   "ideologia": "Democracia direta / Centrismo liberal",
+   "lema": "Juntos podemos transformar o Brasil",
+   "numero": 20
+  },
+  "PODEMOS": {
+   "espectro": "CENTRO",
+   "ideologia": "Democracia direta / Centrismo liberal",
+   "lema": "Juntos podemos transformar o Brasil",
+   "numero": 20
+  },
+  "PP": {
+   "espectro": "CENTRO_DIREITA",
+   "ideologia": "Centro-direita / Pragmatismo de desenvolvimento",
+   "lema": "O futuro se constrói com trabalho e progresso",
+   "numero": 11
+  },
+  "PRD": {
+   "espectro": "CENTRO_DIREITA",
+   "ideologia": "Conservadorismo democrático",
+   "lema": "Renovação e ordem institucional",
+   "numero": 25
+  },
+  "PROS": {
+   "espectro": "CENTRO",
+   "ideologia": "Centrismo / Reformismo social",
+   "lema": "Por um Brasil justo e fraterno",
+   "numero": 90
+  },
+  "PRTB": {
+   "espectro": "DIREITA",
+   "ideologia": "Trabalhismo participativo / Conservadorismo",
+   "lema": "Coragem para transformar",
+   "numero": 28
+  },
+  "PSB": {
+   "espectro": "CENTRO_ESQUERDA",
+   "ideologia": "Socialismo democrático / Progressismo",
+   "lema": "Igualdade e liberdade construídas com justiça",
+   "numero": 40
+  },
+  "PSC": {
+   "espectro": "CENTRO_DIREITA",
+   "ideologia": "Democracia cristã / Conservadorismo cristão",
+   "lema": "O ser humano em primeiro lugar",
+   "numero": 20
+  },
+  "PSD": {
+   "espectro": "CENTRO",
+   "ideologia": "Pragmatismo de centro / Municipalismo",
+   "lema": "Nem direita, nem esquerda: a favor do Brasil",
+   "numero": 55
+  },
+  "PSDB": {
+   "espectro": "CENTRO",
+   "ideologia": "Social-democracia clássica / Terceira via",
+   "lema": "Por um Brasil moderno, justo e eficiente",
+   "numero": 45
+  },
+  "PSL": {
+   "espectro": "DIREITA",
+   "ideologia": "Conservadorismo / Liberalismo",
+   "lema": "Mais Brasil, menos Brasília",
+   "numero": 17
+  },
+  "PSOL": {
+   "espectro": "ESQUERDA",
+   "ideologia": "Socialismo democrático / Ecossocialismo",
+   "lema": "Por um Brasil para a maioria trabalhadora",
+   "numero": 50
+  },
+  "PT": {
+   "espectro": "ESQUERDA",
+   "ideologia": "Social-democracia / Trabalhismo democrático",
+   "lema": "O Brasil da esperança e da justiça social",
+   "numero": 13
+  },
+  "PTB": {
+   "espectro": "DIREITA",
+   "ideologia": "Trabalhismo / Conservadorismo",
+   "lema": "A força do trabalhador",
+   "numero": 14
+  },
+  "PV": {
+   "espectro": "CENTRO_ESQUERDA",
+   "ideologia": "Ecologismo / Desenvolvimento sustentável",
+   "lema": "Paz, ecologia e justiça socioambiental",
+   "numero": 43
+  },
+  "REDE": {
+   "espectro": "CENTRO_ESQUERDA",
+   "ideologia": "Sustentabilidade ética / Progressismo cívico",
+   "lema": "Conectar pessoas pela ética na política",
+   "numero": 18
+  },
+  "REPUBLICANOS": {
+   "espectro": "CENTRO_DIREITA",
+   "ideologia": "Conservadorismo cristão / Municipalismo",
+   "lema": "Defendendo os valores da família e o desenvolvimento",
+   "numero": 10
+  },
+  "SOLIDARIEDADE": {
+   "espectro": "CENTRO",
+   "ideologia": "Trabalhismo social / Sindicalismo plural",
+   "lema": "Solidariedade com o trabalhador e o desenvolvimento",
+   "numero": 77
+  },
+  "UNIÃO": {
+   "espectro": "CENTRO_DIREITA",
+   "ideologia": "Liberalismo / Conservadorismo liberal",
+   "lema": "Coragem para mudar, união para governar",
+   "numero": 44
+  }
+ },
+ "origem": "Snapshot das constantes do código em 2026-10-15 (party_constants.py, iple_service.py, party_productivity_service.py, legislative_scoring.py, politicians.py). Congelado: não importar o código legado nas migrações."
+}
