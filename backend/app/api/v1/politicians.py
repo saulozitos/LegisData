@@ -28,7 +28,9 @@ from app.services.basometro import calcular_basometro
 from app.services.ialp_pesos import carregar_pesos_ialp
 from app.services.presidential_service import get_all_presidents, get_mandate_date_range, get_president_by_reference
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, asc, desc, func, or_, text
+from sqlalchemy import and_, asc, desc, func
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
 router = APIRouter()
@@ -468,13 +470,138 @@ def search_politicians(
     }
 
 
+def _politico_do_core(db: Session, uid: uuid.UUID) -> Optional[Politician]:
+    """
+    Parlamentar que existe só no schema novo (ex.: ex-parlamentares carregados pelo histórico e pela presença).
+    Devolve um Politician transitório, nunca persistido, para que as seções ainda legadas do dossiê respondam vazias
+    e as seções já migradas (proposições, votos, presença) usem o `core`/`leg` pelo mesmo uid.
+    """
+    linha = (
+        db.execute(
+            text(
+                """
+                SELECT pe.nome_exibicao, pe.uf_nascimento, pe.data_nascimento, fm.url_origem AS foto,
+                       (SELECT valor::int FROM core.pessoa_identificador WHERE pessoa_id = pe.id AND tipo = 'CAMARA_ID'
+                         LIMIT 1) AS camara_id,
+                       (SELECT valor::int FROM core.pessoa_identificador WHERE pessoa_id = pe.id AND tipo = 'SENADO_ID'
+                         LIMIT 1) AS senado_id,
+                       (SELECT n.nome FROM core.pessoa_nome n WHERE n.pessoa_id = pe.id AND n.tipo = 'CIVIL'
+                         LIMIT 1) AS nome_civil
+                FROM core.pessoa pe LEFT JOIN core.midia fm ON fm.id = pe.foto_midia_id WHERE pe.uid = :uid
+                """
+            ),
+            {"uid": uid},
+        )
+        .mappings()
+        .first()
+    )
+    if not linha:
+        return None
+    return Politician(
+        id=uid,
+        civil_name=linha["nome_civil"] or linha["nome_exibicao"],
+        electoral_name=linha["nome_exibicao"],
+        camara_id=linha["camara_id"],
+        senado_id=linha["senado_id"],
+        birth_date=linha["data_nascimento"],
+        birthplace_state=linha["uf_nascimento"],
+        photo_url=linha["foto"],
+        possui_processos_declarados=False,
+    )
+
+
+def _trajetoria_core(db: Session, uid: uuid.UUID) -> Dict[str, Any]:
+    """Mandatos e filiações de `core` para parlamentar sem registro legado (mesmo formato do dossiê)."""
+    mandatos = (
+        db.execute(
+            text(
+                """
+                SELECT m.uid, c.codigo AS cargo, c.esfera, e.ano AS ano_eleicao, m.numero_mandato, m.inicio, m.fim,
+                       m.votos, m.percentual_votos, m.coligacao, coalesce(ci.uf, 'BR') AS uf,
+                       (SELECT cp.canonico_sigla FROM core.vw_partido_canonico cp
+                         WHERE cp.id = coalesce((SELECT mp.partido_id FROM core.mandato_partido mp
+                                                  WHERE mp.mandato_id = m.id ORDER BY lower(mp.periodo) DESC LIMIT 1),
+                                                m.partido_id)) AS partido
+                FROM core.mandato m
+                JOIN core.pessoa pe ON pe.id = m.pessoa_id
+                JOIN ref.cargo c ON c.id = m.cargo_id
+                JOIN ref.circunscricao ci ON ci.id = m.circunscricao_id
+                LEFT JOIN core.eleicao e ON e.id = m.eleicao_id
+                WHERE pe.uid = :uid AND m.condicao <> 'NOMEADO'
+                ORDER BY m.inicio DESC
+                """
+            ),
+            {"uid": uid},
+        )
+        .mappings()
+        .all()
+    )
+    filiacoes = (
+        db.execute(
+            text(
+                """
+                SELECT f.id, cp.canonico_sigla AS sigla, p.nome, lower(f.periodo) AS inicio,
+                       CASE WHEN upper_inf(f.periodo) THEN NULL ELSE upper(f.periodo) END AS fim,
+                       upper_inf(f.periodo) AS atual, f.uf
+                FROM core.filiacao f
+                JOIN core.pessoa pe ON pe.id = f.pessoa_id
+                JOIN core.partido p ON p.id = f.partido_id
+                JOIN core.vw_partido_canonico cp ON cp.id = f.partido_id
+                WHERE pe.uid = :uid ORDER BY lower(f.periodo) DESC
+                """
+            ),
+            {"uid": uid},
+        )
+        .mappings()
+        .all()
+    )
+    hoje = date.today()
+    return {
+        "mandatos": [
+            {
+                "id": str(m["uid"]),
+                "cargo": m["cargo"],
+                "esfera": m["esfera"],
+                "ano_eleicao": m["ano_eleicao"],
+                "numero_mandato": m["numero_mandato"],
+                "data_inicio": m["inicio"].isoformat(),
+                "data_fim": m["fim"].isoformat() if m["fim"] else None,
+                "status": "EM_EXERCICIO" if (m["fim"] is None or m["fim"] >= hoje) else "ENCERRADO",
+                "partido_sigla": m["partido"] or "S.PART.",
+                "uf": m["uf"],
+                "total_votos": m["votos"],
+                "percentual_votos": float(m["percentual_votos"]) if m["percentual_votos"] is not None else None,
+                "coligacao": m["coligacao"],
+            }
+            for m in mandatos
+        ],
+        "filiacoes": [
+            {
+                "id": str(f["id"]),
+                "partido_sigla": f["sigla"],
+                "partido_nome": f["nome"],
+                "data_filiacao": f["inicio"].isoformat() if f["inicio"] else None,
+                "data_desfiliacao": f["fim"].isoformat() if f["fim"] else None,
+                "is_atual": f["atual"],
+                "motivo_desfiliacao": None,
+                "uf": f["uf"],
+            }
+            for f in filiacoes
+        ],
+    }
+
+
 def _resolve_politician(db: Session, politician_id: str) -> Politician:
     """
     Resolve o político por UUID, ID da Câmara/Senado ou nome exato (slug). Nunca por substring:
     se o nome for ambíguo devolve 409 em vez de escolher um registro arbitrário.
     """
     try:
-        pol = db.query(Politician).filter(Politician.id == uuid.UUID(politician_id)).first()
+        uid = uuid.UUID(politician_id)
+        pol = db.query(Politician).filter(Politician.id == uid).first()
+        if pol:
+            return pol
+        pol = _politico_do_core(db, uid)
         if pol:
             return pol
     except ValueError:
@@ -930,6 +1057,20 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             }
         )
 
+    sem_registro_legado = sa_inspect(pol).transient
+    if sem_registro_legado:
+        trajetoria = _trajetoria_core(db, pol.id)
+        mandatos_list = trajetoria["mandatos"]
+        if mandatos_list:
+            cargo_atual = mandatos_list[0]["cargo"]
+            uf_atual = mandatos_list[0]["uf"]
+            partido_atual_sigla = mandatos_list[0]["partido_sigla"]
+        presidential_periods = [
+            (date.fromisoformat(m["data_inicio"]), date.fromisoformat(m["data_fim"]) if m["data_fim"] else None)
+            for m in mandatos_list
+            if m["cargo"] == "PRESIDENTE"
+        ]
+
     # B. Histórico Completo de Partidos (Filiações TSE)
     affiliations_db = (
         db.query(PartyAffiliation, PoliticalParty)
@@ -956,6 +1097,11 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
                 "uf": aff.state,
             }
         )
+    if sem_registro_legado:
+        filiacoes_list = trajetoria["filiacoes"]
+        atual = next((f for f in filiacoes_list if f["is_atual"]), None)
+        if atual:
+            partido_atual_sigla = atual["partido_sigla"]
 
     # C. Remunerações (Salário, CEAP, Benefícios) — totais calculados no banco para o ano mais recente com dados
     remun_filter = PoliticianRemuneration.politician_id == pol.id

@@ -1,0 +1,12 @@
+[Unit]
+Description=LegisData - consolidação diária (presença, faltas, IPPM, rede de coautoria)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Ajuste o diretório do projeto e o usuário; o .env do projeto fornece DATABASE_URL/POSTGRES_PASSWORD.
+WorkingDirectory=/opt/legisdata
+EnvironmentFile=/opt/legisdata/.env
+ExecStart=/usr/bin/make daily
+TimeoutStartSec=4h

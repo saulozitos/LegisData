@@ -12,6 +12,9 @@ Origens, da mais confiável para a menos:
 Uma sessão deliberativa só conta como realizada quando tem ao menos `QUORUM_ABERTURA` presentes (um décimo da Casa,
 mínimo regimental para abrir a sessão), o que descarta sessões convocadas e não realizadas.
 
+O partido de cada dia é resolvido ao final por `etl.resolver_partido_presenca()` (votação, mandato, filiação ou
+presença mais próxima), com a origem em `partido_origem`.
+
 Idempotente: cada origem apaga e regrava só as próprias linhas.
 """
 
@@ -158,7 +161,9 @@ def _carregar_oficial(
         JOIN core.pessoa pe ON pe.id = i.pessoa_id
         {_MANDATO_LATERAL.format(cargo="%s")}
         LEFT JOIN LATERAL (
-            SELECT sigla FROM _pt t WHERE t.codigo = s.codigo AND t.desde <= s.data ORDER BY t.desde DESC LIMIT 1
+            SELECT CASE WHEN lower(sigla) = 's/partido' THEN 'S.PART.' WHEN lower(sigla) = 'sem registro' THEN NULL
+                        ELSE sigla END AS sigla
+            FROM _pt t WHERE t.codigo = s.codigo AND t.desde <= s.data ORDER BY t.desde DESC LIMIT 1
         ) pt ON true
         LEFT JOIN LATERAL (
             SELECT id FROM core.partido x WHERE x.sigla_normalizada = ref.normalizar_texto(pt.sigla)
@@ -266,7 +271,8 @@ def carregar(
     conexao = engine.raw_connection()
     try:
         cursor = conexao.cursor()
-        resumo["camara_eventos"] = _carregar_camara_eventos(cursor, raw_dir, anos)
+        if anos:  # sem anos, a história anterior a 2020 (já fechada) é preservada
+            resumo["camara_eventos"] = _carregar_camara_eventos(cursor, raw_dir, anos)
         if corpo:
             nomes_sen = _nomes_senado(processed_dir)
             resumo["senadores_criados"] = _garantir_pessoas(cursor, "SENADO_ID", "SENADO_API", nomes_sen)
@@ -278,6 +284,8 @@ def carregar(
                 cursor, "SENADO_FEDERAL", "SENADOR", "SENADO_ID", "SENADO_API", corpo.get("senado") or [], INICIO_JANELA,
                 corpo.get("senado_partidos") or [],
             )  # fmt: skip
+        cursor.execute("SELECT etl.resolver_partido_presenca()")
+        resumo["partido_presenca"] = cursor.fetchone()[0]
         conexao.commit()
     except Exception:
         conexao.rollback()

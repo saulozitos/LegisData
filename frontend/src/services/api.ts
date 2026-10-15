@@ -2226,6 +2226,7 @@ export interface AttendancePartyItem {
 export interface AttendancePartyResponse {
   itens: AttendancePartyItem[];
   dias_sem_partido_identificado: number;
+  dias_com_partido_aproximado?: number;
   aviso: string;
 }
 

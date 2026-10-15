@@ -1,5 +1,5 @@
 {
-  "gerado_em": "2026-10-15T17:07:48",
+  "gerado_em": "2026-10-15T17:51:55",
   "is_synthetic": false,
   "fonte": "Câmara dos Deputados — Portal: Presença em Plenário (relatório oficial por deputado; critério do Ato da Mesa nº 191/2017) | Senado Federal — Dados Abertos: votações nominais de plenário (presença derivada dos registros de voto)",
   "metodologia": {
@@ -19,7 +19,7 @@
       ],
       "parlamentares": 912,
       "falhas": [],
-      "paginas_pendentes": null
+      "paginas_pendentes": 0
     },
     "SENADO": {
       "anos": [

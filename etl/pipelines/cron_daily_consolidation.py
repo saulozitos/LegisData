@@ -34,6 +34,7 @@ def execute_cron_pipeline() -> Dict[str, Any]:
     status = "SUCESSO"
     err_msg: Optional[str] = None
     registros_totais = 0
+    erros_etapas: list = []
 
     try:
         logger.info("=== INICIANDO CRON JOB DE CONSOLIDAÇÃO DIÁRIA ===")
@@ -43,6 +44,19 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         synced_mandates = sync_mandate_history(db)
         registros_totais += synced_mandates
         logger.info(f"Etapa 1 concluída: {synced_mandates} registros de mandatos sincronizados.")
+
+        # Etapa 1b: presença e faltas (falha aqui não impede as demais etapas, mas marca a execução como FALHA)
+        logger.info("Etapa 1b: atualizando presença e faltas do Congresso...")
+        try:
+            from app.core.database import engine
+
+            from etl.pipelines.presenca_atualizacao import atualizar
+
+            presenca = atualizar(engine)
+            logger.info(f"Etapa 1b concluída: {presenca}")
+        except Exception as e:
+            erros_etapas.append(f"presença: {e}")
+            logger.error(f"Falha na atualização de presença: {e}", exc_info=True)
 
         # Etapa 2: Ingestão de Proposições e Autores
         logger.info("Etapa 2/4: Verificando autoria e integridade de proposições...")
@@ -69,6 +83,10 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         status = "FALHA"
         err_msg = str(e)
         logger.error(f"Falha crítica no CRON Job diário: {e}", exc_info=True)
+
+    if erros_etapas and status == "SUCESSO":
+        status = "FALHA"
+        err_msg = "; ".join(erros_etapas)
 
     t_end = datetime.now(timezone.utc)
     tempo_segundos = max(0, int((t_end - t_start).total_seconds()))

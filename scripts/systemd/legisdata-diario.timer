@@ -1,0 +1,10 @@
+[Unit]
+Description=LegisData - agenda a consolidação diária às 05:00
+
+[Timer]
+OnCalendar=*-*-* 05:00:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

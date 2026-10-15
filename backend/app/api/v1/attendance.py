@@ -22,7 +22,7 @@ CASAS = {"CAMARA": "CAMARA_DOS_DEPUTADOS", "SENADO": "SENADO_FEDERAL"}
 _JUSTIFICADAS = "('AUSENCIA_JUSTIFICADA', 'LICENCA_MEDICA', 'MISSAO_OFICIAL')"
 
 _BASE = """
-    SELECT p.pessoa_id, p.mandato_id, p.partido_id AS partido_dia, p.data_sessao, p.tipo_codigo, c.codigo AS casa
+    SELECT p.pessoa_id, p.mandato_id, p.partido_id AS partido_id, p.partido_origem, p.data_sessao, p.tipo_codigo, c.codigo AS casa
     FROM leg.presenca p JOIN ref.casa_legislativa c ON c.id = p.casa_id
     WHERE (c.codigo <> 'CAMARA_DOS_DEPUTADOS' OR p.data_sessao >= :falta_desde)
       AND p.data_sessao >= :inicio AND p.data_sessao <= :fim
@@ -158,19 +158,15 @@ def ranking_partidos(
             text(
                 f"""
                 WITH base AS ({_BASE}),
-                com_partido AS (
-                    SELECT b.*, coalesce(b.partido_dia, mp.partido_id, m.partido_id) AS partido_id
-                    FROM base b
-                    LEFT JOIN core.mandato m ON m.id = b.mandato_id
-                    LEFT JOIN core.mandato_partido mp ON mp.mandato_id = b.mandato_id AND mp.periodo @> b.data_sessao
-                ),
+                com_partido AS (SELECT * FROM base),
                 por_partido AS (
                     SELECT cp.canonico_sigla AS sigla, {_AGREGADOS.replace('tipo_codigo', 'x.tipo_codigo')},
                            count(DISTINCT x.pessoa_id) AS parlamentares
                     FROM com_partido x JOIN core.vw_partido_canonico cp ON cp.id = x.partido_id
                     GROUP BY cp.canonico_sigla
                 )
-                SELECT *, (SELECT count(*) FROM com_partido WHERE partido_id IS NULL) AS sem_partido
+                SELECT *, (SELECT count(*) FROM com_partido WHERE partido_id IS NULL) AS sem_partido,
+                       (SELECT count(*) FROM com_partido WHERE partido_origem = 'PRESENCA_PROXIMA') AS partido_aproximado
                 FROM por_partido WHERE sessoes >= :minimo ORDER BY faltas::numeric / sessoes DESC, sigla
                 """
             ),
@@ -194,9 +190,12 @@ def ranking_partidos(
             for r in linhas
         ],
         "dias_sem_partido_identificado": int(linhas[0]["sem_partido"]) if linhas else 0,
+        "dias_com_partido_aproximado": int(linhas[0]["partido_aproximado"]) if linhas else 0,
         "aviso": (
             "Taxa = faltas ÷ dias registrados de todos os parlamentares do partido no período. Dias de parlamentares "
-            "sem partido identificado no mandato ficam de fora (informados em dias_sem_partido_identificado)."
+            "sem nenhuma informação de partido ficam de fora (dias_sem_partido_identificado). O partido do dia vem da votação "
+            "(Senado), do mandato ou da filiação; quando faltam as três, usa-se o da presença mais próxima do mesmo "
+            "parlamentar (dias_com_partido_aproximado)."
         ),
     }
 

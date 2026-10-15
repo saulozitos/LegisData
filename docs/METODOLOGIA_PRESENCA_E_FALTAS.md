@@ -48,3 +48,22 @@ nominal, e o partido de cada dia vem da sigla informada pelo Senado na própria 
 `python etl/run_etl.py --presenca` baixa os arquivos da Câmara e extrai portal e Senado; `--load-presenca` grava em
 `leg.presenca`. Cada origem apaga e regrava só as próprias linhas, então é seguro repetir. Senadores e deputados sem
 cadastro recebem uma pessoa mínima (nome e identificador oficial, nunca CPF).
+
+## Partido de cada dia
+
+O ranking por partido usa `leg.presenca.partido_id`, resolvido por `etl.resolver_partido_presenca()` na ordem: sigla da
+votação (Senado), partido do mandato no dia, filiação vigente no dia e, por último, o partido da presença mais próxima
+do mesmo parlamentar. `partido_origem` registra qual regra valeu (`VOTACAO`, `MANDATO`, `FILIACAO` ou
+`PRESENCA_PROXIMA`), e a API informa quantos dias têm partido aproximado e quantos continuam sem partido.
+
+## Atualização automática
+
+`make daily` roda `etl.pipelines.cron_daily_consolidation`, que inclui a atualização incremental de presença
+(`etl.pipelines.presenca_atualizacao`): baixa os arquivos de eventos do ano corrente e do anterior, extrai o portal de todos os deputados das legislaturas
+(sem restringir, para não apagar dias de quem já saiu), reaproveita o cache dos meses fechados do Senado e regrava as linhas
+oficiais. Se a extração tiver falhas, a carga não é executada (evita apagar dias já gravados) e a execução fica
+registrada como FALHA em `LogExecucaoCron`, sem interromper as demais etapas.
+
+Para agendar no servidor, copie `scripts/systemd/legisdata-diario.service` e `.timer` para `/etc/systemd/system/`,
+ajuste o diretório do projeto e rode `systemctl enable --now legisdata-diario.timer`. O processo precisa alcançar o
+Postgres (no compose de produção a porta não é publicada; use `docker-compose.dev.yml` ou rode dentro da rede do compose).
