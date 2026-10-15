@@ -16,8 +16,8 @@ Este documento é um plano, não uma implementação. Nenhuma tabela ou código 
 | D4 | Desenvolvimento e testes exigem Postgres (container). |
 | D5 | Imagens como arquivo em volume do servidor. |
 | D6 | Nomes de tabelas e colunas em português, `snake_case`. |
-| D7 | Em esclarecimento (ver seção 10). |
-| D8 | Janela histórica: **desde o Plano Real (julho de 1994)**. |
+| D7 | **Opção (a):** remover os indicadores digitados à mão de `seed_executivo.py`. Cada indicador só volta ao banco com fonte oficial verificável e rastreada em `etl.fonte`; a pesquisa de aprovação popular só volta se houver fonte segura. Mapear essas fontes é pré-requisito da Entrega 3. |
+| D8 | Janela histórica: **desde o Plano Real (julho de 1994)**. A linha presidencial exibida **não inclui Itamar Franco** (a ser aplicado na Entrega 3, junto com o corte das séries econômicas). |
 | Processo | Uma branch por entrega; garantir que tudo funciona; **pedir validação local da UI antes de abrir PR**. |
 
 ---
