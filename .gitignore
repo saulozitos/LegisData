@@ -78,3 +78,5 @@ assets/*.webm
 .fazai/*
 .claude/*
 etl/data/golden/
+etl/data/raw/camara_bulk/
+etl/data/raw/camara_historico/
