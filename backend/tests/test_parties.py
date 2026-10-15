@@ -125,6 +125,11 @@ def test_ippm_ranking_endpoint(client, seed):
     if all(p["pilares"]["taxa_eficacia_pct"] == 0 for p in data["ranking"]):
         assert resumo["partido_mais_eficaz"] is None
 
+    if resumo.get("partido_mais_produtivo") and any(p["total_cadeiras_ativas"] >= 3 for p in data["ranking"]):
+        produtivo_sigla = resumo["partido_mais_produtivo"]["sigla"]
+        party_in_ranking = next(p for p in data["ranking"] if p["sigla"] == produtivo_sigla)
+        assert party_in_ranking["total_cadeiras_ativas"] >= 3
+
 
 def test_ippm_ranking_filters(client, seed):
     # Test filters by house, bloc, spectrum

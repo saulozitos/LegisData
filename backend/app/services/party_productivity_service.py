@@ -538,7 +538,19 @@ def calculate_party_ippm_ranking(
     # Resumo Geral
     total_parties = len(ranking)
     media_ippm = round(sum(i["ippm_score_medio"] for i in ranking) / max(1, total_parties), 2)
-    mais_produtivo = ranking[0] if ranking and ranking[0].get("ippm_score_medio", 0) > 0 else None
+    # Líder em Produtividade: Deve representar uma bancada partidária colegiada (mínimo de 3 cadeiras ativas)
+    # Evita que legendas unipessoais (1 único parlamentar) distorçam a liderança estatística de bancadas plurais
+    MIN_BANCADA_LIDERANCA = 3
+    candidatos_produtivos = [
+        p
+        for p in ranking
+        if p.get("ippm_score_medio", 0) > 0 and p.get("total_cadeiras_ativas", 0) >= MIN_BANCADA_LIDERANCA
+    ]
+    mais_produtivo = (
+        candidatos_produtivos[0]
+        if candidatos_produtivos
+        else (ranking[0] if ranking and ranking[0].get("ippm_score_medio", 0) > 0 else None)
+    )
 
     # Maior Eficácia: Apenas partidos com taxa estritamente positiva e projetos aprovados no período
     candidatos_eficazes = [

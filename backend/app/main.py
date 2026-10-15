@@ -155,6 +155,15 @@ def run_db_migrations() -> None:
                     "espectro": meta.get("espectro"),
                 },
             )
+        # Saneamento de mandatos espúrios de legendas sem registro oficial no TSE (ex: MISSÃO)
+        db.execute(
+            text(
+                """
+                DELETE FROM historico_mandatos WHERE UPPER("partidoSigla") = 'MISSÃO';
+                DELETE FROM mandatos WHERE "partidoId" IN (SELECT id FROM partidos_politicos WHERE UPPER(sigla) = 'MISSÃO');
+                """
+            )
+        )
         db.commit()
 
 
