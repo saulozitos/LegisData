@@ -6,6 +6,22 @@ Este documento é um plano, não uma implementação. Nenhuma tabela ou código 
 
 ---
 
+## 0. Decisões registradas (2026-10-15)
+
+| # | Decisão |
+|---|---------|
+| D1 | Cadastrar no banco os **cargos estaduais** (governador, vice, secretário, deputado estadual, deputado distrital) junto com os federais. **Não** popular eleitos estaduais/municipais. Municipais (prefeito, vereador) ficam para depois. |
+| D2 | Chaves `bigint identity` + `uid uuid` público. |
+| D3 | **Não armazenar CPF.** Nenhuma tabela nova tem coluna de CPF; o tipo de identificador não aceita `CPF`. |
+| D4 | Desenvolvimento e testes exigem Postgres (container). |
+| D5 | Imagens como arquivo em volume do servidor. |
+| D6 | Nomes de tabelas e colunas em português, `snake_case`. |
+| D7 | Em esclarecimento (ver seção 10). |
+| D8 | Janela histórica: **desde o Plano Real (julho de 1994)**. |
+| Processo | Uma branch por entrega; garantir que tudo funciona; **pedir validação local da UI antes de abrir PR**. |
+
+---
+
 ## 1. Resumo executivo
 
 1. **A direção está certa.** Banco como fonte única da verdade, ETL em três estágios (baixar, ler, popular) e regras de cálculo próximas dos dados.

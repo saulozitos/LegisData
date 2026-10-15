@@ -441,6 +441,9 @@ class DatabaseLoader:
         """Cria as tabelas caso ainda não existam."""
         logger.info("Verificando e criando tabelas no PostgreSQL via SQLAlchemy...")
         Base.metadata.create_all(bind=engine)
+        from app.core.migrations import upgrade_schema
+
+        upgrade_schema()
 
     # ------------------------------------------------------------------ orquestração
     def load_all(self) -> Dict[str, int]:
@@ -526,6 +529,9 @@ class DatabaseLoader:
             session.commit()
             logger.info("Transação confirmada com sucesso no PostgreSQL!")
 
+            # Ponte transitória: projeta o schema legado no schema core (pessoa, partido, filiação, mandato)
+            self._sincronizar_core(session)
+
             counts = self._get_table_counts(session)
             self._print_summary_report(counts)
             return counts
@@ -536,6 +542,17 @@ class DatabaseLoader:
             raise
         finally:
             session.close()
+
+    @staticmethod
+    def _sincronizar_core(session: Session) -> None:
+        """Projeta o legado no schema core. Falha aqui não desfaz a carga (já confirmada), mas é registrada."""
+        from app.services.core_sync import sync_legacy_to_core
+
+        try:
+            sync_legacy_to_core(session)
+        except Exception as exc:  # noqa: BLE001 - a carga principal já foi confirmada
+            session.rollback()
+            logger.error("Sincronização legado -> core falhou: %s", exc, exc_info=True)
 
     # ------------------------------------------------------------------ utilidades de proveniência
     def _usable(self, record: Dict[str, Any]) -> bool:

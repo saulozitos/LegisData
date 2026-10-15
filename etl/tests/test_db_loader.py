@@ -1,11 +1,12 @@
 """
-Carga no banco com SQLite em memória: idempotência, proveniência e resolução inequívoca de pessoas.
+Carga no banco (Postgres de teste): idempotência, proveniência e resolução inequívoca de pessoas.
 
-Usa os models reais do backend. SQLite basta porque a lógica testada é de ORM (os tipos PG UUID/Enum/JSON
-são renderizados genericamente pelo SQLAlchemy 2.x).
+Usa os models reais do backend e o fluxo completo de `load_all` (create_all + migrações Alembic + ponte para o
+schema `core`), por isso exige o Postgres de teste (`make test-db-up`).
 """
 
 import json
+import os
 from decimal import Decimal
 
 import pytest
@@ -22,7 +23,7 @@ from app.models import (  # noqa: E402
     Proposition,
     VotingSession,
 )
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from etl.extractors.presidents_extractor import PresidentsExtractor  # noqa: E402
@@ -36,7 +37,13 @@ def escrever(dir_, nome, dados):
 
 @pytest.fixture
 def ambiente(tmp_path, monkeypatch):
-    engine = create_engine("sqlite://")
+    url = os.environ.get("TEST_DATABASE_URL", "postgresql+psycopg2://test:test_pass@localhost:5433/legis_test")
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        for schema in ("api", "stg", "param", "etl", "core", "ref", "public"):
+            conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
+        conn.execute(text("CREATE SCHEMA public"))
+    monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
     Sessao = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     monkeypatch.setattr(db_loader, "engine", engine)
     monkeypatch.setattr(db_loader, "SessionLocal", Sessao)

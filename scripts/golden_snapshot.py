@@ -88,7 +88,9 @@ def snapshot(out_dir: Path, base: str) -> int:
 
     politicos = _fetch(base, "/politicians?limit=50")
     for pid in _first_ids(politicos.get("body"), "politicos", AMOSTRA_POLITICOS):
-        paths += [f"/politicians/{pid}"] + [f"/politicians/{pid}/{s}" for s in ("ceap", "emendas", "certidoes", "doacoes")]
+        paths += [f"/politicians/{pid}"] + [
+            f"/politicians/{pid}/{s}" for s in ("ceap", "emendas", "certidoes", "doacoes")
+        ]
         paths.append(f"/legislative/politicians/{pid}/productivity")
 
     props = _fetch(base, "/legislative/propositions")

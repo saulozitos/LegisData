@@ -1,9 +1,11 @@
 from datetime import date
 
 from app.models import CargoPoliticoEnum, Mandate, PartyAffiliation, Politician, StatusMandatoEnum
+from app.services.core_sync import sync_legacy_to_core
 
 
-def test_list_parties_counts_only_current_mandates(client, seed):
+def test_list_parties_counts_only_current_mandates(client, db, seed):
+    sync_legacy_to_core(db)
     response = client.get("/api/v1/parties")
     assert response.status_code == 200
     by_sigla = {p["sigla"]: p for p in response.json()}
@@ -20,17 +22,29 @@ def test_list_parties_counts_only_current_mandates(client, seed):
     assert by_sigla["PTB"]["cor_hex"] == "#64748b"  # sem cor cadastrada: cinza neutro
 
 
-def test_list_parties_excludes_placeholder_party_and_sorts_by_caucus(client, seed):
+def test_list_parties_excludes_placeholder_party_and_sorts_by_caucus(client, db, seed):
+    sync_legacy_to_core(db)
     siglas = [p["sigla"] for p in client.get("/api/v1/parties").json()]
     assert "S.PART." not in siglas
     assert siglas == ["PTB", "PT"]  # maior bancada primeiro
 
 
-def test_list_parties_does_not_invent_ideology_motto_or_spectrum(client, seed):
-    for party in client.get("/api/v1/parties").json():
-        assert party["ideologia"] is None
-        assert party["lema"] is None
-        assert party["espectro_politico"] is None
+def test_list_parties_does_not_invent_ideology_motto_or_spectrum(client, db, seed):
+    from app.models import PoliticalParty
+
+    db.add(PoliticalParty(acronym="SEMDADOS", full_name="Partido Sem Dados"))
+    db.commit()
+    sync_legacy_to_core(db)
+    parties = {p["sigla"]: p for p in client.get("/api/v1/parties").json()}
+    sem_dados = parties["SEMDADOS"]
+    # Sigla fora da tabela de sementes e sem dado no legado: tudo permanece nulo, nada é inventado
+    assert sem_dados["ideologia"] is None
+    assert sem_dados["lema"] is None
+    assert sem_dados["espectro_politico"] is None
+    assert sem_dados["logo_url"] is None
+    assert sem_dados["cor_hex"] == "#64748b"
+    # Sigla presente na semente curada (ref.partido_semente): o dado vem do banco
+    assert parties["PT"]["espectro_politico"] == "ESQUERDA"
 
 
 def test_same_politician_is_counted_once_per_party(client, db, seed):
@@ -47,6 +61,7 @@ def test_same_politician_is_counted_once_per_party(client, db, seed):
         )
     )
     db.commit()
+    sync_legacy_to_core(db)
     pt = next(p for p in client.get("/api/v1/parties").json() if p["sigla"] == "PT")
     assert pt["total_deputados"] == 2
 
@@ -67,6 +82,7 @@ def test_inactive_status_is_not_part_of_the_current_caucus(client, db, seed):
         )
     )
     db.commit()
+    sync_legacy_to_core(db)
     pt = next(p for p in client.get("/api/v1/parties").json() if p["sigla"] == "PT")
     assert pt["total_deputados"] == 2
 
@@ -90,6 +106,7 @@ def test_senators_are_counted_separately(client, db, seed):
         PartyAffiliation(politician_id=senador.id, party_id=seed.pt.id, start_date=date(2020, 1, 1), is_current=True)
     )
     db.commit()
+    sync_legacy_to_core(db)
     pt = next(p for p in client.get("/api/v1/parties").json() if p["sigla"] == "PT")
     assert (pt["total_deputados"], pt["total_senadores"], pt["total_parlamentares"]) == (2, 1, 3)
 
@@ -197,8 +214,10 @@ def test_service_sync_mandate_history_and_active_seats(db, seed):
     assert seats_pt["cadeiras_dia_equivalentes"] >= 0.1
 
 
-def test_list_parties_resolves_official_party_logos(client, seed):
+def test_list_parties_resolves_official_party_logos(client, db, seed):
     from urllib.parse import urlparse
+
+    sync_legacy_to_core(db)
 
     parties = {p["sigla"]: p for p in client.get("/api/v1/parties").json()}
     assert parties["PT"]["logo_url"] is not None

@@ -6,6 +6,7 @@ from threading import Lock
 
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.migrations import upgrade_schema
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -188,6 +189,7 @@ def startup_db_migrations() -> None:
     """Executa a migração leve; falha de banco não impede o boot, mas é registrada como erro."""
     try:
         run_db_migrations()
+        upgrade_schema()
         from app.core.database import SessionLocal
         from app.services.legislative_scoring import sync_proposition_authors
         from app.services.party_productivity_service import sync_mandate_history
