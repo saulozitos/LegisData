@@ -40,6 +40,10 @@ def run_db_migrations() -> None:
             return
         # Lock transacional: os demais workers aguardam e depois executam no-ops (IF NOT EXISTS)
         db.execute(text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": MIGRATION_ADVISORY_LOCK_ID})
+        for enum_val in ("PR", "PRC", "PDS", "REQ", "INC"):
+            db.execute(text(f"ALTER TYPE tipoproposicaoenum ADD VALUE IF NOT EXISTS '{enum_val}';"))
+        for enum_val in ("APROVADO_PLENARIO", "APROVADO_COMISSAO"):
+            db.execute(text(f"ALTER TYPE statustramitacaoenum ADD VALUE IF NOT EXISTS '{enum_val}';"))
         db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "numeroProcesso" VARCHAR(100);'))
         db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "dataEmissao" VARCHAR(50);'))
         db.execute(text('ALTER TABLE certidoes_judiciais ADD COLUMN IF NOT EXISTS "linkComprovacao" VARCHAR(500);'))
@@ -180,10 +184,18 @@ def run_db_migrations() -> None:
         db.commit()
 
 
+
+
 def startup_db_migrations() -> None:
     """Executa a migração leve; falha de banco não impede o boot, mas é registrada como erro."""
     try:
         run_db_migrations()
+        from app.core.database import SessionLocal
+        from app.services.legislative_scoring import sync_proposition_authors
+        from app.services.party_productivity_service import sync_mandate_history
+        with SessionLocal() as db:
+            sync_proposition_authors(db)
+            sync_mandate_history(db)
     except Exception as e:
         logger.error("DB auto-migration failed: %s", e)
 

@@ -528,9 +528,10 @@ def sync_proposition_authors(db: Session, force: bool = False) -> int:
     Sincroniza a tabela relacional proposicoes_autores a partir dos campos autorNome
     e autorPoliticoId das proposições. Executado idempotentemente.
     """
-    from etl.utils.names import NON_PERSON_AUTHORS, normalize_name_tokens
+    from app.core.names import NON_PERSON_AUTHORS, normalize_name_tokens
 
-    existing_count = db.query(func.count(PropositionAuthor.id)).scalar() or 0
+    res = db.query(func.count(PropositionAuthor.id)).scalar()
+    existing_count = res if isinstance(res, (int, float)) else 0
     if existing_count > 0 and not force:
         return int(existing_count)
 
