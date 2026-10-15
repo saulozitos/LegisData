@@ -45,6 +45,14 @@ vi.mock('@/components/PartyMembersModal', () => ({
       </div>
     ) : null,
 }));
+vi.mock('@/components/PartyProductivityExplorer', () => ({
+  default: ({ onSelectPartyMembers, onOpenCatalog }: { onSelectPartyMembers: (s: string) => void; onOpenCatalog: () => void }) => (
+    <div data-testid="PartyProductivityExplorer">
+      <button onClick={() => onSelectPartyMembers('PL')}>explorer-open-members</button>
+      <button onClick={onOpenCatalog}>explorer-open-catalog</button>
+    </div>
+  ),
+}));
 vi.mock('@/components/VotingCalendarPanel', () => ({ default: () => <div data-testid="VotingCalendarPanel" /> }));
 vi.mock('@/components/EmendasExplorerPanel', () => ({ default: () => <div data-testid="EmendasExplorerPanel" /> }));
 vi.mock('@/services/api', () => ({
@@ -134,10 +142,37 @@ describe('Home (dashboard)', () => {
     expect(screen.getByTestId('SocialClassesExplainer')).toBeInTheDocument();
     fireEvent.click(tab('Partidos'));
     expect(await screen.findByTestId('PartiesPanel')).toHaveAttribute('data-target', 'null');
+    // a aba Partidos é só a lista (catálogo); o Raio-X dos Partidos vive em aba própria
+    expect(screen.queryByTestId('PartyProductivityExplorer')).not.toBeInTheDocument();
     fireEvent.click(tab('Produtividade & Votações'));
     expect(await screen.findByTestId('PropositionsExplorerPanel')).toBeInTheDocument();
     fireEvent.click(tab('Calendário de Votações'));
     expect(await screen.findByTestId('VotingCalendarPanel')).toBeInTheDocument();
+  });
+
+  it('Raio-X dos Partidos é uma aba própria, logo antes do Raio-X do Político', async () => {
+    render(<Home />);
+    await screen.findByTestId('ExecutivoPanel');
+    const nomes = screen.getAllByRole('tab').map((t) => t.textContent);
+    expect(nomes.indexOf('Raio-X dos Partidos')).toBe(nomes.indexOf('Raio-X do Político') - 1);
+
+    fireEvent.click(tab('Raio-X dos Partidos'));
+    expect(await screen.findByTestId('PartyProductivityExplorer')).toBeInTheDocument();
+    expect(screen.queryByTestId('PartiesPanel')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('explorer-open-catalog'));
+    expect(tab('Partidos')).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByTestId('PartiesPanel')).toBeInTheDocument();
+  });
+
+  it('do Raio-X dos Partidos, abrir os membros de um partido leva ao catálogo com o modal', async () => {
+    render(<Home />);
+    await screen.findByTestId('ExecutivoPanel');
+    fireEvent.click(tab('Raio-X dos Partidos'));
+    fireEvent.click(await screen.findByText('explorer-open-members'));
+    expect(tab('Partidos')).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByTestId('PartiesPanel')).toHaveAttribute('data-target', 'PL');
+    expect(screen.getByTestId('PartyMembersModal')).toHaveAttribute('data-party', 'PL');
   });
 
   it('navegação universal: partido abre a aba Partidos e o modal; membro abre o Raio-X', async () => {
