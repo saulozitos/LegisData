@@ -191,8 +191,8 @@ export default function PartyProductivityExplorer({
           valB = b.ippm_score_medio;
           break;
         case "fidelidade":
-          valA = a.pilares.fidelidade_partidaria_pct;
-          valB = b.pilares.fidelidade_partidaria_pct;
+          valA = a.pilares.fidelidade_partidaria_pct ?? -1;
+          valB = b.pilares.fidelidade_partidaria_pct ?? -1;
           break;
         case "eficacia":
           valA = a.pilares.taxa_eficacia_pct;
@@ -495,6 +495,14 @@ export default function PartyProductivityExplorer({
       {/* ─── CONTEÚDO PRINCIPAL: TABELA DE RANKING GERAL ─── */}
       {!loading && !error && activeView === "ranking" && (
         <div className="space-y-4">
+          {rankingData?.periodo?.aviso && (
+            <div
+              role="status"
+              className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-200"
+            >
+              {rankingData.periodo.aviso}
+            </div>
+          )}
           {filteredAndSortedRanking.length === 0 ? (
             <EmptyState
               title="Nenhum partido localizado"
@@ -666,14 +674,16 @@ export default function PartyProductivityExplorer({
                           <td className="py-3 px-3 text-right">
                             <span
                               className={`font-bold font-mono ${
-                                p.pilares.fidelidade_partidaria_pct >= 85
+                                p.pilares.fidelidade_partidaria_pct == null
+                                  ? "text-slate-500"
+                                  : p.pilares.fidelidade_partidaria_pct >= 85
                                   ? "text-emerald-400"
                                   : p.pilares.fidelidade_partidaria_pct >= 75
                                   ? "text-amber-400"
                                   : "text-rose-400"
                               }`}
                             >
-                              {p.pilares.fidelidade_partidaria_pct.toFixed(1)}%
+                              {p.pilares.fidelidade_partidaria_pct == null ? "—" : `${p.pilares.fidelidade_partidaria_pct.toFixed(1)}%`}
                             </span>
                           </td>
 
@@ -850,7 +860,10 @@ export default function PartyProductivityExplorer({
                           <p>• <strong>IPPM Médio:</strong> {p.ippm_score_medio.toFixed(2)}</p>
                           <p>• <strong>Apresentados:</strong> {p.projetos_apresentados} | <strong>Aprovados:</strong> {p.projetos_aprovados}</p>
                           <p>• <strong>Eficácia:</strong> {p.pilares.taxa_eficacia_pct.toFixed(1)}%</p>
-                          <p>• <strong>Coesão de Voto:</strong> {p.pilares.fidelidade_partidaria_pct.toFixed(1)}%</p>
+                          <p>• <strong>Coesão de Voto:</strong> {p.pilares.fidelidade_partidaria_pct == null ? "sem votações no período" : `${p.pilares.fidelidade_partidaria_pct.toFixed(1)}%`}</p>
+                          {(p.pilares.assinaturas_apoio_quorum ?? 0) > 0 && (
+                            <p>• <strong>Assinaturas de apoio a PEC:</strong> {p.pilares.assinaturas_apoio_quorum} (peso reduzido)</p>
+                          )}
                           <p>• <strong>Bancada:</strong> {p.cadeiras_dia_equivalentes.toFixed(1)} cadeiras-dia</p>
                           <p className="text-violet-300 font-semibold">• {p.quadrante_eficiencia.titulo}</p>
                         </div>

@@ -2020,10 +2020,13 @@ export async function getEmendasPorAutor(autor: string, limit = 50, signal?: Abo
 // ─── IPPM & Produtividade Partidária Média ───────────────────────────────────
 
 export interface PartyPilares {
-  fidelidade_partidaria_pct: number;
+  /** null: sem votação nominal com orientação de bancada no período. */
+  fidelidade_partidaria_pct: number | null;
   taxa_eficacia_pct: number;
   total_relatorias: number;
   volume_relatorias: number;
+  /** Assinaturas de apoio a PEC (peso reduzido no índice). */
+  assinaturas_apoio_quorum?: number;
 }
 
 export interface QuadranteEficiencia {
@@ -2061,6 +2064,8 @@ export interface IPPMRankingResponse {
     casa: string;
     bloco: string;
     espectro: string;
+    /** Explica partidos fora do ranking (ex.: período sem histórico de cadeiras na fonte). */
+    aviso?: string | null;
   };
   resumo_geral: {
     total_partidos: number;

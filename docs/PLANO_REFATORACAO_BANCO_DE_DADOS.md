@@ -28,8 +28,25 @@ Este documento é um plano, não uma implementação. Nenhuma tabela ou código 
 |---------|--------|--------|
 | 1 | Alembic, Postgres nos testes, schemas `ref/core/etl/param`, ponte legado→core, `/parties` | PR #36 |
 | 2 | Schema `leg` (proposição, autoria, votação unificada, voto, orientação, presença particionada), ponte legado→leg, pesos do IPPM em `param`, IPPM e linha do tempo da bancada lendo `core`/`leg` | Em validação (branch `refactor/db-entrega-2-legislativo`, empilhada sobre a Entrega 1) |
-| 2b | Endpoints de `legislative.py`, votos/proposições em `politicians.py`, Basômetro, deliberações e `legislative_scoring.py` ainda leem o schema legado; unificar os três conjuntos de pesos divergentes do IALP/IPPM | A fazer |
+| 2b | Cobertura: status real, todas as proposições desde 1995, autores sem pessoa, IPPM por período e cadeiras de todos os períodos (Câmara) | Em validação (branch `refactor/db-entrega-2b-cobertura`) |
+| 2c (pendente) | Endpoints de `legislative.py`, votos/proposições em `politicians.py`, Basômetro, deliberações e `legislative_scoring.py` ainda leem o schema legado; unificar os três conjuntos de pesos divergentes do IALP/IPPM | A fazer |
 | 3 | Economia e Executivo, corte em 1995, remoção de `seed_executivo.py`, novo ETL | A fazer |
+
+### Entrega 2b — cobertura de proposições e de cadeiras (2026-10-15)
+
+Decisões do mantenedor: extrair o status real; reduzir o peso das assinaturas de apoio a PEC (valor escolhido: **0,05**, ou seja 0,15 ponto por assinatura contra 0,6 antes) e expor a contagem à parte; manter o IALP v2 com veto total a 0,8; alinhar os períodos; registrar todas as proposições, inclusive as sem autor identificado.
+
+**O que foi construído (ETL em estágios: baixar → staging → merge em SQL):**
+- `camara_bulk_extractor` + `camara_bulk_loader` + `etl.merge_camara_bulk()`: CSV anuais de proposições e autores da Câmara, 1995–2026. A situação da tramitação vem de `ref.situacao_camara` (dado, não código); situação sem mapa vira `etl.rejeito` (nada de padrão silencioso). Hipótese registrada: "Aguardando Apreciação do Veto" é tratada como veto parcial.
+- `core.entidade`: autores que não são pessoas (Poder Executivo, comissões, Mesa, lideranças, sociedade civil...) são registrados. Senadores citados só por nome ficam na autoria com nome, UF e partido da fonte (sem identidade por nome) e pontuam para o partido.
+- `camara_historico_extractor` + `etl.merge_camara_historico()`: posse, saída, licença, suplência e troca de partido de cada deputado → `core.mandato`, `core.mandato_situacao` e `core.mandato_partido` (partido que ocupa a cadeira em cada dia). Titulares e suplentes entram igualmente.
+- IALP v3 (= v2 + novos tipos de iniciativa e `SEM_INFORMACAO` = 1,0 + peso de apoio de quórum em PEC).
+- IPPM: proposições e votações filtradas pelo ano selecionado, no mesmo período das cadeiras-dia; fidelidade sem votação vira "indisponível" (antes aparecia 100%).
+
+**Diagnóstico de cobertura (fonte: CSV anuais, 1995–2026):**
+- 907.668 documentos legislativos; 357.260 são iniciativas com peso na metodologia (PL, PEC, PLP, MPV, PDL/PDC, PRC, REQ, RIC, INC...). Os demais (pareceres, emendas, substitutivos, redações finais: 132 tipos) são trâmites internos e ficam contados em `etl.verificacao`, sem pontuar.
+- 1.831.883 linhas de autoria: 757 mil proposições com deputado identificado por id; 1.133 entidades; senadores só por nome.
+- Lacunas que continuam abertas: (1) proposições que nascem no Senado e nunca passam pela Câmara (API do Senado ainda não integrada); (2) cadeiras do Senado antes de 2023; (3) cadeiras da Câmara de 1995 a 2002: a API só publica eventos de mandato a partir da 52ª legislatura (2003). Nesses períodos o IPPM não é calculado e o ranking avisa; alternativas: eleitos de 1994/1998 pelo TSE como bancada aproximada (marcada como aproximada) ou fonte documental da Câmara.
 
 ### Decisão: conjunto único de pesos do IALP (2026-10-15)
 

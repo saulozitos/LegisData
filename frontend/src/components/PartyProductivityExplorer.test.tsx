@@ -369,4 +369,17 @@ describe("PartyProductivityExplorer Component", () => {
 
     expect(await screen.findByText(/Nenhum partido localizado/i)).toBeInTheDocument();
   });
+
+  it("mostra o aviso do período e traço quando a coesão está indisponível", async () => {
+    const semVotos = structuredClone(mockRankingResponse);
+    semVotos.periodo.aviso = "Partidos sem cadeiras registradas no período ficaram fora do ranking: PRD";
+    semVotos.ranking[0].pilares.fidelidade_partidaria_pct = null;
+    semVotos.ranking[0].pilares.assinaturas_apoio_quorum = 7;
+    vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(semVotos);
+
+    render(<PartyProductivityExplorer />);
+
+    expect(await screen.findByText(/ficaram fora do ranking: PRD/)).toBeInTheDocument();
+    expect(screen.getByText("—", { selector: "span.font-mono" })).toBeInTheDocument();
+  });
 });
