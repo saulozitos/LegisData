@@ -24,9 +24,8 @@ from app.models import (
     VotingSession,
     VotoOpcaoEnum,
 )
+from app.services.ialp_pesos import carregar_pesos_ialp
 from app.services.legislative_scoring import (
-    MULTIPLICADOR_TRAMITACAO,
-    PESO_COMPLEXIDADE,
     build_coauthorship_network,
     get_politician_ialp_metrics,
 )
@@ -1130,6 +1129,7 @@ def get_legislative_explorer(
         .all()
     )
 
+    pesos = carregar_pesos_ialp(db)
     prop_ids = [p.id for p in proposicoes]
     author_ids = [p.author_politician_id for p in proposicoes if p.author_politician_id]
     politicians = {p.id: p for p in db.query(Politician).filter(Politician.id.in_(author_ids)).all()}
@@ -1182,8 +1182,8 @@ def get_legislative_explorer(
             else ("Poder Executivo" if p.is_executive_initiative else "Parlamentar")
         )
 
-        peso_comp = PESO_COMPLEXIDADE.get(p.proposition_type, 1.0)
-        mult_tram = MULTIPLICADOR_TRAMITACAO.get(p.status, 1.0)
+        peso_comp = pesos.peso_tipo(p.proposition_type)
+        mult_tram = pesos.peso_status(p.status)
 
         resultado_str = "EM_TRAMITACAO"
         if sessao:

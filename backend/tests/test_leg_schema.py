@@ -312,11 +312,55 @@ def test_full_text_search_on_summary(db, cenario):
 # ── pesos em param, autoria pontuada, placar e cadeiras-dia ──────────────────────────────────────
 
 
-def test_peso_de_returns_configured_weight_and_falls_back_to_default(db):
-    assert float(_scalar(db, "SELECT param.peso_de('IPPM', 'PESO_TIPO', 'PEC')")) == 3.0
-    assert float(_scalar(db, "SELECT param.peso_de('IPPM', 'PESO_AUTORIA', 'RELATOR')")) == 0.8
-    assert float(_scalar(db, "SELECT param.peso_de('IPPM', 'PESO_TIPO', 'TIPO_NOVO')")) == 0.5  # ELSE do CASE original
-    assert _scalar(db, "SELECT param.peso_de('INEXISTENTE', 'PESO_TIPO', 'PEC')") is None
+def test_peso_de_returns_the_configured_weight(db):
+    assert float(_scalar(db, "SELECT param.peso_de('IALP', 'PESO_TIPO', 'PEC')")) == 3.0
+    assert float(_scalar(db, "SELECT param.peso_de('IALP', 'PESO_AUTORIA', 'RELATOR')")) == 0.8
+    assert float(_scalar(db, "SELECT param.peso_de('IALP', 'PESO_STATUS', 'VETADA_PARCIAL')")) == 1.5
+    assert float(_scalar(db, "SELECT param.peso_de('IALP', 'PESO_STATUS', 'VETADA_TOTAL')")) == 0.8
+    assert float(_scalar(db, "SELECT param.peso_de('IALP', 'PESO_TIPO', 'DECRETO_PRES')")) == 1.0
+
+
+def test_peso_de_fails_when_the_weight_is_missing_there_is_no_silent_default(db):
+    with pytest.raises(Exception, match="Peso não configurado"):
+        db.execute(text("SELECT param.peso_de('IALP', 'PESO_TIPO', 'TIPO_NOVO')"))
+    db.rollback()
+    with pytest.raises(Exception, match="Peso não configurado"):
+        db.execute(text("SELECT param.peso_de('INEXISTENTE', 'PESO_TIPO', 'PEC')"))
+    db.rollback()
+
+
+def test_single_methodology_has_a_weight_for_every_reference_code_and_no_wildcard(db):
+    assert _rows(db, "SELECT codigo, versao FROM param.metodologia WHERE codigo IN ('IALP', 'IPPM') ORDER BY 1, 2") == [
+        ("IALP", 2)
+    ]
+    assert _scalar(db, "SELECT count(*) FROM param.peso WHERE chave = '*'") == 0
+    sem_peso = _rows(
+        db,
+        """
+        SELECT 'PESO_TIPO', codigo FROM ref.tipo_proposicao t
+          WHERE NOT EXISTS (SELECT 1 FROM param.peso p JOIN param.metodologia m ON m.id = p.metodologia_id
+                             WHERE m.codigo = 'IALP' AND p.dimensao = 'PESO_TIPO' AND p.chave = t.codigo)
+        UNION ALL SELECT 'PESO_STATUS', codigo FROM ref.status_tramitacao t
+          WHERE NOT EXISTS (SELECT 1 FROM param.peso p JOIN param.metodologia m ON m.id = p.metodologia_id
+                             WHERE m.codigo = 'IALP' AND p.dimensao = 'PESO_STATUS' AND p.chave = t.codigo)
+        UNION ALL SELECT 'PESO_AUTORIA', codigo FROM ref.tipo_autoria t
+          WHERE NOT EXISTS (SELECT 1 FROM param.peso p JOIN param.metodologia m ON m.id = p.metodologia_id
+                             WHERE m.codigo = 'IALP' AND p.dimensao = 'PESO_AUTORIA' AND p.chave = t.codigo)""",
+    )
+    assert sem_peso == []
+
+
+def test_sancionado_is_not_a_status_and_has_no_weight(db):
+    assert _scalar(db, "SELECT count(*) FROM param.peso WHERE chave = 'SANCIONADO'") == 0
+
+
+def test_python_loader_is_strict(db):
+    from app.services.ialp_pesos import PesoNaoConfigurado, carregar_pesos_ialp
+
+    pesos = carregar_pesos_ialp(db)
+    assert pesos.peso_status("VETADA_TOTAL") == 0.8
+    with pytest.raises(PesoNaoConfigurado):
+        pesos.peso_status("SANCIONADO")
 
 
 def test_author_is_scored_in_the_party_he_belonged_to_when_the_bill_was_filed(db, cenario):
@@ -346,7 +390,7 @@ def test_author_is_scored_in_the_party_he_belonged_to_when_the_bill_was_filed(db
     sync_legacy_to_core(db)
     rows = _rows(
         db,
-        "SELECT p.numero, pa.sigla, v.pontos_ialp FROM leg.vw_autoria_ippm v "
+        "SELECT p.numero, pa.sigla, v.pontos_ialp FROM leg.vw_autoria_pontuada v "
         "JOIN leg.proposicao p ON p.id = v.proposicao_id JOIN core.partido pa ON pa.id = v.partido_id "
         "WHERE v.tipo_autoria = 'AUTOR_PRINCIPAL' ORDER BY p.numero",
     )
@@ -356,7 +400,7 @@ def test_author_is_scored_in_the_party_he_belonged_to_when_the_bill_was_filed(db
 
 def test_institutional_authorship_does_not_score(db, cenario):
     sync_legacy_to_core(db)
-    assert _scalar(db, "SELECT count(*) FROM leg.vw_autoria_ippm WHERE tipo_autoria = 'INSTITUCIONAL'") == 0
+    assert _scalar(db, "SELECT count(*) FROM leg.vw_autoria_pontuada WHERE tipo_autoria = 'INSTITUCIONAL'") == 0
 
 
 def test_placar_counts_nominal_votes_and_falls_back_to_source_totals(db, cenario):

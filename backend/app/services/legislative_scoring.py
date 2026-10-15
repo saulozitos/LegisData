@@ -50,50 +50,12 @@ from app.models.legislative import (
     TipoProposicaoEnum,
 )
 from app.models.politician import Mandate, PartyAffiliation, PoliticalParty, Politician
+from app.services.ialp_pesos import PesosIALP, carregar_pesos_ialp
 from networkx.algorithms.community import louvain_communities
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger("legislative_scoring")
-
-# ─── MATRIZ DE PESOS CIENTÍFICA (ESPECIFICAÇÃO TÉCNICA) ──────────────────────
-
-PESO_AUTORIA: Dict[str, float] = {
-    "AUTOR_PRINCIPAL": 1.0,
-    "RELATOR": 0.8,
-    "COAUTOR": 0.2,
-    "INSTITUCIONAL": 0.0,
-}
-
-PESO_COMPLEXIDADE = PESO_TIPO = {
-    "PEC": 3.0,
-    "PLP": 2.5,
-    "PL": 2.0,
-    "MPV": 2.0,
-    "PDL": 1.0,
-    "PR": 1.0,
-    "PRC": 1.0,
-    "PDS": 1.0,
-    "DECRETO_PRES": 1.0,
-    "LEI_DELEGADA": 1.0,
-    "REQ": 0.1,
-    "INC": 0.1,
-    "REQUERIMENTO": 0.1,
-    "INDICACAO": 0.1,
-}
-
-MULTIPLICADOR_TRAMITACAO: Dict[str, float] = {
-    "APROVADA_E_SANCIONADA": 3.0,
-    "APROVADA_E_PROMULGADA": 3.0,
-    "SANCIONADO": 3.0,
-    "APROVADO_PLENARIO": 2.0,
-    "APROVADO_COMISSAO": 1.5,
-    "EM_TRAMITACAO": 1.0,
-    "VETADA_PARCIAL": 1.5,
-    "VETADA_TOTAL": 1.0,
-    "ARQUIVADA": 0.8,
-    "REJEITADA": 0.5,
-}
 
 INSTITUTIONAL_KEYWORDS = frozenset(
     [
@@ -115,35 +77,25 @@ def calculate_proposition_score(
     prop_type: str | TipoProposicaoEnum,
     authorship_type: str | TipoAutoriaEnum,
     status: str | StatusTramitacaoEnum,
+    pesos: PesosIALP,
     has_approved_session: bool = False,
     is_plenary: bool = False,
 ) -> float:
     """
-    Calcula a pontuação IALP de uma proposição para um parlamentar individual.
-    Score(P) = T * A * S
+    Calcula a pontuação IALP de uma proposição para um parlamentar individual: Score(P) = T * A * S.
+    Todos os pesos vêm de `pesos` (param.peso, metodologia IALP); uma votação aprovada eleva a tramitação ao
+    patamar de aprovação em plenário ou em comissão quando o status registrado ainda é anterior a ele.
     """
-    aut_key = authorship_type.value if hasattr(authorship_type, "value") else str(authorship_type)
-    peso_a = PESO_AUTORIA.get(aut_key, 0.2)
+    peso_a = pesos.peso_autoria(authorship_type)
     if peso_a <= 0.0:
         return 0.0
 
-    tipo_key = prop_type.value if hasattr(prop_type, "value") else str(prop_type)
-    peso_t = PESO_TIPO.get(tipo_key, 1.0)
-
+    peso_t = pesos.peso_tipo(prop_type)
     status_key = status.value if hasattr(status, "value") else str(status)
-
-    if status_key in (
-        "APROVADA_E_SANCIONADA",
-        "APROVADA_E_PROMULGADA",
-        "SANCIONADO",
-    ):
-        peso_s = 3.0
-    elif status_key == "APROVADO_PLENARIO" or (has_approved_session and is_plenary):
-        peso_s = 2.0
-    elif status_key == "APROVADO_COMISSAO" or has_approved_session:
-        peso_s = 1.5
-    else:
-        peso_s = MULTIPLICADOR_TRAMITACAO.get(status_key, 1.0)
+    peso_s = pesos.peso_status(status_key)
+    if has_approved_session:
+        piso = pesos.peso_status("APROVADO_PLENARIO" if is_plenary else "APROVADO_COMISSAO")
+        peso_s = max(peso_s, piso)
 
     return round(peso_t * peso_a * peso_s, 2)
 
@@ -153,6 +105,7 @@ def get_politician_ialp_metrics(politician_id: uuid.UUID, db: Session) -> Dict[s
     Calcula o perfil consolidado de produtividade legislativa (IALP) de um parlamentar.
     Retorna Score Consolidado, Taxa de Eficácia, Desvio de Foco e Proposições Ponderadas.
     """
+    pesos = carregar_pesos_ialp(db)
     records = (
         db.query(PropositionAuthor, Proposition)
         .join(Proposition, PropositionAuthor.proposition_id == Proposition.id)
@@ -189,6 +142,7 @@ def get_politician_ialp_metrics(politician_id: uuid.UUID, db: Session) -> Dict[s
             prop_type=tipo_str,
             authorship_type=aut_str,
             status=status_str,
+            pesos=pesos,
             has_approved_session=has_approved_vote,
         )
         score_consolidado += score_p
@@ -201,7 +155,6 @@ def get_politician_ialp_metrics(politician_id: uuid.UUID, db: Session) -> Dict[s
                 in (
                     "APROVADA_E_SANCIONADA",
                     "APROVADA_E_PROMULGADA",
-                    "SANCIONADO",
                     "APROVADO_PLENARIO",
                     "APROVADO_COMISSAO",
                 )
@@ -228,12 +181,11 @@ def get_politician_ialp_metrics(politician_id: uuid.UUID, db: Session) -> Dict[s
                 "ementa": prop.summary,
                 "status": status_str,
                 "tipo_autoria": aut_str,
-                "peso_tipo": PESO_TIPO.get(tipo_str, 1.0),
-                "peso_autoria": PESO_AUTORIA.get(aut_str, 0.2),
-                "multiplicador_tramitacao": (
-                    3.0
-                    if status_str in ("APROVADA_E_SANCIONADA", "APROVADA_E_PROMULGADA")
-                    else (1.5 if has_approved_vote else 1.0)
+                "peso_tipo": pesos.peso_tipo(tipo_str),
+                "peso_autoria": pesos.peso_autoria(aut_str),
+                "multiplicador_tramitacao": max(
+                    pesos.peso_status(status_str),
+                    pesos.peso_status("APROVADO_COMISSAO") if has_approved_vote else 0.0,
                 ),
                 "score_ialp": score_p,
                 "is_reforma_estrutural": prop.is_structural_reform,

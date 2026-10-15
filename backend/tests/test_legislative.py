@@ -451,15 +451,19 @@ def test_ranking_authors_weighted_indicators_and_new_criteria(client, seed):
         assert first["coautoria_count"] >= 0
 
 
-def test_calculate_proposition_score_ialp_formula():
+def test_calculate_proposition_score_ialp_formula(db):
     from app.models.legislative import StatusTramitacaoEnum, TipoAutoriaEnum, TipoProposicaoEnum
+    from app.services.ialp_pesos import carregar_pesos_ialp
     from app.services.legislative_scoring import calculate_proposition_score
+
+    pesos = carregar_pesos_ialp(db)
 
     # 1. Autor Principal (1.0) em PEC (3.0) Sancionada (3.0): 3.0 * 1.0 * 3.0 = 9.0
     score_pec_sanc = calculate_proposition_score(
         TipoProposicaoEnum.PEC,
         TipoAutoriaEnum.AUTOR_PRINCIPAL,
         StatusTramitacaoEnum.APROVADA_E_SANCIONADA,
+        pesos,
     )
     assert score_pec_sanc == 9.0
 
@@ -468,6 +472,7 @@ def test_calculate_proposition_score_ialp_formula():
         TipoProposicaoEnum.PEC,
         TipoAutoriaEnum.COAUTOR,
         StatusTramitacaoEnum.EM_TRAMITACAO,
+        pesos,
     )
     assert score_pec_coaut == 0.6
 
@@ -476,6 +481,7 @@ def test_calculate_proposition_score_ialp_formula():
         TipoProposicaoEnum.PLP,
         TipoAutoriaEnum.RELATOR,
         StatusTramitacaoEnum.APROVADO_PLENARIO,
+        pesos,
     )
     assert score_plp_relator == 4.0
 
@@ -484,6 +490,7 @@ def test_calculate_proposition_score_ialp_formula():
         TipoProposicaoEnum.PL,
         TipoAutoriaEnum.INSTITUCIONAL,
         StatusTramitacaoEnum.APROVADA_E_SANCIONADA,
+        pesos,
     )
     assert score_inst == 0.0
 
@@ -492,6 +499,7 @@ def test_calculate_proposition_score_ialp_formula():
         TipoProposicaoEnum.REQ,
         TipoAutoriaEnum.AUTOR_PRINCIPAL,
         StatusTramitacaoEnum.EM_TRAMITACAO,
+        pesos,
     )
     assert score_req == 0.1
 

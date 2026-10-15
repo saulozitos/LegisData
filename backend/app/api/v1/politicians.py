@@ -33,7 +33,7 @@ from app.models import (
     VotingSession,
 )
 from app.services.basometro import calcular_basometro
-from app.services.legislative_scoring import PESO_COMPLEXIDADE
+from app.services.ialp_pesos import carregar_pesos_ialp
 from app.services.presidential_service import get_all_presidents, get_mandate_date_range, get_president_by_reference
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, asc, desc, func, or_
@@ -1039,6 +1039,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     outros_count = 0
     total_score_ponderado = 0.0
     props_aprovadas = 0
+    pesos = carregar_pesos_ialp(db)
 
     if author_records_count > 0:
         lideranca_count = (
@@ -1080,8 +1081,8 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
 
             is_principal = pa.authorship_type == TipoAutoriaEnum.AUTOR_PRINCIPAL
             papel = "AUTOR_PRINCIPAL" if is_principal else "COAUTOR"
-            peso_part = 1.0 if is_principal else 0.2
-            peso_comp = PESO_COMPLEXIDADE.get(p.proposition_type, 1.0)
+            peso_part = pesos.peso_autoria(pa.authorship_type)
+            peso_comp = pesos.peso_tipo(p.proposition_type)
 
             is_aprovada = p.status in (
                 StatusTramitacaoEnum.APROVADA_E_SANCIONADA,
@@ -1089,9 +1090,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             )
             if is_aprovada:
                 props_aprovadas += 1
-                bonus_tram = 3.0
-            else:
-                bonus_tram = 1.0
+            bonus_tram = pesos.peso_status(p.status)
 
             prop_score = round(peso_part * peso_comp * bonus_tram, 2)
             total_score_ponderado += prop_score
@@ -1147,18 +1146,16 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
                 "Matéria de cunho honorífico/simbólico" if is_simb else "Matéria com impacto estrutural e substantivo"
             )
 
-            peso_comp = PESO_COMPLEXIDADE.get(p.proposition_type, 1.0)
+            peso_comp = pesos.peso_tipo(p.proposition_type)
             is_aprovada = p.status in (
                 StatusTramitacaoEnum.APROVADA_E_SANCIONADA,
                 StatusTramitacaoEnum.APROVADA_E_PROMULGADA,
             )
             if is_aprovada:
                 props_aprovadas += 1
-                bonus_tram = 3.0
-            else:
-                bonus_tram = 1.0
+            bonus_tram = pesos.peso_status(p.status)
 
-            prop_score = round(1.0 * peso_comp * bonus_tram, 2)
+            prop_score = round(pesos.peso_autoria(TipoAutoriaEnum.AUTOR_PRINCIPAL) * peso_comp * bonus_tram, 2)
             total_score_ponderado += prop_score
 
             if p.proposition_type == TipoProposicaoEnum.PEC:

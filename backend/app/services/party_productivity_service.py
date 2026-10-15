@@ -32,34 +32,6 @@ logger = logging.getLogger(__name__)
 STATUS_APROVADOS = ("APROVADA_E_SANCIONADA", "APROVADA_E_PROMULGADA", "APROVADO_PLENARIO")
 
 
-# Pesos Oficiais do IALP para Tipos de Proposição
-PESO_TIPO: Dict[str, float] = {
-    "PEC": 3.0,
-    "PLP": 2.5,
-    "PL": 2.0,
-    "MPV": 2.0,
-    "PDL": 1.0,
-    "PR": 1.0,
-    "PRC": 1.0,
-    "PDS": 1.0,
-    "REQ": 0.1,
-    "INC": 0.1,
-}
-
-# Multiplicadores de Tramitação e Sucesso
-PESO_STATUS: Dict[str, float] = {
-    "APROVADA_E_SANCIONADA": 3.0,
-    "APROVADA_E_PROMULGADA": 3.0,
-    "APROVADO_PLENARIO": 2.0,
-    "APROVADO_COMISSAO": 1.5,
-    "EM_TRAMITACAO": 1.0,
-    "ARQUIVADA": 0.8,
-    "REJEITADA": 0.5,
-    "VETADA_TOTAL": 0.8,
-    "VETADA_PARCIAL": 1.2,
-}
-
-
 def get_party_bloc_alignments() -> Dict[str, str]:
     """Carrega o alinhamento de bloco governamental de composicao_congresso.json."""
     json_path = Path(config.PROCESSED_DATA_DIR) / "composicao_congresso.json"
@@ -200,13 +172,13 @@ def calculate_party_ippm_ranking(
     casa_param = clean_casa if clean_casa in ("CAMARA", "SENADO") else None
     params = {"casa": casa_param}
 
-    # 1. Agregação IALP por Partido: Score = tipo x autoria x tramitação (pesos em param.peso, metodologia IPPM),
+    # 1. Agregação IALP por Partido: Score = tipo x autoria x tramitação (pesos em param.peso, metodologia IALP),
     # com o partido do autor na data de apresentação da proposição (core.filiacao)
     ialp_rows = db.execute(
         text(
             """
             SELECT pa.sigla, COUNT(DISTINCT v.pessoa_id), ROUND(SUM(v.pontos_ialp)::numeric, 2)
-            FROM leg.vw_autoria_ippm v JOIN core.partido pa ON pa.id = v.partido_id
+            FROM leg.vw_autoria_pontuada v JOIN core.partido pa ON pa.id = v.partido_id
             WHERE (:casa IS NULL OR (:casa = 'CAMARA' AND v.da_camara) OR (:casa = 'SENADO' AND v.do_senado))
             GROUP BY pa.sigla
             """
@@ -247,7 +219,7 @@ def calculate_party_ippm_ranking(
             """
             SELECT pa.sigla, COUNT(DISTINCT v.proposicao_id),
                    COUNT(DISTINCT v.proposicao_id) FILTER (WHERE v.status_codigo IN :aprovados)
-            FROM leg.vw_autoria_ippm v JOIN core.partido pa ON pa.id = v.partido_id
+            FROM leg.vw_autoria_pontuada v JOIN core.partido pa ON pa.id = v.partido_id
             WHERE v.tipo_autoria = 'AUTOR_PRINCIPAL'
               AND (:casa IS NULL OR (:casa = 'CAMARA' AND v.da_camara) OR (:casa = 'SENADO' AND v.do_senado))
             GROUP BY pa.sigla
@@ -262,7 +234,7 @@ def calculate_party_ippm_ranking(
         text(
             """
             SELECT pa.sigla, COUNT(DISTINCT v.proposicao_id), ROUND(SUM(v.pontos_relatoria)::numeric, 1)
-            FROM leg.vw_autoria_ippm v JOIN core.partido pa ON pa.id = v.partido_id
+            FROM leg.vw_autoria_pontuada v JOIN core.partido pa ON pa.id = v.partido_id
             WHERE v.tipo_autoria = 'RELATOR'
               AND (:casa IS NULL OR (:casa = 'CAMARA' AND v.da_camara) OR (:casa = 'SENADO' AND v.do_senado))
             GROUP BY pa.sigla

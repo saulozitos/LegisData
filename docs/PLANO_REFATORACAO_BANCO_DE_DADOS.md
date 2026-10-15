@@ -28,10 +28,22 @@ Este documento é um plano, não uma implementação. Nenhuma tabela ou código 
 |---------|--------|--------|
 | 1 | Alembic, Postgres nos testes, schemas `ref/core/etl/param`, ponte legado→core, `/parties` | PR #36 |
 | 2 | Schema `leg` (proposição, autoria, votação unificada, voto, orientação, presença particionada), ponte legado→leg, pesos do IPPM em `param`, IPPM e linha do tempo da bancada lendo `core`/`leg` | Em validação (branch `refactor/db-entrega-2-legislativo`, empilhada sobre a Entrega 1) |
-| 2b (pendente) | Endpoints de `legislative.py`, votos/proposições em `politicians.py`, Basômetro, deliberações e `legislative_scoring.py` ainda leem o schema legado; unificar os três conjuntos de pesos divergentes do IALP/IPPM | A fazer |
+| 2b | Endpoints de `legislative.py`, votos/proposições em `politicians.py`, Basômetro, deliberações e `legislative_scoring.py` ainda leem o schema legado; unificar os três conjuntos de pesos divergentes do IALP/IPPM | A fazer |
 | 3 | Economia e Executivo, corte em 1995, remoção de `seed_executivo.py`, novo ETL | A fazer |
 
-Divergências de metodologia encontradas no código legado (decisão pendente): três conjuntos de pesos para tipo/tramitação (SQL do IPPM, `legislative_scoring.py` e dicionários `PESO_*`), a classificação de blocos de governo fixa em "Lula 2023" (`get_party_blocs`) e o IPPM que soma proposições de todo o histórico mas divide pelas cadeiras-dia de um único ano.
+### Decisão: conjunto único de pesos do IALP (2026-10-15)
+
+O código tinha quatro conjuntos divergentes de pesos para tipo, autoria e tramitação: o `CASE WHEN` do SQL do IPPM, `legislative_scoring.py`, os dicionários `PESO_*` de `party_productivity_service.py` (código morto) e valores soltos no perfil do parlamentar (`politicians.py`). Decisão do mantenedor:
+
+1. Tipo, autoria e tramitação conforme `docs/METODOLOGIA_ATIVIDADE_LEGISLATIVA.md`.
+2. Veto parcial = 1,5; veto total = 0,8.
+3. Decreto presidencial e lei delegada = 1,0.
+4. Sem valor padrão silencioso (`*`): tipos e status são explícitos e estritos; falta de peso é erro.
+5. `SANCIONADO` (que não existe no status real dos dados) é removido.
+
+Implementação: metodologia `IALP` v2 em `param.peso` (migração 0008); `param.peso_de()` falha quando falta peso; `app/services/ialp_pesos.py` carrega os pesos no Python; `leg.vw_autoria_pontuada` calcula a pontuação em SQL. Os `CASE WHEN`, os dicionários e as metodologias v1 foram removidos.
+
+Pendências de metodologia (Entrega 3): a classificação de blocos de governo está fixa em "Lula 2023" (`get_party_bloc_alignments`) e o IPPM soma proposições de todo o histórico mas divide pelas cadeiras-dia de um único ano. Observação sobre os dados: as 2.707 proposições carregadas estão todas como `EM_TRAMITACAO`; a extração não traz o status real, então os pesos de tramitação e a taxa de eficácia ainda não têm efeito.
 
 ---
 
