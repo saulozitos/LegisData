@@ -22,6 +22,19 @@ Este documento é um plano, não uma implementação. Nenhuma tabela ou código 
 
 ---
 
+## 0.1 Status das entregas
+
+| Entrega | Escopo | Estado |
+|---------|--------|--------|
+| 1 | Alembic, Postgres nos testes, schemas `ref/core/etl/param`, ponte legado→core, `/parties` | PR #36 |
+| 2 | Schema `leg` (proposição, autoria, votação unificada, voto, orientação, presença particionada), ponte legado→leg, pesos do IPPM em `param`, IPPM e linha do tempo da bancada lendo `core`/`leg` | Em validação (branch `refactor/db-entrega-2-legislativo`, empilhada sobre a Entrega 1) |
+| 2b (pendente) | Endpoints de `legislative.py`, votos/proposições em `politicians.py`, Basômetro, deliberações e `legislative_scoring.py` ainda leem o schema legado; unificar os três conjuntos de pesos divergentes do IALP/IPPM | A fazer |
+| 3 | Economia e Executivo, corte em 1995, remoção de `seed_executivo.py`, novo ETL | A fazer |
+
+Divergências de metodologia encontradas no código legado (decisão pendente): três conjuntos de pesos para tipo/tramitação (SQL do IPPM, `legislative_scoring.py` e dicionários `PESO_*`), a classificação de blocos de governo fixa em "Lula 2023" (`get_party_blocs`) e o IPPM que soma proposições de todo o histórico mas divide pelas cadeiras-dia de um único ano.
+
+---
+
 ## 1. Resumo executivo
 
 1. **A direção está certa.** Banco como fonte única da verdade, ETL em três estágios (baixar, ler, popular) e regras de cálculo próximas dos dados.

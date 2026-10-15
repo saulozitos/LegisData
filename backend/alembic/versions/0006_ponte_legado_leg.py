@@ -142,9 +142,14 @@ BEGIN
     ORDER BY x.votacao_id, x.pessoa_id, x.prioridade;
     GET DIAGNOSTICS v_votos = ROW_COUNT;
     -- partido do voto: quando só o voto nominal existe, usa a filiação vigente na data da votação
-    UPDATE leg.voto v SET partido_id = (
-        SELECT f.partido_id FROM core.filiacao f JOIN leg.votacao vo ON vo.id = v.votacao_id
-         WHERE f.pessoa_id = v.pessoa_id AND f.periodo @> vo.data_hora::date LIMIT 1)
+    -- (quem não tem nenhuma filiação registrada herda o partido do mandato)
+    UPDATE leg.voto v SET partido_id = coalesce(
+        (SELECT f.partido_id FROM core.filiacao f JOIN leg.votacao vo ON vo.id = v.votacao_id
+          WHERE f.pessoa_id = v.pessoa_id AND f.periodo @> vo.data_hora::date LIMIT 1),
+        (SELECT m.partido_id FROM core.mandato m
+          WHERE m.pessoa_id = v.pessoa_id AND m.partido_id IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM core.filiacao x WHERE x.pessoa_id = v.pessoa_id)
+          ORDER BY m.inicio DESC LIMIT 1))
     WHERE v.partido_id IS NULL;
 
     INSERT INTO leg.orientacao (votacao_id, bancada, partido_id, orientacao)
@@ -195,5 +200,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("DROP FUNCTION IF EXISTS etl.sincronizar_legado_leg()")
-    op.execute("TRUNCATE leg.presenca, leg.orientacao, leg.voto, leg.votacao_legado, leg.votacao, leg.autoria, "
-               "leg.proposicao CASCADE")
+    op.execute(
+        "TRUNCATE leg.presenca, leg.orientacao, leg.voto, leg.votacao_legado, leg.votacao, leg.autoria, "
+        "leg.proposicao CASCADE"
+    )

@@ -15,26 +15,52 @@ branch_labels = None
 depends_on = None
 
 TIPOS_PROPOSICAO = [
-    ("PEC", "Proposta de Emenda à Constituição"), ("PL", "Projeto de Lei"), ("PLP", "Projeto de Lei Complementar"),
-    ("MPV", "Medida Provisória"), ("PDL", "Projeto de Decreto Legislativo"), ("PR", "Projeto de Resolução"),
-    ("PRC", "Projeto de Resolução do Congresso"), ("PDS", "Projeto de Decreto do Senado"), ("REQ", "Requerimento"),
-    ("INC", "Indicação"), ("DECRETO_PRES", "Decreto Presidencial"), ("LEI_DELEGADA", "Lei Delegada"),
+    ("PEC", "Proposta de Emenda à Constituição"),
+    ("PL", "Projeto de Lei"),
+    ("PLP", "Projeto de Lei Complementar"),
+    ("MPV", "Medida Provisória"),
+    ("PDL", "Projeto de Decreto Legislativo"),
+    ("PR", "Projeto de Resolução"),
+    ("PRC", "Projeto de Resolução do Congresso"),
+    ("PDS", "Projeto de Decreto do Senado"),
+    ("REQ", "Requerimento"),
+    ("INC", "Indicação"),
+    ("DECRETO_PRES", "Decreto Presidencial"),
+    ("LEI_DELEGADA", "Lei Delegada"),
 ]
 STATUS_TRAMITACAO = [
-    ("APROVADA_E_SANCIONADA", "Aprovada e sancionada"), ("APROVADA_E_PROMULGADA", "Aprovada e promulgada"),
-    ("APROVADO_PLENARIO", "Aprovada no plenário"), ("APROVADO_COMISSAO", "Aprovada em comissão"),
-    ("VETADA_TOTAL", "Vetada totalmente"), ("VETADA_PARCIAL", "Vetada parcialmente"), ("REJEITADA", "Rejeitada"),
-    ("EM_TRAMITACAO", "Em tramitação"), ("ARQUIVADA", "Arquivada"),
+    ("APROVADA_E_SANCIONADA", "Aprovada e sancionada"),
+    ("APROVADA_E_PROMULGADA", "Aprovada e promulgada"),
+    ("APROVADO_PLENARIO", "Aprovada no plenário"),
+    ("APROVADO_COMISSAO", "Aprovada em comissão"),
+    ("VETADA_TOTAL", "Vetada totalmente"),
+    ("VETADA_PARCIAL", "Vetada parcialmente"),
+    ("REJEITADA", "Rejeitada"),
+    ("EM_TRAMITACAO", "Em tramitação"),
+    ("ARQUIVADA", "Arquivada"),
 ]
 OPCOES_VOTO = [
-    ("SIM", "Sim", True), ("NAO", "Não", True), ("ABSTENCAO", "Abstenção", True), ("OBSTRUCAO", "Obstrução", True),
-    ("AUSENTE", "Ausente", False), ("ARTIGO_17", "Art. 17", False),
+    ("SIM", "Sim", True),
+    ("NAO", "Não", True),
+    ("ABSTENCAO", "Abstenção", True),
+    ("OBSTRUCAO", "Obstrução", True),
+    ("AUSENTE", "Ausente", False),
+    ("ARTIGO_17", "Art. 17", False),
 ]
 TIPOS_AUTORIA = ["AUTOR_PRINCIPAL", "RELATOR", "COAUTOR", "INSTITUCIONAL"]
-TIPOS_DELIBERACAO = [("COMISSAO", "Deliberação em comissão"), ("SIMBOLICA", "Votação simbólica"),
-                     ("NOMINAL", "Votação nominal"), ("SECRETA", "Votação secreta (apenas totais)")]
-TIPOS_PRESENCA = [("PRESENTE", True), ("AUSENCIA_JUSTIFICADA", False), ("AUSENCIA_NAO_JUSTIFICADA", False),
-                  ("LICENCA_MEDICA", False), ("MISSAO_OFICIAL", False)]
+TIPOS_DELIBERACAO = [
+    ("COMISSAO", "Deliberação em comissão"),
+    ("SIMBOLICA", "Votação simbólica"),
+    ("NOMINAL", "Votação nominal"),
+    ("SECRETA", "Votação secreta (apenas totais)"),
+]
+TIPOS_PRESENCA = [
+    ("PRESENTE", True),
+    ("AUSENCIA_JUSTIFICADA", False),
+    ("AUSENCIA_NAO_JUSTIFICADA", False),
+    ("LICENCA_MEDICA", False),
+    ("MISSAO_OFICIAL", False),
+]
 ANO_INICIAL, ANO_FINAL = 1995, 2035
 
 
@@ -48,7 +74,9 @@ def upgrade() -> None:
     # ── referência ───────────────────────────────────────────────────────────────────────────────
     op.execute("CREATE TABLE ref.tipo_proposicao (codigo text PRIMARY KEY, nome text NOT NULL)")
     op.execute("CREATE TABLE ref.status_tramitacao (codigo text PRIMARY KEY, nome text NOT NULL)")
-    op.execute("CREATE TABLE ref.opcao_voto (codigo text PRIMARY KEY, rotulo text NOT NULL, tem_posicao boolean NOT NULL)")
+    op.execute(
+        "CREATE TABLE ref.opcao_voto (codigo text PRIMARY KEY, rotulo text NOT NULL, tem_posicao boolean NOT NULL)"
+    )
     op.execute("CREATE TABLE ref.tipo_autoria (codigo text PRIMARY KEY)")
     op.execute("CREATE TABLE ref.tipo_deliberacao (codigo text PRIMARY KEY, nome text NOT NULL)")
     op.execute("CREATE TABLE ref.tipo_presenca (codigo text PRIMARY KEY, presente boolean NOT NULL)")
@@ -224,6 +252,12 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("DROP SCHEMA IF EXISTS leg CASCADE")
-    for tabela in ("tipo_presenca", "tipo_deliberacao", "tipo_autoria", "opcao_voto", "status_tramitacao",
-                   "tipo_proposicao"):
+    for tabela in (
+        "tipo_presenca",
+        "tipo_deliberacao",
+        "tipo_autoria",
+        "opcao_voto",
+        "status_tramitacao",
+        "tipo_proposicao",
+    ):
         op.execute(f"DROP TABLE IF EXISTS ref.{tabela}")

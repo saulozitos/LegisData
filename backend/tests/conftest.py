@@ -75,7 +75,7 @@ def pg_engine():
     engine = create_engine(TEST_DATABASE_URL, pool_pre_ping=True)
     try:
         with engine.begin() as conn:
-            for schema in ("api", "stg", "param", "etl", "core", "ref", "public"):
+            for schema in ("api", "stg", "leg", "param", "etl", "core", "ref", "public"):
                 conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
             conn.execute(text("CREATE SCHEMA public"))
     except OperationalError as exc:  # pragma: no cover - ambiente sem banco de teste
@@ -102,7 +102,13 @@ def _truncate_sql(pg_engine):
     with pg_engine.connect() as conn:
         core = [
             r[0]
-            for r in conn.execute(text("SELECT format('core.%I', tablename) FROM pg_tables WHERE schemaname = 'core'"))
+            for r in conn.execute(
+                text(
+                    "SELECT format('%I.%I', n.nspname, c.relname) FROM pg_class c "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname IN ('core', 'leg') AND c.relkind IN ('r', 'p') AND NOT c.relispartition"
+                )
+            )
         ]
     legacy = [f'"{t.name}"' for t in Base.metadata.sorted_tables if not t.schema]
     return "TRUNCATE " + ", ".join(legacy + core + list(_ETL_DATA_TABLES)) + " RESTART IDENTITY CASCADE"
