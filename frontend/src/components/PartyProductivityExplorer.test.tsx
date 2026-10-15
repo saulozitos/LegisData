@@ -382,4 +382,69 @@ describe("PartyProductivityExplorer Component", () => {
     expect(await screen.findByText(/ficaram fora do ranking: PRD/)).toBeInTheDocument();
     expect(screen.getByText("—", { selector: "span.font-mono" })).toBeInTheDocument();
   });
+
+  it("explica cada visão em linguagem simples e troca o texto ao alternar", async () => {
+    vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(mockRankingResponse);
+
+    render(<PartyProductivityExplorer />);
+
+    const explicacao = await screen.findByText(/Uma tabela com todos os partidos/i);
+    expect(explicacao).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Matriz de Eficiência", { selector: "#tab-view-quadrantes span" }));
+    expect(await screen.findByText(/quanto mais à direita, mais projetos/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Muitos projetos e pouca aprovação").length).toBeGreaterThan(0);
+  });
+
+  it("abre a explicação da média com a conta que levou ao resultado", async () => {
+    vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(mockRankingResponse);
+
+    render(<PartyProductivityExplorer />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Entenda: Média IPPM Geral" }));
+
+    const dialogo = await screen.findByRole("dialog");
+    expect(dialogo).toHaveTextContent("O que significa");
+    expect(dialogo).toHaveTextContent("Como é calculado");
+    expect(dialogo).toHaveTextContent("cadeiras-dia");
+    expect(dialogo).toHaveTextContent("Soma 50,20 ÷ 2 partidos = 25,50");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("mostra os números do líder em produtividade e marca o vencedor", async () => {
+    vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(mockRankingResponse);
+
+    render(<PartyProductivityExplorer />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Entenda: Líder em Produtividade" }));
+
+    const dialogo = await screen.findByRole("dialog");
+    expect(dialogo).toHaveTextContent("Os números por trás deste resultado");
+    expect(dialogo).toHaveTextContent("vencedor");
+    expect(dialogo).toHaveTextContent("1980,0"); // pontos brutos do PT
+    expect(dialogo).toHaveTextContent("30,20");
+  });
+
+  it("explica eficácia e coesão e informa quando não há dado", async () => {
+    const semDados = structuredClone(mockRankingResponse);
+    semDados.resumo_geral.partido_mais_eficaz = null;
+    semDados.resumo_geral.partido_mais_coeso = null;
+    semDados.ranking.forEach((p) => {
+      p.projetos_aprovados = 0;
+      p.pilares.taxa_eficacia_pct = 0;
+      p.pilares.fidelidade_partidaria_pct = null;
+    });
+    vi.spyOn(api, "getPartyIPPMRanking").mockResolvedValue(semDados);
+
+    render(<PartyProductivityExplorer />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Entenda: Maior Eficácia Real" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Nenhum partido teve projeto aprovado neste período");
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Entenda: Maior Coesão de Bancada" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Sem votações nominais com orientação de bancada");
+  });
 });

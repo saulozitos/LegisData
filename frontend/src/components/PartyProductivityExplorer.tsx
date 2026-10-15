@@ -21,6 +21,16 @@ import {
 } from "@/services/api";
 import { ErrorState, EmptyState } from "@/components/StateViews";
 import { PartyLogoBadge } from "@/components/PartiesPanel";
+import InfoHint from "@/components/InfoHint";
+import {
+  EXPLICACAO_TELAS,
+  EXPLICACOES,
+  GUIA_MATRIZ,
+  evidenciaCoeso,
+  evidenciaEficaz,
+  evidenciaLider,
+  evidenciaMedia,
+} from "@/lib/ippmExplicacoes";
 
 interface PartyProductivityExplorerProps {
   onSelectPartyMembers?: (sigla: string) => void;
@@ -289,13 +299,57 @@ export default function PartyProductivityExplorer({
           </div>
         </div>
 
+        {/* Explicação, em linguagem simples, do que cada visão mostra */}
+        <div
+          className="mt-4 flex items-start gap-2 rounded-xl border border-slate-800/80 bg-slate-950/50 px-3.5 py-2.5 text-xs text-slate-300 leading-relaxed"
+          id="explicacao-visao-atual"
+        >
+          <InfoHint
+            explicacao={{
+              titulo: "Como ler esta tela",
+              oQueE:
+                "A tela mostra o mesmo resultado de dois jeitos: em tabela (Ranking Geral) e em gráfico (Matriz de Eficiência). Use a tabela para ver os números exatos e o gráfico para comparar os partidos de uma olhada.",
+              comoCalcula: [
+                `${EXPLICACAO_TELAS.ranking.nome}: ${EXPLICACAO_TELAS.ranking.resumo}`,
+                `${EXPLICACAO_TELAS.quadrantes.nome}: ${EXPLICACAO_TELAS.quadrantes.resumo}`,
+                "As linhas tracejadas do gráfico marcam o valor do meio (a mediana) entre os partidos e criam 4 grupos: " +
+                  GUIA_MATRIZ.map((g) => `${g.nome} (${g.posicao.toLowerCase()})`).join("; ") +
+                  ".",
+                "Passe o mouse ou clique numa bolha para ver os números do partido.",
+              ],
+              cuidado:
+                "Os grupos comparam os partidos entre si, não medem se o trabalho foi bom ou ruim para a população.",
+            }}
+          />
+          <p>
+            {activeView === "ranking" ? (
+              <>
+                <strong className="text-slate-100">{EXPLICACAO_TELAS.ranking.nome}:</strong>{" "}
+                {EXPLICACAO_TELAS.ranking.resumo}
+              </>
+            ) : (
+              <>
+                <strong className="text-slate-100">{EXPLICACAO_TELAS.quadrantes.nome}:</strong>{" "}
+                {EXPLICACAO_TELAS.quadrantes.resumo}
+              </>
+            )}
+          </p>
+        </div>
+
         {/* ─── CARDS DE INDICADORES DESTAQUE ─── */}
         {rankingData?.resumo_geral && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-slate-800/60">
             {/* Média Nacional IPPM */}
             <div className="bg-slate-950/50 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between">
               <div className="flex items-center justify-between text-slate-400 text-xs">
-                <span>Média IPPM Geral</span>
+                <span className="inline-flex items-center gap-1.5">
+                  Média IPPM Geral
+                  <InfoHint
+                    explicacao={EXPLICACOES.media}
+                    resultado={`${rankingData.resumo_geral.media_ippm_geral.toFixed(2)} pontos por cadeira-dia`}
+                    evidencia={evidenciaMedia(rankingData.ranking, rankingData.resumo_geral.media_ippm_geral)}
+                  />
+                </span>
                 <TrendingUp className="w-4 h-4 text-violet-400" aria-hidden="true" />
               </div>
               <div className="mt-2">
@@ -309,7 +363,14 @@ export default function PartyProductivityExplorer({
             {/* Partido Mais Produtivo */}
             <div className="bg-slate-950/50 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between">
               <div className="flex items-center justify-between text-slate-400 text-xs">
-                <span>Líder em Produtividade</span>
+                <span className="inline-flex items-center gap-1.5">
+                  Líder em Produtividade
+                  <InfoHint
+                    explicacao={EXPLICACOES.lider}
+                    resultado={rankingData.resumo_geral.partido_mais_produtivo?.sigla ?? "sem líder neste período"}
+                    evidencia={evidenciaLider(rankingData.ranking, rankingData.resumo_geral.partido_mais_produtivo?.sigla)}
+                  />
+                </span>
                 <Award className="w-4 h-4 text-amber-400" aria-hidden="true" />
               </div>
               <div className="mt-2 flex items-baseline gap-2">
@@ -328,7 +389,14 @@ export default function PartyProductivityExplorer({
             {/* Maior Eficácia Legislativa */}
             <div className="bg-slate-950/50 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between">
               <div className="flex items-center justify-between text-slate-400 text-xs">
-                <span>Maior Eficácia Real</span>
+                <span className="inline-flex items-center gap-1.5">
+                  Maior Eficácia Real
+                  <InfoHint
+                    explicacao={EXPLICACOES.eficaz}
+                    resultado={rankingData.resumo_geral.partido_mais_eficaz?.sigla ?? "nenhum projeto aprovado neste período"}
+                    evidencia={evidenciaEficaz(rankingData.ranking, rankingData.resumo_geral.partido_mais_eficaz?.sigla)}
+                  />
+                </span>
                 <Briefcase className="w-4 h-4 text-emerald-400" aria-hidden="true" />
               </div>
               <div className="mt-2 flex items-baseline gap-2">
@@ -359,7 +427,14 @@ export default function PartyProductivityExplorer({
             {/* Maior Fidelidade Partidária */}
             <div className="bg-slate-950/50 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between">
               <div className="flex items-center justify-between text-slate-400 text-xs">
-                <span>Maior Coesão de Bancada</span>
+                <span className="inline-flex items-center gap-1.5">
+                  Maior Coesão de Bancada
+                  <InfoHint
+                    explicacao={EXPLICACOES.coeso}
+                    resultado={rankingData.resumo_geral.partido_mais_coeso?.sigla ?? "sem votações com orientação neste período"}
+                    evidencia={evidenciaCoeso(rankingData.ranking, rankingData.resumo_geral.partido_mais_coeso?.sigla)}
+                  />
+                </span>
                 <ShieldCheck className="w-4 h-4 text-cyan-400" aria-hidden="true" />
               </div>
               <div className="mt-2 flex items-baseline gap-2">
@@ -763,6 +838,7 @@ export default function PartyProductivityExplorer({
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400">
                 Quadrante Superior Esquerdo
               </span>
+              <p className="text-xs font-bold text-emerald-200">Poucos projetos e boa aprovação</p>
               <h3 className="text-sm font-bold text-white">Técnicos & Articuladores</h3>
               <p className="text-xs text-slate-300 leading-relaxed">
                 Produção altamente focada e seletiva. Apresentam menos projetos, mas convertem proporção expressiva em leis aprovadas.
@@ -773,6 +849,7 @@ export default function PartyProductivityExplorer({
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-400">
                 Quadrante Superior Direito
               </span>
+              <p className="text-xs font-bold text-cyan-200">Muitos projetos e boa aprovação</p>
               <h3 className="text-sm font-bold text-white">Liderança de Bancada</h3>
               <p className="text-xs text-slate-300 leading-relaxed">
                 Alta capacidade legislativa em massa combinada com força de aprovação e trânsito político em plenário.
@@ -783,6 +860,7 @@ export default function PartyProductivityExplorer({
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-400">
                 Quadrante Inferior Esquerdo
               </span>
+              <p className="text-xs font-bold text-amber-200">Poucos projetos e pouca aprovação</p>
               <h3 className="text-sm font-bold text-white">Bancada Reduzida / Início</h3>
               <p className="text-xs text-slate-300 leading-relaxed">
                 Volume contido de matérias em fase preliminar de comissão ou atuação pontual da legenda.
@@ -793,6 +871,7 @@ export default function PartyProductivityExplorer({
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-400">
                 Quadrante Inferior Direito
               </span>
+              <p className="text-xs font-bold text-rose-200">Muitos projetos e pouca aprovação</p>
               <h3 className="text-sm font-bold text-white">Populismo Legislativo</h3>
               <p className="text-xs text-slate-300 leading-relaxed">
                 Volume massivo de matérias protocoladas para gerar notícia ou palanque, porém com baixa aprovação efetiva.
