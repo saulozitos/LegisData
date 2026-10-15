@@ -2123,6 +2123,46 @@ export async function getPartyIPPMRanking(
   return cachedFetch(cacheKey, () => fetchJson<IPPMRankingResponse>(`/parties/ippm-ranking${qStr}`), signal);
 }
 
+export interface PartyEvolutionPoint {
+  ano: number;
+  ippm: number;
+  pontuacao_bruta_ialp: number;
+  cadeiras_dia_equivalentes: number;
+  parlamentares: number;
+  projetos_apresentados: number;
+  projetos_aprovados: number;
+  taxa_eficacia_pct: number;
+}
+
+export interface PartyEvolutionSeries {
+  sigla: string;
+  nome_completo: string;
+  cor_hex: string;
+  serie: PartyEvolutionPoint[];
+}
+
+export interface IPPMEvolutionResponse {
+  periodo: { ano_inicio: number; ano_fim: number; casa: string };
+  anos: number[];
+  partidos: PartyEvolutionSeries[];
+}
+
+export async function getPartyIPPMEvolution(
+  params?: { casa?: string; ano_inicio?: number; ano_fim?: number },
+  signal?: AbortSignal
+): Promise<IPPMEvolutionResponse> {
+  const query = new URLSearchParams();
+  if (params?.casa && params.casa !== "ALL") query.set("casa", params.casa);
+  if (params?.ano_inicio) query.set("ano_inicio", String(params.ano_inicio));
+  if (params?.ano_fim) query.set("ano_fim", String(params.ano_fim));
+  const qStr = query.toString() ? `?${query.toString()}` : "";
+  return cachedFetch(
+    `party_ippm_evolution_${query.toString()}`,
+    () => fetchJson<IPPMEvolutionResponse>(`/parties/ippm-evolucao${qStr}`),
+    signal
+  );
+}
+
 export async function getPartyMandateHistory(
   sigla: string,
   signal?: AbortSignal

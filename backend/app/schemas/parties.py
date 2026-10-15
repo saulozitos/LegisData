@@ -99,3 +99,33 @@ class CronLogItem(BaseModel):
     tempo_processamento_segundos: int
     erro_mensagem: Optional[str] = None
     etapa: Optional[str] = None
+
+
+class PartyEvolutionPoint(BaseModel):
+    ano: int
+    ippm: float
+    pontuacao_bruta_ialp: float
+    cadeiras_dia_equivalentes: float
+    parlamentares: int
+    projetos_apresentados: int
+    projetos_aprovados: int
+    taxa_eficacia_pct: float
+
+
+class PartyEvolutionSeries(BaseModel):
+    sigla: str
+    nome_completo: str
+    cor_hex: str
+    serie: List[PartyEvolutionPoint]
+
+
+class IPPMEvolutionPeriod(BaseModel):
+    ano_inicio: int
+    ano_fim: int
+    casa: str
+
+
+class IPPMEvolutionResponse(BaseModel):
+    periodo: IPPMEvolutionPeriod
+    anos: List[int]
+    partidos: List[PartyEvolutionSeries]

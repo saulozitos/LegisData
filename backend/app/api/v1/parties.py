@@ -4,10 +4,12 @@ from app.core.database import get_db
 from app.models.analytics import LogExecucaoCron
 from app.schemas.parties import (
     CronLogItem,
+    IPPMEvolutionResponse,
     IPPMRankingResponse,
     PartyMandateTimelineResponse,
 )
 from app.services.party_catalog_service import list_party_catalog
+from app.services.party_evolution_service import calculate_party_ippm_evolution
 from app.services.party_productivity_service import (
     calculate_party_ippm_ranking,
     get_party_mandate_timeline,
@@ -41,6 +43,22 @@ def get_ippm_ranking(
     (Cadeiras-Dia em Exercício), acompanhado dos três pilares e diagnóstico de quadrante.
     """
     return calculate_party_ippm_ranking(db=db, ano=ano, casa=casa, bloco=bloco, espectro=espectro)
+
+
+@router.get("/ippm-evolucao", response_model=IPPMEvolutionResponse)
+def get_ippm_evolution(
+    ano_inicio: Optional[int] = Query(
+        None, ge=1995, description="Primeiro ano (padrão: 2003, início do histórico de cadeiras)"
+    ),
+    ano_fim: Optional[int] = Query(None, ge=1995, description="Último ano (padrão: ano corrente)"),
+    casa: Optional[str] = Query("ALL", description="Casa Legislativa: ALL, CAMARA, SENADO"),
+    db: Session = Depends(get_db),
+):
+    """
+    IPPM de cada partido ano a ano, com as mesmas regras do ranking de um ano.
+    Anos sem cadeiras registradas na fonte não aparecem na série do partido.
+    """
+    return calculate_party_ippm_evolution(db, ano_inicio=ano_inicio, ano_fim=ano_fim, casa=casa)
 
 
 @router.get("/{sigla}/historico-bancada", response_model=PartyMandateTimelineResponse)

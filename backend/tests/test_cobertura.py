@@ -616,3 +616,50 @@ def test_requests_still_score_in_the_ippm_but_not_in_the_efficacy_base(db, ranki
         "AND v.data_apresentacao >= DATE '2024-01-01'",
     )
     assert float(pontos) == pytest.approx(0.08)  # REQ 0,1 x autor principal 1,0 x arquivada 0,8
+
+
+# ── evolução ano a ano e pontuação em lote ───────────────────────────────────────────────────────
+
+
+def test_evolution_matches_the_single_year_ranking(db, ranking_periodo):
+    evolucao = ranking_periodo.get("/api/v1/parties/ippm-evolucao?ano_inicio=2023&ano_fim=2024").json()
+    assert evolucao["anos"] == [2023, 2024]
+    pt = next(p for p in evolucao["partidos"] if p["sigla"] == "PT")
+    assert [pt_ano["ano"] for pt_ano in pt["serie"]] == [2023, 2024]
+    for ano in (2023, 2024):
+        ranking = ranking_periodo.get(f"/api/v1/parties/ippm-ranking?ano={ano}").json()["ranking"]
+        esperado = next(p for p in ranking if p["sigla"] == "PT")
+        ponto = next(x for x in pt["serie"] if x["ano"] == ano)
+        assert ponto["ippm"] == esperado["ippm_score_medio"]
+        assert ponto["projetos_apresentados"] == esperado["projetos_apresentados"]
+        assert ponto["projetos_aprovados"] == esperado["projetos_aprovados"]
+        assert ponto["cadeiras_dia_equivalentes"] == esperado["cadeiras_dia_equivalentes"]
+
+
+def test_evolution_has_no_value_for_years_without_seats(db, ranking_periodo):
+    evolucao = ranking_periodo.get("/api/v1/parties/ippm-evolucao?ano_inicio=2001&ano_fim=2024").json()
+    anos_com_dado = {x["ano"] for p in evolucao["partidos"] for x in p["serie"]}
+    assert anos_com_dado == {2023, 2024}  # nada é inventado para 2001-2022
+    assert evolucao["anos"][0] == 2001
+
+
+def test_evolution_rejects_years_before_the_data_window(db, ranking_periodo):
+    assert ranking_periodo.get("/api/v1/parties/ippm-evolucao?ano_inicio=1990").status_code == 422
+
+
+def test_evolution_filters_by_house(db, ranking_periodo):
+    camara = ranking_periodo.get("/api/v1/parties/ippm-evolucao?casa=CAMARA&ano_inicio=2023&ano_fim=2024").json()
+    senado = ranking_periodo.get("/api/v1/parties/ippm-evolucao?casa=SENADO&ano_inicio=2023&ano_fim=2024").json()
+    assert camara["periodo"]["casa"] == "CAMARA" and camara["partidos"]
+    assert senado["partidos"] == []  # nenhuma cadeira de senador neste cenário
+
+
+def test_every_authorship_has_points_and_no_weight_is_missing(db, carga_lote):
+    assert _rows(db, "SELECT * FROM etl.verificar_pesos()") == []
+    assert _scalar(db, "SELECT count(*) FROM leg.vw_autoria_pontuada WHERE pontos_ialp IS NULL") == 0
+
+
+def test_missing_weight_is_detected_by_the_check(db):
+    db.execute(text("INSERT INTO ref.tipo_proposicao (codigo, nome) VALUES ('TIPO_SEM_PESO', 'Sem peso')"))
+    assert _rows(db, "SELECT * FROM etl.verificar_pesos()") == [("PESO_TIPO", "TIPO_SEM_PESO")]
+    db.rollback()

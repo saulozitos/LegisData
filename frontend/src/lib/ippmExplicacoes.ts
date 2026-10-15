@@ -64,15 +64,27 @@ export const EXPLICACOES: Record<"media" | "lider" | "eficaz" | "coeso", Explica
 };
 
 export const EXPLICACAO_TELAS = {
-  ranking: {
-    nome: "Ranking Geral",
-    resumo: "Uma tabela com todos os partidos, do mais para o menos produtivo. Serve para ver os números de cada um.",
-  },
-  quadrantes: {
-    nome: "Matriz de Eficiência",
+  comparar: {
+    nome: "Comparar",
     resumo:
-      "Um gráfico que compara os partidos entre si: quanto mais à direita, mais projetos o partido apresentou; quanto mais acima, maior a parte desses projetos que foi aprovada.",
+      "Barras para comparar os partidos de uma olhada: escolha um indicador (produtividade, aprovação ou coesão) e veja quem está na frente. O segundo gráfico mostra, para cada partido, quantos projetos foram apresentados e quantos foram aprovados.",
   },
+  tabela: {
+    nome: "Tabela",
+    resumo:
+      "Todos os números de cada partido lado a lado. Dá para buscar, ordenar por qualquer coluna e abrir o histórico da bancada.",
+  },
+  evolucao: {
+    nome: "Evolução",
+    resumo:
+      "Como a produtividade (IPPM) de cada partido mudou ano a ano. Escolha os partidos para acompanhar a linha de cada um.",
+  },
+} as const;
+
+export const EXPLICACAO_MATRIZ = {
+  nome: "Matriz de Eficiência",
+  resumo:
+    "Um gráfico que compara os partidos entre si: quanto mais à direita, mais projetos o partido apresentou; quanto mais acima, maior a parte desses projetos que foi aprovada. O tamanho da bolha mostra o IPPM.",
 } as const;
 
 export const GUIA_MATRIZ = [
