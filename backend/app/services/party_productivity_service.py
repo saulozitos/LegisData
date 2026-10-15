@@ -15,56 +15,21 @@ Implementa integralmente a Especificação do Módulo 4 e Módulo 8:
 
 import json
 import logging
-import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 from app.core import config
-from app.core.party_constants import OFFICIAL_PARTY_LOGOS, PARTY_COLORS
 from app.models.analytics import LogExecucaoCron
-from app.models.politician import (
-    CabinetMember,
-    CargoPoliticoEnum,
-    HistoricoMandato,
-    Mandate,
-    PoliticalParty,
-    Politician,
-    SituacaoMandatoEnum,
-    StatusMandatoEnum,
-)
-from sqlalchemy import func, text
+from app.models.politician import SituacaoMandatoEnum
+from app.services.party_catalog_service import DEFAULT_PARTY_COLOR
+from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-
-# Pesos Oficiais do IALP para Tipos de Proposição
-PESO_TIPO: Dict[str, float] = {
-    "PEC": 3.0,
-    "PLP": 2.5,
-    "PL": 2.0,
-    "MPV": 2.0,
-    "PDL": 1.0,
-    "PR": 1.0,
-    "PRC": 1.0,
-    "PDS": 1.0,
-    "REQ": 0.1,
-    "INC": 0.1,
-}
-
-# Multiplicadores de Tramitação e Sucesso
-PESO_STATUS: Dict[str, float] = {
-    "APROVADA_E_SANCIONADA": 3.0,
-    "APROVADA_E_PROMULGADA": 3.0,
-    "APROVADO_PLENARIO": 2.0,
-    "APROVADO_COMISSAO": 1.5,
-    "EM_TRAMITACAO": 1.0,
-    "ARQUIVADA": 0.8,
-    "REJEITADA": 0.5,
-    "VETADA_TOTAL": 0.8,
-    "VETADA_PARCIAL": 1.2,
-}
+# Status de tramitação que contam como proposição aprovada (pilar de eficácia)
+STATUS_APROVADOS = ("APROVADA_E_SANCIONADA", "APROVADA_E_PROMULGADA", "APROVADO_PLENARIO")
 
 
 def get_party_bloc_alignments() -> Dict[str, str]:
@@ -112,84 +77,47 @@ def get_party_bloc_alignments() -> Dict[str, str]:
 
 def sync_mandate_history(db: Session) -> int:
     """
-    Sincroniza o histórico de mandatos (historico_mandatos) garantindo
-    isolamento temporal de licenças para assumir ministérios, secretarias e suplências.
+    Sincroniza o schema core a partir do legado. O histórico de mandatos deixou de ser uma tabela mantida em Python:
+    é derivado de core.mandato_situacao (licenças, afastamentos para ministério e suplências) pela view
+    core.vw_historico_mandato. Devolve o número de situações de mandato calculadas.
     """
-    mandates = db.query(Mandate).all()
-    if not mandates:
-        return 0
+    from app.services.core_sync import sync_legacy_to_core
 
-    pols_map = {p.id: p for p in db.query(Politician).all()}
-    parties_map = {p.id: p for p in db.query(PoliticalParty).all()}
+    return int(sync_legacy_to_core(db)["situacoes"])
 
-    # Identificar ministros de estado vinculados a parlamentares
-    ministers = db.query(CabinetMember).all()
-    minister_pol_ids = {min_item.politician_id for min_item in ministers if min_item.politician_id}
-    minister_names = {
-        min_item.occupant_name.lower().strip(): min_item for min_item in ministers if min_item.occupant_name
-    }
 
-    synced_count = 0
-    for m in mandates:
-        pol = pols_map.get(m.politician_id)
-        party = parties_map.get(m.party_id)
-        if not pol or not party:
-            continue
-
-        casa = (
-            "CAMARA"
-            if m.office == CargoPoliticoEnum.DEPUTADO_FEDERAL
-            else ("SENADO" if m.office == CargoPoliticoEnum.SENADOR else "OUTRO")
-        )
-
-        is_minister = (
-            m.politician_id in minister_pol_ids
-            or pol.civil_name.lower().strip() in minister_names
-            or pol.electoral_name.lower().strip() in minister_names
-        )
-
-        situacao = SituacaoMandatoEnum.EXERCICIO.value
-        if is_minister:
-            situacao = SituacaoMandatoEnum.AFASTADO_MINISTERIO.value
-        elif m.status == StatusMandatoEnum.SUPLENTE_EM_EXERCICIO:
-            situacao = SituacaoMandatoEnum.SUPLENCIA.value
-        elif m.status == StatusMandatoEnum.LICENCIADO:
-            situacao = SituacaoMandatoEnum.LICENCA_MEDICA.value
-        elif m.status in (StatusMandatoEnum.CONCLUIDO, StatusMandatoEnum.RENUNCIA):
-            situacao = SituacaoMandatoEnum.ENCERRADO.value
-
-        # Verificar se já existe registro equivalente
-        existing = (
-            db.query(HistoricoMandato)
-            .filter(
-                HistoricoMandato.politician_id == m.politician_id,
-                HistoricoMandato.party_acronym == party.acronym,
-                HistoricoMandato.start_date == m.start_date,
-            )
-            .first()
-        )
-
-        if not existing:
-            obs = "Licenciado para cargo de Ministro de Estado" if is_minister else None
-            record = HistoricoMandato(
-                politician_id=m.politician_id,
-                party_id=m.party_id,
-                party_acronym=party.acronym,
-                house=casa,
-                situation=situacao,
-                start_date=m.start_date,
-                end_date=m.end_date,
-                notes=obs,
-            )
-            db.add(record)
-            synced_count += 1
-        else:
-            if existing.situation != situacao:
-                existing.situation = situacao
-                synced_count += 1
-
-    db.commit()
-    return synced_count
+# Dias de mandato em exercício (ou suplência) de cada pessoa, no partido em que estava filiada em cada dia
+_CADEIRAS_DIA_SQL = text(
+    """
+    WITH exercicio AS (
+        -- partido pela filiação vigente em cada dia
+        SELECT m.pessoa_id, s.periodo * f.periodo * daterange(:inicio, :fim, '[]') AS periodo
+        FROM core.mandato_situacao s
+        JOIN core.mandato m ON m.id = s.mandato_id
+        JOIN ref.cargo c ON c.id = m.cargo_id
+        JOIN core.filiacao f ON f.pessoa_id = m.pessoa_id
+        JOIN core.partido pa ON pa.id = f.partido_id
+        WHERE pa.sigla_normalizada = ref.normalizar_texto(:sigla)
+          AND s.situacao IN ('EXERCICIO', 'SUPLENCIA') AND c.codigo = ANY(:cargos)
+        UNION ALL
+        -- quem não tem nenhuma filiação registrada herda o partido do mandato
+        SELECT m.pessoa_id, s.periodo * daterange(:inicio, :fim, '[]')
+        FROM core.mandato_situacao s
+        JOIN core.mandato m ON m.id = s.mandato_id
+        JOIN ref.cargo c ON c.id = m.cargo_id
+        JOIN core.partido pa ON pa.id = m.partido_id
+        WHERE pa.sigla_normalizada = ref.normalizar_texto(:sigla)
+          AND s.situacao IN ('EXERCICIO', 'SUPLENCIA') AND c.codigo = ANY(:cargos)
+          AND NOT EXISTS (SELECT 1 FROM core.filiacao x WHERE x.pessoa_id = m.pessoa_id)
+    )
+    SELECT count(DISTINCT pessoa_id) AS parlamentares, coalesce(sum(upper(periodo) - lower(periodo)), 0) AS dias
+    FROM exercicio WHERE NOT isempty(periodo)
+    """
+)
+_CARGOS_POR_CASA = {
+    "CAMARA": ["DEPUTADO_FEDERAL"],
+    "SENADO": ["SENADOR"],
+}
 
 
 def calculate_party_active_seats(
@@ -202,50 +130,17 @@ def calculate_party_active_seats(
     """
     Calcula o número equivalente de 'Cadeiras-Dia' em exercício para um partido.
     Se um deputado ficou afastado por 6 meses do ano, ele contará apenas como 0.5 no divisor.
+    O cálculo é a interseção, em SQL, entre os períodos de exercício do mandato e de filiação ao partido.
     """
-    query = db.query(HistoricoMandato).filter(func.upper(HistoricoMandato.party_acronym) == partido_sigla.upper())
-    if casa in ("CAMARA", "SENADO"):
-        query = query.filter(HistoricoMandato.house == casa)
-
-    history_records = query.all()
+    cargos = _CARGOS_POR_CASA.get(casa) or [c for lista in _CARGOS_POR_CASA.values() for c in lista]
     total_dias_periodo = max(1, (end_date - start_date).days + 1)
-
-    if history_records:
-        active_politicians: Set[uuid.UUID] = set()
-        soma_cadeiras_dia = 0.0
-
-        for rec in history_records:
-            if rec.situation in (SituacaoMandatoEnum.EXERCICIO.value, SituacaoMandatoEnum.SUPLENCIA.value):
-                r_start = max(rec.start_date, start_date)
-                r_end = min(rec.end_date or end_date, end_date)
-                if r_end >= r_start:
-                    dias_exercicio = (r_end - r_start).days + 1
-                    fracao = dias_exercicio / total_dias_periodo
-                    soma_cadeiras_dia += fracao
-                    active_politicians.add(rec.politician_id)
-
-        divisor = max(0.1, round(soma_cadeiras_dia, 2))
-        return {
-            "total_parlamentares_ativos": len(active_politicians),
-            "cadeiras_dia_equivalentes": divisor,
-        }
-
-    # Fallback caso historico_mandatos não tenha sido alimentado para o partido
-    mandate_q = (
-        db.query(func.count(func.distinct(Mandate.politician_id)))
-        .join(PoliticalParty, Mandate.party_id == PoliticalParty.id)
-        .filter(func.upper(PoliticalParty.acronym) == partido_sigla.upper())
-        .filter(Mandate.status.in_([StatusMandatoEnum.TITULAR_ATIVO, StatusMandatoEnum.SUPLENTE_EM_EXERCICIO]))
-    )
-    if casa == "CAMARA":
-        mandate_q = mandate_q.filter(Mandate.office == CargoPoliticoEnum.DEPUTADO_FEDERAL)
-    elif casa == "SENADO":
-        mandate_q = mandate_q.filter(Mandate.office == CargoPoliticoEnum.SENADOR)
-
-    pols_count = mandate_q.scalar() or 0
+    row = db.execute(
+        _CADEIRAS_DIA_SQL, {"sigla": partido_sigla, "inicio": start_date, "fim": end_date, "cargos": cargos}
+    ).one()
+    soma_cadeiras_dia = float(row.dias) / total_dias_periodo
     return {
-        "total_parlamentares_ativos": pols_count,
-        "cadeiras_dia_equivalentes": max(0.1, float(pols_count)),
+        "total_parlamentares_ativos": int(row.parlamentares),
+        "cadeiras_dia_equivalentes": max(0.1, round(soma_cadeiras_dia, 2)),
     }
 
 
@@ -272,158 +167,90 @@ def calculate_party_ippm_ranking(
     clean_espectro = (espectro or "ALL").upper().strip()
 
     bloc_map = get_party_bloc_alignments()
-    parties = db.query(PoliticalParty).filter(PoliticalParty.acronym != "S.PART.").all()
+    parties = db.execute(text("SELECT * FROM core.vw_partido WHERE sigla <> 'S.PART.' ORDER BY sigla")).mappings().all()
 
-    # 1. Agregação IALP por Partido
-    # Score(P) = T * A * S para proposições no período
-    ialp_query = text(
-        """
-        SELECT
-            pa.sigla AS partido,
-            COUNT(DISTINCT pau."politicoId") AS parlamentares_produtivos,
-            ROUND(SUM(
-                CASE
-                    WHEN p.tipo = 'PEC' THEN 3.0
-                    WHEN p.tipo = 'PLP' THEN 2.5
-                    WHEN p.tipo IN ('PL', 'MPV') THEN 2.0
-                    WHEN p.tipo IN ('PDL', 'PR', 'PRC', 'PDS') THEN 1.0
-                    WHEN p.tipo IN ('REQ', 'INC') THEN 0.1
-                    ELSE 0.5
-                END *
-                CASE
-                    WHEN pau."tipoAutoria" = 'AUTOR_PRINCIPAL' THEN 1.0
-                    WHEN pau."tipoAutoria" = 'RELATOR' THEN 0.8
-                    WHEN pau."tipoAutoria" = 'COAUTOR' THEN 0.2
-                    ELSE 0.0
-                END *
-                CASE
-                    WHEN p."statusTramitacao" IN ('APROVADA_E_SANCIONADA', 'APROVADA_E_PROMULGADA') THEN 3.0
-                    WHEN p."statusTramitacao" = 'APROVADO_PLENARIO' THEN 2.0
-                    WHEN p."statusTramitacao" = 'APROVADO_COMISSAO' THEN 1.5
-                    WHEN p."statusTramitacao" = 'EM_TRAMITACAO' THEN 1.0
-                    WHEN p."statusTramitacao" = 'ARQUIVADA' THEN 0.8
-                    WHEN p."statusTramitacao" = 'REJEITADA' THEN 0.5
-                    ELSE 1.0
-                END
-            ), 2) AS total_ialp
-        FROM proposicoes p
-        JOIN proposicoes_autores pau ON p.id = pau."proposicaoId"
-        JOIN politicos pol ON pau."politicoId" = pol.id
-        JOIN mandatos m ON pol.id = m."politicoId"
-        JOIN partidos_politicos pa ON m."partidoId" = pa.id
-        WHERE pau."tipoAutoria" != 'INSTITUCIONAL'
-          AND (
-              :casa_filter IS NULL
-              OR (:casa_filter = 'CAMARA' AND p."idExternoCamara" IS NOT NULL)
-              OR (:casa_filter = 'SENADO' AND p."idExternoSenado" IS NOT NULL)
-          )
-        GROUP BY pa.sigla;
-        """
-    )
     casa_param = clean_casa if clean_casa in ("CAMARA", "SENADO") else None
-    ialp_rows = db.execute(ialp_query, {"casa_filter": casa_param}).fetchall()
+    params = {"casa": casa_param}
+
+    # 1. Agregação IALP por Partido: Score = tipo x autoria x tramitação (pesos em param.peso, metodologia IALP),
+    # com o partido do autor na data de apresentação da proposição (core.filiacao)
+    ialp_rows = db.execute(
+        text(
+            """
+            SELECT pa.sigla, COUNT(DISTINCT v.pessoa_id), ROUND(SUM(v.pontos_ialp)::numeric, 2)
+            FROM leg.vw_autoria_pontuada v JOIN core.partido pa ON pa.id = v.partido_id
+            WHERE (:casa IS NULL OR (:casa = 'CAMARA' AND v.da_camara) OR (:casa = 'SENADO' AND v.do_senado))
+            GROUP BY pa.sigla
+            """
+        ),
+        params,
+    ).fetchall()
     ialp_by_party = {str(r[0]).upper(): (int(r[1]), float(r[2])) for r in ialp_rows}
 
-    # 2. Pilar A: Coesão Partidária (Alinhamento em Votações Nominais)
-    fidelity_query = text(
-        """
-        WITH votos_com_orientacao AS (
-            SELECT
-                vn.votacao_id,
-                vn.parlamentar_id,
-                vn.voto,
-                pa.sigla AS partido,
-                op.orientacao
-            FROM votos_nominais vn
-            JOIN mandatos m ON vn.parlamentar_id = m."politicoId"
-            JOIN partidos_politicos pa ON m."partidoId" = pa.id
-            JOIN orientacoes_partidarias op ON vn.votacao_id = op.votacao_id
-                AND (op.partido_bancada = pa.sigla OR op.partido_bancada = 'Governo' AND pa.sigla = 'PT')
-            WHERE op.orientacao IN ('SIM', 'NAO', 'OBSTRUCAO')
+    # 2. Pilar A: Coesão Partidária (alinhamento do voto nominal à orientação da própria bancada ou, quando é o partido
+    # do Presidente em exercício na data da votação, à orientação do Governo)
+    fidelity_rows = db.execute(
+        text(
+            """
+            SELECT pa.sigla, COUNT(*), COUNT(*) FILTER (WHERE v.opcao_codigo = o.orientacao)
+            FROM leg.voto v
+            JOIN leg.votacao vo ON vo.id = v.votacao_id
+            JOIN core.partido pa ON pa.id = v.partido_id
+            JOIN leg.orientacao o ON o.votacao_id = v.votacao_id
+             AND (o.partido_id = pa.id
+                  OR (o.bancada = 'Governo' AND EXISTS (
+                        SELECT 1 FROM core.mandato mp JOIN ref.cargo cp ON cp.id = mp.cargo_id
+                         WHERE cp.codigo = 'PRESIDENTE' AND mp.partido_id = pa.id
+                           AND vo.data_hora::date BETWEEN mp.inicio AND coalesce(mp.fim, DATE '9999-12-31'))))
+            WHERE o.orientacao IN ('SIM', 'NAO', 'OBSTRUCAO')
+            GROUP BY pa.sigla
+            """
         )
-        SELECT
-            partido,
-            COUNT(*) AS total_votos,
-            COUNT(CASE WHEN voto = orientacao THEN 1 END) AS votos_alinhados
-        FROM votos_com_orientacao
-        GROUP BY partido;
-        """
-    )
-    fid_rows = db.execute(fidelity_query).fetchall()
+    ).fetchall()
     fidelity_by_party: Dict[str, float] = {}
-    for r in fid_rows:
-        sigla = str(r[0]).upper()
-        tot = int(r[1])
-        alin = int(r[2])
+    for r in fidelity_rows:
+        tot, alin = int(r[1]), int(r[2])
         if tot > 0:
-            fidelity_by_party[sigla] = round((alin / tot) * 100.0, 1)
+            fidelity_by_party[str(r[0]).upper()] = round((alin / tot) * 100.0, 1)
 
     # 3. Pilar B: Taxa de Eficácia de Bancada (Projetos Aprovados vs Apresentados)
-    efficacy_query = text(
-        """
-        SELECT
-            pa.sigla AS partido,
-            COUNT(DISTINCT p.id) AS total_projetos,
-            COUNT(DISTINCT CASE
-                WHEN p."statusTramitacao" IN ('APROVADA_E_SANCIONADA', 'APROVADA_E_PROMULGADA', 'APROVADO_PLENARIO')
-                THEN p.id
-            END) AS projetos_aprovados
-        FROM proposicoes p
-        JOIN proposicoes_autores pau ON p.id = pau."proposicaoId"
-        JOIN politicos pol ON pau."politicoId" = pol.id
-        JOIN mandatos m ON pol.id = m."politicoId"
-        JOIN partidos_politicos pa ON m."partidoId" = pa.id
-        WHERE pau."tipoAutoria" = 'AUTOR_PRINCIPAL'
-          AND (
-              :casa_filter IS NULL
-              OR (:casa_filter = 'CAMARA' AND p."idExternoCamara" IS NOT NULL)
-              OR (:casa_filter = 'SENADO' AND p."idExternoSenado" IS NOT NULL)
-          )
-        GROUP BY pa.sigla;
-        """
-    )
-    eff_rows = db.execute(efficacy_query, {"casa_filter": casa_param}).fetchall()
+    eff_rows = db.execute(
+        text(
+            """
+            SELECT pa.sigla, COUNT(DISTINCT v.proposicao_id),
+                   COUNT(DISTINCT v.proposicao_id) FILTER (WHERE v.status_codigo IN :aprovados)
+            FROM leg.vw_autoria_pontuada v JOIN core.partido pa ON pa.id = v.partido_id
+            WHERE v.tipo_autoria = 'AUTOR_PRINCIPAL'
+              AND (:casa IS NULL OR (:casa = 'CAMARA' AND v.da_camara) OR (:casa = 'SENADO' AND v.do_senado))
+            GROUP BY pa.sigla
+            """
+        ).bindparams(bindparam("aprovados", expanding=True)),
+        {**params, "aprovados": list(STATUS_APROVADOS)},
+    ).fetchall()
     efficacy_by_party = {str(r[0]).upper(): (int(r[1]), int(r[2])) for r in eff_rows}
 
     # 4. Pilar C: Volume de Relatorias Relevantes
-    relatoria_query = text(
-        """
-        SELECT
-            pa.sigla AS partido,
-            COUNT(DISTINCT p.id) AS total_relatorias,
-            ROUND(SUM(
-                CASE
-                    WHEN p.tipo = 'PEC' THEN 3.0
-                    WHEN p.tipo = 'PLP' THEN 2.5
-                    WHEN p.tipo IN ('PL', 'MPV') THEN 2.0
-                    WHEN p.tipo IN ('PDL', 'PR', 'PRC', 'PDS') THEN 1.0
-                    ELSE 0.1
-                END
-            ), 1) AS peso_relatorias
-        FROM proposicoes p
-        JOIN proposicoes_autores pau ON p.id = pau."proposicaoId"
-        JOIN politicos pol ON pau."politicoId" = pol.id
-        JOIN mandatos m ON pol.id = m."politicoId"
-        JOIN partidos_politicos pa ON m."partidoId" = pa.id
-        WHERE pau."tipoAutoria" = 'RELATOR'
-          AND (
-              :casa_filter IS NULL
-              OR (:casa_filter = 'CAMARA' AND p."idExternoCamara" IS NOT NULL)
-              OR (:casa_filter = 'SENADO' AND p."idExternoSenado" IS NOT NULL)
-          )
-        GROUP BY pa.sigla;
-        """
-    )
-    rel_rows = db.execute(relatoria_query, {"casa_filter": casa_param}).fetchall()
+    rel_rows = db.execute(
+        text(
+            """
+            SELECT pa.sigla, COUNT(DISTINCT v.proposicao_id), ROUND(SUM(v.pontos_relatoria)::numeric, 1)
+            FROM leg.vw_autoria_pontuada v JOIN core.partido pa ON pa.id = v.partido_id
+            WHERE v.tipo_autoria = 'RELATOR'
+              AND (:casa IS NULL OR (:casa = 'CAMARA' AND v.da_camara) OR (:casa = 'SENADO' AND v.do_senado))
+            GROUP BY pa.sigla
+            """
+        ),
+        params,
+    ).fetchall()
     relatoria_by_party = {str(r[0]).upper(): (int(r[1]), float(r[2])) for r in rel_rows}
 
     # Montagem dos Resultados por Partido
     ranking: List[Dict[str, Any]] = []
     for party in parties:
-        sigla = party.acronym.upper()
-        nome = party.full_name
-        cor = PARTY_COLORS.get(sigla, "#64748b")
-        espectro = party.political_spectrum.value if party.political_spectrum else "CENTRO"
+        sigla = party["sigla"].upper()
+        nome = party["nome"]
+        cor = party["cor_hex"] or DEFAULT_PARTY_COLOR
+        espectro = party["espectro_politico"] or "CENTRO"
         bloco_class = bloc_map.get(sigla, "INDEPENDENTE_CENTRO")
 
         # Filtro de Espectro
@@ -460,14 +287,14 @@ def calculate_party_ippm_ranking(
 
         ranking.append(
             {
-                "partido_id": str(party.id),
+                "partido_id": str(party["uid"]),
                 "sigla": sigla,
                 "nome_completo": nome,
-                "numero_eleitoral": party.electoral_number,
+                "numero_eleitoral": party["numero_eleitoral"],
                 "espectro_politico": espectro,
                 "bloco_politico": bloco_class,
                 "cor_hex": cor,
-                "logo_url": party.logo_url or OFFICIAL_PARTY_LOGOS.get(sigla.upper()),
+                "logo_url": party["logo_url"],
                 "total_cadeiras_ativas": total_cadeiras,
                 "cadeiras_dia_equivalentes": cadeiras_dia,
                 "parlamentares_produtivos": prod_count,
@@ -634,10 +461,20 @@ def get_party_mandate_timeline(partido_sigla: str, db: Session) -> Dict[str, Any
     separando titulares ativos, suplentes em exercício e ministros/licenciados.
     """
     history = (
-        db.query(HistoricoMandato, Politician)
-        .join(Politician, HistoricoMandato.politician_id == Politician.id)
-        .filter(func.upper(HistoricoMandato.party_acronym) == partido_sigla.upper())
-        .order_by(HistoricoMandato.start_date.desc())
+        db.execute(
+            text(
+                """
+                SELECT h.id, pe.uid AS politico_id, pe.nome_exibicao, h.foto_url, h.casa, h.situacao,
+                       h.data_inicio, h.data_fim, h.observacao
+                FROM core.vw_historico_mandato h
+                JOIN core.pessoa pe ON pe.id = h.pessoa_id
+                WHERE h.partido_sigla_normalizada = ref.normalizar_texto(:sigla)
+                ORDER BY h.data_inicio DESC, h.id
+                """
+            ),
+            {"sigla": partido_sigla},
+        )
+        .mappings()
         .all()
     )
 
@@ -645,23 +482,23 @@ def get_party_mandate_timeline(partido_sigla: str, db: Session) -> Dict[str, Any
     afastados: List[Dict[str, Any]] = []
     suplencias: List[Dict[str, Any]] = []
 
-    for h, p in history:
+    for h in history:
         item = {
-            "id": str(h.id),
-            "politico_id": str(p.id),
-            "nome_eleitoral": p.electoral_name,
-            "foto_url": p.photo_url,
-            "casa": h.house,
-            "situacao": h.situation,
-            "data_inicio": h.start_date.isoformat(),
-            "data_fim": h.end_date.isoformat() if h.end_date else None,
-            "observacao": h.notes,
+            "id": str(h["id"]),
+            "politico_id": str(h["politico_id"]),
+            "nome_eleitoral": h["nome_exibicao"],
+            "foto_url": h["foto_url"],
+            "casa": h["casa"],
+            "situacao": h["situacao"],
+            "data_inicio": h["data_inicio"].isoformat(),
+            "data_fim": h["data_fim"].isoformat() if h["data_fim"] else None,
+            "observacao": h["observacao"],
         }
-        if h.situation == SituacaoMandatoEnum.EXERCICIO.value:
+        if h["situacao"] == SituacaoMandatoEnum.EXERCICIO.value:
             exercicio.append(item)
-        elif h.situation == SituacaoMandatoEnum.AFASTADO_MINISTERIO.value:
+        elif h["situacao"] == SituacaoMandatoEnum.AFASTADO_MINISTERIO.value:
             afastados.append(item)
-        elif h.situation == SituacaoMandatoEnum.SUPLENCIA.value:
+        elif h["situacao"] == SituacaoMandatoEnum.SUPLENCIA.value:
             suplencias.append(item)
 
     return {
