@@ -41,6 +41,7 @@ Decisões do mantenedor: extrair o status real; reduzir o peso das assinaturas d
 - `core.entidade`: autores que não são pessoas (Poder Executivo, comissões, Mesa, lideranças, sociedade civil...) são registrados. Senadores citados só por nome ficam na autoria com nome, UF e partido da fonte (sem identidade por nome) e pontuam para o partido.
 - `camara_historico_extractor` + `etl.merge_camara_historico()`: posse, saída, licença, suplência e troca de partido de cada deputado → `core.mandato`, `core.mandato_situacao` e `core.mandato_partido` (partido que ocupa a cadeira em cada dia). Titulares e suplentes entram igualmente.
 - IALP v3 (= v2 + novos tipos de iniciativa e `SEM_INFORMACAO` = 1,0 + peso de apoio de quórum em PEC).
+- Taxa de eficácia só sobre **projetos** (decisão do mantenedor): `ref.tipo_proposicao.categoria` separa PROJETO de PEDIDO (REQ, INC, RIC, RCP, RQC). Os pedidos seguem pontuando no IPPM (peso 0,1), mas saem do denominador da eficácia, que passou de ~0,5% para 2–8% em 2024.
 - IPPM: proposições e votações filtradas pelo ano selecionado, no mesmo período das cadeiras-dia; fidelidade sem votação vira "indisponível" (antes aparecia 100%).
 
 **Diagnóstico de cobertura (fonte: CSV anuais, 1995–2026):**

@@ -249,7 +249,7 @@ def calculate_party_ippm_ranking(
         if tot > 0:
             fidelity_by_party[str(r[0]).upper()] = round((alin / tot) * 100.0, 1)
 
-    # 3. Pilar B: Taxa de Eficácia de Bancada (Projetos Aprovados vs Apresentados)
+    # 3. Pilar B: Taxa de Eficácia de Bancada (projetos aprovados vs apresentados; requerimentos e indicações ficam de fora)
     eff_rows = db.execute(
         text(
             """
@@ -257,7 +257,8 @@ def calculate_party_ippm_ranking(
                    COUNT(DISTINCT v.proposicao_id) FILTER (WHERE v.status_codigo IN :aprovados)
             FROM leg.vw_autoria_pontuada v JOIN core.vw_partido_canonico pc ON pc.id = v.partido_id
             JOIN core.partido pa ON pa.id = pc.canonico_id
-            WHERE v.tipo_autoria = 'AUTOR_PRINCIPAL' AND v.data_apresentacao BETWEEN :inicio AND :fim
+            WHERE v.tipo_autoria = 'AUTOR_PRINCIPAL' AND v.categoria_proposicao = 'PROJETO'
+              AND v.data_apresentacao BETWEEN :inicio AND :fim
               AND (:casa IS NULL OR (:casa = 'CAMARA' AND v.da_camara) OR (:casa = 'SENADO' AND v.do_senado))
             GROUP BY pa.sigla
             """

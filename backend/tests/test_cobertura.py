@@ -96,6 +96,15 @@ def carga_lote(db, pg_engine, tmp_path):
                 "ultimoStatus_descricaoSituacao": "Arquivada",
             },
             {
+                "id": "105",
+                "siglaTipo": "REQ",
+                "numero": "6",
+                "ano": "2024",
+                "ementa": "Requerimento de Ana",
+                "dataApresentacao": "2024-05-04T10:00",
+                "ultimoStatus_descricaoSituacao": "Arquivada",
+            },
+            {
                 "id": "103",
                 "siglaTipo": "PRL",
                 "numero": "4",
@@ -175,6 +184,16 @@ def carga_lote(db, pg_engine, tmp_path):
                 "proponente": "0",
             },
             {
+                "idProposicao": "105",
+                "idDeputadoAutor": "555",
+                "tipoAutor": "Deputado(a)",
+                "nomeAutor": "Ana Souza",
+                "siglaPartidoAutor": "PT",
+                "siglaUFAutor": "SP",
+                "ordemAssinatura": "1",
+                "proponente": "1",
+            },
+            {
                 "idProposicao": "102",
                 "idDeputadoAutor": "",
                 "tipoAutor": "Órgão do Poder Executivo",
@@ -221,7 +240,13 @@ def carga_lote(db, pg_engine, tmp_path):
 
 def test_status_comes_from_the_source_situation_mapping(db, carga_lote):
     status = dict(_rows(db, "SELECT id_camara, status_codigo FROM leg.proposicao"))
-    assert status == {100: "APROVADA_E_SANCIONADA", 101: "EM_TRAMITACAO", 102: "ARQUIVADA", 90: "EM_TRAMITACAO"}
+    assert status == {
+        100: "APROVADA_E_SANCIONADA",
+        101: "EM_TRAMITACAO",
+        102: "ARQUIVADA",
+        105: "ARQUIVADA",
+        90: "EM_TRAMITACAO",
+    }
 
 
 def test_only_in_scope_types_are_loaded_and_the_rest_is_reported(db, carga_lote):
@@ -403,7 +428,8 @@ def test_ippm_only_counts_propositions_filed_in_the_selected_year(db, ranking_pe
     r23 = ranking_periodo.get("/api/v1/parties/ippm-ranking?ano=2023").json()["ranking"]
     pt24 = next(p for p in r24 if p["sigla"] == "PT")
     pt23 = next(p for p in r23 if p["sigla"] == "PT")
-    assert pt24["projetos_apresentados"] == 2  # PL 100 e PEC 101 (2024)
+    # PL 100 e PEC 101: o requerimento 105 de Ana não entra na base da eficácia (mas pontua no IALP)
+    assert pt24["projetos_apresentados"] == 2
     assert pt23["projetos_apresentados"] == 1  # PL 90 (2023)
     assert pt24["projetos_aprovados"] == 1 and pt24["pilares"]["taxa_eficacia_pct"] == 50.0  # eficácia deixa de ser 0%
 
@@ -570,3 +596,23 @@ def test_authorship_under_the_old_acronym_counts_for_the_current_party(db, clien
     db.commit()
     ranking = client.get("/api/v1/parties/ippm-ranking?ano=2015").json()["ranking"]
     assert [(p["sigla"], p["projetos_apresentados"], p["total_cadeiras_ativas"]) for p in ranking] == [("MDB", 1, 1)]
+
+
+def test_requests_are_classified_as_such_in_reference_data(db):
+    assert {r[0] for r in _rows(db, "SELECT codigo FROM ref.tipo_proposicao WHERE categoria = 'PEDIDO'")} == {
+        "REQ",
+        "INC",
+        "RIC",
+        "RCP",
+        "RQC",
+    }
+    assert _scalar(db, "SELECT count(*) FROM ref.tipo_proposicao WHERE categoria = 'PROJETO'") == 16
+
+
+def test_requests_still_score_in_the_ippm_but_not_in_the_efficacy_base(db, ranking_periodo):
+    pontos = _scalar(
+        db,
+        "SELECT sum(v.pontos_ialp) FROM leg.vw_autoria_pontuada v WHERE v.tipo_proposicao = 'REQ' "
+        "AND v.data_apresentacao >= DATE '2024-01-01'",
+    )
+    assert float(pontos) == pytest.approx(0.08)  # REQ 0,1 x autor principal 1,0 x arquivada 0,8
