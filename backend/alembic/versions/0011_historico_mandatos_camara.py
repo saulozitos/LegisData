@@ -19,8 +19,20 @@ branch_labels = None
 depends_on = None
 
 CSV_HISTORICO = [
-    "id", "uri", "nome", "nomeEleitoral", "siglaPartido", "uriPartido", "siglaUf", "idLegislatura", "email", "urlFoto",
-    "dataHora", "situacao", "condicaoEleitoral", "descricaoStatus",
+    "id",
+    "uri",
+    "nome",
+    "nomeEleitoral",
+    "siglaPartido",
+    "uriPartido",
+    "siglaUf",
+    "idLegislatura",
+    "email",
+    "urlFoto",
+    "dataHora",
+    "situacao",
+    "condicaoEleitoral",
+    "descricaoStatus",
 ]
 
 PONTE_CORE = r"""

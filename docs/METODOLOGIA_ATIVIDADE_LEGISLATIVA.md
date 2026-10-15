@@ -247,3 +247,19 @@ A interface de transparência cívica adota três regras de renderização espec
      * Número oficial do parecer (ex: *Parecer nº 08/2024-CCJC*);
      * Ementa e fundamentação conclusiva do parecer;
      * Link de acesso à íntegra do parecer técnico original.
+
+## ROI do Cidadão (nota do dossiê do político)
+
+A nota de 0 a 100 combina três partes e só é calculada quando há CEAP, subsídios registrados e presenças:
+
+| Parte | Peso | Como é medida |
+|-------|------|---------------|
+| Assiduidade | 30% | Taxa de presença em plenário (faltas justificadas não contam como presença). |
+| Entrega legislativa | 40% | Pontos IALP do parlamentar (tipo da proposição x papel do autor x andamento, pesos em `param.peso`). 100 pontos dão a nota máxima nesta parte. |
+| Custo | 30% | Custo operacional (CEAP + subsídios brutos registrados) dividido pelos pontos IALP. Zera quando o custo chega a R$ 100.000 por ponto. |
+
+Faixas: A+ a partir de 85, A a partir de 70, B a partir de 55, C a partir de 40 e D abaixo disso.
+
+Até a versão anterior a parte de entrega era a contagem de proposições "de impacto" (10 proposições davam o máximo) e o custo era dividido por essa contagem. Isso premiava quem apenas assinava projetos e requerimentos de outros parlamentares: um senador com 8 projetos próprios e 64 assinaturas de apoio chegava a A+ com IALP de 31 pontos. Com os pontos IALP, a assinatura de apoio vale pouco (0,05 em PEC, 0,2 nos demais tipos) e o avanço na tramitação passa a decidir a nota.
+
+As referências (100 pontos e R$ 100.000 por ponto) são constantes de `backend/app/api/v1/politicians.py` e podem ser recalibradas com a distribuição real dos parlamentares.

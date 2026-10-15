@@ -40,6 +40,9 @@ DATA_DIR = PROCESSED_DATA_DIR
 BRT = timezone(timedelta(hours=-3))
 # Limites de listas devolvidas no dossiê (os agregados são sempre calculados no banco, sobre todos os registros)
 MAX_VOTES_LISTED = 300
+# ROI do Cidadão: pontos IALP que dão a nota máxima na parte de entrega e custo por ponto que zera a parte de custo
+ROI_PONTOS_IALP_REFERENCIA = 100.0
+ROI_CUSTO_POR_PONTO_REFERENCIA = 100000.0
 MAX_PROPOSITIONS_LISTED = 500
 MAX_EMENDAS_LISTED = 500
 ALL_KEYWORDS = ("todos", "todas", "all")
@@ -1427,24 +1430,29 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     }
 
     # L. Indicadores avançados — calculados somente com dados reais; sem insumo, retornam null
-    # 1. ROI do Cidadão (custo por impacto legislativo)
+    # 1. ROI do Cidadão: assiduidade (30%) + entrega legislativa em pontos IALP (40%) + custo por ponto IALP (30%).
+    # A entrega vem do IALP (tipo x papel do autor x andamento), não da contagem de proposições: assinar
+    # requerimentos ou apoiar projetos de outros vale pouco, e só avanço na tramitação pontua de verdade.
     total_gasto_mandato = float(custos_ceap.get("gasto_total_recente") or 0.0)
     custo_total_operacional = total_gasto_mandato + salario_acumulado_registrado
-    proj_impacto = props_imp
+    pontos_ialp = round(total_score_ponderado, 1)
+    projetos_autoria_estrutural = sum(
+        1
+        for m in materias_propostas
+        if m["papel_autoria"] == "AUTOR_PRINCIPAL" and m["tipo"] in ("PEC", "PLP", "PL", "MPV")
+    )
     roi_dados_ok = bool(custos_ceap.get("possui_dados")) and salario_acumulado_registrado > 0 and total_sessoes > 0
 
     if roi_dados_ok:
-        custo_por_projeto = round(custo_total_operacional / max(proj_impacto, 1), 2)
+        custo_por_ponto = round(custo_total_operacional / max(pontos_ialp, 1.0), 2)
         fator_presenca = min(taxa_presenca or 0.0, 100.0) * 0.30
-        fator_projetos = min(proj_impacto * 10.0, 100.0) * 0.40
-        fator_custo = max(0.0, min(100.0, 100.0 - (custo_por_projeto / 50000.0) * 20.0)) * 0.30
-        nota_roi: Optional[float] = round(fator_presenca + fator_projetos + fator_custo, 1)
+        fator_entrega = min(pontos_ialp / ROI_PONTOS_IALP_REFERENCIA * 100.0, 100.0) * 0.40
+        fator_custo = max(0.0, 100.0 - custo_por_ponto / ROI_CUSTO_POR_PONTO_REFERENCIA * 100.0) * 0.30
+        nota_roi: Optional[float] = round(fator_presenca + fator_entrega + fator_custo, 1)
 
         if nota_roi >= 85:
             score_roi = "A+"
-            diag_roi = (
-                "Alta eficiência legislativa com forte entrega de matérias estruturantes e assiduidade destacada."
-            )
+            diag_roi = "Alta eficiência: entrega legislativa expressiva em pontos IALP, assiduidade alta e baixo custo por ponto."
         elif nota_roi >= 70:
             score_roi = "A"
             diag_roi = "Bom custo-benefício para o cidadão, com produção legislativa consistente."
@@ -1453,12 +1461,12 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             diag_roi = "Produção legislativa e assiduidade em nível regular."
         elif nota_roi >= 40:
             score_roi = "C"
-            diag_roi = "Custo operacional elevado em relação ao volume de matérias estruturantes apresentadas."
+            diag_roi = "Custo operacional elevado em relação à entrega legislativa medida em pontos IALP."
         else:
             score_roi = "D"
             diag_roi = "Baixo retorno legislativo em proporção ao custo operacional do mandato."
     else:
-        custo_por_projeto = None
+        custo_por_ponto = None
         nota_roi = None
         score_roi = None
         diag_roi = "Dados insuficientes (CEAP, remuneração e presenças são necessários para calcular o indicador)."
@@ -1467,8 +1475,15 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         "score": score_roi,
         "nota": nota_roi,
         "custo_total_operacional": round(custo_total_operacional, 2) if roi_dados_ok else None,
-        "custo_por_projeto_impacto": custo_por_projeto,
-        "projetos_estruturantes": proj_impacto,
+        "pontos_ialp": pontos_ialp,
+        "custo_por_ponto_ialp": custo_por_ponto,
+        "projetos_estruturantes": projetos_autoria_estrutural,
+        "metodologia": (
+            "Nota = 30% assiduidade + 40% pontos IALP (referência de "
+            f"{ROI_PONTOS_IALP_REFERENCIA:.0f} pontos para a nota máxima nesta parte) + 30% custo por ponto IALP "
+            f"(zera em R$ {ROI_CUSTO_POR_PONTO_REFERENCIA:,.0f} por ponto). O custo soma a cota parlamentar (CEAP) e os "
+            "subsídios brutos registrados."
+        ).replace(",", "."),
         "diagnostico": diag_roi,
     }
 

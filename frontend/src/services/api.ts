@@ -1046,7 +1046,9 @@ export interface RoiCidadaoData {
   score: string | null;
   nota: number | null;
   custo_total_operacional: number | null;
-  custo_por_projeto_impacto: number | null;
+  pontos_ialp: number | null;
+  custo_por_ponto_ialp: number | null;
+  metodologia?: string | null;
   projetos_estruturantes: number;
   diagnostico: string;
 }

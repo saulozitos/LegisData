@@ -106,7 +106,7 @@ export function fullDossier(): PoliticoDossier {
       ],
     },
     indices_inteligencia: {
-      roi_cidadao: { score: 'B+', nota: 78, custo_total_operacional: 1200000, custo_por_projeto_impacto: 300000, projetos_estruturantes: 4, diagnostico: 'ROI diagnóstico.' },
+      roi_cidadao: { score: 'B+', nota: 78, custo_total_operacional: 1200000, pontos_ialp: 40, custo_por_ponto_ialp: 30000, projetos_estruturantes: 4, diagnostico: 'ROI diagnóstico.' },
       concentracao_ceap: { indice_hhi: 1500, nivel_risco: 'MODERADO', percentual_maior_fornecedor: 33.3, maior_fornecedor: 'Gráfica Alfa LTDA', cnpj_maior_fornecedor: '12345678000190', diagnostico: 'HHI diagnóstico.' },
       enriquecimento_patrimonial: { delta_patrimonio: 400000, salario_acumulado_estimado: 1000000, razao_patrimonio_renda: 0.4, compatibilidade: 'COMPATÍVEL', diagnostico: 'Patrimônio diagnóstico.' },
       estabilidade_partidaria: { total_trocas: 1, anos_medio_por_partido: 6.5, classificacao: 'ALTA_FIDELIDADE', taxa_governismo_pct: 72, diagnostico: 'Estabilidade diagnóstico.' },
@@ -151,7 +151,7 @@ export function sparseDossier(): PoliticoDossier {
     assiduidade: { total_sessoes: 0, total_presencas: 0, faltas_justificadas: 0, faltas_nao_justificadas: 0, taxa_presenca_pct: null, amostra_faltas: [] },
     basometro: { taxa_governismo_pct: null, total_votacoes_analisadas: 0, votos_alinhados: null, votos_divergentes: null, classificacao: null },
     indices_inteligencia: {
-      roi_cidadao: { score: null, nota: null, custo_total_operacional: null, custo_por_projeto_impacto: null, projetos_estruturantes: 0, diagnostico: 'Dados insuficientes.' },
+      roi_cidadao: { score: null, nota: null, custo_total_operacional: null, pontos_ialp: null, custo_por_ponto_ialp: null, projetos_estruturantes: 0, diagnostico: 'Dados insuficientes.' },
       concentracao_ceap: { indice_hhi: 0, nivel_risco: null, percentual_maior_fornecedor: 0, maior_fornecedor: null, cnpj_maior_fornecedor: null, diagnostico: 'Sem despesas.' },
       enriquecimento_patrimonial: { delta_patrimonio: null, salario_acumulado_estimado: null, razao_patrimonio_renda: null, compatibilidade: null, diagnostico: 'Dados insuficientes.' },
       estabilidade_partidaria: { total_trocas: 0, anos_medio_por_partido: null, classificacao: null, taxa_governismo_pct: null, diagnostico: 'Sem filiações.' },

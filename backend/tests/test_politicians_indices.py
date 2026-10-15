@@ -70,6 +70,7 @@ def test_roi_is_only_computed_with_ceap_salary_and_attendance(client, db, seed):
     roi = client.get(f"{BASE}/{seed.fulano.id}").json()["indices_inteligencia"]["roi_cidadao"]
     assert roi["nota"] is not None and 0 <= roi["nota"] <= 100
     assert roi["score"] in {"A+", "A", "B", "C", "D"}
+    assert roi["pontos_ialp"] is not None and roi["custo_por_ponto_ialp"] is not None
     assert roi["custo_total_operacional"] == pytest.approx(
         150.0 + 80000.0
     )  # CEAP do banco + subsídios BRUTOS registrados
@@ -323,3 +324,36 @@ def test_dossier_weighted_legislative_indicators(client, db, seed):
     assert pec_item["peso_participacao"] == 0.05  # assinatura de apoio a PEC
     assert pec_item["peso_complexidade"] == 3.0  # PEC = 3.0
     assert pec_item["score_calculado"] == 0.15  # 0.05 * 3.0 * 1.0
+
+
+def test_roi_rewards_ialp_delivery_not_proposition_count(client, db, seed):
+    """Muitas assinaturas de apoio e requerimentos não levam à nota máxima: a entrega é medida em pontos IALP."""
+    from app.models.legislative import Proposition, PropositionAuthor, TipoAutoriaEnum, TipoProposicaoEnum
+
+    _add_remuneration(db, seed)
+    _add_attendance(db, seed)
+    for i in range(30):
+        prop = Proposition(
+            proposition_type=TipoProposicaoEnum.REQ,
+            number=500 + i,
+            year=2024,
+            title=f"REQ {500 + i}/2024",
+            summary="Requerimento",
+            presentation_date=date(2024, 1, 1),
+            external_camara_id=70000 + i,
+        )
+        db.add(prop)
+        db.flush()
+        db.add(
+            PropositionAuthor(
+                proposition_id=prop.id,
+                politician_id=seed.fulano.id,
+                author_name="Fulano",
+                authorship_type=TipoAutoriaEnum.COAUTOR,
+                order=2,
+            )
+        )
+    db.commit()
+    roi = client.get(f"{BASE}/{seed.fulano.id}").json()["indices_inteligencia"]["roi_cidadao"]
+    assert roi["pontos_ialp"] < 10
+    assert roi["score"] != "A+"

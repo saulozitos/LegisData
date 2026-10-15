@@ -19,13 +19,22 @@ depends_on = None
 
 # (sigla na fonte, sigla vigente, observação)
 RENOMEACOES = [
-    ("PMDB", "MDB", "Renomeação (2017)"), ("PFL", "DEM", "Renomeação (2007)"), ("PPB", "PP", "Renomeação (2003)"),
-    ("PPS", "CIDADANIA", "Renomeação (2019)"), ("PTdoB", "AVANTE", "Renomeação (2017)"),
-    ("PTN", "PODE", "Renomeação (2016/2017)"), ("PEN", "PATRIOTA", "Renomeação (2018)"),
-    ("PRB", "REPUBLICANOS", "Renomeação (2019)"), ("PR", "PL", "Renomeação (2019)"), ("PSDC", "DC", "Renomeação (2018)"),
-    ("SD", "SOLIDARIEDADE", "Renomeação"), ("PATRI", "PATRIOTA", "Grafia da fonte"),
-    ("REPUBLIC", "REPUBLICANOS", "Sigla truncada pela fonte"), ("SOLIDARI", "SOLIDARIEDADE", "Sigla truncada pela fonte"),
-    ("SOLIDARIED", "SOLIDARIEDADE", "Sigla truncada pela fonte"), ("S. PART.", "S.PART.", "Grafia da fonte"),
+    ("PMDB", "MDB", "Renomeação (2017)"),
+    ("PFL", "DEM", "Renomeação (2007)"),
+    ("PPB", "PP", "Renomeação (2003)"),
+    ("PPS", "CIDADANIA", "Renomeação (2019)"),
+    ("PTdoB", "AVANTE", "Renomeação (2017)"),
+    ("PTN", "PODE", "Renomeação (2016/2017)"),
+    ("PEN", "PATRIOTA", "Renomeação (2018)"),
+    ("PRB", "REPUBLICANOS", "Renomeação (2019)"),
+    ("PR", "PL", "Renomeação (2019)"),
+    ("PSDC", "DC", "Renomeação (2018)"),
+    ("SD", "SOLIDARIEDADE", "Renomeação"),
+    ("PATRI", "PATRIOTA", "Grafia da fonte"),
+    ("REPUBLIC", "REPUBLICANOS", "Sigla truncada pela fonte"),
+    ("SOLIDARI", "SOLIDARIEDADE", "Sigla truncada pela fonte"),
+    ("SOLIDARIED", "SOLIDARIEDADE", "Sigla truncada pela fonte"),
+    ("S. PART.", "S.PART.", "Grafia da fonte"),
     ("S.PART", "S.PART.", "Grafia da fonte"),
 ]
 
@@ -52,7 +61,9 @@ $fn$;
 
 def upgrade() -> None:
     op.execute("ALTER TABLE core.partido ADD COLUMN linhagem_id bigint REFERENCES core.partido(id)")
-    op.execute("ALTER TABLE core.partido ADD CONSTRAINT ck_partido_linhagem CHECK (linhagem_id IS NULL OR linhagem_id <> id)")
+    op.execute(
+        "ALTER TABLE core.partido ADD CONSTRAINT ck_partido_linhagem CHECK (linhagem_id IS NULL OR linhagem_id <> id)"
+    )
     op.execute(
         """
         CREATE TABLE ref.partido_renomeacao (

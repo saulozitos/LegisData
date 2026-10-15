@@ -29,7 +29,7 @@ import {
   PieChart as LucidePieChart,
 } from "lucide-react";
 import type { PoliticoDossier } from "@/services/api";
-import { fmtNum } from "@/lib/format";
+import { fmtNum, isNum } from "@/lib/format";
 import PartyLink from "@/components/PartyLink";
 import { safeExternalUrl } from "@/lib/safeUrl";
 import { formatCpfCnpj, gradeBadgeClass, riskBadgeClass, compatBadgeClass, orUnavailable } from "./format";
@@ -91,7 +91,7 @@ export default function OverviewTab({ dossier, onChangeTab, onSelectParty }: Ove
                         </span>
                       </div>
                       <div className="text-xs font-mono font-bold text-slate-200">
-                        {indices.roi_cidadao.projetos_estruturantes} projetos de impacto
+                        {isNum(indices.roi_cidadao.pontos_ialp) ? `${indices.roi_cidadao.pontos_ialp} pontos IALP` : "Entrega indisponível"}
                       </div>
                       <p className="text-[10px] text-slate-400 line-clamp-2">
                         {indices.roi_cidadao.diagnostico}
