@@ -4,10 +4,11 @@ from pydantic import BaseModel
 
 
 class PartyPilares(BaseModel):
-    fidelidade_partidaria_pct: float
+    fidelidade_partidaria_pct: Optional[float] = None  # None: sem votação nominal com orientação no período
     taxa_eficacia_pct: float
     total_relatorias: int
     volume_relatorias: float
+    assinaturas_apoio_quorum: int = 0  # assinaturas de apoio a PEC (peso reduzido, fora da autoria efetiva)
 
 
 class QuadranteEficiencia(BaseModel):
@@ -44,6 +45,8 @@ class IPPMRankingPeriodo(BaseModel):
     casa: str
     bloco: str
     espectro: str
+    # Preenchido quando o período não pode ser calculado (ex.: sem histórico de cadeiras na fonte)
+    aviso: Optional[str] = None
 
 
 class HighlightParty(BaseModel):
