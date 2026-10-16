@@ -177,6 +177,7 @@ def test_classificar_voto_senado():
     assert pe.classificar_voto_senado("Ausente")[0] == pe.AUSENCIA_NAO_JUSTIFICADA
     assert pe.classificar_voto_senado("NA") is None  # dispositivo não citado: não informa presença
     assert pe.classificar_voto_senado("XYZ") is None
+    assert pe.classificar_voto_senado("NCom")[0] == "AUSENCIA_NAO_JUSTIFICADA"
 
 
 def votacao(codigo, data, votos):
@@ -203,7 +204,9 @@ def test_parse_votacoes_senado_aceita_lista_dict_unico_e_ignora_sem_votos():
         }
     }
     saida = pe.parse_votacoes_senado(payload)
-    assert saida == [{"codigo": "1", "data": "2024-03-05", "votos": [[10, "Sen 10", "Sim"], [11, "Sen 11", "AP"]]}]
+    assert saida == [
+        {"codigo": "1", "data": "2024-03-05", "votos": [[10, "Sen 10", "Sim"], [11, "Sen 11", "AP"]], "partidos": {}}
+    ]
     unico = {"ListaVotacoes": {"Votacoes": {"Votacao": votacao("3", "2024-03-07", [(10, "Não")])}}}
     assert len(pe.parse_votacoes_senado(unico)) == 1
     assert pe.parse_votacoes_senado({}) == []
@@ -425,8 +428,8 @@ def test_run_grava_resumo_e_dias_preserva_outra_casa_e_recusa_resultado_vazio(tm
     casas = {r["casa"] for r in resumo["resumos"]}
     assert casas == {"CAMARA", "SENADO"}  # a Câmara já gravada não foi apagada
     sen = next(r for r in resumo["resumos"] if r["casa"] == "SENADO" and r["parlamentar_id"] == 8)
-    assert sen["faltas_justificadas"] == 1 and sen["faltas_nao_justificadas"] is None  # nunca 0 presumido
-    assert "null" in resumo["metodologia"]["SENADO"]
+    assert sen["faltas_justificadas"] == 1 and sen["faltas_nao_justificadas"] == 0
+    assert "NCom" in resumo["metodologia"]["SENADO"]
 
     dias = pe.carregar_dias(tmp_path / "proc")
     assert dias["is_synthetic"] is False and len(dias["camara"]) == 6 and len(dias["senado"]) == 2
@@ -468,6 +471,31 @@ def test_votacoes_senado_do_mes_corrente_sao_refeitas_e_meses_fechados_vem_do_ca
     ext.hoje = date(2025, 2, 15)
     ext._votacoes_mes(date(2025, 2, 1), date(2025, 2, 15), True)
     assert len(chamadas) == 3  # janela mudou: refaz
+
+
+def test_cache_do_senado_sem_partido_por_votacao_e_refeito(tmp_path):
+    """Cache gravado antes de existir o partido por votação deixaria o partido do dia em branco: é refeito."""
+    chamadas = []
+
+    class H(HttpFalso):
+        def get_json(self, url, **_):
+            chamadas.append(url)
+            return super().get_json(url)
+
+    url = pe.URL_SENADO_VOTACOES.format(ini="20250101", fim="20250131")
+    h = H({url: {"ListaVotacoes": {}}})
+    ext = montar_extrator(tmp_path, h, hoje=date(2025, 6, 1))
+    cache = tmp_path / "raw" / "senado" / "votacoes_202501.json"
+    cache.parent.mkdir(parents=True)
+    cache.write_text(
+        json.dumps(
+            {"fetched_at": "2025-02-01T00:00:00", "ate": "2025-01-31", "votacoes": [{"codigo": "1", "votos": []}]}
+        )
+    )  # formato antigo: votação sem a chave "partidos"
+    ext._votacoes_mes(date(2025, 1, 1), date(2025, 1, 31), True)
+    assert len(chamadas) == 1  # mês fechado, mas o cache antigo não serve
+    ext._votacoes_mes(date(2025, 1, 1), date(2025, 1, 31), True)
+    assert len(chamadas) == 1  # o cache regravado já é do formato novo
 
 
 def test_ids_deputados_conhecidos(tmp_path):
@@ -768,3 +796,16 @@ def test_load_remunerations_recusa_sem_proveniencia_e_tolera_arquivo_ausente(ses
     gravar_remuneracao(tmp_path / "x", [{"camara_id": 101, "ano": 2024, "mes": 1, "salario_bruto": 1.0}], oficial=False)
     with pytest.raises(ValueError, match="proveniência"):
         loader.load_remunerations(sessao, tmp_path / "x")
+
+
+def test_partidos_por_data_registra_so_as_mudancas():
+    votacoes = [
+        {"codigo": "b", "data": "2024-03-06", "votos": [], "partidos": {1: "PSD", 2: "PT"}},
+        {"codigo": "a", "data": "2024-03-05", "votos": [], "partidos": {1: "PSD"}},
+        {"codigo": "c", "data": "2024-08-01", "votos": [], "partidos": {1: "PL"}},
+    ]
+    assert pe.partidos_por_data(votacoes) == [
+        [1, "2024-03-05", "PSD"],
+        [1, "2024-08-01", "PL"],
+        [2, "2024-03-06", "PT"],
+    ]

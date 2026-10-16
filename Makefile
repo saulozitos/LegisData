@@ -1,4 +1,4 @@
-.PHONY: help ci test-db-up test-db-down db-migrate db-revision lint format typecheck security test run-all run-etl run-camara run-senado run-tse run-load-db up-db down-db backend-dev run-frontend build-frontend docker-up docker-down
+.PHONY: help daily ci test-db-up test-db-down db-migrate db-revision lint format typecheck security test run-all run-etl run-camara run-senado run-tse run-load-db up-db down-db backend-dev run-frontend build-frontend docker-up docker-down
 
 # Identificação de ambiente Python
 PYTHON_BIN := $(shell if [ -d "backend/venv/bin" ]; then echo "backend/venv/bin"; elif [ -d ".venv/bin" ]; then echo ".venv/bin"; else echo ""; fi)
@@ -132,6 +132,10 @@ run-renda:
 
 run-load-db:
 	PYTHONPATH=. $(PY) etl/run_etl.py --load-db
+
+# Consolidação diária (presença e faltas, mandatos, IPPM, rede de coautoria). Agende com scripts/systemd/*.timer
+daily:
+	PYTHONPATH=backend:. $(PY) -m etl.pipelines.cron_daily_consolidation
 
 # ------------------------------------------------------------------------------
 # Infraestrutura e Servidores

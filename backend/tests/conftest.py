@@ -12,11 +12,11 @@ os.environ.setdefault("ENVIRONMENT", "test")
 
 import pytest  # noqa: E402
 from app import main as main_module  # noqa: E402
-from app.api.v1 import analytics, economic, legislative, politicians  # noqa: E402
+from app.api.v1 import analytics, economic, politicians  # noqa: E402
 from app.core import data_files  # noqa: E402
 from app.core.config import settings  # noqa: E402
-from app.core.migrations import upgrade_schema  # noqa: E402
 from app.core.database import get_db  # noqa: E402
+from app.core.migrations import upgrade_schema  # noqa: E402
 from app.models import (  # noqa: E402
     Base,
     CargoPoliticoEnum,
@@ -36,7 +36,8 @@ from app.models import (  # noqa: E402
     VotingSession,
     VotoOpcaoEnum,
 )
-from app.services import cidadania_service  # noqa: E402
+from app.services import cidadania_service, explorer_service  # noqa: E402
+from app.services.core_sync import sync_legacy_to_core  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.exc import OperationalError  # noqa: E402
@@ -137,6 +138,12 @@ def client(session_factory):
     def _override():
         session = session_factory()
         try:
+            # Os testes semeiam o schema legado; os endpoints leem o schema novo. A ponte projeta o legado antes de
+            # cada requisição (só quando há dados legados, para não apagar dados escritos direto nos schemas novos).
+            if session.execute(
+                text("SELECT EXISTS (SELECT 1 FROM politicos) OR EXISTS (SELECT 1 FROM proposicoes)")
+            ).scalar():
+                sync_legacy_to_core(session)
             yield session
         finally:
             session.close()
@@ -154,7 +161,7 @@ def data_dir(tmp_path, monkeypatch):
     """Diretório de dados do ETL isolado: nenhum teste depende dos arquivos reais do repositório."""
     directory = tmp_path / "processed"
     directory.mkdir()
-    for module in (economic, analytics, politicians, legislative):
+    for module in (economic, analytics, politicians, explorer_service):
         monkeypatch.setattr(module, "DATA_DIR", directory)
     data_files._cache.clear()
     politicians._json_cache.clear()

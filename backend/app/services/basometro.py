@@ -8,7 +8,7 @@ partido e sem valor padrão: com amostra insuficiente o indicador fica explicita
 
 from typing import Any, Dict, Optional
 
-from app.models import ParliamentaryVote, VotingSession
+from app.models.leg import Votacao, Voto
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -39,24 +39,22 @@ def classificar_governismo(taxa: float) -> str:
 
 def calcular_basometro(
     db: Session,
-    politician_id: Any,
+    pessoa_id: Any,
     partido_sigla: Optional[str],
     votos_sim: int = 0,
     votos_nao: int = 0,
 ) -> Dict[str, Any]:
     linhas = (
-        db.query(VotingSession.government_orientation, ParliamentaryVote.vote_choice, func.count())
-        .join(VotingSession, ParliamentaryVote.voting_session_id == VotingSession.id)
-        .filter(
-            ParliamentaryVote.politician_id == politician_id,
-            VotingSession.government_orientation.in_(("SIM", "NAO")),
-        )
-        .group_by(VotingSession.government_orientation, ParliamentaryVote.vote_choice)
+        db.query(Votacao.orientacao_governo, Voto.opcao_codigo, func.count())
+        .join(Votacao, Voto.votacao_id == Votacao.id)
+        .filter(Voto.pessoa_id == pessoa_id, Votacao.orientacao_governo.in_(("SIM", "NAO")))
+        .group_by(Votacao.orientacao_governo, Voto.opcao_codigo)
         .all()
     )
+    if pessoa_id is None:
+        linhas = []
     alinhados = divergentes = 0
-    for orientacao, voto, qtd in linhas:
-        opcao = voto.value if hasattr(voto, "value") else str(voto)
+    for orientacao, opcao, qtd in linhas:
         if opcao not in _VOTOS_COM_POSICAO:
             continue
         if opcao == orientacao:

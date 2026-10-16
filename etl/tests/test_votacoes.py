@@ -1,6 +1,7 @@
 """Extração e carga das votações nominais (Câmara/Senado) com orientação do governo."""
 
 import json
+import os
 from datetime import date
 
 import pytest
@@ -345,6 +346,58 @@ def test_senado_extrai_votos_orientacao_e_voto_secreto(tmp_path, monkeypatch):
 
     resumo = ext.run([2023])
     assert resumo["anos"][2023]["sessoes"] == 2 and (tmp_path / "p" / "votacoes" / "senado_2023.json.gz").exists()
+
+
+def test_senado_completa_a_lista_anual_com_as_votacoes_do_plenario(tmp_path, monkeypatch):
+    lista = [_votacao_senado(10, 100, votos=[_voto(1, "Sim")])]
+
+    def plenario(codigo, materia, votos):
+        return {
+            "CodigoSessaoVotacao": str(codigo),
+            "DataSessao": "2023-10-14",
+            "HoraInicio": "14:00",
+            "Secreta": "N",
+            "DescricaoVotacao": "Votação nominal da PEC 221/2019, em primeiro turno.",
+            "Resultado": "A",
+            "CodigoMateria": "174386",
+            "SiglaMateria": materia,
+            "NumeroMateria": "221",
+            "AnoMateria": "2019",
+            "Votos": {"VotoParlamentar": votos},
+        }
+
+    voto = lambda cod, v: {  # noqa: E731
+        "CodigoParlamentar": str(cod),
+        "NomeParlamentar": f"Sen {cod}",
+        "SiglaPartido": "PL",
+        "SiglaUF": "BA",
+        "Voto": v,
+    }
+    mensal = {
+        "ListaVotacoes": {
+            "Votacoes": {
+                "Votacao": [
+                    plenario(10, "PEC", [voto(1, "Sim")]),  # já veio na lista anual: não duplica
+                    plenario(7106, "PEC", [voto(1, "Sim"), voto(2, "NCom"), voto(3, "Não")]),
+                    plenario(7108, "MSF", [voto(1, "Sim")]),  # tipo não suportado
+                ]
+            }
+        }
+    }
+
+    def falso(self, url, nome, ano, force):
+        if nome == "votacao":
+            return lista
+        return mensal if nome == "plenario_lista_10" else {}
+
+    monkeypatch.setattr(ve.VotacoesSenadoExtractor, "_json_com_cache", falso)
+    ext = ve.VotacoesSenadoExtractor(raw_dir=tmp_path, processed_dir=tmp_path / "p", http=object())
+    ids = [s["id"] for s in ext.extrair_ano(2023)["sessoes"]]
+    assert ids == ["SEN-10", "SEN-7106"]
+    nova = ext.extrair_ano(2023)["sessoes"][1]
+    assert nova["data_hora"] == "2023-10-14T14:00:00" and nova["aprovada"] is True
+    assert [v[:2] for v in nova["votos"]] == [[1, "SIM"], [2, "AUSENTE"], [3, "NAO"]]
+    assert nova["proposicao"]["titulo"] == "PEC 221/2019" and nova["proposicao"]["senado_id"] == 174386
 
 
 def test_senado_falha_de_rede_nao_gera_arquivo(tmp_path, monkeypatch):
@@ -825,3 +878,118 @@ def test_camara_extrai_comissoes_quando_solicitado(extrator_camara):
     assert dados["casa"] == "CAMARA"
     # Com incluir_comissoes=True, V4 (CCJC) é avaliado no pipeline em vez de descartado no filtro de órgão
     assert dados["descartes"]["sem_proposicao_suportada"] == 2
+
+
+# ---------------------------------------------------------------------------------- plenário por mês (Senado)
+def _plenario_item(codigo, *, secreta=False, votos=None, **extra):
+    item = {
+        "CodigoSessaoVotacao": str(codigo) if codigo is not None else "",
+        "DataSessao": "2025-03-05",
+        "HoraInicio": "14:00",
+        "Secreta": "S" if secreta else "N",
+        "DescricaoVotacao": "Votação nominal.",
+        "Resultado": "A",
+        "CodigoMateria": "169690",
+        "SiglaMateria": "PEC",
+        "NumeroMateria": "10",
+        "AnoMateria": "2024",
+        "Votos": {"VotoParlamentar": votos or []},
+    }
+    item.update(extra)
+    return item
+
+
+def _extrator_com_plenario(tmp_path, monkeypatch, mensal, hoje=date(2025, 3, 10)):
+    """Extrator do Senado cuja consulta do plenário devolve `mensal[nome do cache]` (None = falha de rede)."""
+    chamadas = []
+
+    def falso(self, url, nome, ano, force):
+        chamadas.append(url)
+        if nome in ("votacao", "orientacoes"):
+            return [] if nome == "votacao" else {}
+        return mensal.get(nome, {})
+
+    monkeypatch.setattr(ve.VotacoesSenadoExtractor, "_json_com_cache", falso)
+    ext = ve.VotacoesSenadoExtractor(raw_dir=tmp_path, processed_dir=tmp_path / "p", http=object(), hoje=hoje)
+    return ext, chamadas
+
+
+def test_plenario_corta_a_janela_em_hoje(tmp_path, monkeypatch):
+    ext, chamadas = _extrator_com_plenario(tmp_path, monkeypatch, {}, hoje=date(2025, 3, 10))
+    ext._sessoes_plenario(2025, False, {}, {})
+    assert [u.rsplit("/", 2)[-2:] for u in chamadas] == [
+        ["20250101", "20250131"],
+        ["20250201", "20250228"],
+        ["20250301", "20250310"],
+    ]
+
+
+def test_plenario_mes_com_falha_e_reportado_e_nao_e_mes_vazio(tmp_path, monkeypatch):
+    mensal = {"plenario_lista_01": None, "plenario_lista_02": {}}  # janeiro falhou; fevereiro veio vazio
+    ext, _ = _extrator_com_plenario(tmp_path, monkeypatch, mensal, hoje=date(2025, 2, 20))
+    sessoes, falhas = ext._sessoes_plenario(2025, False, {}, {})
+    assert sessoes == [] and falhas == ["2025-01"]
+
+
+def test_run_nao_regrava_o_ano_quando_um_mes_do_plenario_falha(tmp_path, monkeypatch):
+    voto = {"CodigoParlamentar": "1", "NomeParlamentar": "Sen 1", "SiglaPartido": "PL", "SiglaUF": "BA", "Voto": "Sim"}
+    mensal = {"plenario_lista_01": None, "plenario_lista_03": {"ListaVotacoes": {"Votacoes": {"Votacao": [
+        _plenario_item(500, votos=[voto])]}}}}  # fmt: skip
+    ext, _ = _extrator_com_plenario(tmp_path, monkeypatch, mensal)
+    resumo = ext.run([2025])
+    assert resumo["anos"] == {} and resumo["falhas"] == ["2025-01"]
+    assert not (tmp_path / "p" / "votacoes" / "senado_2025.json.gz").exists()  # arquivo existente seria preservado
+
+
+def test_plenario_votacao_secreta_usa_os_totais_publicados(tmp_path, monkeypatch):
+    item = _plenario_item(7053, secreta=True, TotalVotosSim="43", TotalVotosNao="2", TotalVotosAbstencao="1")
+    mensal = {"plenario_lista_03": {"ListaVotacoes": {"Votacoes": {"Votacao": [item]}}}}
+    ext, _ = _extrator_com_plenario(tmp_path, monkeypatch, mensal)
+    (sessao,) = ext.extrair_ano(2025)["sessoes"]
+    assert sessao["secreta"] is True and sessao["votos"] == []
+    assert sessao["totais"] == {"SIM": 43, "NAO": 2, "ABSTENCAO": 1, "OBSTRUCAO": 0}
+
+
+def test_plenario_descarta_item_sem_codigo_de_sessao(tmp_path, monkeypatch, caplog):
+    voto = {"CodigoParlamentar": "1", "NomeParlamentar": "Sen 1", "SiglaPartido": "PL", "SiglaUF": "BA", "Voto": "Sim"}
+    itens = [_plenario_item(None, votos=[voto]), _plenario_item(None, votos=[voto]), _plenario_item(9, votos=[voto])]
+    mensal = {"plenario_lista_03": {"ListaVotacoes": {"Votacoes": {"Votacao": itens}}}}
+    ext, _ = _extrator_com_plenario(tmp_path, monkeypatch, mensal)
+    with caplog.at_level("WARNING"):
+        sessoes = ext.extrair_ano(2025)["sessoes"]
+    assert [s["id"] for s in sessoes] == ["SEN-9"]  # sem a guarda viraria "SEN-None" e esconderia as outras sessões
+    assert "sem CodigoSessaoVotacao" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "hoje, ano, expira",
+    [
+        (date(2026, 2, 28), 2025, True),  # ano anterior ainda em acerto, antes de 1º de março
+        (date(2026, 3, 1), 2025, False),
+        (date(2026, 10, 1), 2025, False),
+        (date(2026, 10, 1), 2026, True),
+        (date(2026, 2, 28), 2024, False),
+    ],
+)
+def test_ttl_do_cache_cobre_o_ano_anterior_ate_marco(tmp_path, hoje, ano, expira):
+    ext = ve.VotacoesSenadoExtractor(raw_dir=tmp_path, http=object(), hoje=hoje)
+    assert ext._ano_em_andamento(ano) is expira
+
+
+def test_cache_do_ano_anterior_expirado_e_refeito_antes_de_marco(tmp_path):
+    class Http:
+        chamadas = 0
+
+        def get_json(self, url, **_):
+            Http.chamadas += 1
+            return [{"x": Http.chamadas}]
+
+    ext = ve.VotacoesSenadoExtractor(raw_dir=tmp_path, http=Http(), hoje=date(2026, 2, 10))
+    ext._json_com_cache("u", "votacao", 2025, False)
+    arquivo = tmp_path / "senado" / "votacao-2025.json"
+    velho = arquivo.stat().st_mtime - 2 * 24 * 3600
+    os.utime(arquivo, (velho, velho))  # cache de dois dias
+    assert ext._json_com_cache("u", "votacao", 2025, False) == [{"x": 2}]  # refeito: o ano anterior ainda expira
+    ext_depois = ve.VotacoesSenadoExtractor(raw_dir=tmp_path, http=Http(), hoje=date(2026, 4, 1))
+    os.utime(arquivo, (velho, velho))
+    assert ext_depois._json_com_cache("u", "votacao", 2025, False) == [{"x": 2}]  # depois de março, cache eterno

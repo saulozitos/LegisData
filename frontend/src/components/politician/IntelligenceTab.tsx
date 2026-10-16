@@ -110,25 +110,25 @@ export default function IntelligenceTab({ dossier }: IntelligenceTabProps) {
 
                   <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-1">
                     <span className="text-[11px] font-semibold text-slate-400 block">
-                      Matérias Estruturantes
+                      Entrega Legislativa (pontos IALP)
                     </span>
                     <span className="text-lg font-black font-mono text-cyan-400 block">
-                      {indices.roi_cidadao.projetos_estruturantes} proposições
+                      {isNum(indices.roi_cidadao.pontos_ialp) ? `${indices.roi_cidadao.pontos_ialp} pontos` : "Indisponível"}
                     </span>
                     <span className="text-[10px] text-slate-400 block">
-                      PECs, PLs, PLPs e MPs de impacto nacional
+                      Tipo da matéria x papel do autor x andamento; {indices.roi_cidadao.projetos_estruturantes} projetos de autoria própria (PEC, PL, PLP, MPV)
                     </span>
                   </div>
 
                   <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-1">
                     <span className="text-[11px] font-semibold text-slate-400 block">
-                      Custo Médio por Matéria Relevante
+                      Custo por Ponto de Entrega
                     </span>
                     <span className="text-lg font-black font-mono text-emerald-400 block">
-                      {formatMoney(indices.roi_cidadao.custo_por_projeto_impacto)}
+                      {formatMoney(indices.roi_cidadao.custo_por_ponto_ialp)}
                     </span>
                     <span className="text-[10px] text-slate-400 block">
-                      Custo total dividido pelas leis estruturantes
+                      Custo operacional total dividido pelos pontos IALP
                     </span>
                   </div>
                 </div>

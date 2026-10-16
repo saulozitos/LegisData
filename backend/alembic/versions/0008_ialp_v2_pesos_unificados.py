@@ -18,14 +18,30 @@ depends_on = None
 
 PESOS = {
     "PESO_TIPO": {
-        "PEC": 3.0, "PLP": 2.5, "PL": 2.0, "MPV": 2.0, "PDL": 1.0, "PR": 1.0, "PRC": 1.0, "PDS": 1.0,
-        "REQ": 0.1, "INC": 0.1, "DECRETO_PRES": 1.0, "LEI_DELEGADA": 1.0,
+        "PEC": 3.0,
+        "PLP": 2.5,
+        "PL": 2.0,
+        "MPV": 2.0,
+        "PDL": 1.0,
+        "PR": 1.0,
+        "PRC": 1.0,
+        "PDS": 1.0,
+        "REQ": 0.1,
+        "INC": 0.1,
+        "DECRETO_PRES": 1.0,
+        "LEI_DELEGADA": 1.0,
     },
     "PESO_AUTORIA": {"AUTOR_PRINCIPAL": 1.0, "RELATOR": 0.8, "COAUTOR": 0.2, "INSTITUCIONAL": 0.0},
     "PESO_STATUS": {
-        "APROVADA_E_SANCIONADA": 3.0, "APROVADA_E_PROMULGADA": 3.0, "APROVADO_PLENARIO": 2.0,
-        "APROVADO_COMISSAO": 1.5, "EM_TRAMITACAO": 1.0, "ARQUIVADA": 0.8, "REJEITADA": 0.5,
-        "VETADA_PARCIAL": 1.5, "VETADA_TOTAL": 0.8,
+        "APROVADA_E_SANCIONADA": 3.0,
+        "APROVADA_E_PROMULGADA": 3.0,
+        "APROVADO_PLENARIO": 2.0,
+        "APROVADO_COMISSAO": 1.5,
+        "EM_TRAMITACAO": 1.0,
+        "ARQUIVADA": 0.8,
+        "REJEITADA": 0.5,
+        "VETADA_PARCIAL": 1.5,
+        "VETADA_TOTAL": 0.8,
     },
 }
 
@@ -96,4 +112,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise NotImplementedError("A unificação dos pesos (IALP v2) não é reversível: os conjuntos v1 divergentes foram removidos.")
+    raise NotImplementedError(
+        "A unificação dos pesos (IALP v2) não é reversível: os conjuntos v1 divergentes foram removidos."
+    )

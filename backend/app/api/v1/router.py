@@ -1,4 +1,5 @@
 from app.api.v1.analytics import router as analytics_router
+from app.api.v1.attendance import router as attendance_router
 from app.api.v1.cidadania import router as cidadania_router
 from app.api.v1.economic import router as economic_router
 from app.api.v1.emendas import router as emendas_router
@@ -17,3 +18,4 @@ api_router.include_router(legislative_router, prefix="/legislative", tags=["Ativ
 api_router.include_router(cidadania_router, prefix="/cidadania", tags=["Cidadania Ativa & Consultas"])
 api_router.include_router(executivo_router, prefix="/executivo", tags=["Raio-X do Executivo"])
 api_router.include_router(emendas_router, prefix="/emendas", tags=["Emendas Orçamentárias"])
+api_router.include_router(attendance_router, prefix="/attendance", tags=["Presença & Faltas"])

@@ -6,6 +6,7 @@ from threading import Lock
 
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.errors import ErroDeDominio
 from app.core.migrations import upgrade_schema
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -190,11 +191,6 @@ def startup_db_migrations() -> None:
     try:
         run_db_migrations()
         upgrade_schema()
-        from app.core.database import SessionLocal
-        from app.services.legislative_scoring import sync_proposition_authors
-
-        with SessionLocal() as db:
-            sync_proposition_authors(db)
     except Exception as e:
         logger.error("DB auto-migration failed: %s", e)
 
@@ -214,6 +210,12 @@ app = FastAPI(
     redoc_url=None if settings.is_production else "/redoc",
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(ErroDeDominio)
+async def erro_de_dominio_handler(_request: Request, exc: ErroDeDominio) -> JSONResponse:
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
 
 # CORS: origens explícitas + regex restrito ao projeto na Vercel; API somente leitura
 app.add_middleware(

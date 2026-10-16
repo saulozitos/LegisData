@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime, timezone
 
 import pytest
-from app.api.v1.legislative import _build_house_placar, _parse_enum, _parse_house, _placar_from_counts
+from app.core.errors import ErroDeDominio
 from app.models import (
     CasaLegislativaEnum,
     ParliamentaryVote,
@@ -12,7 +12,9 @@ from app.models import (
     VotingSession,
     VotoOpcaoEnum,
 )
-from fastapi import HTTPException
+from app.services.explorer_service import resumo_da_casa
+from app.services.placar import placar_de_contagens, placar_para_tela
+from app.services.votos_proposicao_service import parse_casa, parse_enum
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
@@ -25,41 +27,34 @@ BASE = "/api/v1/legislative"
 # Placar: uma única definição para todas as telas
 # ---------------------------------------------------------------------------
 def test_placar_definition_counts_obstruction_as_abstention_and_excludes_absent():
-    placar = _placar_from_counts(
-        {
-            VotoOpcaoEnum.SIM: 10,
-            VotoOpcaoEnum.NAO: 5,
-            VotoOpcaoEnum.ABSTENCAO: 2,
-            VotoOpcaoEnum.OBSTRUCAO: 3,
-            VotoOpcaoEnum.AUSENTE: 7,
-            VotoOpcaoEnum.ARTIGO_17: 1,
-        }
-    )
-    assert placar["SIM"] == 10 and placar["NAO"] == 5
-    assert placar["ABSTENCAO"] == 5 and placar["OBSTRUCAO"] == 3 and placar["AUSENTE"] == 7
-    assert placar["TOTAL"] == placar["SIM"] + placar["NAO"] + placar["ABSTENCAO"] == 20
+    placar = placar_de_contagens({"SIM": 10, "NAO": 5, "ABSTENCAO": 2, "OBSTRUCAO": 3, "AUSENTE": 7, "ARTIGO_17": 1})
+    assert placar["sim"] == 10 and placar["nao"] == 5
+    assert placar["abstencao"] == 2 and placar["obstrucao"] == 3 and placar["ausente"] == 7
+    assert placar["total"] == 20  # ausentes e Art. 17 não votaram
+    tela = placar_para_tela(placar)
+    assert tela["ABSTENCAO"] == 5 and tela["TOTAL"] == tela["SIM"] + tela["NAO"] + tela["ABSTENCAO"] == 20
 
 
 def test_placar_of_empty_session_is_all_zero():
-    placar = _placar_from_counts({})
-    assert placar["TOTAL"] == 0 and placar["ABSTENCAO"] == 0
+    placar = placar_de_contagens({})
+    assert placar["total"] == 0 and placar["abstencao"] == 0
 
 
-def test_build_house_placar_without_sessions():
-    placar, session, details = _build_house_placar([], {})
+def test_resumo_da_casa_without_sessions():
+    placar, session, details = resumo_da_casa([], {})
     assert placar["TOTAL"] == 0 and session is None and details == []
 
 
 def test_parse_helpers():
-    assert _parse_house("camara") == CasaLegislativaEnum.CAMARA_DOS_DEPUTADOS
-    assert _parse_house("SENADO_FEDERAL") == CasaLegislativaEnum.SENADO_FEDERAL
-    assert _parse_house(None) is None and _parse_house("todos") is None
-    with pytest.raises(HTTPException) as exc:
-        _parse_house("assembleia")
+    assert parse_casa("camara") == CasaLegislativaEnum.CAMARA_DOS_DEPUTADOS
+    assert parse_casa("SENADO_FEDERAL") == CasaLegislativaEnum.SENADO_FEDERAL
+    assert parse_casa(None) is None and parse_casa("todos") is None
+    with pytest.raises(ErroDeDominio) as exc:
+        parse_casa("assembleia")
     assert exc.value.status_code == 422
-    assert _parse_enum(TipoProposicaoEnum, "pl", "Tipo") == TipoProposicaoEnum.PL
-    with pytest.raises(HTTPException):
-        _parse_enum(TipoProposicaoEnum, "XYZ", "Tipo")
+    assert parse_enum(TipoProposicaoEnum, "pl", "Tipo") == TipoProposicaoEnum.PL
+    with pytest.raises(ErroDeDominio):
+        parse_enum(TipoProposicaoEnum, "XYZ", "Tipo")
 
 
 # ---------------------------------------------------------------------------
@@ -208,9 +203,9 @@ def test_votes_politician_without_mandate_has_null_uf_not_a_default_state(client
         "votos"
     ]
     assert len(votes) == 1
-    # Sem mandato cadastrado a UF fica null (antes era "DF" inventado); o cargo é inferido da casa onde votou
+    # Sem mandato cadastrado, UF e cargo ficam null: nenhum valor é inventado
     assert votes[0]["uf"] is None
-    assert votes[0]["cargo"] == "DEPUTADO_FEDERAL"
+    assert votes[0]["cargo"] is None
 
 
 def test_votes_filters(client, seed):
@@ -467,14 +462,17 @@ def test_calculate_proposition_score_ialp_formula(db):
     )
     assert score_pec_sanc == 9.0
 
-    # 2. Coautor (0.2) em PEC (3.0) Tramitando (1.0): 3.0 * 0.2 * 1.0 = 0.6
+    # 2. Assinatura de apoio a PEC (coautor, 0.05) (3.0) Tramitando (1.0): 3.0 * 0.05 * 1.0 = 0.15
     score_pec_coaut = calculate_proposition_score(
         TipoProposicaoEnum.PEC,
         TipoAutoriaEnum.COAUTOR,
         StatusTramitacaoEnum.EM_TRAMITACAO,
         pesos,
     )
-    assert score_pec_coaut == 0.6
+    assert score_pec_coaut == 0.15
+
+    # Coautor em PL mantém o peso geral de coautoria (0.2)
+    assert pesos.peso_autoria(TipoAutoriaEnum.COAUTOR, TipoProposicaoEnum.PL) == 0.2
 
     # 3. Relator (0.8) em PLP (2.5) Aprovado em Plenário (2.0): 2.5 * 0.8 * 2.0 = 4.0
     score_plp_relator = calculate_proposition_score(

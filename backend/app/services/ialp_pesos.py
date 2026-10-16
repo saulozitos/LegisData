@@ -1,7 +1,7 @@
 """Pesos do IALP lidos de param.peso (metodologia IALP vigente): a única fonte de verdade da pontuação."""
 
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -22,6 +22,8 @@ class PesosIALP:
     tipo: Dict[str, float]
     autoria: Dict[str, float]
     status: Dict[str, float]
+    # exceções por combinação "TIPO:AUTORIA" (ex.: assinatura de apoio a PEC)
+    autoria_por_tipo: Optional[Dict[str, float]] = None
 
     @staticmethod
     def _buscar(tabela: Dict[str, float], dimensao: str, valor: Any) -> float:
@@ -33,7 +35,12 @@ class PesosIALP:
     def peso_tipo(self, valor: Any) -> float:
         return self._buscar(self.tipo, "PESO_TIPO", valor)
 
-    def peso_autoria(self, valor: Any) -> float:
+    def peso_autoria(self, valor: Any, tipo: Any = None) -> float:
+        """Peso do papel do autor; com `tipo`, vale a exceção da combinação (PESO_AUTORIA_POR_TIPO) quando existir."""
+        if tipo is not None and self.autoria_por_tipo:
+            excecao = self.autoria_por_tipo.get(f"{_chave(tipo)}:{_chave(valor)}")
+            if excecao is not None:
+                return excecao
         return self._buscar(self.autoria, "PESO_AUTORIA", valor)
 
     def peso_status(self, valor: Any) -> float:
@@ -52,8 +59,18 @@ def carregar_pesos_ialp(db: Session) -> PesosIALP:
         ),
         {"codigo": METODOLOGIA},
     )
-    tabelas: Dict[str, Dict[str, float]] = {"PESO_TIPO": {}, "PESO_AUTORIA": {}, "PESO_STATUS": {}}
+    tabelas: Dict[str, Dict[str, float]] = {
+        "PESO_TIPO": {},
+        "PESO_AUTORIA": {},
+        "PESO_STATUS": {},
+        "PESO_AUTORIA_POR_TIPO": {},
+    }
     for dimensao, chave, valor in linhas:
         if dimensao in tabelas:
             tabelas[dimensao][chave] = float(valor)
-    return PesosIALP(tipo=tabelas["PESO_TIPO"], autoria=tabelas["PESO_AUTORIA"], status=tabelas["PESO_STATUS"])
+    return PesosIALP(
+        tipo=tabelas["PESO_TIPO"],
+        autoria=tabelas["PESO_AUTORIA"],
+        status=tabelas["PESO_STATUS"],
+        autoria_por_tipo=tabelas["PESO_AUTORIA_POR_TIPO"],
+    )

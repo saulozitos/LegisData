@@ -29,7 +29,7 @@ Este documento é um plano, não uma implementação. Nenhuma tabela ou código 
 | 1 | Alembic, Postgres nos testes, schemas `ref/core/etl/param`, ponte legado→core, `/parties` | PR #36 |
 | 2 | Schema `leg` (proposição, autoria, votação unificada, voto, orientação, presença particionada), ponte legado→leg, pesos do IPPM em `param`, IPPM e linha do tempo da bancada lendo `core`/`leg` | Em validação (branch `refactor/db-entrega-2-legislativo`, empilhada sobre a Entrega 1) |
 | 2b | Cobertura: status real, todas as proposições desde 1995, autores sem pessoa, IPPM por período e cadeiras de todos os períodos (Câmara) | Em validação (branch `refactor/db-entrega-2b-cobertura`) |
-| 2c (pendente) | Endpoints de `legislative.py`, votos/proposições em `politicians.py`, Basômetro, deliberações e `legislative_scoring.py` ainda leem o schema legado; unificar os três conjuntos de pesos divergentes do IALP/IPPM | A fazer |
+| 2c | Endpoints de `legislative.py` (proposições, votos, deliberações, calendário, explorer, ranking de autores, rede de coautoria, produtividade), proposições e votos do dossiê em `politicians.py`, Basômetro e `legislative_scoring.py` passam a ler `leg`/`core`; identificadores públicos são os `uid`. A rede de coautoria ignora proposições com mais de 40 autores (assinaturas em massa) e `sync_proposition_authors` deixou de existir (a autoria vem da ponte e do ETL em lote) | Em validação |
 | 3 | Economia e Executivo, corte em 1995, remoção de `seed_executivo.py`, novo ETL | A fazer |
 
 ### Entrega 2b — cobertura de proposições e de cadeiras (2026-10-15)

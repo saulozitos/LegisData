@@ -19,11 +19,14 @@ branch_labels = None
 depends_on = None
 
 NOVOS_TIPOS = [
-    ("PLN", "Projeto de Lei do Congresso Nacional", 2.0), ("PLS", "Projeto de Lei do Senado Federal", 2.0),
+    ("PLN", "Projeto de Lei do Congresso Nacional", 2.0),
+    ("PLS", "Projeto de Lei do Senado Federal", 2.0),
     ("PLC", "Projeto de Lei da Câmara dos Deputados (SF)", 2.0),
     ("PDC", "Projeto de Decreto Legislativo de Concessão/Renovação de Rádio e TV", 1.0),
-    ("PDN", "Projeto de Decreto Legislativo (CN)", 1.0), ("PRN", "Projeto de Resolução do Congresso Nacional", 1.0),
-    ("RIC", "Requerimento de Informação", 0.1), ("RCP", "Requerimento de Instituição de CPI", 0.1),
+    ("PDN", "Projeto de Decreto Legislativo (CN)", 1.0),
+    ("PRN", "Projeto de Resolução do Congresso Nacional", 1.0),
+    ("RIC", "Requerimento de Informação", 0.1),
+    ("RCP", "Requerimento de Instituição de CPI", 0.1),
     ("RQC", "Requerimento de Convocação", 0.1),
 ]
 PESO_APOIO_PEC = 0.05  # assinatura de PEC como coautor (apoio de quórum): 3,0 x 0,05 = 0,15 ponto
@@ -33,38 +36,71 @@ TIPOS_PROMULGADOS = ("PEC", "PDL", "PDC", "PRC", "PRN", "PDN", "PDS")
 # descricao da situação na Câmara -> status de tramitação
 SITUACOES = {
     "ARQUIVADA": [
-        "Arquivada", "Aguardando Remessa ao Arquivo", "Enviada ao Arquivo", "Tramitação Finalizada",
-        "Retirado pelo(a) Autor(a)", "Devolvida ao(à) Autor(a)", "Transformado em nova proposição",
+        "Arquivada",
+        "Aguardando Remessa ao Arquivo",
+        "Enviada ao Arquivo",
+        "Tramitação Finalizada",
+        "Retirado pelo(a) Autor(a)",
+        "Devolvida ao(à) Autor(a)",
+        "Transformado em nova proposição",
     ],
     "REJEITADA": ["Perdeu a Eficácia", "Prejudicialidade", "Recusado"],
     "VETADA_TOTAL": ["Vetado totalmente"],
     # Hipótese registrada: o veto pendente de apreciação é tratado como parcial (a maioria dos vetos é parcial)
     "VETADA_PARCIAL": ["Aguardando Apreciação do Veto"],
     "APROVADO_PLENARIO": [
-        "Aguardando Envio ao Senado Federal", "Aguardando Apreciação pelo Senado Federal", "Enviada ao Senado Federal",
-        "Aguardando Sanção", "Aguardando Envio ao Executivo", "Aguardando Redação Final",
-        "Aguardando Envio à Redação Final", "Aguardando Autógrafos na Mesa",
+        "Aguardando Envio ao Senado Federal",
+        "Aguardando Apreciação pelo Senado Federal",
+        "Enviada ao Senado Federal",
+        "Aguardando Sanção",
+        "Aguardando Envio ao Executivo",
+        "Aguardando Redação Final",
+        "Aguardando Envio à Redação Final",
+        "Aguardando Autógrafos na Mesa",
     ],
     "SEM_INFORMACAO": ["", "<Não Definido>", "Outros"],
     "EM_TRAMITACAO": [
-        "Aguardando Providências Internas", "Tramitando em Conjunto", "Aguardando Designação de Relator(a)",
-        "Pronta para Pauta", "Aguardando Parecer", "Aguardando Resposta",
-        "Aguardando Despacho do Presidente da Câmara dos Deputados", "Aguardando Encaminhamento",
-        "Aguardando Despacho do Presidente da Câmara dos Deputados (Chancela)", "Aguardando Autorização do Despacho",
+        "Aguardando Providências Internas",
+        "Tramitando em Conjunto",
+        "Aguardando Designação de Relator(a)",
+        "Pronta para Pauta",
+        "Aguardando Parecer",
+        "Aguardando Resposta",
+        "Aguardando Despacho do Presidente da Câmara dos Deputados",
+        "Aguardando Encaminhamento",
+        "Aguardando Despacho do Presidente da Câmara dos Deputados (Chancela)",
+        "Aguardando Autorização do Despacho",
         "Enviada ao Congresso Nacional",
         "Aguardando Designação - Aguardando Devolução de Relator(a) que deixou de ser Membro",
         "Aguardando Despacho do Presidente da Câmara dos Deputados (Autorização)",
-        "Aguardando Despacho do Presidente da Câmara dos Deputados (Análise)", "Aguardando Deliberação de Recurso",
-        "Aguardando Despacho - Requerimentos", "Aguardando Deliberação", "Aguardando Criação de Comissão Temporária",
-        "Aguardando Definição Encaminhamento", "Aguardando Recurso",
-        "Aguardando análise do Presidente da Câmara - (Decisão)", "Aguardando Despacho do Presidente",
-        "Aguardando Apoiamento - Coleta de Assinaturas", "Aguardando Apoiamento - Conferência de Assinaturas",
-        "Aguardando Análise de Parecer", "Ag. Análise de Inconstitucionalidade",
-        "Aguardando Constituição de Comissão Temporária", "Aguardando Apensação", "Aguardando Conhecimento",
-        "Aguardando Análise", "Comissão em funcionamento", "Aguardando Vistas",
-        "Aguardando Encaminhamento à CCP para Publicação", "Tramitação Suspensa", "Enviada ao TCU",
-        "Aguardando Elaboração do Parecer pelo(a) Relator(a)", "Desmembrada", "Encaminhada à Publicação",
-        "Aguardando Leitura e Publicação", "Aguardando Recebimento", "Aguardando Solicitação de Relatoria na CMO",
+        "Aguardando Despacho do Presidente da Câmara dos Deputados (Análise)",
+        "Aguardando Deliberação de Recurso",
+        "Aguardando Despacho - Requerimentos",
+        "Aguardando Deliberação",
+        "Aguardando Criação de Comissão Temporária",
+        "Aguardando Definição Encaminhamento",
+        "Aguardando Recurso",
+        "Aguardando análise do Presidente da Câmara - (Decisão)",
+        "Aguardando Despacho do Presidente",
+        "Aguardando Apoiamento - Coleta de Assinaturas",
+        "Aguardando Apoiamento - Conferência de Assinaturas",
+        "Aguardando Análise de Parecer",
+        "Ag. Análise de Inconstitucionalidade",
+        "Aguardando Constituição de Comissão Temporária",
+        "Aguardando Apensação",
+        "Aguardando Conhecimento",
+        "Aguardando Análise",
+        "Comissão em funcionamento",
+        "Aguardando Vistas",
+        "Aguardando Encaminhamento à CCP para Publicação",
+        "Tramitação Suspensa",
+        "Enviada ao TCU",
+        "Aguardando Elaboração do Parecer pelo(a) Relator(a)",
+        "Desmembrada",
+        "Encaminhada à Publicação",
+        "Aguardando Leitura e Publicação",
+        "Aguardando Recebimento",
+        "Aguardando Solicitação de Relatoria na CMO",
         "Aguardando Notificação do(a) Representado(a)",
     ],
 }
@@ -73,14 +109,27 @@ TIPOS_AUTOR = {
     "PESSOA_DEPUTADO": ["Deputado(a)"],
     "PESSOA_SENADOR": ["Senador(a)"],
     "COMISSAO": [
-        "COMISSÃO PERMANENTE", "COMISSÃO ESPECIAL", "COMISSÃO PARLAMENTAR DE INQUÉRITO", "COMISSÃO MISTA PERMANENTE",
-        "COMISSÃO MEDIDA PROVISÓRIA", "COMISSÃO EXTERNA", "SUBCOMISSÃO", "GRUPO DE TRABALHO", "MISTA ESPECIAL",
-        "MISTA CPI", "PERMANENTE DO SENADO FEDERAL", "COMISSÃO DE SINDICÂNCIA",
+        "COMISSÃO PERMANENTE",
+        "COMISSÃO ESPECIAL",
+        "COMISSÃO PARLAMENTAR DE INQUÉRITO",
+        "COMISSÃO MISTA PERMANENTE",
+        "COMISSÃO MEDIDA PROVISÓRIA",
+        "COMISSÃO EXTERNA",
+        "SUBCOMISSÃO",
+        "GRUPO DE TRABALHO",
+        "MISTA ESPECIAL",
+        "MISTA CPI",
+        "PERMANENTE DO SENADO FEDERAL",
+        "COMISSÃO DE SINDICÂNCIA",
     ],
     "PODER_EXECUTIVO": ["Órgão do Poder Executivo"],
     "PODER_JUDICIARIO": ["Órgão do Poder Judiciário"],
-    "ORGAO_LEGISLATIVO": ["Órgão do Poder Legislativo", "Plenário Virtual CN", "Órgão da Câmara dos Deputados",
-                          "Órgão do Senado Federal"],
+    "ORGAO_LEGISLATIVO": [
+        "Órgão do Poder Legislativo",
+        "Plenário Virtual CN",
+        "Órgão da Câmara dos Deputados",
+        "Órgão do Senado Federal",
+    ],
     "MESA_DIRETORA": ["COMISSÃO DIRETORA"],
     "LIDERANCA": ["Liderança"],
     "BANCADA": ["Bancada"],
@@ -93,16 +142,51 @@ TIPOS_AUTOR = {
 }
 
 CSV_PROPOSICOES = [
-    "id", "uri", "siglaTipo", "numero", "ano", "codTipo", "descricaoTipo", "ementa", "ementaDetalhada", "keywords",
-    "dataApresentacao", "uriOrgaoNumerador", "uriPropAnterior", "uriPropPrincipal", "uriPropPosterior",
-    "urlInteiroTeor", "urnFinal", "ultimoStatus_dataHora", "ultimoStatus_sequencia", "ultimoStatus_uriRelator",
-    "ultimoStatus_idOrgao", "ultimoStatus_siglaOrgao", "ultimoStatus_uriOrgao", "ultimoStatus_regime",
-    "ultimoStatus_descricaoTramitacao", "ultimoStatus_idTipoTramitacao", "ultimoStatus_descricaoSituacao",
-    "ultimoStatus_idSituacao", "ultimoStatus_despacho", "ultimoStatus_apreciacao", "ultimoStatus_url",
+    "id",
+    "uri",
+    "siglaTipo",
+    "numero",
+    "ano",
+    "codTipo",
+    "descricaoTipo",
+    "ementa",
+    "ementaDetalhada",
+    "keywords",
+    "dataApresentacao",
+    "uriOrgaoNumerador",
+    "uriPropAnterior",
+    "uriPropPrincipal",
+    "uriPropPosterior",
+    "urlInteiroTeor",
+    "urnFinal",
+    "ultimoStatus_dataHora",
+    "ultimoStatus_sequencia",
+    "ultimoStatus_uriRelator",
+    "ultimoStatus_idOrgao",
+    "ultimoStatus_siglaOrgao",
+    "ultimoStatus_uriOrgao",
+    "ultimoStatus_regime",
+    "ultimoStatus_descricaoTramitacao",
+    "ultimoStatus_idTipoTramitacao",
+    "ultimoStatus_descricaoSituacao",
+    "ultimoStatus_idSituacao",
+    "ultimoStatus_despacho",
+    "ultimoStatus_apreciacao",
+    "ultimoStatus_url",
 ]
 CSV_AUTORES = [
-    "idProposicao", "uriProposicao", "idDeputadoAutor", "uriAutor", "codTipoAutor", "tipoAutor", "nomeAutor",
-    "siglaPartidoAutor", "uriPartidoAutor", "siglaUFAutor", "ordemAssinatura", "proponente",
+    "idProposicao",
+    "uriProposicao",
+    "idDeputadoAutor",
+    "uriAutor",
+    "codTipoAutor",
+    "tipoAutor",
+    "nomeAutor",
+    "siglaPartidoAutor",
+    "uriPartidoAutor",
+    "siglaUFAutor",
+    "ordemAssinatura",
+    "proponente",
 ]
 
 
@@ -131,7 +215,9 @@ def upgrade() -> None:
     op.execute("CREATE UNIQUE INDEX ux_situacao_camara ON ref.situacao_camara (descricao, coalesce(tipo_codigo, ''))")
     for status, descricoes in SITUACOES.items():
         for descricao in descricoes:
-            obs = "Hipótese: veto pendente tratado como parcial" if descricao == "Aguardando Apreciação do Veto" else None
+            obs = (
+                "Hipótese: veto pendente tratado como parcial" if descricao == "Aguardando Apreciação do Veto" else None
+            )
             op.execute(
                 f"INSERT INTO ref.situacao_camara (descricao, status_codigo, observacao) "
                 f"VALUES ({_q(descricao)}, {_q(status)}, {_q(obs)})"
@@ -174,7 +260,9 @@ def upgrade() -> None:
         """
     )
     op.execute("ALTER TABLE core.partido ADD COLUMN catalogo boolean NOT NULL DEFAULT true")
-    op.execute("COMMENT ON COLUMN core.partido.catalogo IS 'false: sigla criada a partir de uma fonte, sem cadastro oficial'")
+    op.execute(
+        "COMMENT ON COLUMN core.partido.catalogo IS 'false: sigla criada a partir de uma fonte, sem cadastro oficial'"
+    )
 
     # ── leg: proposição e autoria ────────────────────────────────────────────────────────────────
     op.execute("ALTER TABLE leg.proposicao ALTER COLUMN ementa DROP NOT NULL")

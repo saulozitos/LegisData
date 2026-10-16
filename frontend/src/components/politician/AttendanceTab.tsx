@@ -41,8 +41,16 @@ export default function AttendanceTab({ dossier }: AttendanceTabProps) {
                 </div>
               </div>
 
+              {assiduidade?.observacao && (
+                <div className="p-3 rounded-xl bg-sky-500/5 border border-sky-500/20 text-[11px] text-sky-200">
+                  {assiduidade.observacao}
+                </div>
+              )}
+
               {/* Indicadores de Presença */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div
+                className={`grid grid-cols-1 gap-4 ${(assiduidade?.faltas_inferidas ?? 0) > 0 ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}
+              >
                 <div className="bg-slate-950/70 border border-emerald-500/20 rounded-xl p-4 space-y-1">
                   <span className="text-xs text-slate-400">Presenças Confirmadas</span>
                   <div className="text-2xl font-black text-emerald-400 font-mono">
@@ -56,10 +64,12 @@ export default function AttendanceTab({ dossier }: AttendanceTabProps) {
                 <div className="bg-slate-950/70 border border-amber-500/20 rounded-xl p-4 space-y-1">
                   <span className="text-xs text-slate-400">Faltas Justificadas</span>
                   <div className="text-2xl font-black text-amber-400 font-mono">
-                    {hasAttendance ? assiduidade?.faltas_justificadas : "—"}
+                    {hasAttendance ? (assiduidade?.faltas_justificadas ?? "n/d") : "—"}
                   </div>
                   <span className="text-[11px] text-slate-400">
-                    Ausências com justificativa formal
+                    {hasAttendance && assiduidade?.faltas_justificadas == null
+                      ? "Fonte não informa justificativa neste período"
+                      : "Ausências com justificativa formal"}
                   </span>
                 </div>
 
@@ -70,10 +80,18 @@ export default function AttendanceTab({ dossier }: AttendanceTabProps) {
                   </div>
                   <span className="text-[11px] text-slate-400">
                     {hasAttendance && assiduidade?.faltas_nao_justificadas == null
-                      ? "Não informado pela fonte"
+                      ? "Fonte não informa justificativa neste período"
                       : "Ausências sem protocolo prévio"}
                   </span>
                 </div>
+
+                {(assiduidade?.faltas_inferidas ?? 0) > 0 && (
+                  <div className="bg-slate-950/70 border border-sky-500/20 rounded-xl p-4 space-y-1">
+                    <span className="text-xs text-slate-400">Faltas Inferidas</span>
+                    <div className="text-2xl font-black text-sky-400 font-mono">{assiduidade?.faltas_inferidas}</div>
+                    <span className="text-[11px] text-slate-400">Deduzidas: em exercício e sem presença registrada</span>
+                  </div>
+                )}
               </div>
 
               {/* Tabela de Justificativas / Ocorrências de Ausência */}

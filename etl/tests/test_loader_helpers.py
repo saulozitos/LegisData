@@ -13,6 +13,7 @@ from etl.pipelines.loader_helpers import (
     classify_proposition_impact,
     legislatura_datas,
     limpar_contatos_inventados,
+    normalizar_sigla_presenca,
     resolve_party_id,
 )
 
@@ -130,3 +131,20 @@ def test_materias_estruturantes_exigem_tipo_numero_e_ano():
     # Mesmo número em outro ano NÃO é o arcabouço fiscal
     eixo_outro, _ = classify_proposition_impact("PLP", 93, 2005, "x", "assunto neutro qualquer")
     assert eixo_outro is None
+
+
+@pytest.mark.parametrize(
+    "bruto, esperado",
+    [
+        ("s/partido", "S.PART."),
+        ("S/Partido", "S.PART."),
+        ("Sem registro", None),
+        ("sem registro", None),
+        ("", None),
+        (None, None),
+        ("  PL ", "PL"),
+        ("PODE", "PODE"),
+    ],
+)
+def test_normalizar_sigla_presenca(bruto, esperado):
+    assert normalizar_sigla_presenca(bruto) == esperado

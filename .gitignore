@@ -61,6 +61,7 @@ etl/data/raw/atlas_violencia/
 etl/data/raw/prodes/
 etl/data/raw/yahoo/
 etl/data/raw/presenca/
+etl/data/raw/camara_presenca_eventos/
 etl/data/raw/datajud/
 etl/data/raw/remuneracao/
 etl/data/raw/tse/

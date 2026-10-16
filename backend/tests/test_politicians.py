@@ -2,12 +2,12 @@ from datetime import date
 
 import pytest
 from app.api.v1.politicians import (
-    _escape_like,
     _get_processed_ceap,
     _get_processed_emendas,
     _mask_document,
     _normalize_name,
 )
+from app.core.query_utils import escape_like as _escape_like
 from app.models import (
     AttendanceRecord,
     CasaLegislativaEnum,

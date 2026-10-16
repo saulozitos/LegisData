@@ -387,11 +387,7 @@ export default function PoliticianHeaderCard({ dossier, onBack, onChangeTab, onS
                       Total de Faltas
                     </span>
                     <span className="text-base sm:text-lg font-black font-mono text-slate-100 block leading-tight">
-                      {hasAttendance
-                        ? assiduidade?.faltas_nao_justificadas == null
-                          ? "n/d"
-                          : (assiduidade?.faltas_justificadas ?? 0) + assiduidade.faltas_nao_justificadas
-                        : "—"}
+                      {hasAttendance ? (assiduidade?.total_faltas ?? "n/d") : "—"}
                     </span>
                     <span className="text-[10px] text-slate-400 mt-1 block">
                       Em {assiduidade?.total_sessoes ?? "—"} sessões
@@ -404,7 +400,7 @@ export default function PoliticianHeaderCard({ dossier, onBack, onChangeTab, onS
                       Justificadas
                     </span>
                     <span className="text-base sm:text-lg font-black font-mono text-amber-400 block leading-tight">
-                      {hasAttendance ? assiduidade?.faltas_justificadas : "—"}
+                      {hasAttendance ? (assiduidade?.faltas_justificadas ?? "n/d") : "—"}
                     </span>
                     <span className="text-[10px] text-amber-500/80 mt-1 block">
                       Motivo formal

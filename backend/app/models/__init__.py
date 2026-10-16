@@ -4,7 +4,8 @@ from .analytics import (
     MandateEconomicPerformance,
     PolicyEconomicImpact,
 )
-from .base import Base, TimeStampedModel
+from .base import Base, MigratedBase, TimeStampedModel
+from .core import Entidade, Mandato, Midia, Partido, Pessoa
 from .economic import (
     AnnualMacroeconomicSummary,
     AnnualSocialIndicator,
@@ -17,6 +18,7 @@ from .economic import (
     UnidadeMedidaEnum,
 )
 from .executivo import MandateIndicator, PresidentialMandate
+from .leg import Autoria, Casa, Orientacao, Proposicao, Votacao, Voto
 from .legislative import (
     AttendanceRecord,
     CasaLegislativaEnum,
@@ -58,6 +60,7 @@ from .politician import (
 
 __all__ = [
     "Base",
+    "MigratedBase",
     "TimeStampedModel",
     "Politician",
     "PoliticalParty",

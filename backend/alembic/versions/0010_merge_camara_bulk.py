@@ -18,8 +18,11 @@ branch_labels = None
 depends_on = None
 
 ALIASES = {
-    "REPUBLIC": "REPUBLICANOS", "SOLIDARI": "SOLIDARIEDADE", "SOLIDARIED": "SOLIDARIEDADE",
-    "S.PART": "S.PART.", "S. PART.": "S.PART.",
+    "REPUBLIC": "REPUBLICANOS",
+    "SOLIDARI": "SOLIDARIEDADE",
+    "SOLIDARIED": "SOLIDARIEDADE",
+    "S.PART": "S.PART.",
+    "S. PART.": "S.PART.",
 }
 
 PONTE_LEG = r"""

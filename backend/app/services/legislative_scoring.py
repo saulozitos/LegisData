@@ -39,38 +39,23 @@ Métricas Derivadas:
 
 import logging
 import uuid
-from typing import Any, Dict, List, Optional, Set, Tuple, cast
+from typing import Any, Dict, Optional, cast
 
 import networkx as nx
-from app.models.legislative import (
-    Proposition,
-    PropositionAuthor,
-    StatusTramitacaoEnum,
-    TipoAutoriaEnum,
-    TipoProposicaoEnum,
-)
-from app.models.politician import Mandate, PartyAffiliation, PoliticalParty, Politician
+from app.models.core import Pessoa
+from app.models.leg import Autoria, Proposicao
+from app.models.legislative import StatusTramitacaoEnum, TipoAutoriaEnum, TipoProposicaoEnum
 from app.services.ialp_pesos import PesosIALP, carregar_pesos_ialp
 from networkx.algorithms.community import louvain_communities
-from sqlalchemy import func, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger("legislative_scoring")
 
-INSTITUTIONAL_KEYWORDS = frozenset(
-    [
-        "comissao",
-        "camara dos deputados",
-        "senado federal",
-        "mesa diretora",
-        "poder executivo",
-        "tribunal",
-        "conselho",
-        "bancada",
-        "procuradoria",
-        "defensoria",
-    ]
-)
+
+# Assinatura coletiva em massa (centenas de signatários) liga todos a todos e esconde as alianças reais: a rede só
+# considera proposições com até este número de autores parlamentares.
+MAX_AUTORES_POR_PROPOSICAO = 40
 
 
 def calculate_proposition_score(
@@ -86,7 +71,7 @@ def calculate_proposition_score(
     Todos os pesos vêm de `pesos` (param.peso, metodologia IALP); uma votação aprovada eleva a tramitação ao
     patamar de aprovação em plenário ou em comissão quando o status registrado ainda é anterior a ele.
     """
-    peso_a = pesos.peso_autoria(authorship_type)
+    peso_a = pesos.peso_autoria(authorship_type, prop_type)
     if peso_a <= 0.0:
         return 0.0
 
@@ -103,18 +88,30 @@ def calculate_proposition_score(
 def get_politician_ialp_metrics(politician_id: uuid.UUID, db: Session) -> Dict[str, Any]:
     """
     Calcula o perfil consolidado de produtividade legislativa (IALP) de um parlamentar.
-    Retorna Score Consolidado, Taxa de Eficácia, Desvio de Foco e Proposições Ponderadas.
+    `politician_id` é o id público (uid) da pessoa. Retorna Score Consolidado, Taxa de Eficácia, Desvio de Foco e
+    Proposições Ponderadas; todos os pesos vêm de param.peso.
     """
     pesos = carregar_pesos_ialp(db)
+    pessoa_id = db.execute(text("SELECT id FROM core.pessoa WHERE uid = :uid"), {"uid": politician_id}).scalar()
+    if pessoa_id is None:
+        return get_politician_ialp_metrics_vazio()
+
     records = (
-        db.query(PropositionAuthor, Proposition)
-        .join(Proposition, PropositionAuthor.proposition_id == Proposition.id)
-        .filter(
-            PropositionAuthor.politician_id == politician_id,
-            PropositionAuthor.authorship_type != TipoAutoriaEnum.INSTITUCIONAL,
-        )
+        db.query(Autoria, Proposicao)
+        .join(Proposicao, Autoria.proposicao_id == Proposicao.id)
+        .filter(Autoria.pessoa_id == pessoa_id, Autoria.tipo_codigo != "INSTITUCIONAL")
         .all()
     )
+    aprovada_em_votacao = {
+        r[0]
+        for r in db.execute(
+            text(
+                "SELECT DISTINCT proposicao_id FROM leg.votacao "
+                "WHERE aprovada AND tipo_deliberacao IN ('NOMINAL', 'SECRETA') AND proposicao_id = ANY(:ids)"
+            ),
+            {"ids": [p.id for _, p in records]},
+        )
+    }
 
     total_props = len(records)
     score_consolidado = 0.0
@@ -129,14 +126,12 @@ def get_politician_ialp_metrics(politician_id: uuid.UUID, db: Session) -> Dict[s
     proposicoes_detalhadas = []
 
     for pa, prop in records:
-        tipo_str = (
-            prop.proposition_type.value if hasattr(prop.proposition_type, "value") else str(prop.proposition_type)
-        )
-        aut_str = pa.authorship_type.value if hasattr(pa.authorship_type, "value") else str(pa.authorship_type)
-        status_str = prop.status.value if hasattr(prop.status, "value") else str(prop.status)
+        tipo_str = prop.tipo_codigo
+        aut_str = pa.tipo_codigo
+        status_str = prop.status_codigo
 
         # Checar se houve votação aprovada
-        has_approved_vote = any(v.is_approved for v in (prop.voting_sessions or []))
+        has_approved_vote = prop.id in aprovada_em_votacao
 
         score_p = calculate_proposition_score(
             prop_type=tipo_str,
@@ -167,28 +162,28 @@ def get_politician_ialp_metrics(politician_id: uuid.UUID, db: Session) -> Dict[s
             coautor_count += 1
 
         # Classificação Estrutural vs Burocrática (Desvio de Foco)
-        if tipo_str in ("PEC", "PLP", "PL", "MPV") or prop.is_structural_reform:
+        if tipo_str in ("PEC", "PLP", "PL", "MPV") or prop.reforma_estrutural:
             estruturais_count += 1
-        elif tipo_str in ("REQ", "INC", "REQUERIMENTO", "INDICACAO"):
+        elif tipo_str in ("REQ", "INC", "RIC", "RCP", "RQC"):
             burocraticas_count += 1
 
         proposicoes_detalhadas.append(
             {
-                "id": str(prop.id),
+                "id": str(prop.uid),
                 "tipo": tipo_str,
-                "numero": prop.number,
-                "ano": prop.year,
-                "ementa": prop.summary,
+                "numero": prop.numero,
+                "ano": prop.ano,
+                "ementa": prop.ementa,
                 "status": status_str,
                 "tipo_autoria": aut_str,
                 "peso_tipo": pesos.peso_tipo(tipo_str),
-                "peso_autoria": pesos.peso_autoria(aut_str),
+                "peso_autoria": pesos.peso_autoria(aut_str, tipo_str),
                 "multiplicador_tramitacao": max(
                     pesos.peso_status(status_str),
                     pesos.peso_status("APROVADO_COMISSAO") if has_approved_vote else 0.0,
                 ),
                 "score_ialp": score_p,
-                "is_reforma_estrutural": prop.is_structural_reform,
+                "is_reforma_estrutural": prop.reforma_estrutural,
             }
         )
 
@@ -206,36 +201,32 @@ def get_politician_ialp_metrics(politician_id: uuid.UUID, db: Session) -> Dict[s
     )
 
     # Top coautores do parlamentar
-    coautores_query = text(
-        """
-        SELECT
-            b."politicoId" AS coautor_id,
-            COUNT(DISTINCT a."proposicaoId") AS projetos_compartilhados
-        FROM proposicoes_autores a
-        JOIN proposicoes_autores b ON a."proposicaoId" = b."proposicaoId"
-        WHERE a."politicoId" = :pid
-          AND b."politicoId" != :pid
-          AND b."politicoId" IS NOT NULL
-          AND b."tipoAutoria" != 'INSTITUCIONAL'
-        GROUP BY b."politicoId"
-        ORDER BY projetos_compartilhados DESC
-        LIMIT 10;
-    """
-    )
-    pid_param = str(politician_id)
-    top_coaut_rows = db.execute(coautores_query, {"pid": pid_param}).fetchall()
+    top_coaut_rows = db.execute(
+        text(
+            """
+            SELECT b.pessoa_id, count(DISTINCT a.proposicao_id) AS projetos_compartilhados
+            FROM leg.autoria a
+            JOIN leg.autoria b ON b.proposicao_id = a.proposicao_id AND b.pessoa_id <> a.pessoa_id
+            WHERE a.pessoa_id = :pid AND b.pessoa_id IS NOT NULL AND b.tipo_codigo <> 'INSTITUCIONAL'
+              AND a.tipo_codigo <> 'INSTITUCIONAL'
+            GROUP BY b.pessoa_id
+            ORDER BY projetos_compartilhados DESC, b.pessoa_id
+            LIMIT 10
+            """
+        ),
+        {"pid": pessoa_id},
+    ).fetchall()
     top_coautores = []
     if top_coaut_rows:
-        coaut_ids = [uuid.UUID(str(r[0])) if isinstance(r[0], str) else r[0] for r in top_coaut_rows if r[0]]
-        pols_map = {p.id: p for p in db.query(Politician).filter(Politician.id.in_(coaut_ids)).all()}
+        pessoas = {p.id: p for p in db.query(Pessoa).filter(Pessoa.id.in_([r[0] for r in top_coaut_rows])).all()}
         for cid, count in top_coaut_rows:
-            p = pols_map.get(cid)
+            p = pessoas.get(cid)
             if p:
                 top_coautores.append(
                     {
-                        "id": str(p.id),
-                        "nome_eleitoral": p.electoral_name,
-                        "foto_url": p.photo_url,
+                        "id": str(p.uid),
+                        "nome_eleitoral": p.nome_exibicao,
+                        "foto_url": p.foto_url,
                         "projetos_compartilhados": int(cast(Any, count)),
                     }
                 )
@@ -272,12 +263,32 @@ def get_politician_ialp_metrics(politician_id: uuid.UUID, db: Session) -> Dict[s
     }
 
 
+def get_politician_ialp_metrics_vazio() -> Dict[str, Any]:
+    return {
+        "score_ialp_total": 0.0,
+        "total_proposicoes": 0,
+        "taxa_eficacia_pct": 0.0,
+        "avancados_autor_principal": 0,
+        "desvio_foco": {
+            "estruturais": 0,
+            "burocraticas": 0,
+            "proporcao_estrutural_pct": 0.0,
+            "diagnostico": "Predominância de Matérias Burocráticas",
+        },
+        "distribuicao_autoria": {"autor_principal": 0, "relator": 0, "coautor": 0},
+        "top_coautores": [],
+        "proposicoes": [],
+    }
+
+
 def build_coauthorship_network(
     db: Session,
     tipo_proposta: Optional[str] = None,
     min_weight: int = 1,
     casa: Optional[str] = None,
     limit_nodes: int = 100,
+    ano_inicio: Optional[int] = None,
+    ano_fim: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Constrói o Grafo Não-Direcionado Ponderado de Coautoria:
@@ -285,6 +296,8 @@ def build_coauthorship_network(
     - Arestas: Coautoria legislativa ponderada (número de proposições conjuntas)
     - Algoritmo de Louvain: Detecção de bancadas informais / comunidades
     - Betweenness Centrality: Identificação de pontes políticas
+    Proposições com mais de MAX_AUTORES_POR_PROPOSICAO autores ficam fora (assinaturas em massa).
+    Sem `ano_inicio`/`ano_fim` considera toda a base; o intervalo limita as proposições pelo ano de apresentação.
     """
     clean_tipo = (tipo_proposta or "ALL").upper().strip()
     clean_casa = (casa or "ALL").upper().strip()
@@ -293,36 +306,44 @@ def build_coauthorship_network(
         "min_weight": max(1, min_weight),
         "tipo_filter": clean_tipo if clean_tipo in ("PEC", "PL_PLP", "REQ_INC") else None,
         "casa_filter": clean_casa if clean_casa in ("CAMARA", "SENADO") else None,
+        "ano_inicio": ano_inicio,
+        "ano_fim": ano_fim,
     }
 
+    params["max_autores"] = MAX_AUTORES_POR_PROPOSICAO
     query = text(
         """
-        SELECT
-            a."politicoId" AS pol_x,
-            b."politicoId" AS pol_y,
-            COUNT(DISTINCT a."proposicaoId") AS peso
-        FROM proposicoes_autores a
-        JOIN proposicoes_autores b ON a."proposicaoId" = b."proposicaoId"
-        JOIN proposicoes p ON a."proposicaoId" = p.id
-        WHERE a."politicoId" IS NOT NULL
-          AND b."politicoId" IS NOT NULL
-          AND a."politicoId" < b."politicoId"
-          AND a."tipoAutoria" != 'INSTITUCIONAL'
-          AND b."tipoAutoria" != 'INSTITUCIONAL'
+        WITH conjuntas AS (
+            SELECT proposicao_id FROM leg.autoria
+            WHERE pessoa_id IS NOT NULL AND tipo_codigo <> 'INSTITUCIONAL'
+            GROUP BY proposicao_id HAVING count(DISTINCT pessoa_id) BETWEEN 2 AND :max_autores
+        )
+        SELECT a.pessoa_id AS pol_x, b.pessoa_id AS pol_y, COUNT(DISTINCT a.proposicao_id) AS peso
+        FROM conjuntas cj
+        JOIN leg.autoria a ON a.proposicao_id = cj.proposicao_id
+        JOIN leg.autoria b ON a.proposicao_id = b.proposicao_id
+        JOIN leg.proposicao p ON a.proposicao_id = p.id
+        WHERE a.pessoa_id IS NOT NULL
+          AND b.pessoa_id IS NOT NULL
+          AND a.pessoa_id < b.pessoa_id
+          AND a.tipo_codigo <> 'INSTITUCIONAL'
+          AND b.tipo_codigo <> 'INSTITUCIONAL'
+          AND (CAST(:ano_inicio AS int) IS NULL OR p.ano >= :ano_inicio)
+          AND (CAST(:ano_fim AS int) IS NULL OR p.ano <= :ano_fim)
           AND (
-              :tipo_filter IS NULL
-              OR (:tipo_filter = 'PEC' AND p.tipo = 'PEC')
-              OR (:tipo_filter = 'PL_PLP' AND p.tipo IN ('PL', 'PLP', 'MPV'))
-              OR (:tipo_filter = 'REQ_INC' AND p.tipo IN ('REQ', 'INC'))
+              CAST(:tipo_filter AS text) IS NULL
+              OR (:tipo_filter = 'PEC' AND p.tipo_codigo = 'PEC')
+              OR (:tipo_filter = 'PL_PLP' AND p.tipo_codigo IN ('PL', 'PLP', 'MPV'))
+              OR (:tipo_filter = 'REQ_INC' AND p.tipo_codigo IN ('REQ', 'INC'))
           )
           AND (
-              :casa_filter IS NULL
-              OR (:casa_filter = 'CAMARA' AND p."idExternoCamara" IS NOT NULL)
-              OR (:casa_filter = 'SENADO' AND p."idExternoSenado" IS NOT NULL)
+              CAST(:casa_filter AS text) IS NULL
+              OR (:casa_filter = 'CAMARA' AND p.id_camara IS NOT NULL)
+              OR (:casa_filter = 'SENADO' AND p.id_senado IS NOT NULL)
           )
-        GROUP BY a."politicoId", b."politicoId"
-        HAVING COUNT(DISTINCT a."proposicaoId") >= :min_weight
-        ORDER BY peso DESC;
+        GROUP BY a.pessoa_id, b.pessoa_id
+        HAVING COUNT(DISTINCT a.proposicao_id) >= :min_weight
+        ORDER BY peso DESC
         """
     )
 
@@ -343,10 +364,10 @@ def build_coauthorship_network(
             },
         }
 
-    # Monta Grafo NetworkX
+    # Monta Grafo NetworkX (nós = id interno da pessoa)
     G = nx.Graph()
     for rx, ry, rw in edge_rows:
-        G.add_edge(str(rx), str(ry), weight=int(cast(Any, rw)))
+        G.add_edge(int(cast(Any, rx)), int(cast(Any, ry)), weight=int(cast(Any, rw)))
 
     # Limita aos nós de maior grau caso exceda limit_nodes
     if G.number_of_nodes() > limit_nodes:
@@ -356,7 +377,7 @@ def build_coauthorship_network(
 
     # Algoritmo de Louvain para Detecção de Comunidades
     louvain_comm_list = louvain_communities(G, weight="weight", seed=42)
-    node_community_map: Dict[str, int] = {}
+    node_community_map: Dict[int, int] = {}
     for c_idx, comm in enumerate(louvain_comm_list, start=1):
         for nid in comm:
             node_community_map[nid] = c_idx
@@ -365,45 +386,47 @@ def build_coauthorship_network(
     k_samples = min(50, G.number_of_nodes()) if G.number_of_nodes() > 50 else None
     betweenness_map = nx.betweenness_centrality(G, weight="weight", k=k_samples, seed=42)
 
-    # Obter metadados dos parlamentares da rede
-    pol_uuids = [uuid.UUID(nid) for nid in G.nodes()]
-    politicians = db.query(Politician).filter(Politician.id.in_(pol_uuids)).all()
-    pol_obj_map = {str(p.id): p for p in politicians}
-
-    # Buscar filiação partidária e mandato atual dos nós
-    mandates = (
-        db.query(Mandate, PoliticalParty)
-        .outerjoin(PoliticalParty, Mandate.party_id == PoliticalParty.id)
-        .filter(Mandate.politician_id.in_(pol_uuids))
-        .all()
-    )
-    mandate_map: Dict[str, Tuple[Mandate, Optional[PoliticalParty]]] = {}
-    for m, party in mandates:
-        mandate_map[str(m.politician_id)] = (m, party)
-
-    affiliations = (
-        db.query(PartyAffiliation, PoliticalParty)
-        .join(PoliticalParty, PartyAffiliation.party_id == PoliticalParty.id)
-        .filter(PartyAffiliation.politician_id.in_(pol_uuids), PartyAffiliation.is_current.is_(True))
-        .all()
-    )
-    party_aff_map: Dict[str, str] = {str(aff.politician_id): p.acronym for aff, p in affiliations}
+    # Metadados dos parlamentares da rede: nome, foto, partido vigente (linhagem), UF e casa do mandato mais recente
+    meta = {
+        r["id"]: r
+        for r in db.execute(
+            text(
+                """
+                SELECT pe.id, pe.uid, pe.nome_exibicao, fm.url_origem AS foto, pe.uf_nascimento,
+                       coalesce(
+                           (SELECT cp.canonico_sigla FROM core.mandato m
+                              JOIN core.vw_partido_canonico cp ON cp.id = m.partido_id
+                             WHERE m.pessoa_id = pe.id ORDER BY m.inicio DESC LIMIT 1),
+                           (SELECT cp.canonico_sigla FROM core.filiacao f
+                              JOIN core.vw_partido_canonico cp ON cp.id = f.partido_id
+                             WHERE f.pessoa_id = pe.id AND upper_inf(f.periodo) LIMIT 1)) AS partido,
+                       mand.uf, mand.cargo
+                FROM core.pessoa pe
+                LEFT JOIN core.midia fm ON fm.id = pe.foto_midia_id
+                LEFT JOIN LATERAL (
+                    SELECT coalesce(ci.uf, 'BR') AS uf, c.codigo AS cargo
+                    FROM core.mandato m JOIN ref.cargo c ON c.id = m.cargo_id
+                    JOIN ref.circunscricao ci ON ci.id = m.circunscricao_id
+                    WHERE m.pessoa_id = pe.id AND m.condicao <> 'NOMEADO' ORDER BY m.inicio DESC LIMIT 1
+                ) mand ON true
+                WHERE pe.id = ANY(:ids)
+                """
+            ),
+            {"ids": list(G.nodes())},
+        ).mappings()
+    }
 
     # Monta lista de Nós formatados
     nodes_payload = []
     community_party_counts: Dict[int, Dict[str, int]] = {}
 
     for nid in G.nodes():
-        pol = pol_obj_map.get(nid)
-        name = pol.electoral_name if pol else "Parlamentar"
-        photo = pol.photo_url if pol else None
-
-        mandate_info = mandate_map.get(nid)
-        uf = mandate_info[0].jurisdiction_state if mandate_info else (pol.birthplace_state if pol else "DF")
-        house = "SENADO" if mandate_info and "SENADOR" in str(mandate_info[0].office) else "CAMARA"
-        party_sigla = (
-            (mandate_info[1].acronym if mandate_info and mandate_info[1] else None) or party_aff_map.get(nid) or "S/P"
-        )
+        info = meta.get(nid)
+        name = info["nome_exibicao"] if info else "Parlamentar"
+        photo = info["foto"] if info else None
+        uf = (info["uf"] or info["uf_nascimento"] or "DF") if info else "DF"
+        house = "SENADO" if info and info["cargo"] == "SENADOR" else "CAMARA"
+        party_sigla = (info["partido"] if info else None) or "S/P"
 
         comm_id = node_community_map.get(nid, 1)
         community_party_counts.setdefault(comm_id, {}).setdefault(party_sigla, 0)
@@ -414,7 +437,7 @@ def build_coauthorship_network(
 
         nodes_payload.append(
             {
-                "id": nid,
+                "id": str(info["uid"]) if info else str(nid),
                 "name": name,
                 "party": party_sigla,
                 "uf": uf,
@@ -430,12 +453,13 @@ def build_coauthorship_network(
     nodes_payload.sort(key=lambda x: (x["betweenness_centrality"], x["degree"]), reverse=True)
 
     # Monta lista de Arestas formatadas
+    uid_by_id = {nid: (str(meta[nid]["uid"]) if nid in meta else str(nid)) for nid in G.nodes()}
     edges_payload = []
     for u, v, data in G.edges(data=True):
         edges_payload.append(
             {
-                "source": u,
-                "target": v,
+                "source": uid_by_id[u],
+                "target": uid_by_id[v],
                 "weight": int(data.get("weight", 1)),
             }
         )
@@ -473,100 +497,3 @@ def build_coauthorship_network(
             "top_articulators": [n["name"] for n in nodes_payload[:5]],
         },
     }
-
-
-def sync_proposition_authors(db: Session, force: bool = False) -> int:
-    """
-    Sincroniza a tabela relacional proposicoes_autores a partir dos campos autorNome
-    e autorPoliticoId das proposições. Executado idempotentemente.
-    """
-    from app.core.names import NON_PERSON_AUTHORS, normalize_name_tokens
-
-    res = db.query(func.count(PropositionAuthor.id)).scalar()
-    existing_count = res if isinstance(res, (int, float)) else 0
-    if existing_count > 0 and not force:
-        return int(existing_count)
-
-    politicos = db.query(Politician).all()
-    pol_name_map: Dict[str, Set[uuid.UUID]] = {}
-    for p in politicos:
-        for name in (p.electoral_name, p.civil_name):
-            norm = normalize_name_tokens(name)
-            if norm:
-                pol_name_map.setdefault(norm, set()).add(p.id)
-
-    unique_pols: Dict[str, uuid.UUID] = {
-        name: next(iter(pids)) for name, pids in pol_name_map.items() if len(pids) == 1
-    }
-
-    props = db.query(Proposition).all()
-    records_to_insert: List[PropositionAuthor] = []
-
-    for prop in props:
-        autor_raw = (prop.author_name or "").strip()
-        if not autor_raw:
-            if prop.author_politician_id:
-                records_to_insert.append(
-                    PropositionAuthor(
-                        proposition_id=prop.id,
-                        politician_id=prop.author_politician_id,
-                        author_name=prop.author_name or "Autor Desconhecido",
-                        authorship_type=TipoAutoriaEnum.AUTOR_PRINCIPAL,
-                        order=1,
-                    )
-                )
-            continue
-
-        parts = [p.strip() for p in autor_raw.split(",") if p.strip()]
-        if not parts:
-            continue
-
-        first = parts[0]
-        first_norm = normalize_name_tokens(first)
-        is_inst = (
-            first_norm in NON_PERSON_AUTHORS
-            or any(kw in first_norm for kw in INSTITUTIONAL_KEYWORDS)
-            or prop.is_executive_initiative
-        )
-
-        if is_inst:
-            records_to_insert.append(
-                PropositionAuthor(
-                    proposition_id=prop.id,
-                    politician_id=None,
-                    author_name=first,
-                    authorship_type=TipoAutoriaEnum.INSTITUCIONAL,
-                    order=1,
-                )
-            )
-        else:
-            pid = prop.author_politician_id or unique_pols.get(first_norm)
-            records_to_insert.append(
-                PropositionAuthor(
-                    proposition_id=prop.id,
-                    politician_id=pid,
-                    author_name=first,
-                    authorship_type=TipoAutoriaEnum.AUTOR_PRINCIPAL,
-                    order=1,
-                )
-            )
-
-        # Coautores (do 2º signatário em diante)
-        for idx, co in enumerate(parts[1:], start=2):
-            co_norm = normalize_name_tokens(co)
-            co_pid = unique_pols.get(co_norm)
-            records_to_insert.append(
-                PropositionAuthor(
-                    proposition_id=prop.id,
-                    politician_id=co_pid,
-                    author_name=co,
-                    authorship_type=TipoAutoriaEnum.COAUTOR,
-                    order=idx,
-                )
-            )
-
-    if records_to_insert:
-        db.bulk_save_objects(records_to_insert)
-        db.commit()
-
-    return len(records_to_insert)

@@ -331,23 +331,20 @@ def get_mandate_iple(mandate_id: str, db: Optional[Session] = None) -> Optional[
     # Se houver conexão com o banco e for o mandato corrente, podemos enriquecer com proposições reais
     if db is not None and mandate_id == "lula-2023":
         try:
-            from app.models.legislative import Proposition, StatusTramitacaoEnum
+            from app.models.leg import Proposicao
 
-            db_exec_props = db.query(Proposition).filter(Proposition.is_executive_initiative.is_(True)).all()
+            db_exec_props = db.query(Proposicao).filter(Proposicao.iniciativa_executivo.is_(True)).all()
             if db_exec_props:
                 # Contabilizar substantivas
                 db_substantivas = [
                     p
                     for p in db_exec_props
                     if not (
-                        p.summary and any(kw in p.summary.lower() for kw in ("denominar", "dia nacional", "homenageia"))
+                        p.ementa and any(kw in p.ementa.lower() for kw in ("denominar", "dia nacional", "homenageia"))
                     )
                 ]
                 db_aprov = [
-                    p
-                    for p in db_substantivas
-                    if p.status
-                    in (StatusTramitacaoEnum.APROVADA_E_SANCIONADA, StatusTramitacaoEnum.APROVADA_E_PROMULGADA)
+                    p for p in db_substantivas if p.status_codigo in ("APROVADA_E_SANCIONADA", "APROVADA_E_PROMULGADA")
                 ]
                 if len(db_substantivas) > 0:
                     p_exec = max(p_exec, len(db_substantivas))

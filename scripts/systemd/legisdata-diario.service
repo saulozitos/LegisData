@@ -1,0 +1,26 @@
+[Unit]
+Description=LegisData - consolidação diária (presença, faltas, votações, IPPM, rede de coautoria)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Instalação (detalhes em docs/METODOLOGIA_PRESENCA_E_FALTAS.md, seção "Operação no servidor"):
+#  - crie o usuário de serviço: useradd --system --home /opt/legisdata --shell /usr/sbin/nologin legisdata
+#  - o .env deve pertencer a esse usuário com chmod 600 (DATABASE_URL/POSTGRES_PASSWORD) e a DATABASE_URL precisa
+#    apontar para um host alcançável a partir do servidor (publique a porta do Postgres só em 127.0.0.1);
+#  - ajuste /opt/legisdata para o diretório do projeto; só etl/data precisa ser gravável pelo usuário.
+User=legisdata
+Group=legisdata
+WorkingDirectory=/opt/legisdata
+EnvironmentFile=/opt/legisdata/.env
+# flock -n: uma execução por vez (o timer não sobrepõe o `make daily` manual; a segunda sai com erro em vez de esperar)
+ExecStart=/usr/bin/flock -n /run/legisdata/diario.lock /usr/bin/make daily
+TimeoutStartSec=4h
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/legisdata/etl/data
+# cria /run/legisdata com dono legisdata (o lock não pode ficar direto em /run)
+RuntimeDirectory=legisdata

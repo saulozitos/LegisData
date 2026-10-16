@@ -16,11 +16,12 @@ from typing import Any, Dict, Optional
 
 from app.core.database import SessionLocal
 from app.models.analytics import LogExecucaoCron
-from app.services.legislative_scoring import build_coauthorship_network, sync_proposition_authors
+from app.services.legislative_scoring import build_coauthorship_network
 from app.services.party_productivity_service import (
     calculate_party_ippm_ranking,
     sync_mandate_history,
 )
+from sqlalchemy import text
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("cron_daily_consolidation")
@@ -33,9 +34,22 @@ def execute_cron_pipeline() -> Dict[str, Any]:
     status = "SUCESSO"
     err_msg: Optional[str] = None
     registros_totais = 0
+    erros_etapas: list = []
 
     try:
         logger.info("=== INICIANDO CRON JOB DE CONSOLIDAÇÃO DIÁRIA ===")
+
+        # Etapa 1a: votações nominais do ano anterior e do corrente (alimenta o Calendário de Votações). Só atualiza o
+        # legado: a ponte roda uma vez, na etapa 1, depois de todas as cargas.
+        logger.info("Etapa 1a: atualizando votações nominais...")
+        try:
+            from etl.pipelines.votacoes_atualizacao import atualizar as atualizar_votacoes
+
+            votacoes = atualizar_votacoes(sincronizar=False)
+            logger.info(f"Etapa 1a concluída: {votacoes.get('carga')}")
+        except Exception as e:
+            erros_etapas.append(f"votações: {e}")
+            logger.error(f"Falha na atualização de votações: {e}", exc_info=True)
 
         # Etapa 1: Sincronização de Entidades Base e Mandatos Dinâmicos
         logger.info("Etapa 1/4: Sincronizando histórico dinâmico de mandatos...")
@@ -43,9 +57,22 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         registros_totais += synced_mandates
         logger.info(f"Etapa 1 concluída: {synced_mandates} registros de mandatos sincronizados.")
 
+        # Etapa 1b: presença e faltas, depois da ponte (falha aqui não impede as demais etapas, mas marca FALHA)
+        logger.info("Etapa 1b: atualizando presença e faltas do Congresso...")
+        try:
+            from app.core.database import engine
+
+            from etl.pipelines.presenca_atualizacao import atualizar
+
+            presenca = atualizar(engine)
+            logger.info(f"Etapa 1b concluída: {presenca}")
+        except Exception as e:
+            erros_etapas.append(f"presença: {e}")
+            logger.error(f"Falha na atualização de presença: {e}", exc_info=True)
+
         # Etapa 2: Ingestão de Proposições e Autores
         logger.info("Etapa 2/4: Verificando autoria e integridade de proposições...")
-        synced_authors = sync_proposition_authors(db, force=False)
+        synced_authors = int(db.execute(text("SELECT count(*) FROM leg.autoria")).scalar() or 0)
         registros_totais += synced_authors
         logger.info(f"Etapa 2 concluída: {synced_authors} vínculos de autoria verificados.")
 
@@ -68,6 +95,10 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         status = "FALHA"
         err_msg = str(e)
         logger.error(f"Falha crítica no CRON Job diário: {e}", exc_info=True)
+
+    if erros_etapas and status == "SUCESSO":
+        status = "FALHA"
+        err_msg = "; ".join(erros_etapas)
 
     t_end = datetime.now(timezone.utc)
     tempo_segundos = max(0, int((t_end - t_start).total_seconds()))

@@ -196,8 +196,11 @@ def _camara_historico(force: bool):
 
 
 def _presenca(no_cache: bool, max_paginas: Optional[int]):
+    from etl.extractors.camara_presenca_eventos_extractor import CamaraPresencaEventosExtractor
     from etl.extractors.presenca_extractor import PresencaExtractor, ids_deputados_conhecidos
 
+    arquivos = CamaraPresencaEventosExtractor().run(force=no_cache)
+    print(f"    Câmara (antes de 2020): {len(arquivos)} arquivos de eventos e presença em eventos")
     resultado = PresencaExtractor().run(
         usar_cache=not no_cache, ids_camara=ids_deputados_conhecidos(), max_paginas_novas=max_paginas
     )
@@ -224,13 +227,14 @@ def _load_presenca_remuneracao():
     from etl.utils.bootstrap import ensure_backend_on_path
 
     ensure_backend_on_path()
-    from app.core.database import SessionLocal
+    from app.core.database import SessionLocal, engine
 
-    from etl.pipelines.load_attendance_and_remuneration import load_attendances, load_remunerations
+    from etl.pipelines.load_attendance_and_remuneration import load_remunerations
+    from etl.pipelines.presenca_leg_loader import carregar as carregar_presenca
 
+    print("    Presença (leg.presenca):", carregar_presenca(engine))
     db = SessionLocal()
     try:
-        print("    Presença:", load_attendances(db))
         print("    Remuneração:", load_remunerations(db))
     finally:
         db.close()

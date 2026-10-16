@@ -70,6 +70,7 @@ def test_roi_is_only_computed_with_ceap_salary_and_attendance(client, db, seed):
     roi = client.get(f"{BASE}/{seed.fulano.id}").json()["indices_inteligencia"]["roi_cidadao"]
     assert roi["nota"] is not None and 0 <= roi["nota"] <= 100
     assert roi["score"] in {"A+", "A", "B", "C", "D"}
+    assert roi["pontos_ialp"] is not None and roi["custo_por_ponto_ialp"] is not None
     assert roi["custo_total_operacional"] == pytest.approx(
         150.0 + 80000.0
     )  # CEAP do banco + subsídios BRUTOS registrados
@@ -244,13 +245,13 @@ def test_attendance_exposes_source_unit_and_period_for_the_chamber(client, db, s
     assert att["unidade"] == "dia com sessão deliberativa" and "Ato da Mesa" in att["fonte"]
 
 
-def test_senate_attendance_never_reports_unjustified_absences_as_zero(client, db, seed):
-    """O Senado só expõe presença derivada das votações nominais: ausência não justificada é desconhecida."""
+def test_senate_attendance_counts_unjustified_absences(client, db, seed):
+    """No Senado a presença vem das votações nominais; o código NCom (não compareceu) é a falta não justificada."""
     _attend(db, seed, CasaLegislativaEnum.SENADO_FEDERAL, 5, TipoPresencaEnum.PRESENTE)
     _attend(db, seed, CasaLegislativaEnum.SENADO_FEDERAL, 6, TipoPresencaEnum.LICENCA_MEDICA)
     db.commit()
     att = client.get(f"{BASE}/{seed.fulano.id}").json()["assiduidade"]
-    assert att["faltas_nao_justificadas"] is None and att["faltas_justificadas"] == 1
+    assert att["faltas_nao_justificadas"] == 0 and att["faltas_justificadas"] == 1
     assert att["unidade"] == "dia com votação nominal em plenário" and "Senado" in att["fonte"]
 
 
@@ -291,10 +292,20 @@ def test_dossier_weighted_legislative_indicators(client, db, seed):
         authorship_type=TipoAutoriaEnum.AUTOR_PRINCIPAL,
         order=1,
     )
-    db.add_all([pa1, pa2])
+    # a fonte repete o mesmo parlamentar como coautor da proposição em que já é autor principal
+    pa3 = PropositionAuthor(
+        proposition_id=seed.proposition.id,
+        politician_id=seed.fulano.id,
+        author_name="Fulano",
+        authorship_type=TipoAutoriaEnum.COAUTOR,
+        order=2,
+    )
+    db.add_all([pa1, pa2, pa3])
     db.commit()
 
     dossier = client.get(f"{BASE}/{seed.fulano.id}").json()
+    ids = [m["id"] for m in dossier["materias_propostas"]]
+    assert len(ids) == len(set(ids))
     rel = dossier["relevancia_legislativa"]
     assert "lideranca_legislativa_count" in rel
     assert "apoio_politico_count" in rel
@@ -310,6 +321,73 @@ def test_dossier_weighted_legislative_indicators(client, db, seed):
     assert "PEC 99/2024" in p_dict
     pec_item = p_dict["PEC 99/2024"]
     assert pec_item["papel_autoria"] == "COAUTOR"
-    assert pec_item["peso_participacao"] == 0.2
+    assert pec_item["peso_participacao"] == 0.05  # assinatura de apoio a PEC
     assert pec_item["peso_complexidade"] == 3.0  # PEC = 3.0
-    assert pec_item["score_calculado"] == 0.6  # 0.2 * 3.0 * 1.0 = 0.6
+    assert pec_item["score_calculado"] == 0.15  # 0.05 * 3.0 * 1.0
+
+
+def test_roi_rewards_ialp_delivery_not_proposition_count(client, db, seed):
+    """Muitas assinaturas de apoio e requerimentos não levam à nota máxima: a entrega é medida em pontos IALP."""
+    from app.models.legislative import Proposition, PropositionAuthor, TipoAutoriaEnum, TipoProposicaoEnum
+
+    _add_remuneration(db, seed)
+    _add_attendance(db, seed)
+    for i in range(30):
+        prop = Proposition(
+            proposition_type=TipoProposicaoEnum.REQ,
+            number=500 + i,
+            year=2024,
+            title=f"REQ {500 + i}/2024",
+            summary="Requerimento",
+            presentation_date=date(2024, 1, 1),
+            external_camara_id=70000 + i,
+        )
+        db.add(prop)
+        db.flush()
+        db.add(
+            PropositionAuthor(
+                proposition_id=prop.id,
+                politician_id=seed.fulano.id,
+                author_name="Fulano",
+                authorship_type=TipoAutoriaEnum.COAUTOR,
+                order=2,
+            )
+        )
+    db.commit()
+    roi = client.get(f"{BASE}/{seed.fulano.id}").json()["indices_inteligencia"]["roi_cidadao"]
+    assert roi["pontos_ialp"] < 10
+    assert roi["score"] != "A+"
+
+
+def test_attendance_reads_leg_presenca_with_inferred_absences(client, db, seed):
+    """Falta inferida entra na taxa e é separada da oficial; presença anterior a 2003 não entra na taxa."""
+    from sqlalchemy import text
+
+    client.get(f"{BASE}/{seed.fulano.id}")  # a ponte do conftest cria a pessoa no schema novo
+    pessoa_id = db.execute(text("SELECT id FROM core.pessoa WHERE uid = :u"), {"u": seed.fulano.id}).scalar()
+    casa = db.execute(text("SELECT id FROM ref.casa_legislativa WHERE codigo = 'CAMARA_DOS_DEPUTADOS'")).scalar()
+    linhas = [
+        ("1999-05-04", "PRESENTE"),
+        ("2005-03-01", "PRESENTE"),
+        ("2005-03-02", "PRESENTE"),
+        ("2005-03-03", "AUSENCIA_INFERIDA"),
+        ("2005-03-04", "AUSENCIA_INFERIDA"),
+        ("2024-03-05", "AUSENCIA_JUSTIFICADA"),
+    ]
+    for dia, tipo in linhas:
+        db.execute(
+            text(
+                "INSERT INTO leg.presenca (pessoa_id, casa_id, data_sessao, tipo_codigo) VALUES (:p, :c, :d, :t) "
+                "ON CONFLICT DO NOTHING"
+            ),
+            {"p": pessoa_id, "c": casa, "d": dia, "t": tipo},
+        )
+    db.commit()
+
+    att = client.get(f"{BASE}/{seed.fulano.id}").json()["assiduidade"]
+    assert att["total_sessoes"] == 5  # a presença de 1999 fica fora
+    assert (att["total_presencas"], att["faltas_inferidas"], att["faltas_justificadas"]) == (2, 2, 1)
+    assert att["taxa_presenca_pct"] == 40.0
+    assert att["periodo_inicio"] == "2005-03-01" and "inferidas" in (att["observacao"] or "")
+    tipos = {f["tipo"] for f in att["amostra_faltas"]}
+    assert "AUSENCIA_INFERIDA" in tipos
