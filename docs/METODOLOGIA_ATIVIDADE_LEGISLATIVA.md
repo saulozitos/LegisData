@@ -262,4 +262,10 @@ Faixas: A+ a partir de 85, A a partir de 70, B a partir de 55, C a partir de 40 
 
 Até a versão anterior a parte de entrega era a contagem de proposições "de impacto" (10 proposições davam o máximo) e o custo era dividido por essa contagem. Isso premiava quem apenas assinava projetos e requerimentos de outros parlamentares: um senador com 8 projetos próprios e 64 assinaturas de apoio chegava a A+ com IALP de 31 pontos. Com os pontos IALP, a assinatura de apoio vale pouco (0,05 em PEC, 0,2 nos demais tipos) e o avanço na tramitação passa a decidir a nota.
 
-As referências (100 pontos e R$ 100.000 por ponto) são constantes de `backend/app/api/v1/politicians.py` e podem ser recalibradas com a distribuição real dos parlamentares.
+As referências (100 pontos e R$ 100.000 por ponto) são constantes de `backend/app/services/roi_cidadao.py`, que também concentra a fórmula e os cortes das faixas (testados sem banco), e podem ser recalibradas com a distribuição real dos parlamentares.
+
+Detalhes que mudam o número:
+
+- Os pontos vêm de `leg.vw_autoria_pontuada_unica`, com uma linha por parlamentar e proposição: quando a fonte repete a pessoa como autor principal, relator e coautor da mesma proposição, vale o papel de maior peso (autor principal, depois relator, depois coautor). O ranking de autores e o ranking de ausências somam a mesma visão, então o parlamentar tem o mesmo total nas três telas. A lista de proposições do dossiê pode ser truncada, mas os pontos do ROI saem da base inteira.
+- Abaixo de 1 ponto a nota usa o piso de 1 ponto no custo (para não dividir por quase zero) e o campo `custo_por_ponto_ialp` não é exibido.
+- Os pontos são da carreira inteira, enquanto o custo soma a CEAP recente e os subsídios registrados. Um parlamentar antigo, com pouco histórico de custo registrado, tem custo por ponto subestimado; é uma limitação conhecida da fonte de custos, que ainda não cobre toda a carreira.
