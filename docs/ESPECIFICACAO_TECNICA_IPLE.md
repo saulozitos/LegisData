@@ -97,8 +97,8 @@ Para enriquecer a análise via **QCA (Qualitative Comparative Analysis)**, o sis
 ## 7. Arquitetura e Integração Técnica
 
 1. **Módulo de Cálculo (`backend/app/services/iple_service.py`):**
-   - Funções analíticas: `calcular_taxa_sucesso`, `calcular_taxa_manutencao_vetos`, `calcular_iple`, `calcular_nep`, `calcular_polarizacao_ideologica`, `calibrar_crisp_set_qca`.
-   - Banco de dados histórico completo de mandatos presidenciais com parâmetros empíricos calibrados.
+   - Funções analíticas: `calculate_ts`, `calculate_tmv`, `calculate_iple`, `calculate_nep`, `calculate_ipp`, `calibrate_crisp_set`.
+   - A produção do Executivo vem de `leg.producao_executivo`, as bancadas de `leg.bancada_mandato` e a escala ideológica de `core.partido_posicao_ideologica`; nada disso é constante no código. `bancadas_service.py` lê bancadas, totais e governabilidade.
 2. **Endpoints de API:**
    - `GET /api/v1/executivo/iple?mandate_id=...`: Devolve o payload completo do mandato ou de todos os mandatos.
    - `GET /api/v1/analytics/congress-composition?mandate_id=...`: Devolve a composição das casas legislativas e o IPLE.
@@ -108,3 +108,12 @@ Para enriquecer a análise via **QCA (Qualitative Comparative Analysis)**, o sis
    - `CongressCompositionPanel.tsx`: Card de IPLE, barras de TS e TMV, badges Crisp-set e modal expansível com explicação detalhada da metodologia.
    - `ExecutivoPanel.tsx`: Seção completa de IPLE no Raio-X do Executivo e alternador dinâmico de ranking entre PIB Médio e IPLE.
    - `comparador/page.tsx`: Dimensão 4 na Tabela Multidimensional confrontando governabilidade e variáveis QCA lado a lado.
+
+---
+
+## 8. Regras de cálculo da camada de dados (Entrega 3b)
+
+- **Período do mandato.** O fim de `core.mandato` é exclusivo quando coincide com a posse do sucessor em 1º de janeiro (o mandato que termina em 01/01/2003 vai até 2002). Mandato que termina no meio do ano (impeachment, renúncia) vale até o próprio ano do fim: Dilma 2 (fim em 31/08/2016) é "2015 - 2016". A regra única é `periodos.ultimo_ano_do_mandato`.
+- **Governabilidade.** Base aliada, centro e oposição são somas das bancadas classificadas. Maioria simples: `base > total / 2`. Maioria para PEC: `base >= ceil(3 * total / 5)`. Sem nenhuma bancada classificada, tudo é `None`. Com classificação parcial, a maioria só é afirmada quando a base já alcança o mínimo (verdadeiro) ou quando nem somando todas as cadeiras sem classificação ela alcançaria (falso); no meio disso é `None` (não dá para afirmar) e `nao_classificadas_cadeiras` mostra o que falta classificar.
+- **Variável ausente nunca vira zero.** X1, X2 e X3 sem bancadas (ou sem classificação, no caso de X1) ficam `None` e a calibragem sai "Indisponível". A cobertura da escala ideológica (`cobertura_ipp_pct`) informa quantas cadeiras tinham posição conhecida no cálculo do X3.
+- **Índice do salário.** Base 100 no primeiro ano da série (1995). O IPCA acumulado percorre todos os anos desde o primeiro; se faltar o IPCA de algum ano do intervalo, o índice sai `None` dali em diante, em vez de um acumulado parcial.

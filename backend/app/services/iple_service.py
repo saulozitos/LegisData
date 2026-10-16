@@ -14,13 +14,19 @@ Implementação matemática e metodológica rigorosa conforme a Especificação 
 
 import logging
 import unicodedata
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
-from app.services.periodos import nome_do_mandato
-from sqlalchemy import text
+from app.core.errors import ErroDeDominio
+from app.models.leg import Proposicao
+from app.services import bancadas_service
+from app.services.periodos import nome_do_mandato, rotulo_do_periodo
+from sqlalchemy import func, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+STATUS_APROVADA = ("APROVADA_E_SANCIONADA", "APROVADA_E_PROMULGADA")
 
 # Parâmetros de corte Crisp-set (Tabela 4)
 CORTE_TS = 0.87
@@ -73,21 +79,32 @@ def calculate_nep(bancadas: List[Dict[str, Any]]) -> float:
     return round(1.0 / sum_sq, 2)
 
 
-def calculate_ipp(bancadas: List[Dict[str, Any]], scale: Dict[str, float]) -> float:
+def calculate_ipp(bancadas: List[Dict[str, Any]], scale: Dict[str, float]) -> Optional[float]:
     """
     Polarização Ideológica Ponderada (IPP):
     IPP = sum(p_i * (x_i - mean_x)^2)
-    onde p_i é a proporção de cadeiras, x_i é a escala de 1 a 10 e mean_x é a média ponderada.
+    onde p_i é a proporção de cadeiras, x_i é a escala de 1 a 10 e mean_x é a média ponderada. Só entram partidos com
+    posição na escala; se nenhum tiver, o IPP é indeterminado (`None`), nunca zero.
     """
     scale = {chave_sigla(k): v for k, v in scale.items()}
     valid_b = [b for b in bancadas if chave_sigla(b.get("partido", "")) in scale and b.get("cadeiras", 0) > 0]
     total = sum(b["cadeiras"] for b in valid_b)
     if total <= 0:
-        return 0.0
+        return None
 
     mean_x = sum((b["cadeiras"] / total) * scale[chave_sigla(b["partido"])] for b in valid_b)
     ipp = sum((b["cadeiras"] / total) * ((scale[chave_sigla(b["partido"])] - mean_x) ** 2) for b in valid_b)
     return round(ipp, 2)
+
+
+def cobertura_da_escala(bancadas: List[Dict[str, Any]], scale: Dict[str, float]) -> Optional[float]:
+    """Percentual das cadeiras cujo partido tem posição na escala ideológica (base do IPP); None sem cadeiras."""
+    total = sum(b["cadeiras"] for b in bancadas)
+    if total <= 0:
+        return None
+    chaves = {chave_sigla(k) for k in scale}
+    coberto = sum(b["cadeiras"] for b in bancadas if chave_sigla(b.get("partido", "")) in chaves)
+    return round(coberto / total * 100, 1)
 
 
 def calculate_opposition_share(opposition_seats: int, total_seats: int) -> float:
@@ -141,8 +158,6 @@ def calibrate_crisp_set(
     }
 
 
-CASAS_IPLE = {"CAMARA": "CAMARA_DOS_DEPUTADOS", "SENADO": "SENADO_FEDERAL"}
-
 _PRODUCAO_SQL = text(
     """
     SELECT mp.slug, p.nome_exibicao, mp.rotulo, m.inicio, m.fim, pe.proposicoes_executivo, pe.proposicoes_aprovadas,
@@ -152,6 +167,7 @@ _PRODUCAO_SQL = text(
     JOIN core.mandato m ON m.id = pe.mandato_id
     JOIN core.mandato_presidencial mp ON mp.mandato_id = m.id
     JOIN core.pessoa p ON p.id = m.pessoa_id
+    WHERE (CAST(:slug AS text) IS NULL OR mp.slug = :slug)
     ORDER BY m.inicio
     """
 )
@@ -160,9 +176,12 @@ _ESCALA_SQL = text(
     """
     SELECT p.sigla_normalizada, pp.valor
     FROM core.partido_posicao_ideologica pp JOIN core.partido p ON p.id = pp.partido_id
-    WHERE pp.escala = 'ESCALA_1_10'
+    WHERE pp.escala = 'ESCALA_1_10' AND pp.valor IS NOT NULL AND p.sigla_normalizada IS NOT NULL
     """
 )
+
+# Palavras que marcam proposição simbólica (homenagens, datas comemorativas): não contam como "substantiva".
+_PALAVRAS_SIMBOLICAS = ("denominar", "dia nacional", "homenageia")
 
 
 def chave_sigla(sigla: str) -> str:
@@ -176,92 +195,71 @@ def escala_ideologica(db: Session) -> Dict[str, float]:
     return {chave_sigla(sigla): float(valor) for sigla, valor in db.execute(_ESCALA_SQL)}
 
 
-def _periodo(inicio: Any, fim: Any) -> str:
-    """Anos do mandato; o fim é exclusivo (1º de janeiro do sucessor), então o último ano é o anterior."""
-    ate = fim.year - 1 if fim else "Presente"
-    return f"{inicio.year} - {ate}"
+def producoes(db: Session, slug: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Produção legislativa do Executivo (insumo do IPLE) de um mandato ou de todos, do mais antigo ao mais recente."""
+    return [dict(r) for r in db.execute(_PRODUCAO_SQL, {"slug": slug}).mappings()]
 
 
-def _producao_do_mandato(db: Session, mandate_id: str) -> Optional[Dict[str, Any]]:
-    for r in db.execute(_PRODUCAO_SQL).mappings():
-        if r["slug"] == mandate_id:
-            return dict(r)
-    return None
-
-
-def _lista_de_mandatos(db: Session) -> List[str]:
-    return [r["slug"] for r in db.execute(_PRODUCAO_SQL).mappings()]
-
-
-def get_mandate_iple(db: Session, mandate_id: str, casa: str = "CAMARA") -> Optional[Dict[str, Any]]:
+def _contagem_com_proposicoes_reais(db: Session, raw: Dict[str, Any]) -> Dict[str, int]:
     """
-    Calcula e consolida os indicadores do IPLE, as variáveis contextuais e a calibragem QCA de um mandato.
-
-    A produção do Executivo vem de `leg.producao_executivo`; as bancadas, de `leg.bancada_mandato` na Casa pedida.
-    Quando a oposição ou as bancadas não existem na base, a variável contextual sai `None` (nunca um valor inventado).
+    Proposições do Executivo e aprovadas: a curadoria, ou a contagem real da base quando esta a supera (mandato em
+    curso, sem `fim`). Falha de consulta não derruba o IPLE: usa um savepoint e fica com a curadoria.
     """
-    raw = _producao_do_mandato(db, mandate_id)
-    if not raw:
-        return None
+    contagem = {"total": raw["proposicoes_executivo"], "aprovadas": raw["proposicoes_aprovadas"]}
+    if raw["fim"] is not None:
+        return contagem
+    try:
+        with db.begin_nested():
+            base = db.query(Proposicao).filter(Proposicao.iniciativa_executivo.is_(True))
+            for palavra in _PALAVRAS_SIMBOLICAS:
+                base = base.filter(~func.coalesce(func.lower(Proposicao.ementa), "").contains(palavra))
+            total = base.count()
+            aprovadas = base.filter(Proposicao.status_codigo.in_(STATUS_APROVADA)).count()
+        contagem = {"total": max(contagem["total"], total), "aprovadas": max(contagem["aprovadas"], aprovadas)}
+    except SQLAlchemyError as exc:
+        logger.warning("Falha ao contar proposições do Executivo para o IPLE; usando a curadoria: %s", exc)
+    return contagem
 
-    p_exec = raw["proposicoes_executivo"]
-    p_exec_aprov = raw["proposicoes_aprovadas"]
-    v_total = raw["vetos_apreciados"]
-    v_mantidos = raw["vetos_mantidos"]
-    v_pendentes = raw["vetos_pendentes"] or 0
 
-    # No mandato corrente, as proposições reais do Executivo na base podem superar a curadoria
-    if mandate_id == "lula-2023":
-        try:
-            from app.models.leg import Proposicao
+def calcular_iple(
+    raw: Dict[str, Any],
+    contagem: Dict[str, int],
+    total_cadeiras: Optional[int],
+    bancadas: List[Dict[str, Any]],
+    escala: Dict[str, float],
+    casa: str,
+) -> Dict[str, Any]:
+    """
+    IPLE, variáveis contextuais e calibragem QCA de um mandato numa Casa, a partir dos dados já lidos.
 
-            db_exec_props = db.query(Proposicao).filter(Proposicao.iniciativa_executivo.is_(True)).all()
-            db_substantivas = [
-                p
-                for p in db_exec_props
-                if not (p.ementa and any(kw in p.ementa.lower() for kw in ("denominar", "dia nacional", "homenageia")))
-            ]
-            db_aprov = [
-                p for p in db_substantivas if p.status_codigo in ("APROVADA_E_SANCIONADA", "APROVADA_E_PROMULGADA")
-            ]
-            if db_substantivas:
-                p_exec = max(p_exec, len(db_substantivas))
-                p_exec_aprov = max(p_exec_aprov, len(db_aprov))
-        except Exception as e:  # noqa: BLE001 - enriquecimento opcional; a curadoria segue valendo
-            logger.debug("Falha ao consultar proposicoes do banco para calculo do IPLE: %s", e)
-
-    ts = calculate_ts(p_exec, p_exec_aprov)
-    tmv = calculate_tmv(v_mantidos, v_total, fallback_ts=ts)
+    Quando as bancadas ou a oposição não foram levantadas, a variável contextual sai `None` (nunca um valor inventado);
+    só a Câmara usa a oposição curada de `leg.producao_executivo` como reserva.
+    """
+    ts = calculate_ts(contagem["total"], contagem["aprovadas"])
+    tmv = calculate_tmv(raw["vetos_mantidos"], raw["vetos_apreciados"], fallback_ts=ts)
     iple = calculate_iple(ts, tmv)
 
-    from app.services import composicao_service
-
-    codigo_casa = CASAS_IPLE.get(casa, CASAS_IPLE["CAMARA"])
-    bancadas = composicao_service.bancadas_da_casa(db, mandate_id, codigo_casa)
-    total_cadeiras = composicao_service.total_de_cadeiras(db, mandate_id, codigo_casa)
-    if total_cadeiras is None and casa == "CAMARA":
+    if total_cadeiras is None and casa == "camara":
         total_cadeiras = raw["total_cadeiras_camara"]
-    oposicao = composicao_service.cadeiras_da_oposicao(bancadas)
-    if oposicao is None and casa == "CAMARA":
+    oposicao = bancadas_service.cadeiras_da_oposicao(bancadas)
+    if oposicao is None and casa == "camara":
         oposicao = raw["oposicao_cadeiras_camara"]  # curadoria: sobra quando as bancadas não foram classificadas
 
     x1 = calculate_opposition_share(oposicao, total_cadeiras) if oposicao is not None and total_cadeiras else None
     com_cadeiras = [b for b in bancadas if b.get("cadeiras")]
     x2 = calculate_nep(com_cadeiras) if com_cadeiras else None
-    x3 = calculate_ipp(com_cadeiras, escala_ideologica(db)) if com_cadeiras else None
-
+    x3 = calculate_ipp(com_cadeiras, escala) if com_cadeiras else None
     crisp = calibrate_crisp_set(ts, tmv, iple, x1, x2, x3)
-
     return {
-        "mandato_id": mandate_id,
+        "mandato_id": raw["slug"],
         "presidente": nome_do_mandato(raw["nome_exibicao"], raw["rotulo"]),
-        "periodo": _periodo(raw["inicio"], raw["fim"]),
+        "periodo": rotulo_do_periodo(raw["inicio"], raw["fim"]),
         "indicadores_base": {
-            "proposicoes_executivo_total": p_exec,
-            "proposicoes_executivo_aprovadas": p_exec_aprov,
-            "vetos_total_apreciados": v_total,
-            "vetos_mantidos": v_mantidos,
-            "vetos_pendentes_pauta": v_pendentes,
+            "proposicoes_executivo_total": contagem["total"],
+            "proposicoes_executivo_aprovadas": contagem["aprovadas"],
+            "vetos_total_apreciados": raw["vetos_apreciados"],
+            "vetos_mantidos": raw["vetos_mantidos"],
+            "vetos_pendentes_pauta": raw["vetos_pendentes"] or 0,
             "taxa_sucesso_ts": ts,
             "taxa_manutencao_vetos_tmv": tmv,
             "iple_score": iple,
@@ -272,13 +270,43 @@ def get_mandate_iple(db: Session, mandate_id: str, casa: str = "CAMARA") -> Opti
             "total_cadeiras": total_cadeiras,
             "fragmentacao_nep_x2": x2,
             "polarizacao_ipp_x3": x3,
+            "cobertura_ipp_pct": cobertura_da_escala(com_cadeiras, escala),
         },
         "calibragem_crisp_set": crisp,
         "classificacao_geral": crisp["iple"]["classificacao"],
     }
 
 
+def iple_das_casas(
+    db: Session,
+    raw: Dict[str, Any],
+    escala: Optional[Dict[str, float]] = None,
+    casas: Optional[Iterable[str]] = None,
+) -> Dict[str, Dict[str, Any]]:
+    """IPLE do mandato em cada Casa pedida (padrão: `camara` e `senado`), lendo bancadas e totais uma única vez."""
+    escala = escala if escala is not None else escala_ideologica(db)
+    contagem = _contagem_com_proposicoes_reais(db, raw)
+    metas = bancadas_service.composicoes(db, raw["slug"])
+    linhas = bancadas_service.linhas_de_bancada(db, raw["slug"])
+    resultado = {}
+    for casa in casas or bancadas_service.CASAS:
+        codigo = bancadas_service.CASAS[casa]
+        meta = metas.get(codigo)
+        total = int(meta["total_cadeiras"]) if meta else None
+        bancadas = bancadas_service.bancadas_exibidas([r for r in linhas if r["casa_codigo"] == codigo], total or 0)
+        resultado[casa] = calcular_iple(raw, contagem, total, bancadas, escala, casa)
+    return resultado
+
+
+def get_mandate_iple(db: Session, mandate_id: str, casa: str = "camara") -> Optional[Dict[str, Any]]:
+    """IPLE de um mandato na Casa pedida (`camara` ou `senado`); None se o mandato não tem produção carregada."""
+    if casa not in bancadas_service.CASAS:
+        raise ErroDeDominio(422, f"Casa inválida '{casa}'. Use: {', '.join(bancadas_service.CASAS)}.")
+    lista = producoes(db, mandate_id)
+    return iple_das_casas(db, lista[0], casas=(casa,))[casa] if lista else None
+
+
 def get_all_mandates_iple(db: Session) -> List[Dict[str, Any]]:
-    """IPLE de todos os mandatos presidenciais com produção do Executivo carregada."""
-    resultados = (get_mandate_iple(db, slug) for slug in _lista_de_mandatos(db))
-    return [r for r in resultados if r]
+    """IPLE (Câmara) de todos os mandatos com produção do Executivo carregada; a escala ideológica é lida uma vez."""
+    escala = escala_ideologica(db)
+    return [iple_das_casas(db, raw, escala, casas=("camara",))["camara"] for raw in producoes(db)]

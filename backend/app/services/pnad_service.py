@@ -49,7 +49,9 @@ def classes_sociais(db: Session, ano: Optional[int]) -> Dict[str, Any]:
     escolhido = ano if ano is not None else anos[-1]
     if escolhido not in anos:
         raise ErroDeDominio(404, f"Ano {escolhido} sem microdados da PNAD processados. Disponíveis: {anos}.")
-    entrada = db.execute(_ANO_SQL, {"ano": escolhido}).mappings().one()
+    entrada = db.execute(_ANO_SQL, {"ano": escolhido}).mappings().first()
+    if entrada is None or not entrada["salario_minimo_brl"]:
+        raise ErroDeDominio(404, f"Ano {escolhido} sem salário mínimo de referência na PNAD processada.")
     salario = float(entrada["salario_minimo_brl"])
     distribuicoes = {
         r["distribuicao"]: {
@@ -59,12 +61,17 @@ def classes_sociais(db: Session, ano: Optional[int]) -> Dict[str, Any]:
         }
         for r in db.execute(_DISTRIBUICOES_SQL, {"ano": escolhido}).mappings()
     }
+    if "domicilios_renda_total" not in distribuicoes or "pessoas_renda_domiciliar" not in distribuicoes:
+        raise ErroDeDominio(404, f"Ano {escolhido} com distribuição de renda incompleta na PNAD processada.")
     domicilios = distribuicoes["domicilios_renda_total"]["percentual"]
     pessoas = distribuicoes["pessoas_renda_domiciliar"]["percentual"]
 
-    classes = []
+    classes: List[Dict[str, Any]] = []
+    percentual_exato: Dict[str, float] = {}
     for c in db.execute(_CLASSES_SQL).mappings():
         minimo, maximo = float(c["min_sm"]), float(c["max_sm"]) if c["max_sm"] is not None else None
+        dom_exato = sum(domicilios[i] for i in c["faixas_pnad"])
+        percentual_exato[c["codigo"]] = dom_exato
         classes.append(
             {
                 "classe": c["codigo"],
@@ -73,14 +80,14 @@ def classes_sociais(db: Session, ano: Optional[int]) -> Dict[str, Any]:
                 "faixa_salarios_minimos_max": maximo,
                 **_renda_da_classe(minimo, maximo, salario),
                 "percentual_populacao": round(sum(pessoas[i] for i in c["faixas_pnad"]), 1),
-                "percentual_domicilios": round(sum(domicilios[i] for i in c["faixas_pnad"]), 1),
+                "percentual_domicilios": round(dom_exato, 1),
                 "descricao": c["descricao"],
                 "cor": c["cor_hex"],
                 "destaque": c["destaque"],
             }
         )
-    pct_d_e = round(sum(c["percentual_domicilios"] for c in classes if c["classe"] in ("Classe D", "Classe E")), 1)
-    pct_a = next(c["percentual_domicilios"] for c in classes if c["classe"] == "Classe A")
+    pct_d_e = round(sum(percentual_exato.get(c, 0.0) for c in ("Classe D", "Classe E")), 1)
+    pct_a = round(percentual_exato.get("Classe A", 0.0), 1)
     return {
         "origem": "pnad",
         "salario_minimo_referencia_brl": salario,

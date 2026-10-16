@@ -2,11 +2,11 @@
 Carga da distribuição de renda da PNAD Contínua em `eco.pnad_*` a partir de `pnad_faixas_salario_minimo.json`.
 
 O arquivo é calculado pelo ETL (`--pnad`) dos microdados do IBGE. Cada ano é regravado por inteiro; ano inválido (sem
-salário mínimo ou sem as 8 faixas) é pulado e contado. Arquivo sem nenhum ano válido não apaga a base.
+visita, salário mínimo ou as 8 faixas) é pulado e contado. Arquivo sem nenhum ano válido não apaga a base.
 """
 
-import json
 import logging
+import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -35,14 +35,33 @@ def percentual_valido(valor: Any) -> Optional[List[float]]:
     if not isinstance(valor, list) or len(valor) != N_FAIXAS:
         return None
     try:
-        return [float(v) for v in valor]
+        numeros = [float(v) for v in valor]
     except (TypeError, ValueError):
         return None
+    return numeros if all(math.isfinite(n) for n in numeros) else None
 
 
-def ano_valido(entrada: Any) -> bool:
-    """O ano só entra com salário mínimo e as duas distribuições usadas nas classes (domicílios e pessoas)."""
-    if not isinstance(entrada, dict) or not entrada.get("salario_minimo_brl"):
+def inteiro_em(valor: Any, minimo: int, maximo: int) -> Optional[int]:
+    try:
+        numero = int(valor)
+    except (TypeError, ValueError):
+        return None
+    return numero if minimo <= numero <= maximo else None
+
+
+def ano_valido(ano: Any, entrada: Any) -> bool:
+    """
+    O ano só entra com chave entre 1995 e 2100, visita (1 a 5), salário mínimo positivo e as duas distribuições usadas
+    nas classes (domicílios e pessoas). Nada é presumido: sem visita no arquivo, o ano é pulado.
+    """
+    if inteiro_em(ano, 1995, 2100) is None or not isinstance(entrada, dict):
+        return False
+    if inteiro_em(entrada.get("visita"), 1, 5) is None:
+        return False
+    try:
+        if not float(entrada.get("salario_minimo_brl")) > 0:
+            return False
+    except (TypeError, ValueError):
         return False
     nacional = entrada.get("nacional")
     if not isinstance(nacional, dict):
@@ -82,7 +101,7 @@ def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, 
     dados = load_json(arquivo)
     if not isinstance(dados, dict) or not isinstance(dados.get("anos"), dict):
         raise FileNotFoundError(f"Arquivo da PNAD ausente ou inválido: {arquivo}")
-    validos = {ano: e for ano, e in dados["anos"].items() if ano_valido(e)}
+    validos = {ano: e for ano, e in dados["anos"].items() if ano_valido(ano, e)}
     pulados = len(dados["anos"]) - len(validos)
     if not validos:
         logger.warning("Nenhum ano válido da PNAD no arquivo; a base não foi alterada.")
@@ -99,7 +118,7 @@ def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, 
                 ),
                 {
                     "a": int(ano),
-                    "v": int(entrada.get("visita") or 5),
+                    "v": int(entrada["visita"]),
                     "s": float(entrada["salario_minimo_brl"]),
                     "ar": entrada.get("arquivo_microdados"),
                     "d": entrada.get("dicionario"),
@@ -121,7 +140,7 @@ def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, 
                         "d": linha["distribuicao"],
                         "t": linha["total"],
                         "m": linha["media"],
-                        "p": json.dumps(linha["percentual"]).replace("[", "{").replace("]", "}"),
+                        "p": linha["percentual"],
                     }
                     for linha in linhas
                 ],

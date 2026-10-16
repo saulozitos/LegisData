@@ -2,7 +2,8 @@
 
 from typing import Any, Dict, List, Optional
 
-from app.models.leg import Proposicao, Votacao
+from app.core.errors import ErroDeDominio
+from app.models.leg import Casa, Proposicao, Votacao
 from app.services.economia_service import dominantes_por_ano
 from app.services.periodos import nome_do_mandato
 from app.services.placar import contagens_por_votacao, placar_para_tela, placares_das_votacoes, sessao_principal
@@ -14,6 +15,7 @@ _SERIES_SQL = text(
     SELECT s.codigo, extract(year FROM o.referencia)::int AS ano, o.valor
     FROM eco.observacao o JOIN eco.serie s ON s.id = o.serie_id
     WHERE s.codigo IN ('SALARIO_MINIMO', 'SUBSIDIO_PARLAMENTAR', 'IPCA_ACUM_ANO') AND o.uf IS NULL
+      AND o.valor IS NOT NULL
     """
 )
 
@@ -27,21 +29,29 @@ def _crescimento(final: float, inicial: float) -> float:
 
 
 def serie_historica(db: Session) -> List[Dict[str, Any]]:
-    """Um ponto por ano em que há salário mínimo e subsídio com norma citada; o IPCA ausente fica `None`."""
+    """
+    Um ponto por ano em que há salário mínimo e subsídio (com norma citada), ambos positivos. O IPCA acumulado percorre
+    todos os anos desde o primeiro: se faltar o IPCA de algum ano do intervalo, o índice sai `None` dali em diante
+    (nunca um acumulado parcial apresentado como completo).
+    """
     por_serie: Dict[str, Dict[int, float]] = {}
     for codigo, ano, valor in db.execute(_SERIES_SQL):
         por_serie.setdefault(codigo, {})[ano] = float(valor)
     minimo, subsidio, ipca = (por_serie.get(c, {}) for c in ("SALARIO_MINIMO", "SUBSIDIO_PARLAMENTAR", "IPCA_ACUM_ANO"))
-    anos = sorted(a for a in minimo if a in subsidio and minimo[a] > 0)
+    anos = sorted(a for a in minimo if minimo[a] > 0 and subsidio.get(a, 0) > 0)
     if not anos:
         return []
     dominantes = dominantes_por_ano(db)
     base_min, base_sub = minimo[anos[0]], subsidio[anos[0]]
-    fator_ipca = 1.0
+    fator_ipca: Optional[float] = 1.0
+    ultimo_ano_acumulado = anos[0]
     pontos: List[Dict[str, Any]] = []
-    for i, ano in enumerate(anos):
-        if i > 0 and ano in ipca:
-            fator_ipca *= 1.0 + ipca[ano] / 100.0
+    for ano in anos:
+        while fator_ipca is not None and ultimo_ano_acumulado < ano:
+            ultimo_ano_acumulado += 1
+            fator_ipca = (
+                fator_ipca * (1.0 + ipca[ultimo_ano_acumulado] / 100.0) if ultimo_ano_acumulado in ipca else None
+            )
         dominante = dominantes.get(ano)
         pontos.append(
             {
@@ -55,7 +65,7 @@ def serie_historica(db: Session) -> List[Dict[str, Any]]:
                 "ipca_acumulado_ano_pct": round(ipca[ano], 2) if ano in ipca else None,
                 "indice_salario_minimo_base100": round(minimo[ano] / base_min * 100.0, 1),
                 "indice_salario_parlamentar_base100": round(subsidio[ano] / base_sub * 100.0, 1),
-                "indice_ipca_base100": round(fator_ipca * 100.0, 1),
+                "indice_ipca_base100": round(fator_ipca * 100.0, 1) if fator_ipca is not None else None,
             }
         )
     return pontos
@@ -106,11 +116,12 @@ def votacao_salario_minimo(db: Session) -> Dict[str, Any]:
     )
     if proposicao is None:
         return base
-    votacoes = [
-        v
-        for v in db.query(Votacao).filter(Votacao.proposicao_id == proposicao.id).all()
-        if v.casa is not None and v.casa.codigo == CASA_CAMARA
-    ]
+    votacoes = (
+        db.query(Votacao)
+        .join(Casa, Votacao.casa_id == Casa.id)
+        .filter(Votacao.proposicao_id == proposicao.id, Casa.codigo == CASA_CAMARA)
+        .all()
+    )
     contagens = contagens_por_votacao(db, Votacao.proposicao_id == proposicao.id)
     placares = placares_das_votacoes(votacoes, contagens)
     sessao = sessao_principal(votacoes, placares)
@@ -127,10 +138,10 @@ def votacao_salario_minimo(db: Session) -> Dict[str, Any]:
     return base
 
 
-def disparidade_salarial(db: Session) -> Optional[Dict[str, Any]]:
+def disparidade_salarial(db: Session) -> Dict[str, Any]:
     pontos = serie_historica(db)
     if not pontos:
-        return None
+        raise ErroDeDominio(404, "Dados de disparidade salarial não encontrados. Execute o pipeline de ETL.")
     return {
         "serie_historica": pontos,
         "votacao_salario_minimo": votacao_salario_minimo(db),

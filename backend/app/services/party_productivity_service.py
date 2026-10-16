@@ -36,6 +36,10 @@ _BLOCOS_SQL = text(
     WHERE k.codigo = 'CAMARA_DOS_DEPUTADOS' AND b.cadeiras IS NOT NULL AND b.alinhamento <> 'NAO_CLASSIFICADO'
       AND b.mandato_id = (
         SELECT m.id FROM core.mandato m JOIN core.mandato_presidencial mp ON mp.mandato_id = m.id
+        WHERE EXISTS (
+            SELECT 1 FROM leg.bancada_mandato x JOIN ref.casa_legislativa kx ON kx.id = x.casa_id
+            WHERE x.mandato_id = m.id AND kx.codigo = 'CAMARA_DOS_DEPUTADOS'
+              AND x.cadeiras IS NOT NULL AND x.alinhamento <> 'NAO_CLASSIFICADO')
         ORDER BY m.inicio DESC LIMIT 1)
     """
 )

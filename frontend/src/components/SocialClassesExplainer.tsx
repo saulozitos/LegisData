@@ -85,9 +85,7 @@ export default function SocialClassesExplainer() {
                 Estratificação Social no Brasil (Classes A, B, C, D e E)
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                {data.origem === "pnad"
-                  ? "Microdados da PNAD Contínua (IBGE) • renda domiciliar em salários mínimos"
-                  : "Estimativa de referência (não calculada de microdados)"}
+                Microdados da PNAD Contínua (IBGE) • renda domiciliar em salários mínimos
                 {" "}• Salário Mínimo de {data.ano_referencia}: R$ {data.salario_minimo_referencia_brl.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
               </p>
             </div>

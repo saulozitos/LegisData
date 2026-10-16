@@ -60,14 +60,6 @@ describe('SocialClassesExplainer', () => {
     expect(screen.getByText('55,0% em Classes D/E')).toBeInTheDocument();
   });
 
-  it('rotula a origem como estimativa quando não vem da PNAD', async () => {
-    getClasses.mockResolvedValue({ ...response, origem: 'referencia_fixa' });
-    render(<SocialClassesExplainer />);
-    expect(await screen.findByText(/Estimativa de referência \(não calculada de microdados\)/)).toBeInTheDocument();
-    expect(screen.queryByLabelText('Ano da PNAD')).not.toBeInTheDocument();
-    expect(screen.getAllByText(/dos lares/).length).toBeGreaterThan(0);
-  });
-
   it('com microdados da PNAD mostra origem, domicílios e permite trocar o ano', async () => {
     const pnad = (ano: number) => ({
       ...response,

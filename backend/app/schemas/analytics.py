@@ -38,7 +38,7 @@ class WagePoint(BaseModel):
     ipca_acumulado_ano_pct: Optional[float] = None
     indice_salario_minimo_base100: float
     indice_salario_parlamentar_base100: float
-    indice_ipca_base100: float
+    indice_ipca_base100: Optional[float] = None
 
 
 class MinimumWageVoteRecord(BaseModel):

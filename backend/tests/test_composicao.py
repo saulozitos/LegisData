@@ -4,8 +4,10 @@ import json
 from datetime import date
 
 import pytest
-from app.services import composicao_service, iple_service
+from app.core.errors import ErroDeDominio
+from app.services import bancadas_service, iple_service
 from app.services.party_productivity_service import get_party_bloc_alignments
+from app.services.periodos import rotulo_do_periodo
 from sqlalchemy import text
 
 from .conftest import criar_mandato_presidencial
@@ -13,12 +15,13 @@ from .conftest import criar_mandato_presidencial
 BASE = "/api/v1/analytics"
 IPLE = "/api/v1/executivo/iple"
 
-BANCADAS = [  # (sigla, cadeiras, alinhamento, cor, posição na escala ideológica)
-    ("PL", 40, "OPOSICAO", "#1d4ed8", 8.5),
-    ("PT", 30, "BASE_GOVERNO", "#ef4444", 2.5),
-    ("MDB", 20, "INDEPENDENTE_CENTRO", "#15803d", 5.5),
-    ("PSOL", 10, "BASE_GOVERNO", "#facc15", 1.5),
+BANCADAS = [  # (sigla, cadeiras, alinhamento, cor)
+    ("PL", 40, "OPOSICAO", "#1d4ed8"),
+    ("PT", 30, "BASE_GOVERNO", "#ef4444"),
+    ("MDB", 20, "INDEPENDENTE_CENTRO", "#15803d"),
+    ("PSOL", 10, "BASE_GOVERNO", "#facc15"),
 ]
+ESCALA = {"PL": 8.5, "PT": 2.5, "MDB": 5.5, "PSOL": 1.5}  # posição na escala ideológica de 1 a 10
 
 
 def _casa(db, codigo):
@@ -44,7 +47,7 @@ def _composicao(db, mandato_id, codigo, total, bancadas, **meta):
             "ob": meta.get("observacao"),
         },
     )
-    for ordem, (sigla, cadeiras, alinhamento, cor, tse) in enumerate(bancadas):
+    for ordem, (sigla, cadeiras, alinhamento, cor, tse) in enumerate(bancadas):  # cadeiras_tse é o 5º campo
         db.execute(
             text(
                 "INSERT INTO leg.bancada_mandato (mandato_id, casa_id, partido_sigla, cadeiras, cadeiras_tse, "
@@ -74,13 +77,16 @@ def _producao(db, mandato_id, oposicao_camara=99):
     )
 
 
-def _escala(db):
+def _escala(db, siglas=None):
+    """Cadastra os partidos de teste e, para `siglas` (padrão: todos), a posição na escala ideológica."""
     fonte = db.execute(text("SELECT id FROM etl.fonte WHERE codigo = 'CURADORIA'")).scalar()
-    for sigla, _c, _a, _cor, _t in BANCADAS:
+    for sigla in ESCALA:
         partido = db.execute(
             text("INSERT INTO core.partido (sigla, nome) VALUES (:s, :s) RETURNING id"), {"s": sigla}
         ).scalar()
-        valor = {"PL": 8.5, "PT": 2.5, "MDB": 5.5, "PSOL": 1.5}[sigla]
+        if siglas is not None and sigla not in siglas:
+            continue
+        valor = ESCALA[sigla]
         db.execute(
             text(
                 "INSERT INTO core.partido_posicao_ideologica (partido_id, escala, valor, fonte_id) "
@@ -93,7 +99,7 @@ def _escala(db):
 @pytest.fixture()
 def mandato(db):
     mid = criar_mandato_presidencial(db, "Presidente", date(2023, 1, 1), None, "lula-2023", "Lula 3")
-    sem_tse = [(s, c, a, cor, None) for s, c, a, cor, _ in BANCADAS]
+    sem_tse = [(s, c, a, cor, None) for s, c, a, cor in BANCADAS]
     _composicao(db, mid, "CAMARA_DOS_DEPUTADOS", 100, sem_tse)
     _producao(db, mid)
     _escala(db)
@@ -117,14 +123,57 @@ def test_governabilidade_e_calculada_das_bancadas(client, mandato):
     }
 
 
-def test_maioria_simples_e_de_pec_dependem_da_base(db):
+def test_maioria_simples_e_de_pec_dependem_da_base():
     base = [{"alinhamento": "BASE_GOVERNO", "cadeiras": 61}, {"alinhamento": "OPOSICAO", "cadeiras": 39}]
-    gov = composicao_service.governabilidade(100, base)
+    gov = bancadas_service.governabilidade(100, base)
     assert gov["maioria_simples_atingida"] is True and gov["maioria_pec_atingida"] is True
-    limite = composicao_service.governabilidade(
+    limite = bancadas_service.governabilidade(
         100, [{"alinhamento": "BASE_GOVERNO", "cadeiras": 50}, {"alinhamento": "OPOSICAO", "cadeiras": 50}]
     )
     assert limite["maioria_simples_atingida"] is False  # exatamente a metade não é maioria
+
+
+def test_classificacao_parcial_so_afirma_a_maioria_quando_ja_decidida():
+    def gov(base, oposicao, sem_classificar):
+        bancadas = [
+            {"alinhamento": "BASE_GOVERNO", "cadeiras": base},
+            {"alinhamento": "OPOSICAO", "cadeiras": oposicao},
+            {"alinhamento": "NAO_CLASSIFICADO", "cadeiras": sem_classificar},
+        ]
+        return bancadas_service.governabilidade(100, bancadas)
+
+    ja_decidida = gov(55, 5, 40)  # a base já tem 55 de 100: maioria simples, mas a PEC (60) depende dos 40 restantes
+    assert ja_decidida["maioria_simples_atingida"] is True and ja_decidida["maioria_pec_atingida"] is None
+    assert ja_decidida["nao_classificadas_cadeiras"] == 40
+    inalcancavel = gov(10, 70, 20)  # nem com as 20 restantes a base chega a 51
+    assert inalcancavel["maioria_simples_atingida"] is False and inalcancavel["maioria_pec_atingida"] is False
+    indefinida = gov(40, 20, 40)  # com as 40 restantes chegaria a 80
+    assert indefinida["maioria_simples_atingida"] is None and indefinida["maioria_pec_atingida"] is None
+
+
+def test_senado_aparece_na_composicao_com_total_e_governabilidade_proprios(client, db, mandato):
+    _composicao(
+        db,
+        mandato,
+        "SENADO_FEDERAL",
+        81,
+        [("PT", 30, "BASE_GOVERNO", "#ef4444", None), ("PL", 20, "OPOSICAO", "#1d4ed8", None)],
+    )
+    db.commit()
+    corpo = client.get(f"{BASE}/congress-composition", params={"mandate_id": "lula-2023"}).json()
+    assert corpo["senado"]["total_cadeiras"] == 81
+    assert [(b["partido"], b["cadeiras"]) for b in corpo["senado"]["bancadas"]] == [("PT", 30), ("PL", 20)]
+    gov = corpo["senado"]["governabilidade"]
+    assert (gov["base_aliada_cadeiras"], gov["oposicao_cadeiras"], gov["nao_classificadas_cadeiras"]) == (30, 20, 31)
+    assert gov["maioria_simples_atingida"] is None  # 30 + os 31 sem classificar podem chegar a 41 (mínimo)
+    assert corpo["senado"]["governabilidade"]["iple"]["variaveis_contextuais"]["total_cadeiras"] == 81
+    assert corpo["camara"]["total_cadeiras"] == 100  # a Câmara não é afetada
+
+
+def test_composicao_sem_o_senado_nao_inventa_o_bloco(client, mandato):
+    corpo = client.get(f"{BASE}/congress-composition", params={"mandate_id": "lula-2023"}).json()
+    assert corpo["camara"]["total_cadeiras"] == 100
+    assert corpo.get("senado") is None
 
 
 def test_bancadas_sem_classificacao_nao_inventam_governabilidade(client, db):
@@ -198,11 +247,6 @@ def test_sem_composicao_carregada_e_404(client):
     assert client.get(f"{BASE}/congress-composition").status_code == 404
 
 
-def test_composicao_nao_grava_em_disco(client, mandato, data_dir):
-    client.get(f"{BASE}/congress-composition", params={"mandate_id": "lula-2023"})
-    assert list(data_dir.iterdir()) == []
-
-
 def test_iple_calcula_ts_tmv_e_variaveis_contextuais(client, mandato):
     dados = client.get(IPLE, params={"mandate_id": "lula-2023"}).json()
     base = dados["indicadores_base"]
@@ -234,9 +278,59 @@ def test_iple_sem_bancadas_fica_indisponivel_e_nao_vira_zero(client, db):
 
 
 def test_iple_do_senado_sem_classificacao_nao_usa_a_oposicao_da_camara(db, mandato):
-    senado = iple_service.get_mandate_iple(db, "lula-2023", "SENADO")
+    senado = iple_service.get_mandate_iple(db, "lula-2023", "senado")
     assert senado["variaveis_contextuais"]["tamanho_oposicao_x1"] is None
     assert senado["variaveis_contextuais"]["total_cadeiras"] is None
+
+
+def test_iple_sem_posicao_ideologica_dos_partidos_deixa_o_ipp_indisponivel(client, db):
+    mid = criar_mandato_presidencial(db, "P", date(2023, 1, 1), None, "p-2023")
+    _composicao(db, mid, "CAMARA_DOS_DEPUTADOS", 100, [(s, c, a, cor, None) for s, c, a, cor in BANCADAS])
+    _producao(db, mid)
+    _escala(db, siglas=())  # partidos cadastrados, nenhum com posição na escala
+    db.commit()
+    dados = client.get(IPLE, params={"mandate_id": "p-2023"}).json()
+    ctx = dados["variaveis_contextuais"]
+    assert ctx["polarizacao_ipp_x3"] is None and ctx["cobertura_ipp_pct"] == 0.0
+    assert dados["calibragem_crisp_set"]["polarizacao_x3"]["classificacao"] == "Indisponível"
+    assert ctx["fragmentacao_nep_x2"] == 3.33  # o NEP não depende da escala
+
+
+def test_iple_com_escala_parcial_calcula_o_ipp_so_dos_partidos_conhecidos_e_informa_a_cobertura(client, db):
+    mid = criar_mandato_presidencial(db, "P", date(2023, 1, 1), None, "p-2023")
+    _composicao(db, mid, "CAMARA_DOS_DEPUTADOS", 100, [(s, c, a, cor, None) for s, c, a, cor in BANCADAS])
+    _producao(db, mid)
+    _escala(db, siglas=("PL", "PT"))  # 70 das 100 cadeiras (PL 40 + PT 30) têm posição conhecida
+    db.commit()
+    ctx = client.get(IPLE, params={"mandate_id": "p-2023"}).json()["variaveis_contextuais"]
+    assert ctx["cobertura_ipp_pct"] == 70.0
+    esperado = round(0.4 / 0.7 * 0.3 / 0.7 * (8.5 - 2.5) ** 2, 2)  # variância de dois pontos ponderados
+    assert ctx["polarizacao_ipp_x3"] == esperado
+
+
+def test_iple_com_casa_invalida_e_422(db, mandato):
+    with pytest.raises(ErroDeDominio) as erro:
+        iple_service.get_mandate_iple(db, "lula-2023", "congresso")
+    assert erro.value.status_code == 422
+
+
+def test_periodo_do_mandato_que_termina_no_meio_do_ano_inclui_o_ano_do_fim(client, db):
+    dilma = criar_mandato_presidencial(db, "Dilma", date(2015, 1, 1), date(2016, 8, 31), "dilma-2015", "Dilma 2")
+    temer = criar_mandato_presidencial(db, "Temer", date(2016, 8, 31), date(2019, 1, 1), "temer-2016")
+    for mid in (dilma, temer):
+        _producao(db, mid)
+        _composicao(db, mid, "CAMARA_DOS_DEPUTADOS", 100, [(s, c, a, cor, None) for s, c, a, cor in BANCADAS])
+    db.commit()
+    assert client.get(IPLE, params={"mandate_id": "dilma-2015"}).json()["periodo"] == "2015 - 2016"
+    assert client.get(IPLE, params={"mandate_id": "temer-2016"}).json()["periodo"] == "2016 - 2018"
+    comp = client.get(f"{BASE}/congress-composition", params={"mandate_id": "dilma-2015"}).json()
+    assert comp["periodo"] == "2015 - 2016"
+
+
+def test_rotulo_do_periodo():
+    assert rotulo_do_periodo(date(1995, 1, 1), date(1999, 1, 1)) == "1995 - 1998"
+    assert rotulo_do_periodo(date(2015, 1, 1), date(2016, 8, 31)) == "2015 - 2016"
+    assert rotulo_do_periodo(date(2023, 1, 1), None) == "2023 - Presente"
 
 
 def test_iple_lista_todos_os_mandatos_com_producao(client, db, mandato):
@@ -260,3 +354,51 @@ def test_blocos_de_governo_vem_da_camara_do_mandato_mais_recente(db, mandato):
         "MDB": "INDEPENDENTE_CENTRO",
         "PSOL": "BASE_GOVERNO",
     }
+
+
+def test_blocos_ignoram_mandato_recente_sem_classificacao(db, mandato):
+    recente = criar_mandato_presidencial(db, "Recente", date(2027, 1, 1), None, "recente-2027")
+    _composicao(db, recente, "CAMARA_DOS_DEPUTADOS", 100, [("PT", 100, "NAO_CLASSIFICADO", None, 100)])
+    db.commit()
+    assert get_party_bloc_alignments(db)["PL"] == "OPOSICAO"  # segue valendo o último mandato classificado
+
+
+def test_mandato_em_curso_usa_as_proposicoes_reais_quando_superam_a_curadoria(db, mandato):
+    for i in range(150):  # a curadoria diz 100 proposições (80 aprovadas)
+        db.execute(
+            text(
+                "INSERT INTO leg.proposicao (tipo_codigo, numero, ano, titulo, ementa, data_apresentacao, status_codigo, "
+                "iniciativa_executivo) VALUES ('PL', :n, 2024, 'PL', 'Dispõe sobre algo', DATE '2024-01-01', "
+                ":st, true)"
+            ),
+            {"n": i + 1, "st": "APROVADA_E_SANCIONADA" if i < 120 else "EM_TRAMITACAO"},
+        )
+    db.execute(
+        text(
+            "INSERT INTO leg.proposicao (tipo_codigo, numero, ano, titulo, ementa, data_apresentacao, status_codigo, "
+            "iniciativa_executivo) VALUES ('PL', 999, 2024, 'PL', 'Institui o Dia Nacional do Teste', "
+            "DATE '2024-01-01', 'APROVADA_E_SANCIONADA', true)"
+        )
+    )
+    db.commit()
+    base = iple_service.get_mandate_iple(db, "lula-2023")["indicadores_base"]
+    assert (base["proposicoes_executivo_total"], base["proposicoes_executivo_aprovadas"]) == (
+        150,
+        120,
+    )  # simbólica fora
+
+
+def test_falha_ao_contar_proposicoes_mantem_a_curadoria_e_a_sessao_utilizavel(db, mandato, monkeypatch):
+    from sqlalchemy.exc import OperationalError
+
+    original = db.query
+
+    def falha(*args, **kwargs):
+        if args and getattr(args[0], "__name__", "") == "Proposicao":
+            raise OperationalError("SELECT", {}, Exception("tabela indisponível"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(db, "query", falha)
+    dados = iple_service.get_mandate_iple(db, "lula-2023")
+    assert dados["indicadores_base"]["proposicoes_executivo_total"] == 100  # curadoria
+    assert db.execute(text("SELECT 1")).scalar() == 1  # a transação não ficou abortada

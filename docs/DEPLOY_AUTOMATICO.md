@@ -8,12 +8,20 @@ Todo commit que entra na `main` e passa no CI é implantado sozinho em https://l
    `latest` e o SHA curto do commit (7 caracteres), mas só depois do `CI Quality Gate` passar.
 2. No servidor, um timer do systemd **do usuário** (`legisdata-deploy.timer`, a cada 2 minutos) roda
    `scripts/deploy/deploy.sh`. Sem commit novo ou sem imagens publicadas para o SHA, ele sai sem fazer nada.
-3. Com commit novo e imagens prontas, o script faz, nesta ordem:
+3. Com commit novo e imagens prontas, o script primeiro confere se a cópia dele que o timer executa é a mesma do commit
+   a implantar; se for diferente, instala a do commit e se reexecuta uma vez (assim uma mudança no próprio deploy, como
+   uma carga nova, vale já no deploy que a traz). Depois faz, nesta ordem:
    1. `pg_dump` (formato custom) em `~/backups`, guardando os 14 mais recentes. Backup vazio aborta o deploy.
-   2. `git merge --ff-only origin/main` no checkout do projeto (compose, dados do ETL e scripts).
+   2. `git merge --ff-only origin/main` no checkout do projeto (compose, dados do ETL e scripts). O cron diário regrava
+      arquivos versionados de `etl/data/processed` no checkout, o que impediria o fast-forward; por isso o script
+      descarta essas saídas locais antes do merge (o próximo cron as gera de novo). Fora dessa pasta, mudança local
+      continua impedindo o merge de propósito.
    3. `alembic upgrade head` num contêiner da imagem nova, na rede do compose.
-   4. Carga das séries econômicas e dos mandatos presidenciais (`economia_loader`, `presidencia_loader`), se o schema
-      `eco` já existe. É idempotente.
+   4. Carga das séries econômicas, dos mandatos presidenciais, da composição do Congresso e da PNAD
+      (`economia_loader`, `presidencia_loader`, `composicao_loader`, `pnad_loader`), se o schema `eco` já existe.
+      São idempotentes. Se um arquivo de curadoria estiver ausente ou citar um mandato que não existe no banco, a
+      carga falha com as migrações já aplicadas e a imagem antiga ainda no ar (as tabelas novas são aditivas, a API
+      antiga segue funcionando); o estado não avança e a próxima execução repete até alguém corrigir.
    5. `IMAGE_TAG=<sha> docker compose up -d --no-build backend frontend`.
    6. Espera a API ficar saudável por até 3 minutos. Se não ficar, volta para a tag anterior e o estado não avança (a
       próxima execução tenta de novo). O banco já migrado não volta atrás: restaure o backup se preciso.

@@ -1,5 +1,7 @@
 """CLI: etapas isoladas, resumo honesto, carga bloqueada após falha na extração, código de saída."""
 
+import pytest
+
 import etl.run_etl as cli
 from etl.run_etl import Etapa, construir_etapas, executar, imprimir_resumo, montar_parser
 
@@ -76,3 +78,22 @@ def test_main_retorna_0_quando_tudo_ok(monkeypatch):
     monkeypatch.setattr(cli, "ensure_data_dirs", lambda: None)
     monkeypatch.setattr(cli, "construir_etapas", lambda _args: [etapa("x")])
     assert cli.main(["--camara"]) == 0
+
+
+def test_carga_economica_isola_cada_loader_e_relata_as_falhas_no_fim(monkeypatch):
+    chamadas = []
+
+    def ok(nome):
+        return lambda engine: chamadas.append(nome) or {"ok": nome}
+
+    def quebra(engine):
+        chamadas.append("composicao")
+        raise RuntimeError("Mandatos sem identificador no banco: y-1999")
+
+    monkeypatch.setattr("etl.pipelines.economia_loader.carregar", ok("series"))
+    monkeypatch.setattr("etl.pipelines.presidencia_loader.carregar", ok("presidencia"))
+    monkeypatch.setattr("etl.pipelines.composicao_loader.carregar", quebra)
+    monkeypatch.setattr("etl.pipelines.pnad_loader.carregar", ok("pnad"))
+    with pytest.raises(RuntimeError, match="Composição do Congresso.*y-1999"):
+        cli._load_economia()
+    assert chamadas == ["series", "presidencia", "composicao", "pnad"]  # a PNAD rodou apesar da falha da composição

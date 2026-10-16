@@ -478,7 +478,7 @@ export interface WagePoint {
   ipca_acumulado_ano_pct: number | null;
   indice_salario_minimo_base100: number;
   indice_salario_parlamentar_base100: number;
-  indice_ipca_base100: number;
+  indice_ipca_base100: number | null;
 }
 
 export interface MinimumWageVoteRecord {
@@ -589,6 +589,7 @@ export interface IpleContextualVariables {
   total_cadeiras: number | null;
   fragmentacao_nep_x2: number | null;
   polarizacao_ipp_x3: number | null;
+  cobertura_ipp_pct?: number | null;
 }
 
 export interface IpleData {
@@ -1228,8 +1229,8 @@ export interface ClasseSocialItem {
 }
 
 export interface ClassesSociaisResponse {
-  /** `pnad`: calculado dos microdados da PNAD Contínua; `referencia_fixa`: estimativa fixa rotulada. */
-  origem?: "pnad" | "referencia_fixa";
+  /** Sempre `pnad`: calculado dos microdados da PNAD Contínua (sem microdados a API responde 404). */
+  origem?: "pnad";
   salario_minimo_referencia_brl: number;
   ano_referencia: number;
   anos_disponiveis?: number[];

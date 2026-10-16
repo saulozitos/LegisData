@@ -20,8 +20,11 @@ DRY_RUN=0
 log() { printf '%s [deploy] %s\n' "$(date '+%F %T')" "$*"; }
 
 mkdir -p "$ESTADO_DIR" "$BACKUP_DIR"
-exec 9>"$ESTADO_DIR/deploy.lock"
-flock -n 9 || { log "outra execução em andamento"; exit 0; }
+# Depois de se reexecutar (abaixo) o lock já está aberto no descritor 9, herdado do processo anterior.
+if [[ -z "${DEPLOY_REEXEC:-}" ]]; then
+  exec 9>"$ESTADO_DIR/deploy.lock"
+  flock -n 9 || { log "outra execução em andamento"; exit 0; }
+fi
 
 cd "$RAIZ"
 git fetch -q origin main
@@ -42,6 +45,18 @@ done
 log "implantando $TAG (anterior: ${ATUAL:0:7})"
 [[ $DRY_RUN -eq 1 ]] && { log "dry-run: imagens existem, nada alterado"; exit 0; }
 
+# O timer executa a cópia instalada em $ESTADO_DIR, que pode ser mais antiga que o script da main. Antes de mexer em
+# qualquer coisa, passa a usar o script do commit que será implantado (reexecuta uma única vez).
+if [[ -z "${DEPLOY_REEXEC:-}" ]] && git cat-file -e "origin/main:scripts/deploy/deploy.sh" 2>/dev/null; then
+  git show "origin/main:scripts/deploy/deploy.sh" >"$ESTADO_DIR/deploy.sh.novo"
+  if ! cmp -s "$ESTADO_DIR/deploy.sh.novo" "$ESTADO_DIR/deploy.sh"; then
+    chmod 755 "$ESTADO_DIR/deploy.sh.novo" && mv "$ESTADO_DIR/deploy.sh.novo" "$ESTADO_DIR/deploy.sh"
+    log "script de deploy atualizado para o da main; reexecutando"
+    DEPLOY_REEXEC=1 exec "$ESTADO_DIR/deploy.sh" "$@"
+  fi
+  rm -f "$ESTADO_DIR/deploy.sh.novo"
+fi
+
 set -a
 # shellcheck disable=SC1091
 . "$RAIZ/.env"
@@ -57,7 +72,13 @@ log "backup: $DUMP ($(du -h "$DUMP" | cut -f1))"
 # shellcheck disable=SC2012
 ls -1t "$BACKUP_DIR"/legisdata_*.dump | tail -n +"$((GUARDAR_BACKUPS + 1))" | xargs -r rm -f
 
-# 2. código (compose, dados do ETL, scripts)
+# 2. código (compose, dados do ETL, scripts). O cron diário regrava arquivos versionados de etl/data/processed no
+# checkout; essas mudanças locais impediriam o fast-forward. Os arquivos voltam ao commit e o próximo cron os atualiza.
+if ! git diff --quiet -- etl/data/processed || [[ -n "$(git ls-files --others --exclude-standard -- etl/data/processed)" ]]; then
+  log "descartando saídas do cron em etl/data/processed antes de atualizar o código"
+  git checkout -q -- etl/data/processed
+  git clean -fdq -- etl/data/processed
+fi
 git merge --ff-only -q origin/main
 
 URL_BANCO="postgresql+psycopg2://${PG_USER}:${POSTGRES_PASSWORD}@postgres:5432/${PG_DB}"

@@ -6,7 +6,8 @@ Fontes (curadoria versionada em `etl/data/processed`):
 - `producao_executivo.csv`: proposições do Executivo e vetos (insumo do IPLE).
 
 Só mandatos que já existem em `core.mandato_presidencial` são carregados: mandato do arquivo sem identificador no banco
-faz a carga falhar sem gravar nada. Cada par (mandato, Casa) é regravado por inteiro, então a carga é idempotente.
+faz a carga falhar sem gravar nada. Cada par (mandato, Casa) é regravado por inteiro, e a Casa (ou o mandato) que sai da curadoria sai do banco, então a
+carga é idempotente e o banco espelha o arquivo.
 """
 
 import csv
@@ -97,47 +98,53 @@ def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, 
         if ausentes:
             raise RuntimeError(f"Mandatos sem identificador no banco: {', '.join(ausentes)}")
 
-        for slug, dados in composicao.items():
-            contagem["mandatos"] += 1
+        # A curadoria é a fonte completa: mandato ou Casa que saiu do arquivo (ou ficou sem total) também sai do banco
+        for slug, mandato_id in mandatos.items():
+            dados = composicao.get(slug) or {}
+            contagem["mandatos"] += 1 if slug in composicao else 0
             for chave, codigo in CASAS.items():
                 casa = dados.get(chave) or {}
-                if not casa.get("total_cadeiras"):
-                    continue
-                _gravar_casa(conn, mandatos[slug], casas[codigo], dados, casa, contagem)
-        for linha in producao:
-            conn.execute(
-                text(
-                    "INSERT INTO leg.producao_executivo (mandato_id, proposicoes_executivo, proposicoes_aprovadas, "
-                    "vetos_apreciados, vetos_mantidos, vetos_pendentes, oposicao_cadeiras_camara, "
-                    "total_cadeiras_camara, fonte_texto) VALUES (:m, :pe, :pa, :va, :vm, :vp, :oc, :tc, :f) "
-                    "ON CONFLICT (mandato_id) DO UPDATE SET proposicoes_executivo = EXCLUDED.proposicoes_executivo, "
-                    "proposicoes_aprovadas = EXCLUDED.proposicoes_aprovadas, vetos_apreciados = EXCLUDED.vetos_apreciados, "
-                    "vetos_mantidos = EXCLUDED.vetos_mantidos, vetos_pendentes = EXCLUDED.vetos_pendentes, "
-                    "oposicao_cadeiras_camara = EXCLUDED.oposicao_cadeiras_camara, "
-                    "total_cadeiras_camara = EXCLUDED.total_cadeiras_camara, fonte_texto = EXCLUDED.fonte_texto"
-                ),
-                {
-                    "m": mandatos[linha["mandato_slug"]],
-                    "pe": int(linha["proposicoes_executivo"]),
-                    "pa": int(linha["proposicoes_aprovadas"]),
-                    "va": int(linha["vetos_apreciados"]),
-                    "vm": int(linha["vetos_mantidos"]),
-                    "vp": int(linha.get("vetos_pendentes") or 0),
-                    "oc": inteiro(linha.get("oposicao_cadeiras_camara")),
-                    "tc": inteiro(linha.get("total_cadeiras_camara")),
-                    "f": linha["fonte"],
-                },
-            )
-            contagem["producao"] += 1
+                if casa.get("total_cadeiras"):
+                    _gravar_casa(conn, mandato_id, casas[codigo], dados, casa, contagem)
+                else:
+                    _apagar_casa(conn, mandato_id, casas[codigo])
+        _gravar_producao(conn, mandatos, producao, contagem)
     logger.info("Composição do Congresso carregada: %s", contagem)
     return contagem
 
 
-def _gravar_casa(
-    conn: Any, mandato_id: int, casa_id: int, mandato: Dict[str, Any], casa: Dict[str, Any], contagem: Dict[str, int]
+def _gravar_producao(
+    conn: Any, mandatos: Dict[str, int], producao: List[Dict[str, str]], contagem: Dict[str, int]
 ) -> None:
-    verificacao = casa.get("verificacao_tse") or {}
-    origem = "TSE" if str(casa.get("bancadas_origem") or "").upper().startswith("TSE") else "CURADORIA"
+    for linha in producao:
+        conn.execute(
+            text(
+                "INSERT INTO leg.producao_executivo (mandato_id, proposicoes_executivo, proposicoes_aprovadas, "
+                "vetos_apreciados, vetos_mantidos, vetos_pendentes, oposicao_cadeiras_camara, "
+                "total_cadeiras_camara, fonte_texto) VALUES (:m, :pe, :pa, :va, :vm, :vp, :oc, :tc, :f) "
+                "ON CONFLICT (mandato_id) DO UPDATE SET proposicoes_executivo = EXCLUDED.proposicoes_executivo, "
+                "proposicoes_aprovadas = EXCLUDED.proposicoes_aprovadas, vetos_apreciados = EXCLUDED.vetos_apreciados, "
+                "vetos_mantidos = EXCLUDED.vetos_mantidos, vetos_pendentes = EXCLUDED.vetos_pendentes, "
+                "oposicao_cadeiras_camara = EXCLUDED.oposicao_cadeiras_camara, "
+                "total_cadeiras_camara = EXCLUDED.total_cadeiras_camara, fonte_texto = EXCLUDED.fonte_texto"
+            ),
+            {
+                "m": mandatos[linha["mandato_slug"]],
+                "pe": int(linha["proposicoes_executivo"]),
+                "pa": int(linha["proposicoes_aprovadas"]),
+                "va": int(linha["vetos_apreciados"]),
+                "vm": int(linha["vetos_mantidos"]),
+                "vp": int(linha.get("vetos_pendentes") or 0),
+                "oc": inteiro(linha.get("oposicao_cadeiras_camara")),
+                "tc": inteiro(linha.get("total_cadeiras_camara")),
+                "f": linha["fonte"],
+            },
+        )
+        contagem["producao"] += 1
+
+
+def _apagar_casa(conn: Any, mandato_id: int, casa_id: int) -> None:
+    """Remove a composição (bancadas em cascata) e os presidentes da Casa no mandato."""
     conn.execute(
         text("DELETE FROM leg.composicao_mandato WHERE mandato_id = :m AND casa_id = :c"),
         {"m": mandato_id, "c": casa_id},
@@ -149,6 +156,20 @@ def _gravar_casa(
         ),
         {"m": mandato_id, "c": casa_id},
     )
+
+
+def _gravar_casa(
+    conn: Any, mandato_id: int, casa_id: int, mandato: Dict[str, Any], casa: Dict[str, Any], contagem: Dict[str, int]
+) -> None:
+    _apagar_casa(conn, mandato_id, casa_id)
+    _gravar_composicao(conn, mandato_id, casa_id, mandato, casa)
+    _gravar_bancadas(conn, mandato_id, casa_id, casa, contagem)
+    _gravar_presidentes(conn, mandato_id, casa_id, casa, contagem)
+
+
+def _gravar_composicao(conn: Any, mandato_id: int, casa_id: int, mandato: Dict[str, Any], casa: Dict[str, Any]) -> None:
+    verificacao = casa.get("verificacao_tse") or {}
+    origem = "TSE" if str(casa.get("bancadas_origem") or "").upper().startswith("TSE") else "CURADORIA"
     conn.execute(
         text(
             "INSERT INTO leg.composicao_mandato (mandato_id, casa_id, total_cadeiras, bancadas_origem, tse_status, "
@@ -175,28 +196,37 @@ def _gravar_casa(
             "f": texto(mandato.get("fonte_curadoria")),
         },
     )
+
+
+def _gravar_bancadas(conn: Any, mandato_id: int, casa_id: int, casa: Dict[str, Any], contagem: Dict[str, int]) -> None:
     bancadas = bancadas_da_casa(casa)
-    if bancadas:
-        conn.execute(
-            text(
-                "INSERT INTO leg.bancada_mandato (mandato_id, casa_id, partido_sigla, cadeiras, cadeiras_tse, "
-                "alinhamento, cor_hex, ordem) VALUES (:m, :c, :s, :ca, :ct, :al, :cor, :o)"
-            ),
-            [
-                {
-                    "m": mandato_id,
-                    "c": casa_id,
-                    "s": b["sigla"],
-                    "ca": b["cadeiras"],
-                    "ct": b["cadeiras_tse"],
-                    "al": b["alinhamento"],
-                    "cor": b["cor_hex"],
-                    "o": b["ordem"],
-                }
-                for b in bancadas
-            ],
-        )
-        contagem["bancadas"] += len(bancadas)
+    if not bancadas:
+        return
+    conn.execute(
+        text(
+            "INSERT INTO leg.bancada_mandato (mandato_id, casa_id, partido_sigla, cadeiras, cadeiras_tse, "
+            "alinhamento, cor_hex, ordem) VALUES (:m, :c, :s, :ca, :ct, :al, :cor, :o)"
+        ),
+        [
+            {
+                "m": mandato_id,
+                "c": casa_id,
+                "s": b["sigla"],
+                "ca": b["cadeiras"],
+                "ct": b["cadeiras_tse"],
+                "al": b["alinhamento"],
+                "cor": b["cor_hex"],
+                "o": b["ordem"],
+            }
+            for b in bancadas
+        ],
+    )
+    contagem["bancadas"] += len(bancadas)
+
+
+def _gravar_presidentes(
+    conn: Any, mandato_id: int, casa_id: int, casa: Dict[str, Any], contagem: Dict[str, int]
+) -> None:
     for ordem, p in enumerate(casa.get("presidentes") or []):
         nome = texto(p.get("nome"))
         rotulo = texto(p.get("periodo"))

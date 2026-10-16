@@ -107,7 +107,12 @@ def test_falha_na_etapa_de_votacoes_marca_falha_mas_as_demais_rodam():
 
     assert resultado["status"] == "FALHA"
     assert "votações: senado fora do ar" in resultado["erro_mensagem"]
-    assert [nome for nome, _ in ordem] == ["votacoes", "ponte", "presenca", "economia"]  # ponte e presença não foram puladas
+    assert [nome for nome, _ in ordem] == [
+        "votacoes",
+        "ponte",
+        "presenca",
+        "economia",
+    ]  # ponte e presença não foram puladas
     assert resultado["registros_atualizados"] == 10 + 5 + 1  # mandatos + autorias + partidos (+0 arestas)
     registrado = mock_db.add.call_args.args[0]
     assert registrado.status_execucao == "FALHA"
@@ -128,11 +133,13 @@ def test_cron_marks_failure_when_economy_update_fails_but_runs_other_stages():
         patch("etl.pipelines.presenca_atualizacao.atualizar", return_value={}),
         patch("etl.pipelines.votacoes_atualizacao.atualizar", return_value={"carga": {}}),
         patch("etl.pipelines.economia_atualizacao.atualizar", side_effect=RuntimeError("BCB fora do ar")),
-        patch("etl.pipelines.cron_daily_consolidation.calculate_party_ippm_ranking", return_value={"ranking": [1]}),
+        patch(
+            "etl.pipelines.cron_daily_consolidation.calculate_party_ippm_ranking", return_value={"ranking": [1]}
+        ) as ranking,
         patch(
             "etl.pipelines.cron_daily_consolidation.build_coauthorship_network",
             return_value={"nodes": [], "edges": []},
-        ),
+        ) as grafo,
     ):
         mock_db = MagicMock()
         mock_session_cls.return_value = mock_db
@@ -140,5 +147,8 @@ def test_cron_marks_failure_when_economy_update_fails_but_runs_other_stages():
 
         result = execute_cron_pipeline()
 
-        assert result["status"] == "FALHA" and "economia" in result["erro_mensagem"]
-        assert result["registros_atualizados"] >= 10  # as etapas seguintes rodaram
+        assert result["status"] == "FALHA"
+        assert result["erro_mensagem"] == "economia: BCB fora do ar"
+        assert result["registros_atualizados"] == 10 + 0 + 1 + 0  # mandatos + autorias + partidos + arestas
+        ranking.assert_called_once()  # as etapas seguintes à economia rodaram
+        grafo.assert_called_once()

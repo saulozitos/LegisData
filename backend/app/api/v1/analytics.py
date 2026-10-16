@@ -651,12 +651,7 @@ def get_wage_disparity(db: Session = Depends(get_db)):
     3) Inflação Acumulada
     Mais o placar da votação do Salário Mínimo (MPV 1172/2023), calculado dos votos nominais.
     """
-    dados = disparidade_salarial(db)
-    if dados is None:
-        raise HTTPException(
-            status_code=404, detail="Dados de disparidade salarial não encontrados. Execute o pipeline de ETL."
-        )
-    return dados
+    return disparidade_salarial(db)
 
 
 @router.get("/congress-composition", response_model=CongressCompositionResponse)

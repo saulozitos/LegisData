@@ -112,7 +112,7 @@ def upgrade() -> None:
             faixa_rotulo text NOT NULL,
             min_sm numeric(6, 2) NOT NULL,
             max_sm numeric(6, 2),
-            faixas_pnad smallint[] NOT NULL,
+            faixas_pnad smallint[] NOT NULL CHECK (faixas_pnad <@ ARRAY[0, 1, 2, 3, 4, 5, 6, 7]::smallint[]),
             descricao text NOT NULL,
             cor_hex char(7) NOT NULL,
             destaque text NOT NULL

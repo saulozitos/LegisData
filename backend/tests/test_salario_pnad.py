@@ -63,17 +63,43 @@ def test_ano_sem_norma_do_subsidio_fica_fora_da_serie(client, db, salarios):
     observar_serie(db, "SALARIO_MINIMO", date(2003, 1, 1), 240.0)  # sem subsídio com decreto citado
     db.commit()
     anos = [p["ano"] for p in client.get(f"{BASE}/wage-disparity").json()["serie_historica"]]
-    assert 2003 not in anos
+    assert anos == [2000, 2001, 2002]
 
 
-def test_ipca_ausente_no_ano_vem_nulo_e_nao_zera_o_indice(client, db):
-    observar_serie(db, "SALARIO_MINIMO", date(2000, 1, 1), 100.0)
-    observar_serie(db, "SALARIO_MINIMO", date(2001, 1, 1), 110.0)
-    _subsidio(db, 2000, 8000.0)
-    _subsidio(db, 2001, 8000.0)
+def test_ipca_ausente_no_ano_vem_nulo_e_o_acumulado_seguinte_tambem(client, db):
+    for ano, minimo, ipca in ((2000, 100.0, 6.0), (2001, 110.0, None), (2002, 120.0, 5.0)):
+        observar_serie(db, "SALARIO_MINIMO", date(ano, 1, 1), minimo)
+        _subsidio(db, ano, 8000.0)
+        if ipca is not None:
+            observar_serie(db, "IPCA_ACUM_ANO", date(ano, 1, 1), ipca)
     db.commit()
     pontos = client.get(f"{BASE}/wage-disparity").json()["serie_historica"]
-    assert pontos[1]["ipca_acumulado_ano_pct"] is None and pontos[1]["indice_ipca_base100"] == 100.0
+    assert pontos[0]["indice_ipca_base100"] == 100.0
+    # sem o IPCA de 2001, o acumulado de 2001 e de 2002 não pode ser apresentado como completo
+    assert pontos[1]["ipca_acumulado_ano_pct"] is None and pontos[1]["indice_ipca_base100"] is None
+    assert pontos[2]["indice_ipca_base100"] is None
+
+
+def test_ipca_acumula_os_anos_sem_salario_no_meio_da_serie(client, db):
+    for ano, ipca in ((2000, 6.0), (2001, 10.0), (2002, 5.0)):
+        observar_serie(db, "IPCA_ACUM_ANO", date(ano, 1, 1), ipca)
+    for ano in (2000, 2002):  # 2001 sem salário mínimo nem subsídio: fora da série, mas a inflação dele conta
+        observar_serie(db, "SALARIO_MINIMO", date(ano, 1, 1), 100.0 + ano - 2000)
+        _subsidio(db, ano, 8000.0)
+    db.commit()
+    pontos = client.get(f"{BASE}/wage-disparity").json()["serie_historica"]
+    assert [p["ano"] for p in pontos] == [2000, 2002]
+    assert pontos[1]["indice_ipca_base100"] == 115.5  # 1,10 * 1,05
+
+
+def test_subsidio_zerado_no_primeiro_ano_nao_derruba_a_serie(client, db):
+    for ano, subsidio in ((2000, 0.0), (2001, 8000.0)):
+        observar_serie(db, "SALARIO_MINIMO", date(ano, 1, 1), 100.0)
+        _subsidio(db, ano, subsidio)
+    db.commit()
+    resposta = client.get(f"{BASE}/wage-disparity")
+    assert resposta.status_code == 200
+    assert [p["ano"] for p in resposta.json()["serie_historica"]] == [2001]
 
 
 def test_sem_series_carregadas_e_404(client):
@@ -127,13 +153,14 @@ def test_sem_a_votacao_o_placar_fica_indisponivel_e_nao_zerado(client, salarios)
 # classes sociais (PNAD)
 # ---------------------------------------------------------------------------
 def _pnad_ano(db, ano, salario, dom, pessoas):
+    """Ano da PNAD com as duas distribuições usadas nas classes; `pessoas=None` omite a de pessoas."""
     db.execute(
         text("INSERT INTO eco.pnad_ano (ano, visita, salario_minimo_brl) VALUES (:a, 5, :s)"), {"a": ano, "s": salario}
     )
-    for nome, pct, total in (
-        ("domicilios_renda_total", dom, 78_000_000),
-        ("pessoas_renda_domiciliar", pessoas, 210_000_000),
-    ):
+    distribuicoes = [("domicilios_renda_total", dom, 78_000_000)]
+    if pessoas is not None:
+        distribuicoes.append(("pessoas_renda_domiciliar", pessoas, 210_000_000))
+    for nome, pct, total in distribuicoes:
         db.execute(
             text(
                 "INSERT INTO eco.pnad_distribuicao (ano, escopo, distribuicao, total_estimado, media_nominal_brl, percentual) "
@@ -186,3 +213,31 @@ def test_sem_microdados_nao_ha_estimativa_de_reserva(client):
     resposta = client.get(f"{BASE}/social-classes")
     assert resposta.status_code == 404 and "PNAD" in resposta.json()["detail"]
     assert "referencia_fixa" not in resposta.text
+
+
+@pytest.mark.parametrize("ano, status", [("abc", 422), ("0", 404), ("-5", 404), ("2200", 404)])
+def test_ano_invalido_ou_inexistente_nao_vira_erro_500(client, pnad, ano, status):
+    assert client.get(f"{BASE}/social-classes", params={"ano": ano}).status_code == status
+
+
+def test_ano_com_so_uma_das_distribuicoes_e_404_e_nao_500(client, db):
+    _pnad_ano(db, 2024, 1412.0, DOM, None)
+    db.commit()
+    resposta = client.get(f"{BASE}/social-classes")
+    assert resposta.status_code == 404 and "incompleta" in resposta.json()["detail"]
+
+
+def test_classes_do_cadastro_cobrem_as_oito_faixas_sem_sobreposicao(db):
+    """Contrato da carga inicial (migração 0030): cada faixa da PNAD pertence a exatamente uma classe A a E."""
+    classes = db.execute(text("SELECT codigo, faixas_pnad FROM eco.classe_social ORDER BY ordem")).all()
+    assert [c[0] for c in classes] == ["Classe A", "Classe B", "Classe C", "Classe D", "Classe E"]
+    todas = sorted(f for _, faixas in classes for f in faixas)
+    assert todas == list(range(8))
+    assert db.execute(text("SELECT count(*) FROM eco.pnad_faixa")).scalar() == 8
+    assert db.execute(text("SELECT array_agg(posicao ORDER BY posicao) FROM eco.pnad_faixa")).scalar() == list(range(8))
+
+
+def test_classe_com_faixa_fora_do_intervalo_e_barrada_pelo_banco(db):
+    with pytest.raises(Exception, match="classe_social"):
+        db.execute(text("UPDATE eco.classe_social SET faixas_pnad = ARRAY[9]::smallint[] WHERE ordem = 1"))
+    db.rollback()

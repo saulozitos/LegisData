@@ -228,10 +228,22 @@ def _load_economia():
     from etl.pipelines.pnad_loader import carregar as carregar_pnad
     from etl.pipelines.presidencia_loader import carregar as carregar_presidencia
 
-    print("    Séries (eco.observacao):", carregar_series(engine))
-    print("    Mandatos presidenciais:", carregar_presidencia(engine))
-    print("    Composição do Congresso e produção do Executivo:", carregar_composicao(engine))
-    print("    PNAD (classes sociais):", carregar_pnad(engine))
+    # Cada carga é independente: uma curadoria com problema não impede as demais; os erros são relatados no fim
+    cargas = (
+        ("Séries (eco.observacao)", carregar_series),
+        ("Mandatos presidenciais", carregar_presidencia),
+        ("Composição do Congresso e produção do Executivo", carregar_composicao),
+        ("PNAD (classes sociais)", carregar_pnad),
+    )
+    falhas = []
+    for nome, carregar in cargas:
+        try:
+            print(f"    {nome}:", carregar(engine))
+        except Exception as exc:  # noqa: BLE001 - isolada de propósito; relatada abaixo
+            logger.error("Carga '%s' falhou: %s", nome, exc, exc_info=True)
+            falhas.append(f"{nome}: {exc}")
+    if falhas:
+        raise RuntimeError("; ".join(falhas))
 
 
 def _load_presenca_remuneracao():
