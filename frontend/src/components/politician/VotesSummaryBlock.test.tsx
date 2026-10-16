@@ -13,9 +13,9 @@ const item = (id: string, numero: string) => ({
 });
 
 const resumo: ResumoVotos = {
-  sim: { total: 120, recentes: [item("a", "PL 1/2024"), item("b", "PEC 2/2024")] },
-  nao: { total: 1, recentes: [item("c", "PL 9/2023")] },
-  ausente: { total: 0, recentes: [] },
+  sim: { total: 120, itens: [item("a", "PL 1/2024"), item("b", "PEC 2/2024")] },
+  nao: { total: 1, itens: [item("c", "PL 9/2023")] },
+  ausente: { total: 0, itens: [] },
 };
 
 describe("VotesSummaryBlock", () => {
@@ -24,10 +24,10 @@ describe("VotesSummaryBlock", () => {
     const sim = screen.getByRole("region", { name: "Votou Sim" });
     expect(within(sim).getByText("120")).toBeInTheDocument();
     expect(within(sim).getByText("PL 1/2024")).toBeInTheDocument();
-    expect(within(sim).getByText(/Mostrando as 2 mais recentes de 120/)).toBeInTheDocument();
+    expect(within(sim).getByText("PEC 2/2024")).toBeInTheDocument();
+    expect(within(sim).getByRole("list", { name: /Matérias: Votou Sim/ })).toHaveClass("overflow-y-auto");
     const nao = screen.getByRole("region", { name: "Votou Não" });
     expect(within(nao).getByText("PL 9/2023")).toBeInTheDocument();
-    expect(within(nao).queryByText(/Mostrando/)).not.toBeInTheDocument();
   });
 
   it("grupo sem registro mostra mensagem, não lista vazia", () => {

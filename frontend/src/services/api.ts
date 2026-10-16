@@ -54,7 +54,7 @@ export interface ResumoVotosItem {
 
 export interface ResumoVotosGrupo {
   total: number;
-  recentes: ResumoVotosItem[];
+  itens: ResumoVotosItem[];
 }
 
 export interface ResumoVotos {

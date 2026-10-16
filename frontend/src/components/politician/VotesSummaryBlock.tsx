@@ -40,14 +40,14 @@ function Grupo({ titulo, vazio, Icone, tom, dados }: { titulo: string; vazio: st
         </h4>
         <span className="text-lg font-extrabold font-mono">{fmtNum(dados.total, 0)}</span>
       </header>
-      {dados.recentes.length === 0 ? (
+      {dados.itens.length === 0 ? (
         <p className="text-xs text-slate-400">{vazio}</p>
       ) : (
-        <ul className="space-y-2">
-          {dados.recentes.map((item) => {
+        <ul className="space-y-2 max-h-96 overflow-y-auto pr-2 custom-scrollbar" tabIndex={0} aria-label={`Matérias: ${titulo}`}>
+          {dados.itens.map((item, indice) => {
             const url = safeExternalUrl(item.url_oficial ?? undefined);
             return (
-              <li key={`${item.proposicao_id}-${item.data}`} className="text-xs text-slate-300">
+              <li key={`${item.proposicao_id}-${indice}`} className="text-xs text-slate-300">
                 <div className="flex items-start justify-between gap-2">
                   <span className="font-semibold text-slate-100">{item.proposicao_numero}</span>
                   <span className="text-slate-400 whitespace-nowrap">{item.data}</span>
@@ -62,9 +62,6 @@ function Grupo({ titulo, vazio, Icone, tom, dados }: { titulo: string; vazio: st
             );
           })}
         </ul>
-      )}
-      {dados.total > dados.recentes.length && (
-        <p className="text-[11px] text-slate-400">Mostrando as {dados.recentes.length} mais recentes de {fmtNum(dados.total, 0)}.</p>
       )}
     </section>
   );

@@ -175,11 +175,10 @@ VOTE_LABELS = {
 
 
 RESUMO_VOTOS_GRUPOS = (("sim", "SIM"), ("nao", "NAO"), ("ausente", "AUSENTE"))
-RESUMO_VOTOS_ITENS = 10
 
 
 def _resumo_votos(db: Session, pessoa_id: int) -> Dict[str, Any]:
-    """Quantas vezes votou Sim, Não e esteve ausente (toda a base) e as matérias mais recentes de cada grupo."""
+    """Total e lista completa (da mais recente à mais antiga) das votações em que votou Sim, Não ou esteve ausente."""
     totais = dict(
         db.query(Voto.opcao_codigo, func.count())
         .filter(Voto.pessoa_id == pessoa_id, Voto.opcao_codigo.in_([c for _, c in RESUMO_VOTOS_GRUPOS]))
@@ -194,7 +193,6 @@ def _resumo_votos(db: Session, pessoa_id: int) -> Dict[str, Any]:
             .join(Proposicao, Votacao.proposicao_id == Proposicao.id)
             .filter(Voto.pessoa_id == pessoa_id, Voto.opcao_codigo == codigo)
             .order_by(desc(Votacao.data_hora), Votacao.id)
-            .limit(RESUMO_VOTOS_ITENS)
             .all()
         )
         itens = []
@@ -210,7 +208,7 @@ def _resumo_votos(db: Session, pessoa_id: int) -> Dict[str, Any]:
                     "url_oficial": url_oficial_proposicao(prop),
                 }
             )
-        resumo[chave] = {"total": int(totais.get(codigo, 0)), "recentes": itens}
+        resumo[chave] = {"total": int(totais.get(codigo, 0)), "itens": itens}
     return resumo
 
 
