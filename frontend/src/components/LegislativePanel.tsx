@@ -127,7 +127,7 @@ export default function LegislativePanel({
           v.nome_eleitoral.toLowerCase().includes(term) ||
           v.nome_civil.toLowerCase().includes(term) ||
           v.partido_sigla.toLowerCase().includes(term) ||
-          v.uf.toLowerCase().includes(term)
+          (v.uf ?? "").toLowerCase().includes(term)
       );
     }
 

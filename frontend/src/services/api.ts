@@ -656,8 +656,8 @@ export interface VotoNominalItem {
   nome_eleitoral: string;
   nome_civil: string;
   partido_sigla: string;
-  uf: string;
-  cargo: string;
+  uf: string | null;
+  cargo: string | null;
   foto_url: string | null;
   decisao: "SIM" | "NAO" | "ABSTENCAO" | "OBSTRUCAO" | "AUSENTE" | string;
   sessao_id: string;
@@ -1151,11 +1151,14 @@ export interface PoliticoDossier {
   assiduidade: {
     total_sessoes: number;
     total_presencas: number;
-    faltas_justificadas: number;
-    /** null no Senado: a fonte (votações nominais) não distingue ausência não justificada. */
+    /** null quando o período não tem nenhum dia em que a fonte informe justificativa (Câmara antes de 2020). */
+    faltas_justificadas: number | null;
+    /** null quando o período não tem nenhum dia em que a fonte informe justificativa (Câmara antes de 2020). */
     faltas_nao_justificadas: number | null;
-    /** Faltas deduzidas (antes de 2020 a Câmara só publica presença): deputado em exercício sem presença em dia de sessão. */
-    faltas_inferidas?: number;
+    /** Faltas deduzidas (antes de 2020 a Câmara só publica presença): deputado em exercício sem presença em dia de sessão. null quando não se aplica ao período. */
+    faltas_inferidas?: number | null;
+    /** Todas as faltas do período medido (oficiais e inferidas); sempre conhecida quando há presenças medidas. */
+    total_faltas?: number;
     /** Aviso sobre a origem/limite dos dados de assiduidade. */
     observacao?: string | null;
     taxa_presenca_pct: number | null;
@@ -2196,10 +2199,11 @@ export interface AttendanceRankingItem {
   dias_registrados: number;
   presencas: number;
   faltas: number;
-  faltas_justificadas: number;
-  faltas_nao_justificadas: number;
-  /** Câmara antes de 2020: deduzidas, sem justificativa publicada. */
-  faltas_inferidas: number;
+  /** `null` quando o recorte não permite saber (Câmara antes de 2020 não publica justificativa). */
+  faltas_justificadas: number | null;
+  faltas_nao_justificadas: number | null;
+  /** Câmara antes de 2020: deduzidas, sem justificativa publicada. `null` quando o conceito não se aplica ao recorte. */
+  faltas_inferidas: number | null;
   taxa_ausencia_pct: number | null;
   pontos_ialp: number;
   indice_baixa_producao: number | null;
@@ -2217,38 +2221,44 @@ export interface AttendancePartyItem {
   parlamentares: number;
   dias_registrados: number;
   faltas: number;
-  faltas_justificadas: number;
-  faltas_nao_justificadas: number;
-  faltas_inferidas: number;
+  faltas_justificadas: number | null;
+  faltas_nao_justificadas: number | null;
+  faltas_inferidas: number | null;
   taxa_ausencia_pct: number | null;
 }
 
 export interface AttendancePartyResponse {
   itens: AttendancePartyItem[];
+  /** Mínimo de dias registrados para o partido entrar no ranking. */
+  minimo_dias: number;
   dias_sem_partido_identificado: number;
-  dias_com_partido_aproximado?: number;
+  dias_com_partido_aproximado: number;
   aviso: string;
 }
 
-function attendanceQuery(casa: AttendanceCasa, anoInicio?: number, anoFim?: number): string {
+export interface AttendanceRankingOptions {
+  casa: AttendanceCasa;
+  ordenar: AttendanceOrdenacao;
+  anoInicio?: number;
+  anoFim?: number;
+  limit?: number;
+}
+
+function attendanceQuery(casa: AttendanceCasa, anoInicio?: number, anoFim?: number): URLSearchParams {
   const params = new URLSearchParams({ casa });
   if (anoInicio) params.set("ano_inicio", String(anoInicio));
   if (anoFim) params.set("ano_fim", String(anoFim));
-  return params.toString();
+  return params;
 }
 
 export async function getAttendanceRanking(
-  casa: AttendanceCasa,
-  ordenar: AttendanceOrdenacao,
-  anoInicio?: number,
-  anoFim?: number,
-  limit = 30,
+  { casa, ordenar, anoInicio, anoFim, limit = 30 }: AttendanceRankingOptions,
   signal?: AbortSignal
 ): Promise<AttendanceRankingResponse> {
-  return fetchJson<AttendanceRankingResponse>(
-    `/attendance/ranking/politicians?${attendanceQuery(casa, anoInicio, anoFim)}&ordenar=${ordenar}&limit=${limit}`,
-    signal
-  );
+  const params = attendanceQuery(casa, anoInicio, anoFim);
+  params.set("ordenar", ordenar);
+  params.set("limit", String(limit));
+  return fetchJson<AttendanceRankingResponse>(`/attendance/ranking/politicians?${params.toString()}`, signal);
 }
 
 export async function getAttendancePartyRanking(
@@ -2257,5 +2267,5 @@ export async function getAttendancePartyRanking(
   anoFim?: number,
   signal?: AbortSignal
 ): Promise<AttendancePartyResponse> {
-  return fetchJson<AttendancePartyResponse>(`/attendance/ranking/parties?${attendanceQuery(casa, anoInicio, anoFim)}`, signal);
+  return fetchJson<AttendancePartyResponse>(`/attendance/ranking/parties?${attendanceQuery(casa, anoInicio, anoFim).toString()}`, signal);
 }

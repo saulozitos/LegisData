@@ -286,10 +286,11 @@ describe('AttendanceTab e RemunerationTab', () => {
 });
 
 describe('AttendanceTab e RemunerationTab com dados parciais das fontes oficiais', () => {
-  it('assiduidade do Senado: falta não justificada desconhecida aparece como "n/d", com unidade, período e fonte', () => {
+  it('assiduidade sem justificativa na fonte: faltas justificadas e não justificadas aparecem como "n/d", com unidade, período e fonte', () => {
     const d = fullDossier();
     d.assiduidade = {
       ...d.assiduidade,
+      faltas_justificadas: null,
       faltas_nao_justificadas: null,
       unidade: 'dia com votação nominal em plenário',
       periodo_inicio: '2023-02-01',
@@ -297,8 +298,8 @@ describe('AttendanceTab e RemunerationTab com dados parciais das fontes oficiais
       fonte: 'Senado Federal — votações nominais de plenário',
     };
     render(<AttendanceTab dossier={d} />);
-    expect(screen.getByText('n/d')).toBeInTheDocument();
-    expect(screen.getByText('Não informado pela fonte')).toBeInTheDocument();
+    expect(screen.getAllByText('n/d')).toHaveLength(2);
+    expect(screen.getAllByText('Fonte não informa justificativa neste período')).toHaveLength(2);
     expect(screen.getByText('Unidade: dia com votação nominal em plenário · 2023-02-01 a 2026-09-30')).toBeInTheDocument();
     expect(screen.getByText('Fonte: Senado Federal — votações nominais de plenário')).toBeInTheDocument();
   });
@@ -313,11 +314,12 @@ describe('AttendanceTab e RemunerationTab com dados parciais das fontes oficiais
     expect(screen.getByText('Fonte: Câmara dos Deputados — Presença em Plenário')).toBeInTheDocument();
   });
 
-  it('cabeçalho: total de faltas vira "n/d" quando as não justificadas são desconhecidas (nunca soma parcial)', () => {
+  it('cabeçalho: o total de faltas vem da API e as categorias desconhecidas viram "n/d" (nunca soma parcial)', () => {
     const d = fullDossier();
-    d.assiduidade = { ...d.assiduidade, faltas_nao_justificadas: null };
+    d.assiduidade = { ...d.assiduidade, faltas_justificadas: null, faltas_nao_justificadas: null, total_faltas: 5 };
     render(<PoliticianHeaderCard dossier={d} onBack={() => {}} onChangeTab={() => {}} />);
-    expect(screen.getAllByText('n/d').length).toBeGreaterThanOrEqual(2); // total e não justificadas
+    expect(screen.getAllByText('n/d')).toHaveLength(2); // justificadas e não justificadas
+    expect(screen.getByText('5')).toBeInTheDocument(); // total de faltas
   });
 
   it('remuneração: campos que a fonte não informa são "Indisponível", jamais R$ 0,00', () => {

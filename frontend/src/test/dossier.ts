@@ -95,6 +95,7 @@ export function fullDossier(): PoliticoDossier {
       total_presencas: 95,
       faltas_justificadas: 3,
       faltas_nao_justificadas: 2,
+      total_faltas: 5,
       taxa_presenca_pct: 95,
       amostra_faltas: [{ data: '2023-04-01', tipo: 'FALTA_JUSTIFICADA', justificativa: 'Missão oficial', casa: 'CAMARA_DOS_DEPUTADOS' }],
     },

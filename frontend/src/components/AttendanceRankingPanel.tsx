@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { CalendarX2, Info, Users2, UserX } from "lucide-react";
 import {
   getAttendancePartyRanking,
@@ -9,7 +9,8 @@ import {
   type AttendanceOrdenacao,
 } from "@/services/api";
 import { useApi } from "@/hooks/useApi";
-import { fmtNum } from "@/lib/format";
+import { fmtNum, isNum } from "@/lib/format";
+import { anoInicioLegislatura } from "@/lib/legislatura";
 import { EmptyState, ErrorState, LoadingState } from "@/components/StateViews";
 
 interface AttendanceRankingPanelProps {
@@ -25,16 +26,34 @@ const CASAS: Array<{ id: AttendanceCasa; label: string }> = [
   { id: "SENADO", label: "Senado Federal" },
 ];
 
-const PERIODOS: Array<{ id: string; label: string; inicio?: number }> = [
-  { id: "legislatura", label: "Legislatura atual (2023 em diante)", inicio: 2023 },
-  { id: "oficial", label: "Desde 2020 (faltas oficiais da Câmara)", inicio: 2020 },
-  { id: "tudo", label: "Todo o período com faltas (2003 em diante)" },
-];
+function periodosDisponiveis(hoje: Date): Array<{ id: string; label: string; inicio?: number }> {
+  const legislatura = anoInicioLegislatura(hoje);
+  return [
+    { id: "legislatura", label: `Legislatura atual (${legislatura} em diante)`, inicio: legislatura },
+    { id: "oficial", label: "Desde 2020 (faltas oficiais da Câmara)", inicio: 2020 },
+    { id: "tudo", label: "Todo o período com faltas (2003 em diante)" },
+  ];
+}
+
+const SEM_JUSTIFICATIVA_PUBLICADA = "A fonte não publica esta informação para o recorte escolhido.";
+const SEM_INFERENCIA = "Falta inferida só existe na Câmara entre 2003 e 2019; não se aplica a este recorte.";
+
+/** Contagem que a fonte pode não publicar: `null` aparece como "n/d" com a explicação, nunca como zero. */
+function Contagem({ valor, motivo }: { valor: number | null | undefined; motivo: string }) {
+  if (!isNum(valor)) {
+    return (
+      <span title={motivo} aria-label={`não disponível: ${motivo}`} className="cursor-help text-slate-500">
+        n/d
+      </span>
+    );
+  }
+  return <>{fmtNum(valor)}</>;
+}
 
 const ORDENACOES: Array<{ id: AttendanceOrdenacao; label: string; ajuda: string }> = [
   { id: "faltas", label: "Mais faltas", ajuda: "Total de dias de ausência registrados." },
   { id: "taxa", label: "Maior taxa de ausência", ajuda: "Faltas divididas pelos dias registrados (mínimo de 20 dias)." },
-  { id: "nao_justificadas", label: "Faltas sem justificativa", ajuda: "Ausências oficiais sem justificativa (Senado: NCom; Câmara: desde 2020)." },
+  { id: "nao_justificadas", label: "Faltas sem justificativa", ajuda: "Ausências oficiais sem justificativa (Senado: não compareceu, sem justificativa; Câmara: desde 2020)." },
   {
     id: "baixa_producao",
     label: "Falta muito e produz pouco",
@@ -46,12 +65,13 @@ export default function AttendanceRankingPanel({ onSelectPolitician, onSelectPar
   const [visao, setVisao] = useState<Visao>("parlamentares");
   const [casa, setCasa] = useState<AttendanceCasa>("ALL");
   const [periodoId, setPeriodoId] = useState("legislatura");
+  const periodos = useMemo(() => periodosDisponiveis(new Date()), []);
   const [ordenar, setOrdenar] = useState<AttendanceOrdenacao>("faltas");
-  const inicio = PERIODOS.find((p) => p.id === periodoId)?.inicio;
+  const inicio = periodos.find((p) => p.id === periodoId)?.inicio;
 
   const politicos = useApi(
     `attendance-politicians-${casa}-${periodoId}-${ordenar}`,
-    (signal) => getAttendanceRanking(casa, ordenar, inicio, undefined, 30, signal),
+    (signal) => getAttendanceRanking({ casa, ordenar, anoInicio: inicio, limit: 30 }, signal),
     visao === "parlamentares"
   );
   const partidos = useApi(
@@ -74,7 +94,7 @@ export default function AttendanceRankingPanel({ onSelectPolitician, onSelectPar
           (pontos IALP) aparece ao lado para comparar presença e entrega.
         </p>
 
-        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Visão do ranking">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Visão do ranking">
           {(
             [
               ["parlamentares", "Parlamentares", UserX],
@@ -83,8 +103,8 @@ export default function AttendanceRankingPanel({ onSelectPolitician, onSelectPar
           ).map(([id, label, Icon]) => (
             <button
               key={id}
-              role="tab"
-              aria-selected={visao === id}
+              type="button"
+              aria-pressed={visao === id}
               onClick={() => setVisao(id)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 visao === id ? "bg-rose-500 text-slate-950" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
@@ -118,7 +138,7 @@ export default function AttendanceRankingPanel({ onSelectPolitician, onSelectPar
               onChange={(e) => setPeriodoId(e.target.value)}
               className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-slate-200"
             >
-              {PERIODOS.map((p) => (
+              {periodos.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}
                 </option>
@@ -184,9 +204,15 @@ export default function AttendanceRankingPanel({ onSelectPolitician, onSelectPar
                     </td>
                     <td className="p-3 text-right font-mono">{fmtNum(p.dias_registrados)}</td>
                     <td className="p-3 text-right font-mono font-bold text-rose-300">{fmtNum(p.faltas)}</td>
-                    <td className="p-3 text-right font-mono text-amber-300">{fmtNum(p.faltas_justificadas)}</td>
-                    <td className="p-3 text-right font-mono text-rose-400">{fmtNum(p.faltas_nao_justificadas)}</td>
-                    <td className="p-3 text-right font-mono text-sky-300">{fmtNum(p.faltas_inferidas)}</td>
+                    <td className="p-3 text-right font-mono text-amber-300">
+                      <Contagem valor={p.faltas_justificadas} motivo={SEM_JUSTIFICATIVA_PUBLICADA} />
+                    </td>
+                    <td className="p-3 text-right font-mono text-rose-400">
+                      <Contagem valor={p.faltas_nao_justificadas} motivo={SEM_JUSTIFICATIVA_PUBLICADA} />
+                    </td>
+                    <td className="p-3 text-right font-mono text-sky-300">
+                      <Contagem valor={p.faltas_inferidas} motivo={SEM_INFERENCIA} />
+                    </td>
                     <td className="p-3 text-right font-mono">{p.taxa_ausencia_pct == null ? "n/d" : `${fmtNum(p.taxa_ausencia_pct)}%`}</td>
                     <td className="p-3 text-right font-mono text-emerald-300">{fmtNum(p.pontos_ialp)}</td>
                   </tr>
@@ -196,7 +222,13 @@ export default function AttendanceRankingPanel({ onSelectPolitician, onSelectPar
           </div>
         )
       ) : !partidos.data || partidos.data.itens.length === 0 ? (
-        <EmptyState message="Sem registros de presença para este filtro." />
+        <EmptyState
+          message={
+            partidos.data
+              ? `Nenhum partido atinge o mínimo de ${fmtNum(partidos.data.minimo_dias, 0)} dias registrados neste recorte.`
+              : "Sem registros de presença para este filtro."
+          }
+        />
       ) : (
         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-x-auto">
           <table className="w-full text-xs">
