@@ -101,6 +101,9 @@ def arquivos(tmp_path):
     _escrever_csv(
         tmp_path, "bcb_series_mensais.csv", ["serie", "data", "valor"], [["CAMBIO_MENSAL", "1995-01-01", 0.85]]
     )
+    _escrever_csv(
+        tmp_path, "subsidio_parlamentar.csv", ["ano", "valor", "norma"], [[1995, 8000, "Decreto Legislativo 7/1995"]]
+    )
     _escrever_csv(tmp_path, "ipca_mensal_historico.csv", ["data", "valor"], [["1995-01-01", 1.7], ["1995-02-01", 1.0]])
     return tmp_path
 
@@ -125,6 +128,7 @@ def test_carga_grava_e_e_idempotente(pg_engine, arquivos):
         conn.execute(text("TRUNCATE eco.observacao"))
     primeira = eco.carregar(pg_engine, arquivos)
     assert primeira["IPCA_MENSAL"] == 2 and primeira["PIB_CRESC_REAL"] == 1 and primeira["CAMBIO_MENSAL"] == 1
+    assert primeira["SUBSIDIO_PARLAMENTAR"] == 1
     antes = _contagem(pg_engine)
     assert eco.carregar(pg_engine, arquivos) == primeira
     assert _contagem(pg_engine) == antes
@@ -161,6 +165,7 @@ def test_carga_com_arquivos_sem_dados_nao_apaga_a_base(pg_engine, arquivos):
         ("indicadores_sociais_uf.csv", ["ano", "uf", "pobreza_pct"]),
         ("ipca_mensal_historico.csv", ["data", "valor"]),
         ("bcb_series_mensais.csv", ["serie", "data", "valor"]),
+        ("subsidio_parlamentar.csv", ["ano", "valor", "norma"]),
     ):
         _escrever_csv(arquivos, nome, cab, [])
     antes = _contagem(pg_engine)

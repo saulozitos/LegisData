@@ -121,12 +121,6 @@ def _composicao():
     return save_composicao_congresso()
 
 
-def _renda():
-    from etl.extractors.salario_inflacao_extractor import SalarioInflacaoExtractor
-
-    return SalarioInflacaoExtractor().run()
-
-
 def _ceap_emendas(ano_inicio: int):
     from etl.pipelines.sync_ceap_emendas import run
 
@@ -229,11 +223,15 @@ def _load_economia():
     ensure_backend_on_path()
     from app.core.database import engine
 
+    from etl.pipelines.composicao_loader import carregar as carregar_composicao
     from etl.pipelines.economia_loader import carregar as carregar_series
+    from etl.pipelines.pnad_loader import carregar as carregar_pnad
     from etl.pipelines.presidencia_loader import carregar as carregar_presidencia
 
     print("    Séries (eco.observacao):", carregar_series(engine))
     print("    Mandatos presidenciais:", carregar_presidencia(engine))
+    print("    Composição do Congresso e produção do Executivo:", carregar_composicao(engine))
+    print("    PNAD (classes sociais):", carregar_pnad(engine))
 
 
 def _load_presenca_remuneracao():
@@ -270,7 +268,6 @@ def montar_parser() -> argparse.ArgumentParser:
         ("social", "Indicadores sociais oficiais (IBGE/SIDRA) e eleições presidenciais por UF (manuais)"),
         ("orcamento", "Repasses federais por UF (Portal da Transparência, CSV mensal oficial)"),
         ("composicao", "Composição histórica do Congresso"),
-        ("renda", "Salário mínimo vs subsídio parlamentar vs inflação"),
         ("pnad", "Faixas de salário mínimo a partir dos microdados da PNAD Contínua (IBGE)"),
         ("ceap", "CEAP (Câmara/Senado) e emendas parlamentares oficiais"),
         ("votacoes", "Votações nominais em plenário (Câmara e Senado) com orientação do governo e ex-parlamentares"),
@@ -325,7 +322,6 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         "social",
         "orcamento",
         "composicao",
-        "renda",
         "pnad",
         "ceap",
         "votacoes",
@@ -362,7 +358,6 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
             "orcamento", "Repasses federais por UF (Portal da Transparência)", lambda: _orcamento(args.allow_synthetic)
         ),
         Etapa("composicao", "Composição do Congresso e governabilidade", _composicao),
-        Etapa("renda", "Salário mínimo vs subsídio parlamentar vs inflação", _renda),
         Etapa("pnad", "Faixas de salário mínimo (microdados PNAD Contínua)", lambda: _pnad(args.no_cache)),
         Etapa("ceap", "CEAP e emendas parlamentares oficiais", lambda: _ceap_emendas(args.ceap_ano_inicio)),
         Etapa(
@@ -473,7 +468,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             "social",
             "orcamento",
             "composicao",
-            "renda",
             "pnad",
             "ceap",
             "votacoes",

@@ -55,7 +55,6 @@ help:
 	@echo "  make run-tse          - Executa extração de filiação partidária (TSE)"
 	@echo "  make run-orcamento    - Executa modelagem de repasses orçamentários por UF"
 	@echo "  make run-composicao   - Executa curadoria da composição do Congresso"
-	@echo "  make run-renda        - Executa análise de Salário Mínimo vs Parlamentar vs Inflação"
 	@echo "  make run-load-db      - Carrega e efetua upsert relacional no PostgreSQL"
 
 # ------------------------------------------------------------------------------
@@ -130,8 +129,6 @@ run-orcamento:
 run-composicao:
 	PYTHONPATH=. $(PY) etl/run_etl.py --composicao
 
-run-renda:
-	PYTHONPATH=. $(PY) etl/run_etl.py --renda
 
 run-load-db:
 	PYTHONPATH=. $(PY) etl/run_etl.py --load-db

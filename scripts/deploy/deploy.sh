@@ -74,12 +74,15 @@ docker run --rm --network "$REDE" -e ENVIRONMENT=production -e POSTGRES_PASSWORD
 # Só depois que o schema `eco` existe (a migração 0025 em diante) e o código da carga está no checkout.
 TEM_ECO="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select to_regclass('eco.observacao') is not null")"
 if [[ "$TEM_ECO" == "t" && -f "$RAIZ/etl/pipelines/economia_loader.py" ]]; then
-  log "carga de séries e mandatos presidenciais"
+  log "carga de séries, mandatos, composição do Congresso e PNAD"
   um_comando python -c "
 from app.core.database import engine
 from etl.pipelines.economia_loader import carregar as series
 from etl.pipelines.presidencia_loader import carregar as presidentes
+from etl.pipelines.composicao_loader import carregar as composicao
+from etl.pipelines.pnad_loader import carregar as pnad
 print('séries:', len(series(engine)), 'presidentes:', presidentes(engine))
+print('composição:', composicao(engine), 'pnad:', pnad(engine))
 "
 fi
 

@@ -234,13 +234,6 @@ def _pct(part: float, total: float) -> float:
     return round((part / total) * 100, 1) if total > 0 else 0.0
 
 
-def _load_json_list_or_404(filename: str, detail: str) -> Any:
-    data = _load_json_cached(DATA_DIR / filename)
-    if data is None:
-        raise HTTPException(status_code=404, detail=detail)
-    return data
-
-
 @router.get("/presidents", response_model=List[Dict[str, Any]])
 def get_historical_presidents(db: Session = Depends(get_db)):
     """

@@ -32,7 +32,7 @@ import {
 } from "../services/api";
 import { useApi } from "@/hooks/useApi";
 import { safeExternalUrl } from "@/lib/safeUrl";
-import { fmtNum } from "@/lib/format";
+import { fmtNum, fmtPct, isNum } from "@/lib/format";
 import { EmptyState, ErrorState, LoadingState } from "@/components/StateViews";
 import Modal from "@/components/Modal";
 
@@ -108,6 +108,13 @@ export default function CongressCompositionPanel({
   if (!data) return <EmptyState title="Composição do Congresso indisponível" />;
 
   const currentHouse = activeHouse === "camara" ? data.camara : data.senado;
+  if (!currentHouse) {
+    return (
+      <EmptyState
+        title={`Composição ${activeHouse === "camara" ? "da Câmara" : "do Senado"} indisponível para este mandato`}
+      />
+    );
+  }
   const totalSeats = currentHouse.total_cadeiras;
   const houseLabel = `${activeHouse === "camara" ? "Câmara dos Deputados" : "Senado Federal"} (${totalSeats} cadeiras)`;
   // Quóruns constitucionais calculados sobre o total de cadeiras informado pela API.
@@ -457,7 +464,7 @@ export default function CongressCompositionPanel({
                       Oposição (X₁)
                     </span>
                     <span className="text-sm font-bold text-white font-mono">
-                      {(iple.variaveis_contextuais.tamanho_oposicao_x1 * 100).toFixed(1)}%
+                      {fmtPct(isNum(iple.variaveis_contextuais.tamanho_oposicao_x1) ? iple.variaveis_contextuais.tamanho_oposicao_x1 * 100 : null, 1)}
                     </span>
                   </div>
                   <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border ${
@@ -475,7 +482,7 @@ export default function CongressCompositionPanel({
                       Fragmentação NEP (X₂)
                     </span>
                     <span className="text-sm font-bold text-white font-mono">
-                      {iple.variaveis_contextuais.fragmentacao_nep_x2.toFixed(2)} partidos
+                      {fmtNum(iple.variaveis_contextuais.fragmentacao_nep_x2, 2)} partidos
                     </span>
                   </div>
                   <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border ${
@@ -493,7 +500,7 @@ export default function CongressCompositionPanel({
                       Polarização IPP (X₃)
                     </span>
                     <span className="text-sm font-bold text-white font-mono">
-                      {iple.variaveis_contextuais.polarizacao_ipp_x3.toFixed(2)}
+                      {fmtNum(iple.variaveis_contextuais.polarizacao_ipp_x3, 2)}
                     </span>
                   </div>
                   <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border ${

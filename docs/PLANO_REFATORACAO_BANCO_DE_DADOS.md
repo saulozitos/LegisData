@@ -31,7 +31,7 @@ Este documento é um plano, não uma implementação. Nenhuma tabela ou código 
 | 2b | Cobertura: status real, todas as proposições desde 1995, autores sem pessoa, IPPM por período e cadeiras de todos os períodos (Câmara) | Em validação (branch `refactor/db-entrega-2b-cobertura`) |
 | 2c | Endpoints de `legislative.py` (proposições, votos, deliberações, calendário, explorer, ranking de autores, rede de coautoria, produtividade), proposições e votos do dossiê em `politicians.py`, Basômetro e `legislative_scoring.py` passam a ler `leg`/`core`; identificadores públicos são os `uid`. A rede de coautoria ignora proposições com mais de 40 autores (assinaturas em massa) e `sync_proposition_authors` deixou de existir (a autoria vem da ponte e do ETL em lote) | Entregue (PR #39) |
 | 3a | Economia e Executivo (Fase 6): schema `eco`, mandatos presidenciais em `core`, corte em 1995, remoção de `seed_executivo.py` e de toda leitura de arquivo pela API | Em andamento (branch `refactor/db-entrega-3a-economia`) |
-| 3b | Dados curados do Executivo e do Congresso (IPLE, composição, salário parlamentar, PNAD), repasses e eleições por UF em `eco`, cron das séries | A fazer |
+| 3b | Dados curados do Executivo e do Congresso (IPLE, composição, salário parlamentar, PNAD) e cron das séries | Em andamento (branch `refactor/db-entrega-3b-curados`) |
 | 3c | Finanças e fiscalização (Fase 5), novo ETL e limpeza do legado | A fazer |
 
 ### Entrega 3a — economia e Executivo no banco (2026-10-16)
@@ -57,6 +57,17 @@ Este documento é um plano, não uma implementação. Nenhuma tabela ou código 
 6. Teste a 0026 numa cópia do banco de produção antes: o `DELETE` em `public.politicos` supõe que só `public.mandatos` aponta para o político.
 
 **Fica para a Entrega 3b**: `wage-disparity` (`salario_vs_inflacao.json`, com o salário parlamentar digitado), `congress-composition` e a composição do IPLE (`composicao_congresso.json` e `DADOS_HISTORICOS_EXECUTIVO`, ambos curados à mão), faixas da PNAD (`pnad_faixas_salario_minimo.json`), repasses e eleições presidenciais por UF direto das tabelas `eco` e a atualização diária das séries no cron. Só então `grep load_json_cached backend/app` fica vazio nesses módulos; CEAP e emendas seguem para a Fase 5.
+
+### Entrega 3b — dados curados do Executivo e do Congresso no banco (2026-10-16)
+
+**O que foi construído**
+- `leg.composicao_mandato`, `leg.bancada_mandato`, `leg.presidencia_casa` e `leg.presidencia_casa_mandato`: bancadas por mandato presidencial e Casa (curadoria e eleitos do TSE lado a lado), presidentes das Casas e o resultado da conferência com o TSE. A governabilidade (base, centro, oposição, maioria simples e de PEC) agora é **calculada** das bancadas; antes era digitada. Em dois mandatos a conta difere do número digitado (Lula 1 na Câmara: base 266, e não 218; Bolsonaro: oposição 137, e não 145) porque o número digitado não batia com a lista de partidos do próprio arquivo.
+- `leg.producao_executivo`: proposições do Executivo e vetos de cada mandato, insumo do IPLE (saiu da constante `DADOS_HISTORICOS_EXECUTIVO`). A escala ideológica deixou de ser constante: vem de `core.partido_posicao_ideologica`.
+- IPLE sem dado inventado: bancadas ou oposição não levantadas deixam X1, X2 e X3 `null` e a calibragem "Indisponível" (antes entravam 1,0 de NEP e 0 de polarização). O período do mandato passa a ser inclusivo (1995 - 1998) em todas as telas.
+- Série `SUBSIDIO_PARLAMENTAR` em `eco` (decretos legislativos citados em cada valor; o de 2026, sem norma, saiu) e `disparidade salarial` calculada do salário mínimo, do subsídio e do IPCA, com base 100 em 1995. O placar da MPV 1172/2023 vem dos votos nominais.
+- PNAD: `eco.pnad_faixa`, `eco.classe_social`, `eco.pnad_ano`, `eco.pnad_distribuicao` e `eco.pnad_metodologia`. Sem os microdados do ano, `GET /analytics/social-classes` responde 404; a estimativa fixa digitada saiu.
+- Cargas `composicao_loader` e `pnad_loader` na etapa `--load-economia`, e a atualização diária das séries (`economia_atualizacao`) como etapa 1c do cron.
+- Saíram: `salario_inflacao_extractor` e a etapa `--renda`, o fallback em arquivo do explorador de proposições e `load_csv_cached`. Nenhuma rota de economia, Executivo ou composição abre arquivo de `etl/data`; sobram a CEAP e as emendas do dossiê (Fase 5).
 
 ### Entrega 2b — cobertura de proposições e de cadeiras (2026-10-15)
 

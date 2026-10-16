@@ -39,17 +39,6 @@ def load_json_cached(file_path: Path) -> Optional[Any]:
     return _cached(file_path, _read_json)
 
 
-def _read_csv(file_path: Path):
-    import pandas as pd
-
-    return pd.read_csv(file_path)
-
-
-def load_csv_cached(file_path: Path):
-    """DataFrame compartilhado entre requisições: filtre/copie, nunca modifique no lugar."""
-    return _cached(file_path, _read_csv)
-
-
 def _parse_date(value: str) -> date:
     return datetime.strptime(value[:10], "%Y-%m-%d").date()
 

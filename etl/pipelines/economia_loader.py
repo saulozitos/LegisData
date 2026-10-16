@@ -147,6 +147,20 @@ def observacoes_mensais(linhas: Iterable[Dict[str, str]]) -> List[Observacao]:
     return resultado
 
 
+def observacoes_subsidio(linhas: Iterable[Dict[str, str]]) -> Tuple[List[Observacao], Dict[Tuple[str, date], str]]:
+    """Subsídio parlamentar: só entra valor com a norma citada (decreto legislativo), que vai para a `nota`."""
+    observacoes: List[Observacao] = []
+    notas: Dict[Tuple[str, date], str] = {}
+    for linha in linhas:
+        ano, valor, norma = numero(linha.get("ano")), numero(linha.get("valor")), (linha.get("norma") or "").strip()
+        if ano is None or valor is None or not norma or date(int(ano), 1, 1) < INICIO_JANELA:
+            continue
+        referencia = date(int(ano), 1, 1)
+        observacoes.append(("SUBSIDIO_PARLAMENTAR", referencia, None, valor, False))
+        notas[("SUBSIDIO_PARLAMENTAR", referencia)] = norma
+    return observacoes, notas
+
+
 def reunir(processed_dir: Path) -> List[Observacao]:
     """Lê todos os arquivos; falha se algum estiver ausente, antes de qualquer alteração no banco."""
     todas: List[Observacao] = []
@@ -161,7 +175,10 @@ def reunir(processed_dir: Path) -> List[Observacao]:
 
 def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, int]:
     """Grava as observações e devolve a contagem por série."""
-    observacoes = reunir(Path(processed_dir or PROCESSED_DATA_DIR))
+    pasta = Path(processed_dir or PROCESSED_DATA_DIR)
+    observacoes = reunir(pasta)
+    subsidio, notas = observacoes_subsidio(ler_csv(pasta / "subsidio_parlamentar.csv"))
+    observacoes += subsidio
     por_serie: Dict[str, List[Observacao]] = {}
     for obs in observacoes:
         por_serie.setdefault(obs[0], []).append(obs)
@@ -178,12 +195,12 @@ def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, 
             conn.execute(text("DELETE FROM eco.observacao WHERE serie_id = :s"), {"s": ids[codigo]})
             conn.execute(
                 text(
-                    "INSERT INTO eco.observacao (serie_id, referencia, uf, valor, parcial) "
-                    "VALUES (:s, :r, :uf, :v, :p) "
+                    "INSERT INTO eco.observacao (serie_id, referencia, uf, valor, parcial, nota) "
+                    "VALUES (:s, :r, :uf, :v, :p, :n) "
                     "ON CONFLICT (serie_id, referencia, uf_chave) DO UPDATE SET valor = EXCLUDED.valor, "
-                    "parcial = EXCLUDED.parcial"
+                    "parcial = EXCLUDED.parcial, nota = EXCLUDED.nota"
                 ),
-                [{"s": ids[codigo], "r": r, "uf": uf, "v": v, "p": p} for _, r, uf, v, p in linhas],
+                [{"s": ids[codigo], "r": r, "uf": uf, "v": v, "p": p, "n": notas.get((codigo, r))} for _, r, uf, v, p in linhas],
             )
     contagem = {codigo: len(linhas) for codigo, linhas in por_serie.items()}
     logger.info("Séries carregadas em eco.observacao: %s", contagem)

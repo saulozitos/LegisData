@@ -40,3 +40,14 @@ estimado ou preenchido por palpite. Cada registro traz `fonte` (e, quando há ma
 **Removidos por não terem fonte oficial rastreável (decisão D7):** aprovação popular (Datafolha/CNT digitada em
 `seed_executivo.py`), emendas mensais acumuladas do painel do Executivo, Ibovespa e feminicídio. O painel do Executivo
 mostra inflação (IPCA em 12 meses), desemprego (PNAD Contínua, desde 2012), câmbio e Selic.
+
+## Dados curados e microdados carregados em `eco` e `leg` (entrega 3b)
+
+| Dado | Arquivo | Fonte | Observação |
+|---|---|---|---|
+| Subsídio parlamentar | `subsidio_parlamentar.csv` | Decretos legislativos (7/1995, 444/2002, 299/2006, 444/2010, 276/2014, 172/2022) | Cada valor traz a norma na `nota`; ano sem norma citada não entra (o valor de 2026 não tinha) |
+| Composição do Congresso | `composicao_congresso.json` | Curadoria (Arquivo Histórico da Câmara e do Senado) conferida com o TSE (`consulta_cand`) | Bancadas, presidentes das Casas e `verificacao_tse` vão para `leg.*`; a governabilidade é calculada das bancadas |
+| Produção legislativa do Executivo | `producao_executivo.csv` | Curadoria (SICON, SEPAR/Presidência, OLB, Anais do Congresso) | Insumo do IPLE; sem fonte aberta automatizável |
+| Distribuição de renda por faixa de salário mínimo | `pnad_faixas_salario_minimo.json` | IBGE, microdados da PNAD Contínua anual (visita 5), gerado por `--pnad` | Sem o ano no banco, a API não mostra percentual |
+
+`python etl/run_etl.py --load-economia` carrega tudo isso, e o cron diário (`make daily`, etapa 1c) atualiza as séries econômicas.

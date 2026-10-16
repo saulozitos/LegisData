@@ -29,7 +29,7 @@ def get_mandate_summary(mandate_id: UUID, db: Session = Depends(get_db)) -> Dict
     """
     resumo = executivo_service.resumo_do_mandato(db, mandate_id)
     presidente = presidente_por_referencia(db, str(mandate_id))
-    resumo["iple"] = get_mandate_iple(presidente["id_referencia"], db=db) if presidente else None
+    resumo["iple"] = get_mandate_iple(db, presidente["id_referencia"]) if presidente else None
     return resumo
 
 
@@ -58,11 +58,11 @@ def get_executive_legislative_power_index(
     - Calibragem Crisp-set QCA completa (Tabela 4)
     """
     if mandate_id:
-        data = get_mandate_iple(mandate_id, db=db)
+        data = get_mandate_iple(db, mandate_id)
         if not data:
             raise HTTPException(
                 status_code=404,
                 detail=f"Mandato '{mandate_id}' não encontrado para cálculo do IPLE.",
             )
         return data
-    return get_all_mandates_iple(db=db)
+    return get_all_mandates_iple(db)

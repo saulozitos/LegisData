@@ -11,7 +11,6 @@ from app.api.v1.analytics import (
     _num,
     _relative,
 )
-from app.core import data_files
 from app.models import (
     AnnualSocialIndicator,
     FederalTransferByState,
@@ -20,7 +19,7 @@ from app.models import (
     StateSocialIndicator,
 )
 
-from .conftest import criar_mandato_presidencial, observar_serie, write_json
+from .conftest import criar_mandato_presidencial, observar_serie
 
 BASE = "/api/v1/analytics"
 
@@ -249,88 +248,6 @@ def test_compare_mandates_requires_both_parameters(client, mandates_db):
 
 
 # ---------------------------------------------------------------------------
-# wage-disparity / congress-composition
-# ---------------------------------------------------------------------------
-WAGE = {
-    "serie_historica": [
-        {
-            "ano": 2023,
-            "presidente_dominante": "X",
-            "salario_minimo_brl": 1320.0,
-            "salario_parlamentar_brl": 41650.92,
-            "multiplo_salarios_minimos": 31.5,
-            "indice_salario_minimo_base100": 100.0,
-            "indice_salario_parlamentar_base100": 100.0,
-            "indice_ipca_base100": 100.0,
-        }
-    ],
-    "votacao_salario_minimo": {
-        "proposicao_titulo": "MPV 1172/2023",
-        "ementa": "Salário mínimo",
-        "data_votacao": "2023-06-01",
-        "casa": "Câmara",
-        "placar": {"SIM": 439},
-        "votos_amostra": [],
-    },
-    "estatisticas_disparidade": {"multiplo_atual": 31.5},
-}
-
-
-def test_wage_disparity_returns_dataset_contents(client, data_dir):
-    write_json(data_dir, "salario_vs_inflacao.json", WAGE)
-    response = client.get(f"{BASE}/wage-disparity")
-    assert response.status_code == 200
-    assert response.json()["serie_historica"][0]["salario_parlamentar_brl"] == 41650.92
-    assert response.json()["estatisticas_disparidade"] == {"multiplo_atual": 31.5}
-
-
-def test_wage_disparity_without_dataset_is_404(client, data_dir):
-    response = client.get(f"{BASE}/wage-disparity")
-    assert response.status_code == 404
-    assert "ETL" in response.json()["detail"]
-
-
-CHAMBER = {
-    "total_cadeiras": 513,
-    "presidentes": [],
-    "governabilidade": {},
-    "bancadas": [
-        {"partido": "PT", "cadeiras": 68, "percentual": 13.3, "alinhamento": "BASE_GOVERNO", "cor_hex": "#f00"}
-    ],
-}
-
-
-def test_congress_composition_known_and_unknown_mandate(client, data_dir):
-    write_json(
-        data_dir,
-        "composicao_congresso.json",
-        {
-            "lula-2023": {
-                "mandato_id": "lula-2023",
-                "presidente_republica": "Lula",
-                "periodo": "2023-",
-                "camara": CHAMBER,
-                "senado": {**CHAMBER, "total_cadeiras": 81},
-            }
-        },
-    )
-    ok = client.get(f"{BASE}/congress-composition", params={"mandate_id": "lula-2023"})
-    assert ok.status_code == 200 and ok.json()["senado"]["total_cadeiras"] == 81
-    # Mandato desconhecido NÃO cai silenciosamente em outro mandato
-    missing = client.get(f"{BASE}/congress-composition", params={"mandate_id": "inventado"})
-    assert missing.status_code == 404
-
-
-def test_congress_composition_missing_dataset_is_404(client, data_dir):
-    assert client.get(f"{BASE}/congress-composition").status_code == 404
-
-
-def test_congress_composition_never_touches_the_filesystem_to_generate_data(client, data_dir):
-    client.get(f"{BASE}/congress-composition")
-    assert list(data_dir.iterdir()) == []  # GET não grava em disco
-
-
-# ---------------------------------------------------------------------------
 # federal-transfers
 # ---------------------------------------------------------------------------
 def _transfer(**kw):
@@ -464,114 +381,6 @@ def test_social_indicators_expose_official_series_fields(client, db):
 
 def test_social_indicators_empty_table_is_an_empty_list(client):
     assert client.get(f"{BASE}/social-indicators").json() == []
-
-
-def test_social_classes_use_latest_minimum_wage_from_the_series(client, db, data_dir):
-    observar_serie(db, "SALARIO_MINIMO", date(2023, 1, 1), 1320.0)
-    observar_serie(db, "SALARIO_MINIMO", date(2024, 1, 1), 1412.0)
-    db.commit()
-    body = client.get(f"{BASE}/social-classes").json()
-    assert body["salario_minimo_referencia_brl"] == 1412.0
-    assert body["ano_referencia"] == 2024
-    classe_a = next(c for c in body["classes"] if c["classe"] == "Classe A")
-    assert classe_a["renda_familiar_min_brl"] == pytest.approx(20 * 1412.0)
-    assert classe_a["renda_familiar_max_brl"] is None
-    assert classe_a["faixa_renda_formatada"].startswith("Acima de R$ 28.240,00")
-
-
-def test_social_classes_without_wage_series_has_null_incomes(client, data_dir):
-    body = client.get(f"{BASE}/social-classes").json()
-    assert body["salario_minimo_referencia_brl"] is None and body["ano_referencia"] is None
-    assert all(c["renda_familiar_min_brl"] is None and c["faixa_renda_formatada"] is None for c in body["classes"])
-    assert "referência" in body["fonte"] or "estimativa" in body["fonte"]
-
-
-def _pnad_year(ano, sm, dom, pessoas):
-    return {
-        "ano": ano,
-        "visita": 5,
-        "salario_minimo_brl": sm,
-        "nacional": {
-            "domicilios_renda_total": {"total_estimado": 78_000_000, "percentual": dom, "media_nominal_brl": 5000.0},
-            "pessoas_renda_domiciliar": {
-                "total_estimado": 210_000_000,
-                "percentual": pessoas,
-                "media_nominal_brl": 5500.0,
-            },
-            "pessoas_renda_per_capita": {
-                "total_estimado": 210_000_000,
-                "percentual": pessoas,
-                "media_nominal_brl": 1900.0,
-            },
-            "ocupados_renda_trabalho": {"total_estimado": 98_000_000, "percentual": dom, "media_nominal_brl": 3200.0},
-        },
-    }
-
-
-PNAD_DOM = [2.0, 4.0, 7.0, 27.0, 33.0, 20.0, 5.0, 2.0]  # soma 100
-PNAD_PESSOAS = [1.0, 3.0, 6.0, 24.0, 35.0, 24.0, 5.0, 2.0]  # soma 100
-
-
-@pytest.fixture
-def pnad_file(data_dir):
-    payload = {
-        "fonte": "IBGE — PNAD Contínua",
-        "is_synthetic": False,
-        "faixas": [{"id": f"f{i}"} for i in range(8)],
-        "metodologia": {"ponderacao": "V1032"},
-        "anos": {
-            "2023": _pnad_year(2023, 1320.0, PNAD_DOM, PNAD_PESSOAS),
-            "2024": _pnad_year(2024, 1412.0, PNAD_DOM, PNAD_PESSOAS),
-        },
-    }
-    write_json(data_dir, "pnad_faixas_salario_minimo.json", payload)
-    return payload
-
-
-def test_social_classes_come_from_pnad_microdata_when_available(client, pnad_file):
-    body = client.get(f"{BASE}/social-classes").json()
-    assert body["origem"] == "pnad"
-    assert body["ano_referencia"] == 2024 and body["anos_disponiveis"] == [2023, 2024]
-    assert body["salario_minimo_referencia_brl"] == 1412.0
-    classes = {c["classe"]: c for c in body["classes"]}
-    # Classe E = sem rendimento + até 2 SM (faixas 0 a 3); A = acima de 20 SM
-    assert classes["Classe E"]["percentual_domicilios"] == 40.0
-    assert classes["Classe E"]["percentual_populacao"] == 34.0
-    assert classes["Classe A"]["percentual_domicilios"] == 2.0
-    assert sum(c["percentual_domicilios"] for c in classes.values()) == pytest.approx(100.0)
-    assert body["resumo_populacional"]["maioria_populacao_acumulada_d_e_pct"] == 73.0
-    assert "PNAD" in body["fonte"] and "2024" in body["fonte"]
-    assert body["distribuicoes"]["ocupados_renda_trabalho"]["media_nominal_brl"] == 3200.0
-    assert classes["Classe A"]["renda_familiar_min_brl"] == pytest.approx(20 * 1412.0)
-
-
-def test_social_classes_year_param_uses_that_years_minimum_wage(client, pnad_file):
-    body = client.get(f"{BASE}/social-classes", params={"ano": 2023}).json()
-    assert body["ano_referencia"] == 2023 and body["salario_minimo_referencia_brl"] == 1320.0
-
-
-def test_social_classes_unknown_year_is_404_with_available_years(client, pnad_file):
-    response = client.get(f"{BASE}/social-classes", params={"ano": 1999})
-    assert response.status_code == 404 and "2023" in response.json()["detail"]
-
-
-def test_social_classes_year_without_any_pnad_file_is_404(client, data_dir):
-    assert client.get(f"{BASE}/social-classes", params={"ano": 2024}).status_code == 404
-
-
-def test_social_classes_ignore_corrupt_pnad_years_and_fall_back(client, data_dir, pnad_file):
-    broken = {
-        "anos": {"2024": {"salario_minimo_brl": 1412.0, "nacional": {"domicilios_renda_total": {"percentual": [1]}}}}
-    }
-    write_json(data_dir, "pnad_faixas_salario_minimo.json", broken)
-    data_files._cache.clear()
-    body = client.get(f"{BASE}/social-classes").json()
-    assert body["origem"] == "referencia_fixa"
-
-
-def test_social_classes_without_pnad_keep_labelled_reference_estimate(client, data_dir):
-    body = client.get(f"{BASE}/social-classes").json()
-    assert body["origem"] == "referencia_fixa"
 
 
 def _election(uf, year=2022, region="Sudeste", **kw):

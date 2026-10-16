@@ -53,10 +53,12 @@ class MinimumWageVoteRecord(BaseModel):
 class MinimumWageVotingSummary(BaseModel):
     proposicao_titulo: str
     ementa: str
-    data_votacao: str
+    data_votacao: Optional[str] = None
     casa: str
-    placar: Dict[str, int]
-    votos_amostra: List[MinimumWageVoteRecord]
+    placar: Optional[Dict[str, int]] = None
+    votos_amostra: List[MinimumWageVoteRecord] = []
+    dados_indisponiveis: Optional[bool] = None
+    fonte: Optional[str] = None
 
 
 class WageDisparityResponse(BaseModel):
@@ -86,14 +88,21 @@ class ChamberComposition(BaseModel):
     presidentes: List[LeaderProfile]
     bancadas: List[PartySeat]
     governabilidade: Dict[str, Any]
+    # Eleitos segundo o TSE e o resultado da conferência com a curadoria (ausentes quando o TSE não cobre o mandato)
+    bancadas_eleitas_tse: Optional[List[Dict[str, Any]]] = None
+    bancadas_origem: Optional[str] = None
+    verificacao_tse: Optional[Dict[str, Any]] = None
 
 
 class CongressCompositionResponse(BaseModel):
     mandato_id: str
     presidente_republica: str
     periodo: str
-    camara: ChamberComposition
-    senado: ChamberComposition
+    camara: Optional[ChamberComposition] = None
+    senado: Optional[ChamberComposition] = None
+    dados_incompletos: Optional[bool] = None
+    observacao: Optional[str] = None
+    fonte_curadoria: Optional[str] = None
     iple: Optional[Dict[str, Any]] = None
 
 

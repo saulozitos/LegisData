@@ -1,13 +1,11 @@
 import json
 import os
 import time
-from pathlib import Path
 
 import pytest
 from app.core import data_files
 from app.core.data_files import (
     FIRST_SERIES_YEAR,
-    load_csv_cached,
     load_json_cached,
     mandate_year_range,
 )
@@ -39,15 +37,6 @@ def test_cache_is_invalidated_by_modification_time(tmp_path):
     new_mtime = time.time() + 5
     os.utime(path, (new_mtime, new_mtime))
     assert load_json_cached(path) == [1, 2]
-
-
-def test_csv_loader_caches_dataframes(tmp_path):
-    path = tmp_path / "serie.csv"
-    path.write_text("ano,valor\n2020,1\n2021,2\n")
-    df = load_csv_cached(path)
-    assert list(df["ano"]) == [2020, 2021]
-    assert load_csv_cached(path) is df
-    assert load_csv_cached(Path(tmp_path / "ausente.csv")) is None
 
 
 @pytest.mark.parametrize(

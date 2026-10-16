@@ -493,25 +493,28 @@ export interface MinimumWageVoteRecord {
 export interface MinimumWageVotingSummary {
   proposicao_titulo: string;
   ementa: string;
-  data_votacao: string;
+  data_votacao: string | null;
   casa: string;
   placar: {
     SIM: number;
     NAO: number;
     ABSTENCAO: number;
     TOTAL: number;
-  };
+  } | null;
   votos_amostra: MinimumWageVoteRecord[];
+  dados_indisponiveis?: boolean | null;
 }
 
 export interface WageDisparityResponse {
   serie_historica: WagePoint[];
   votacao_salario_minimo: MinimumWageVotingSummary;
   estatisticas_disparidade: {
-    salario_minimo_inicial_real_1994: number;
-    salario_minimo_atual_2024: number;
-    salario_parlamentar_inicial_1994: number;
-    salario_parlamentar_atual_2024: number;
+    ano_referencia_inicial: number;
+    ano_referencia_atual: number;
+    salario_minimo_inicial: number;
+    salario_minimo_atual: number;
+    salario_parlamentar_inicial: number;
+    salario_parlamentar_atual: number;
     multiplo_medio_historico: number;
     pico_multiplo_ano: number;
     pico_multiplo_valor: number;
@@ -554,9 +557,9 @@ export interface ChamberComposition {
 }
 
 export interface IpleCrispSetItem {
-  score: number;
+  score: number | null;
   corte: number;
-  crisp_val: number;
+  crisp_val: number | null;
   classificacao: string;
 }
 
@@ -581,11 +584,11 @@ export interface IpleBaseIndicators {
 }
 
 export interface IpleContextualVariables {
-  tamanho_oposicao_x1: number;
-  oposicao_cadeiras: number;
-  total_cadeiras: number;
-  fragmentacao_nep_x2: number;
-  polarizacao_ipp_x3: number;
+  tamanho_oposicao_x1: number | null;
+  oposicao_cadeiras: number | null;
+  total_cadeiras: number | null;
+  fragmentacao_nep_x2: number | null;
+  polarizacao_ipp_x3: number | null;
 }
 
 export interface IpleData {
@@ -602,9 +605,12 @@ export interface CongressCompositionResponse {
   mandato_id: string;
   presidente_republica: string;
   periodo: string;
-  camara: ChamberComposition;
-  senado: ChamberComposition;
-  iple?: IpleData;
+  camara?: ChamberComposition | null;
+  senado?: ChamberComposition | null;
+  iple?: IpleData | null;
+  dados_incompletos?: boolean | null;
+  observacao?: string | null;
+  fonte_curadoria?: string | null;
 }
 
 export interface StateTransferItem {

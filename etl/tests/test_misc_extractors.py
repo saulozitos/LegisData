@@ -7,7 +7,6 @@ import pytest
 
 from etl.extractors.composicao_extractor import COMPOSICAO_CONGRESSO_HISTORICO as COMPOSICOES
 from etl.extractors.presidents_extractor import PresidentsExtractor
-from etl.extractors.salario_inflacao_extractor import SalarioInflacaoExtractor
 from etl.extractors.senado_extractor import SenadoExtractor
 from etl.extractors.tse_extractor import NOMADES_HISTORICO, TSEExtractor
 
@@ -33,52 +32,6 @@ def resumo_csv(tmp_path, anos):
     pd.DataFrame(linhas).to_csv(tmp_path / "resumo_macroeconomico_anual.csv", index=False)
 
 
-def test_salario_vs_inflacao_calcula_estatisticas_dos_dados(tmp_path):
-    resumo_csv(tmp_path, range(1994, 2026))
-    dados = SalarioInflacaoExtractor(tmp_path).build_dataset()
-    stats = dados["estatisticas_disparidade"]
-    serie = {r["ano"]: r for r in dados["serie_historica"]}
-    assert stats["ano_referencia_atual"] == 2025  # 2026 tem subsídio não confirmado
-    assert stats["salario_parlamentar_atual"] == serie[2025]["salario_parlamentar_brl"]
-    assert stats["salario_minimo_atual_2024"] == stats["salario_minimo_atual"]
-    assert stats["pico_multiplo_valor"] == max(r["multiplo_salarios_minimos"] for r in serie.values())
-    # sem votação coletada: nada de placar digitado à mão
-    assert dados["votacao_salario_minimo"]["placar"] is None and dados["votacao_salario_minimo"]["votos_amostra"] == []
-
-
-def test_salario_vs_inflacao_deriva_placar_dos_votos_coletados(tmp_path):
-    resumo_csv(tmp_path, range(1994, 2025))
-    (tmp_path / "sessoes_votacao_2023.json").write_text(
-        json.dumps(
-            [
-                {
-                    "sessao_externa_id": "S1",
-                    "proposicao_tipo": "MPV",
-                    "proposicao_numero": 1172,
-                    "proposicao_ano": 2023,
-                    "data_hora": "2023-08-23T10:00:00",
-                },
-            ]
-        ),
-        encoding="utf-8",
-    )
-    (tmp_path / "votos_nominais_2023.json").write_text(
-        json.dumps(
-            [{"sessao_externa_id": "S1", "voto": "SIM"}] * 3
-            + [{"sessao_externa_id": "S1", "voto": "NAO"}, {"sessao_externa_id": "OUTRA", "voto": "SIM"}]
-        ),
-        encoding="utf-8",
-    )
-    votacao = SalarioInflacaoExtractor(tmp_path).build_dataset()["votacao_salario_minimo"]
-    assert votacao["placar"] == {"SIM": 3, "NAO": 1, "ABSTENCAO": 0, "TOTAL": 4}
-    assert votacao["data_votacao"] == "2023-08-23" and votacao["dados_indisponiveis"] is False
-
-
-def test_salario_vs_inflacao_sem_resumo_falha_em_vez_de_keyerror(tmp_path):
-    with pytest.raises(FileNotFoundError):
-        SalarioInflacaoExtractor(tmp_path).build_dataset()
-
-
 def test_filiacoes_sem_origem_inventada(tmp_path):
     (tmp_path / "deputados_camara.json").write_text(
         json.dumps(
@@ -102,7 +55,9 @@ def test_filiacoes_sem_origem_inventada(tmp_path):
 
     fulano = df[df["politico_nome"] == "Fulano"]
     assert len(fulano) == 1  # só a filiação atual: sem "DEM"/"PSL" sorteados por idx % 2
-    assert (fulano.iloc[0]["data_filiacao"] is None or pd.isna(fulano.iloc[0]["data_filiacao"])) and bool(fulano.iloc[0]["data_filiacao_desconhecida"])
+    assert (fulano.iloc[0]["data_filiacao"] is None or pd.isna(fulano.iloc[0]["data_filiacao"])) and bool(
+        fulano.iloc[0]["data_filiacao_desconhecida"]
+    )
     assert fulano.iloc[0]["partido_sigla"] == "UNIÃO"
 
     kim = df[df["politico_nome"] == "Kim Kataguiri"]
