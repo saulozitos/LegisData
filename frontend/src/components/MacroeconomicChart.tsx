@@ -15,7 +15,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { ResumoMacroeconomicoAnual } from "@/services/api";
-import { LineChart, Filter, Info, TrendingUp } from "lucide-react";
+import { LineChart, Filter } from "lucide-react";
 import { isNum } from "@/lib/format";
 import type { MandateRange } from "@/lib/mandate";
 
@@ -28,17 +28,13 @@ interface MacroeconomicChartProps {
 
 const ZONE_COLORS = ["#10b981", "#3b82f6", "#ef4444", "#d97706", "#8b5cf6", "#06b6d4"];
 
-// Planos econômicos anteriores ao Real: valores monetários não são comparáveis em R$.
-const LAST_PRE_REAL_YEAR = 1994;
-
 interface CustomTooltipProps {
   active?: boolean;
   payload?: Array<{ payload: ResumoMacroeconomicoAnual }>;
   label?: string | number;
-  showIbovespa?: boolean;
 }
 
-function MacroeconomicTooltip({ active, payload, label, showIbovespa }: CustomTooltipProps) {
+function MacroeconomicTooltip({ active, payload, label }: CustomTooltipProps) {
   if (active && payload && payload.length) {
     const item = payload[0].payload;
     const pib = item.pib_crescimento_real_pct;
@@ -65,17 +61,7 @@ function MacroeconomicTooltip({ active, payload, label, showIbovespa }: CustomTo
           <div className="flex items-center justify-between text-slate-400 border-t border-slate-800/80 pt-1 mt-1">
             <span>Câmbio Médio:</span>
             <span className="font-medium text-slate-200">
-              {item.ano <= LAST_PRE_REAL_YEAR
-                ? "moeda pré-Real (não comparável)"
-                : `R$ ${item.cambio_dolar_medio.toFixed(2)}`}
-            </span>
-          </div>
-        )}
-        {showIbovespa && isNum(item.ibovespa_fechamento) && (
-          <div className="flex items-center justify-between text-purple-400 border-t border-slate-800/80 pt-1 mt-1">
-            <span>Ibovespa (Fechamento):</span>
-            <span className="font-bold">
-              {Math.round(item.ibovespa_fechamento).toLocaleString("pt-BR")} pts
+              R$ {item.cambio_dolar_medio.toFixed(2)}
             </span>
           </div>
         )}
@@ -90,8 +76,6 @@ function MacroeconomicChartBase({
   selectedMandateId,
   mandates = [],
 }: MacroeconomicChartProps) {
-  const [filterMode, setFilterMode] = useState<"pos_real" | "completo">("pos_real");
-  const [showIbovespa, setShowIbovespa] = useState<boolean>(false);
   const [zoomMandate, setZoomMandate] = useState<boolean>(false);
 
   const activeMandateInfo = selectedMandateId
@@ -100,19 +84,14 @@ function MacroeconomicChartBase({
 
   const firstYear = data.length > 0 ? Math.min(...data.map((d) => d.ano)) : null;
   const lastYear = data.length > 0 ? Math.max(...data.map((d) => d.ano)) : null;
-  const firstPosRealYear = 1995;
 
-  // Filtragem conforme toggle e zoom no mandato com useMemo
+  // Zoom no mandato selecionado
   const chartData = React.useMemo(() => {
-    let filtered = filterMode === "pos_real"
-      ? data.filter((d) => d.ano >= firstPosRealYear)
-      : data;
-
     if (activeMandateInfo && zoomMandate) {
-      filtered = data.filter((d) => d.ano >= activeMandateInfo.start && d.ano <= activeMandateInfo.end);
+      return data.filter((d) => d.ano >= activeMandateInfo.start && d.ano <= activeMandateInfo.end);
     }
-    return filtered;
-  }, [data, filterMode, activeMandateInfo, zoomMandate]);
+    return data;
+  }, [data, activeMandateInfo, zoomMandate]);
 
   const zones = React.useMemo(
     () => mandates.map((m, i) => ({ ...m, color: ZONE_COLORS[i % ZONE_COLORS.length] })),
@@ -135,15 +114,15 @@ function MacroeconomicChartBase({
           <div className="flex items-center gap-2">
             <LineChart className="w-5 h-5 text-emerald-400" aria-hidden="true" />
             <h2 className="text-base font-bold text-slate-100">
-              Trajetória Macroeconômica: PIB vs. Inflação {showIbovespa ? "vs. Ibovespa" : ""}
+              Trajetória Macroeconômica: PIB vs. Inflação
             </h2>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Eixo Esquerdo: Variação Real do PIB (%) • Eixo Direito: IPCA Anual (%){showIbovespa ? " • Eixo Roxo: Ibovespa (Pontos)" : ""} • Fundo: Períodos Presidenciais
+            Eixo Esquerdo: Variação Real do PIB (%) • Eixo Direito: IPCA Anual (%) • Fundo: Períodos Presidenciais
           </p>
         </div>
 
-        {/* Controles: Ibovespa e Recorte Temporal */}
+        {/* Controles */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Botão de Zoom no Mandato Selecionado */}
           {activeMandateInfo && (
@@ -163,60 +142,8 @@ function MacroeconomicChartBase({
             </button>
           )}
 
-          {/* Botão de Ativação do Ibovespa */}
-          <button
-            type="button"
-            aria-pressed={showIbovespa}
-            onClick={() => setShowIbovespa(!showIbovespa)}
-            className={`px-3 py-1.5 rounded-xl font-medium transition-all text-xs flex items-center gap-1.5 border cursor-pointer ${
-              showIbovespa
-                ? "bg-purple-500/20 text-purple-300 border-purple-500/40 shadow-lg shadow-purple-500/10"
-                : "bg-slate-950 text-slate-300 border-slate-800 hover:text-slate-100"
-            }`}
-            title="Alternar exibição da linha do Ibovespa com escala própria em pontos"
-          >
-            <TrendingUp className="w-3.5 h-3.5 text-purple-400" aria-hidden="true" />
-            <span>Ibovespa (Pontos B3)</span>
-          </button>
-
-          {/* Toggle de Recorte Histórico */}
-          <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
-            <button
-              type="button"
-              aria-pressed={filterMode === "pos_real"}
-              onClick={() => setFilterMode("pos_real")}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
-                filterMode === "pos_real"
-                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              Pós-Plano Real ({firstPosRealYear}-{lastYear})
-            </button>
-            <button
-              type="button"
-              aria-pressed={filterMode === "completo"}
-              onClick={() => setFilterMode("completo")}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
-                filterMode === "completo"
-                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              Histórico Completo ({firstYear}-{lastYear})
-            </button>
-          </div>
         </div>
       </div>
-
-      {filterMode === "completo" && (
-        <div className="mb-4 flex items-center gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs">
-          <Info className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
-          <span>
-            Atenção: a inflação do período pré-Real (anterior a 1995) foi muito superior à atual, o que comprime visualmente as séries posteriores, e valores em moeda anterior ao Real não são comparáveis. Use &quot;Pós-Plano Real&quot; para análise de alta precisão.
-          </span>
-        </div>
-      )}
 
       {/* Área do Gráfico */}
       <div
@@ -233,12 +160,12 @@ function MacroeconomicChartBase({
 
             {/* Delimitação dos Períodos Presidenciais (ReferenceArea) */}
             {zones.map((zone) => {
-              if (filterMode === "pos_real" && zone.end < firstPosRealYear) return null;
+              if (firstYear !== null && zone.end < firstYear) return null;
               if (lastYear !== null && zone.start > lastYear) return null;
               return (
                 <ReferenceArea
                   key={zone.id}
-                  x1={Math.max(zone.start, filterMode === "pos_real" ? firstPosRealYear : (firstYear ?? zone.start))}
+                  x1={Math.max(zone.start, firstYear ?? zone.start)}
                   x2={Math.min(zone.end, lastYear ?? zone.end)}
                   yAxisId="left"
                   fill={zone.color}
@@ -280,23 +207,10 @@ function MacroeconomicChartBase({
               fontSize={11}
               tickLine={false}
               tickFormatter={(v) => `${v}%`}
-              domain={filterMode === "pos_real" ? [0, (max: number) => Math.max(15, Math.ceil(max))] : [0, "auto"]}
+              domain={[0, (max: number) => Math.max(15, Math.ceil(max))]}
             />
 
-            {/* Eixo Y Terciário: Ibovespa Pontos (quando ativado) */}
-            {showIbovespa && (
-              <YAxis
-                yAxisId="ibov"
-                orientation="right"
-                stroke="#a855f7"
-                fontSize={10}
-                tickLine={false}
-                tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
-                domain={[0, "auto"]}
-              />
-            )}
-
-            <Tooltip content={<MacroeconomicTooltip showIbovespa={showIbovespa} />} />
+            <Tooltip content={<MacroeconomicTooltip />} />
             <Legend
               verticalAlign="top"
               height={36}
@@ -326,19 +240,6 @@ function MacroeconomicChartBase({
               activeDot={{ r: 6, stroke: "#ffffff", strokeWidth: 2 }}
             />
 
-            {/* Linha do Ibovespa (Roxo B3) com escala própria em pontos */}
-            {showIbovespa && (
-              <Line
-                yAxisId="ibov"
-                type="monotone"
-                dataKey="ibovespa_fechamento"
-                name="Ibovespa (Pontos B3)"
-                stroke="#a855f7"
-                strokeWidth={2.5}
-                dot={{ r: 3, fill: "#a855f7", strokeWidth: 0 }}
-                activeDot={{ r: 6, stroke: "#ffffff", strokeWidth: 2 }}
-              />
-            )}
           </ComposedChart>
         </ResponsiveContainer>
       </div>

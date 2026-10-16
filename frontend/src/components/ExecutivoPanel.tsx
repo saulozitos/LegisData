@@ -253,7 +253,7 @@ export default function ExecutivoPanel({
             </span>
           </div>
           <p className="text-xs text-slate-400">
-            Balanço fiscal, indicadores sociais e ranking comparativo com todos os mandatos da Nova República (1992 - Presente)
+            Balanço fiscal, indicadores sociais e ranking comparativo com todos os mandatos presidenciais desde 1995
           </p>
         </div>
       </div>

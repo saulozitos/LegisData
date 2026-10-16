@@ -54,7 +54,7 @@ export default function Header() {
                 LegisData
               </span>
               <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                v1.0 • 1992 - Presente
+                v1.0 • 1995 - Presente
               </span>
             </div>
             <p className="text-xs text-slate-400 hidden sm:block">
