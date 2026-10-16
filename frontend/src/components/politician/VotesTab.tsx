@@ -11,6 +11,7 @@ import type { PoliticoDossier } from "@/services/api";
 import { fmtNum } from "@/lib/format";
 import { safeExternalUrl } from "@/lib/safeUrl";
 import { voteLabel, voteTone } from "@/lib/votes";
+import VotesSummaryBlock from "./VotesSummaryBlock";
 
 interface VotesTabProps {
   dossier: PoliticoDossier;
@@ -31,6 +32,8 @@ export default function VotesTab({ dossier }: VotesTabProps) {
                   {dossier.votacoes_principais.length} deliberações nominais registradas
                 </span>
               </div>
+
+              <VotesSummaryBlock resumo={dossier.resumo_votos} />
 
               {/* Alinhamento Temático por Eixo de Impacto */}
               {dossier.alinhamento_tematico && dossier.alinhamento_tematico.length > 0 && (

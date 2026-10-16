@@ -174,6 +174,46 @@ VOTE_LABELS = {
 }
 
 
+RESUMO_VOTOS_GRUPOS = (("sim", "SIM"), ("nao", "NAO"), ("ausente", "AUSENTE"))
+RESUMO_VOTOS_ITENS = 10
+
+
+def _resumo_votos(db: Session, pessoa_id: int) -> Dict[str, Any]:
+    """Quantas vezes votou Sim, Não e esteve ausente (toda a base) e as matérias mais recentes de cada grupo."""
+    totais = dict(
+        db.query(Voto.opcao_codigo, func.count())
+        .filter(Voto.pessoa_id == pessoa_id, Voto.opcao_codigo.in_([c for _, c in RESUMO_VOTOS_GRUPOS]))
+        .group_by(Voto.opcao_codigo)
+        .all()
+    )
+    resumo: Dict[str, Any] = {}
+    for chave, codigo in RESUMO_VOTOS_GRUPOS:
+        linhas = (
+            db.query(Votacao, Proposicao)
+            .join(Voto, Voto.votacao_id == Votacao.id)
+            .join(Proposicao, Votacao.proposicao_id == Proposicao.id)
+            .filter(Voto.pessoa_id == pessoa_id, Voto.opcao_codigo == codigo)
+            .order_by(desc(Votacao.data_hora), Votacao.id)
+            .limit(RESUMO_VOTOS_ITENS)
+            .all()
+        )
+        itens = []
+        for sess, prop in linhas:
+            quando = _to_brt(sess.data_hora)
+            itens.append(
+                {
+                    "proposicao_id": str(prop.uid),
+                    "proposicao_titulo": prop.titulo,
+                    "proposicao_numero": f"{prop.tipo_codigo} {prop.numero}/{prop.ano}" if prop.numero else prop.titulo,
+                    "data": quando.strftime("%d/%m/%Y") if quando else "",
+                    "casa_legislativa": sess.casa.codigo if sess.casa else "CAMARA_DOS_DEPUTADOS",
+                    "url_oficial": url_oficial_proposicao(prop),
+                }
+            )
+        resumo[chave] = {"total": int(totais.get(codigo, 0)), "recentes": itens}
+    return resumo
+
+
 def _opt_float(valor: Any) -> Optional[float]:
     """float(valor) preservando None (dado não informado pela fonte)."""
     return None if valor is None else float(valor)
@@ -1410,6 +1450,8 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             }
         )
 
+    resumo_votos = _resumo_votos(db, pessoa_param)
+
     # Basômetro: alinhamento à orientação do governo em cada votação nominal (sem baseline inventado).
     basometro = calcular_basometro(db, pessoa_id, partido_atual_sigla, votos_sim_total, votos_nao_total)
 
@@ -1810,6 +1852,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         "materias_propostas": materias_propostas,
         "votacoes_principais": votos_nominais,
         "historico_votos": historico_votos,
+        "resumo_votos": resumo_votos,
         "alinhamento_tematico": alinhamento_tematico_list,
         "assiduidade": {
             "total_sessoes": total_sessoes,

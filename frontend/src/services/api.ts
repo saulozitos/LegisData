@@ -43,6 +43,26 @@ export interface PresidenteHistorico {
   marcos_economicos: string[];
 }
 
+export interface ResumoVotosItem {
+  proposicao_id: string;
+  proposicao_titulo: string;
+  proposicao_numero: string;
+  data: string;
+  casa_legislativa: string;
+  url_oficial?: string | null;
+}
+
+export interface ResumoVotosGrupo {
+  total: number;
+  recentes: ResumoVotosItem[];
+}
+
+export interface ResumoVotos {
+  sim: ResumoVotosGrupo;
+  nao: ResumoVotosGrupo;
+  ausente: ResumoVotosGrupo;
+}
+
 export interface ScoreProsperidadeData {
   score_geral: number;
   subscore_economico: number;
@@ -1139,6 +1159,7 @@ export interface PoliticoDossier {
   materias_propostas: ProposicaoAutorItem[];
   votacoes_principais: VotoHistoricoItem[];
   historico_votos?: VotoHistoricoDetalhadoItem[];
+  resumo_votos?: ResumoVotos;
   alinhamento_tematico?: Array<{
     eixo: string;
     total_votacoes: number;

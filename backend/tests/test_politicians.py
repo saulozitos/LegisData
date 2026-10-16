@@ -506,3 +506,16 @@ def test_search_politicians_uses_the_period_of_the_presidential_mandate_from_the
     assert str(seed.fulano.id) in [
         p["id"] for p in client.get(BASE, params={"mandate_id": "atual-2023"}).json()["politicos"]
     ]
+
+
+def test_dossier_vote_summary_counts_yes_no_and_absent(client, seed):
+    resumo = client.get(f"{BASE}/{seed.fulano.id}").json()["resumo_votos"]
+    assert (resumo["sim"]["total"], resumo["nao"]["total"], resumo["ausente"]["total"]) == (2, 0, 0)
+    assert len(resumo["sim"]["recentes"]) == 2 and resumo["nao"]["recentes"] == []
+    assert {"proposicao_numero", "data", "url_oficial"} <= set(resumo["sim"]["recentes"][0])
+
+    nao = client.get(f"{BASE}/{seed.lula_fonte.id}").json()["resumo_votos"]
+    assert nao["nao"]["total"] == 1 and nao["sim"]["total"] == 0
+
+    ausente = client.get(f"{BASE}/{seed.maria_a.id}").json()["resumo_votos"]
+    assert ausente["ausente"]["total"] == 1 and len(ausente["ausente"]["recentes"]) == 1
