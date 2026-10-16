@@ -1,12 +1,10 @@
 """Explorador legislativo: lista de proposições com autor, tema, status e placar de votação."""
 
-import json
 import math
 import re
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.core.config import PROCESSED_DATA_DIR
 from app.core.errors import ErroDeDominio
 from app.core.links import url_oficial_proposicao
 from app.core.query_utils import contains, escape_like, is_filter_all
@@ -20,7 +18,6 @@ from app.services.votos_proposicao_service import TIPOS_SESSAO, casa_codigo, ses
 from sqlalchemy import and_, exists, func, or_, select, text
 from sqlalchemy.orm import Session
 
-DATA_DIR = PROCESSED_DATA_DIR
 STATUS_LEI = ("APROVADA_E_SANCIONADA", "APROVADA_E_PROMULGADA")
 PLACAR_TELA_VAZIO = {"SIM": 0, "NAO": 0, "ABSTENCAO": 0, "TOTAL": 0}
 _PARTIDO_NA_AUTORIA_RE = re.compile(r"\(([A-ZÀ-Ú0-9_ -]+)(?:/[A-Z]{2})?\)")
@@ -166,64 +163,6 @@ def proposicoes_com_votacao(db: Session, limite: int, deslocamento: int) -> Tupl
             }
         )
     return total, resultado
-
-
-def proposicoes_de_arquivos_locais() -> List[Dict[str, Any]]:
-    """Fallback de desenvolvimento: banco vazio (ainda não carregado). Dados do arquivo do ETL, sem datas inventadas."""
-    arq_props = DATA_DIR / "proposicoes_2023.json"
-    arq_sessoes = DATA_DIR / "sessoes_votacao_2023.json"
-    arq_votos = DATA_DIR / "votos_nominais_2023.json"
-    if not arq_props.exists():
-        return []
-
-    with open(arq_props, "r", encoding="utf-8") as f:
-        proposicoes = json.load(f)
-
-    sessoes_por_proposicao: Dict[Any, Any] = {}
-    if arq_sessoes.exists():
-        with open(arq_sessoes, "r", encoding="utf-8") as f:
-            for s in json.load(f):
-                if s.get("proposicao_camara_id") is not None:
-                    sessoes_por_proposicao[s["proposicao_camara_id"]] = s
-
-    contagem: Dict[Any, Dict[str, int]] = {}
-    if arq_votos.exists():
-        with open(arq_votos, "r", encoding="utf-8") as f:
-            for v in json.load(f):
-                pid = v.get("proposicao_camara_id")
-                if pid is None:
-                    continue
-                c = contagem.setdefault(pid, {"SIM": 0, "NAO": 0, "ABSTENCAO": 0, "TOTAL": 0})
-                opcao = v.get("voto", "OUTROS")
-                if opcao in ("SIM", "NAO", "ABSTENCAO", "OBSTRUCAO"):
-                    c["ABSTENCAO" if opcao == "OBSTRUCAO" else opcao] += 1
-                    c["TOTAL"] += 1
-
-    resultado = []
-    for p in proposicoes:
-        cid = p.get("camara_id")
-        if cid is None:
-            continue
-        resultado.append(
-            {
-                "id": str(cid),
-                "camara_id": cid,
-                "tipo": p.get("tipo"),
-                "numero": p.get("numero"),
-                "ano": p.get("ano"),
-                "titulo": p.get("titulo"),
-                "ementa": p.get("ementa"),
-                "autor_nome": p.get("autor_nome") or ("Poder Executivo" if p.get("iniciativa_executivo") else None),
-                "area_tematica": p.get("area_tematica"),
-                "data_apresentacao": p.get("data_apresentacao"),
-                "status": p.get("status"),
-                "is_reforma_estrutural": p.get("is_reforma_estrutural", False),
-                "iniciativa_executivo": p.get("iniciativa_executivo", False),
-                "placar": contagem.get(cid, dict(PLACAR_TELA_VAZIO)),
-                "sessao": sessoes_por_proposicao.get(cid),
-            }
-        )
-    return resultado
 
 
 def _filtrar_por_partido(db: Session, query: Any, partido: str) -> Any:

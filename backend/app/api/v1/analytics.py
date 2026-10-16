@@ -3,8 +3,7 @@ from collections import defaultdict
 from datetime import date
 from typing import Any, Dict, List, Optional
 
-from app.core.config import PROCESSED_DATA_DIR
-from app.core.data_files import FIRST_SERIES_YEAR, load_json_cached, mandate_year_range
+from app.core.data_files import FIRST_SERIES_YEAR, mandate_year_range
 from app.core.database import get_db
 from app.models import (
     AnnualSocialIndicator,
@@ -22,16 +21,18 @@ from app.schemas.analytics import (
     FederalTransfersResponse,
     WageDisparityResponse,
 )
-from app.services.eco_dados import macro_por_ano, seguranca_por_ano, sociais_por_ano, ultimo_salario_minimo
-from app.services.iple_service import get_mandate_iple
+from app.services.composicao_service import composicao_do_mandato
+from app.services.eco_dados import macro_por_ano, seguranca_por_ano, sociais_por_ano
+from app.services.iple_service import get_all_mandates_iple, get_mandate_iple
 from app.services.mandato_economia_service import matriz_de_mandatos
+from app.services.pnad_service import classes_sociais
 from app.services.presidencia_service import presidente_por_referencia
+from app.services.salario_service import disparidade_salarial
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 router = APIRouter()
-DATA_DIR = PROCESSED_DATA_DIR
 
 ELECTION_YEARS = [1994, 1998, 2002, 2006, 2010, 2014, 2018, 2022]
 
@@ -66,13 +67,6 @@ def _relative(a: Optional[float], b: Optional[float], nd: int = 2) -> Optional[f
     if a is None or b is None or a == 0:
         return None
     return round(((b - a) / abs(a)) * 100, nd)
-
-
-def _load_or_404(filename: str, detail: str) -> Any:
-    data = load_json_cached(DATA_DIR / filename)
-    if data is None:
-        raise HTTPException(status_code=404, detail=detail)
-    return data
 
 
 def _get_mandate_years(m: dict) -> List[int]:
@@ -189,11 +183,12 @@ def get_mandates_economic_performance(db: Session = Depends(get_db)):
     data = matriz_de_mandatos(db)
     if not data:
         raise HTTPException(status_code=404, detail="Matriz de mandatos não encontrada. Execute o ETL.")
+    iple_por_mandato = {i["mandato_id"]: i for i in get_all_mandates_iple(db)}  # a escala ideológica é lida uma só vez
     return [
         {
             **m,
             "score_prosperidade": _calculate_mandate_prosperity_score(m),
-            "iple": get_mandate_iple(m.get("id_mandato")),
+            "iple": iple_por_mandato.get(m["id_mandato"]),
         }
         for m in data
     ]
@@ -435,8 +430,8 @@ def compare_mandates(
         "diagnostico": "Estados com menor contingente populacional e áreas prioritárias (Norte/Centro-Oeste) absorvem maior volume de repasses federais per capita vinculados aos pisos constitucionais de Saúde e Educação.",
     }
 
-    iple1 = get_mandate_iple(mandate1)
-    iple2 = get_mandate_iple(mandate2)
+    iple1 = get_mandate_iple(db, mandate1)
+    iple2 = get_mandate_iple(db, mandate2)
     m1_enriched = {**m1, "sociais": s1, "score_prosperidade": score_m1, "iple": iple1}
     m2_enriched = {**m2, "sociais": s2, "score_prosperidade": score_m2, "iple": iple2}
 
@@ -649,37 +644,28 @@ def get_party_fidelity(db: Session = Depends(get_db)):
 
 
 @router.get("/wage-disparity", response_model=WageDisparityResponse)
-def get_wage_disparity():
+def get_wage_disparity(db: Session = Depends(get_db)):
     """
     Retorna a série evolutiva confrontando:
     1) Salário Mínimo (BRL)
-    2) Salário Base dos Parlamentares (BRL)
+    2) Subsídio dos Parlamentares (BRL), fixado por decreto legislativo
     3) Inflação Acumulada
-    Mais os detalhes e votos nominais da votação do Salário Mínimo (MPV 1172/2023).
+    Mais o placar da votação do Salário Mínimo (MPV 1172/2023), calculado dos votos nominais.
     """
-    return _load_or_404(
-        "salario_vs_inflacao.json",
-        "Dados de disparidade salarial não encontrados. Execute o pipeline de ETL.",
-    )
+    return disparidade_salarial(db)
 
 
 @router.get("/congress-composition", response_model=CongressCompositionResponse)
-def get_congress_composition(mandate_id: str = Query("lula-2023", description="ID do mandato presidencial")):
+def get_congress_composition(
+    mandate_id: str = Query("lula-2023", description="ID do mandato presidencial"), db: Session = Depends(get_db)
+):
     """
     Retorna a composição do Congresso Nacional durante o mandato:
     - Presidentes da Câmara e do Senado (com nomes, partidos e fotos)
     - Tamanho das Bancadas dos partidos na Câmara (513) e Senado (81)
     - Alinhamento e Governabilidade do Presidente da República
     """
-    composicoes = _load_or_404(
-        "composicao_congresso.json",
-        "Dados de composição do Congresso não encontrados. Execute o pipeline de ETL.",
-    )
-    if mandate_id not in composicoes:
-        raise HTTPException(
-            status_code=404, detail=f"Mandato '{mandate_id}' não encontrado na composição do Congresso."
-        )
-    return composicoes[mandate_id]
+    return composicao_do_mandato(db, mandate_id)
 
 
 def _cobertura_repasses(linhas: List[tuple]) -> Dict[str, Any]:
@@ -803,257 +789,17 @@ def get_social_indicators(db: Session = Depends(get_db)):
     return []
 
 
-# Distribuição de referência das classes (estimativa fixa; não é calculada a partir de microdados da PNAD)
-SOCIAL_CLASSES_REFERENCE = [
-    {
-        "classe": "Classe A",
-        "faixa_salarios_minimos": "Mais de 20 salários mínimos",
-        "min": 20.0,
-        "max": None,
-        "percentual_populacao": 2.8,
-        "descricao": "Alta renda e topo da pirâmide. Proprietários de empresas, altos executivos, juízes e servidores do topo do funcionalismo.",
-        "cor": "#10b981",
-        "destaque": "Topo 3%",
-    },
-    {
-        "classe": "Classe B",
-        "faixa_salarios_minimos": "De 10 a 20 salários mínimos",
-        "min": 10.0,
-        "max": 20.0,
-        "percentual_populacao": 13.2,
-        "descricao": "Classe média alta. Profissionais liberais consolidados, média gerência, professores universitários e empresários médios.",
-        "cor": "#3b82f6",
-        "destaque": "Média Alta",
-    },
-    {
-        "classe": "Classe C",
-        "faixa_salarios_minimos": "De 4 a 10 salários mínimos",
-        "min": 4.0,
-        "max": 10.0,
-        "percentual_populacao": 31.0,
-        "descricao": "Classe média tradicional / baixa. Pequenos comerciantes, técnicos especializados, professores do ensino básico e servidores médios.",
-        "cor": "#f59e0b",
-        "destaque": "Média Tradicional",
-    },
-    {
-        "classe": "Classe D",
-        "faixa_salarios_minimos": "De 2 a 4 salários mínimos",
-        "min": 2.0,
-        "max": 4.0,
-        "percentual_populacao": 29.5,
-        "descricao": "Trabalhadores formais e autônomos de serviços essenciais, operários, comércio e transporte.",
-        "cor": "#f97316",
-        "destaque": "Maior Grupo Formal",
-    },
-    {
-        "classe": "Classe E",
-        "faixa_salarios_minimos": "Até 2 salários mínimos",
-        "min": 0.0,
-        "max": 2.0,
-        "percentual_populacao": 23.5,
-        "descricao": "Base da pirâmide e vulnerabilidade extrema. Dependentes de programas sociais, diaristas, desempregados e informais.",
-        "cor": "#ef4444",
-        "destaque": "Vulnerabilidade",
-    },
-]
-
-
-def _format_brl(value: float) -> str:
-    return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-
-PNAD_FILE = "pnad_faixas_salario_minimo.json"
-
-# Classe → índices das faixas do arquivo da PNAD (ver `faixas` em pnad_faixas_salario_minimo.json):
-# 0 sem rendimento, 1 até 1/2, 2 1/2–1, 3 1–2, 4 2–4, 5 4–10, 6 10–20, 7 acima de 20 SM.
-PNAD_CLASS_BINS = {
-    "Classe A": (7,),
-    "Classe B": (6,),
-    "Classe C": (5,),
-    "Classe D": (4,),
-    "Classe E": (0, 1, 2, 3),
-}
-PNAD_N_BINS = 8
-
-
-def _valid_pnad_year(entry: Any) -> bool:
-    """O ano da PNAD só é usado se as quatro distribuições nacionais estiverem íntegras."""
-    if not isinstance(entry, dict) or not entry.get("salario_minimo_brl"):
-        return False
-    nacional = entry.get("nacional")
-    if not isinstance(nacional, dict):
-        return False
-    for key in ("domicilios_renda_total", "pessoas_renda_domiciliar"):
-        info = nacional.get(key)
-        pct = info.get("percentual") if isinstance(info, dict) else None
-        if not isinstance(pct, list) or len(pct) != PNAD_N_BINS:
-            return False
-    return True
-
-
-def _load_pnad() -> Optional[Dict[str, Any]]:
-    data = load_json_cached(DATA_DIR / PNAD_FILE)
-    if not isinstance(data, dict) or not isinstance(data.get("anos"), dict):
-        return None
-    anos = {k: v for k, v in data["anos"].items() if _valid_pnad_year(v)}
-    if not anos:
-        return None
-    return {**data, "anos": anos}
-
-
-def _class_income_text(lo: float, hi: Optional[float], sm_ref: Optional[float]) -> Dict[str, Any]:
-    renda_min = round(lo * sm_ref, 2) if sm_ref is not None else None
-    renda_max = round(hi * sm_ref, 2) if (sm_ref is not None and hi is not None) else None
-    if sm_ref is None:
-        formatada = None
-    elif hi is None:
-        formatada = f"Acima de {_format_brl(lo * sm_ref)}"
-    elif lo == 0:
-        formatada = f"Até {_format_brl(hi * sm_ref)}"
-    else:
-        formatada = f"{_format_brl(lo * sm_ref)} a {_format_brl(hi * sm_ref)}"
-    return {
-        "renda_familiar_min_brl": renda_min,
-        "renda_familiar_max_brl": renda_max,
-        "faixa_renda_formatada": formatada,
-    }
-
-
-def _pnad_social_classes(pnad: Dict[str, Any], ano: int) -> Dict[str, Any]:
-    entry = pnad["anos"][str(ano)]
-    sm_ref = float(entry["salario_minimo_brl"])
-    nacional = entry["nacional"]
-    dom = nacional["domicilios_renda_total"]["percentual"]
-    pessoas = nacional["pessoas_renda_domiciliar"]["percentual"]
-
-    classes = []
-    for ref in SOCIAL_CLASSES_REFERENCE:
-        bins = PNAD_CLASS_BINS[ref["classe"]]
-        lo, hi = ref["min"], ref["max"]
-        classes.append(
-            {
-                "classe": ref["classe"],
-                "faixa_salarios_minimos": ref["faixa_salarios_minimos"],
-                "faixa_salarios_minimos_min": lo,
-                "faixa_salarios_minimos_max": hi,
-                **_class_income_text(lo, hi, sm_ref),
-                "percentual_populacao": round(sum(pessoas[i] for i in bins), 1),
-                "percentual_domicilios": round(sum(dom[i] for i in bins), 1),
-                "descricao": ref["descricao"],
-                "cor": ref["cor"],
-                "destaque": ref["destaque"],
-            }
-        )
-
-    pct_d_e = round(sum(c["percentual_domicilios"] for c in classes if c["classe"] in ("Classe D", "Classe E")), 1)
-    pct_a = next(c["percentual_domicilios"] for c in classes if c["classe"] == "Classe A")
-    n_dom = nacional["domicilios_renda_total"]["total_estimado"]
-
-    return {
-        "origem": "pnad",
-        "salario_minimo_referencia_brl": sm_ref,
-        "ano_referencia": ano,
-        "anos_disponiveis": sorted(int(a) for a in pnad["anos"]),
-        "fonte": (
-            f"IBGE — PNAD Contínua anual {ano} (microdados, visita {entry.get('visita', 5)}), calculado pelo "
-            f"LegisData com o peso amostral calibrado; salário mínimo de {ano}: {_format_brl(sm_ref)}. "
-            "Classes por rendimento habitual domiciliar total em múltiplos do salário mínimo."
-        ),
-        "metodologia": pnad.get("metodologia"),
-        "resumo_populacional": {
-            "maioria_populacao_acumulada_d_e_pct": pct_d_e,
-            "total_domicilios_estimado": n_dom,
-            "texto_educativo": (
-                f"Em {ano}, {pct_d_e:g}% dos domicílios brasileiros viviam com renda domiciliar total de até 4 "
-                f"salários mínimos (Classes D e E). Apenas {pct_a:g}% estavam na Classe A (acima de 20 salários "
-                "mínimos), o que frequentemente distorce a percepção sobre o que é a 'classe média' no país."
-            ),
-        },
-        "classes": classes,
-        "faixas": pnad.get("faixas"),
-        "distribuicoes": {
-            key: {
-                "total_estimado": nacional[key]["total_estimado"],
-                "percentual": nacional[key]["percentual"],
-                "media_nominal_brl": nacional[key].get("media_nominal_brl"),
-            }
-            for key in (
-                "domicilios_renda_total",
-                "pessoas_renda_domiciliar",
-                "pessoas_renda_per_capita",
-                "ocupados_renda_trabalho",
-            )
-            if isinstance(nacional.get(key), dict)
-        },
-    }
-
-
 @router.get("/social-classes")
 def get_social_classes_distribution(
-    ano: Optional[int] = Query(
-        None,
-        description="Ano da PNAD Contínua (padrão: o mais recente disponível). Ignorado sem microdados processados.",
-    ),
+    ano: Optional[int] = Query(None, description="Ano da PNAD Contínua (padrão: o mais recente disponível)."),
     db: Session = Depends(get_db),
 ):
     """
-    Retorna a divisão de classes sociais no Brasil por faixas de salários mínimos.
-
-    Quando o ETL já processou os microdados da PNAD Contínua (`etl/run_etl.py --pnad`), os percentuais são
-    calculados desses microdados para o ano pedido (padrão: o mais recente) e o salário mínimo usado é o do
-    próprio ano. Sem esse arquivo, volta a estimativa de referência fixa (`origem: "referencia_fixa"`).
+    Retorna a divisão de classes sociais no Brasil por faixas de salários mínimos, calculada dos microdados da PNAD
+    Contínua (`etl/run_etl.py --pnad`, carregados com `--load-economia`) para o ano pedido, com o salário mínimo do
+    próprio ano. Sem os microdados do ano, a resposta é 404: não há estimativa de reserva.
     """
-    pnad = _load_pnad()
-    if pnad is not None:
-        disponiveis = sorted(int(a) for a in pnad["anos"])
-        escolhido = ano if ano is not None else disponiveis[-1]
-        if escolhido not in disponiveis:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Ano {escolhido} sem microdados da PNAD processados. Disponíveis: {disponiveis}.",
-            )
-        return _pnad_social_classes(pnad, escolhido)
-    if ano is not None:
-        raise HTTPException(status_code=404, detail="Microdados da PNAD ainda não processados (rode o ETL --pnad).")
-
-    wage = ultimo_salario_minimo(db)
-    sm_ref = wage["valor"] if wage else None
-
-    classes = []
-    for ref in SOCIAL_CLASSES_REFERENCE:
-        lo, hi = ref["min"], ref["max"]
-        classes.append(
-            {
-                "classe": ref["classe"],
-                "faixa_salarios_minimos": ref["faixa_salarios_minimos"],
-                "faixa_salarios_minimos_min": lo,
-                "faixa_salarios_minimos_max": hi,
-                **_class_income_text(lo, hi, sm_ref),
-                "percentual_populacao": ref["percentual_populacao"],
-                "descricao": ref["descricao"],
-                "cor": ref["cor"],
-                "destaque": ref["destaque"],
-            }
-        )
-
-    pct_d_e = round(sum(c["percentual_populacao"] for c in classes if c["classe"] in ("Classe D", "Classe E")), 1)
-    pct_a = next(c["percentual_populacao"] for c in classes if c["classe"] == "Classe A")
-
-    return {
-        "origem": "referencia_fixa",
-        "salario_minimo_referencia_brl": sm_ref,
-        "ano_referencia": wage["ano"] if wage else None,
-        "fonte": "Salário mínimo: série oficial do ETL. Percentuais: estimativa de referência (Critério Brasil / FGV Social / IBGE PNAD Contínua), não recalculada.",
-        "resumo_populacional": {
-            "maioria_populacao_acumulada_d_e_pct": pct_d_e,
-            "texto_educativo": (
-                f"Cerca de {pct_d_e:g}% das famílias brasileiras sobrevivem com renda total de até 4 salários "
-                f"mínimos (Classes D e E). Apenas {pct_a:g}% pertencem à Classe A (acima de 20 salários mínimos), "
-                "o que frequentemente distorce a percepção sobre o que é a 'classe média' no país."
-            ),
-        },
-        "classes": classes,
-    }
+    return classes_sociais(db, ano)
 
 
 @router.get("/social-elections")

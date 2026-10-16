@@ -60,14 +60,6 @@ describe('SocialClassesExplainer', () => {
     expect(screen.getByText('55,0% em Classes D/E')).toBeInTheDocument();
   });
 
-  it('rotula a origem como estimativa quando não vem da PNAD', async () => {
-    getClasses.mockResolvedValue({ ...response, origem: 'referencia_fixa' });
-    render(<SocialClassesExplainer />);
-    expect(await screen.findByText(/Estimativa de referência \(não calculada de microdados\)/)).toBeInTheDocument();
-    expect(screen.queryByLabelText('Ano da PNAD')).not.toBeInTheDocument();
-    expect(screen.getAllByText(/dos lares/).length).toBeGreaterThan(0);
-  });
-
   it('com microdados da PNAD mostra origem, domicílios e permite trocar o ano', async () => {
     const pnad = (ano: number) => ({
       ...response,
@@ -140,14 +132,22 @@ describe('SocialClassesExplainer', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/Não foi possível enquadrar/);
   });
 
-  it('funciona com menos de 3 classes (sem índice fixo) e soma D/E quando o resumo falta', async () => {
+  it('sem texto educativo da API não mostra o banner vazio', async () => {
+    getClasses.mockResolvedValue({ ...response, resumo_populacional: { maioria_populacao_acumulada_d_e_pct: null, texto_educativo: null } });
+    render(<SocialClassesExplainer />);
+    await screen.findByText(/Salário Mínimo de 2024/);
+    expect(screen.queryByText(/A Ilusão da/)).not.toBeInTheDocument();
+  });
+
+  it('funciona com menos de 3 classes (sem índice fixo) e mostra a base como indisponível quando o resumo falta', async () => {
     getClasses.mockResolvedValue({
       ...response,
       resumo_populacional: { maioria_populacao_acumulada_d_e_pct: null, texto_educativo: 'x' },
       classes: [cls('Classe D', 1, 3, 40), cls('Classe E', 0, 1, 15)],
     });
     render(<SocialClassesExplainer />);
-    expect(await screen.findByText('55,0% em Classes D/E')).toBeInTheDocument();
+    expect(await screen.findByText(/em Classes D\/E/)).toBeInTheDocument();
+    expect(screen.queryByText(/55,0%/)).not.toBeInTheDocument(); // nada de somar por nome de classe no cliente
   });
 
   it('erro mostra alerta com retry; vazio mostra indisponível', async () => {

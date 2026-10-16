@@ -77,28 +77,29 @@ Para enriquecer a análise via **QCA (Qualitative Comparative Analysis)**, o sis
 
 ---
 
-## 6. Resultados Históricos Consolidados (Nova República 1992 - Presente)
+## 6. Resultados Históricos Consolidados (Nova República, janela de dados a partir de 1995)
+
+Tabela gerada da API (`GET /api/v1/executivo/iple`) com a carga atual de `leg.producao_executivo`, `leg.bancada_mandato` e `core.partido_posicao_ideologica`. "Indisponível" significa que o mandato não tem bancadas carregadas para aquela variável (nunca é zero). Os períodos seguem a regra da seção 8.
 
 | Mandato | Presidente | Período | TS | TMV | IPLE Score | NEP ($X_2$) | IPP ($X_3$) | Classificação QCA |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| `itamar-franco-1992` | Itamar Franco | 1992-1995 | 88.2% | 84.4% | **0.863** | 8.42 | 2.90 | Executivo Forte / Poderoso |
-| `fhc-1995` | Fernando Henrique Cardoso 1 | 1995-1999 | 90.9% | 89.8% | **0.904** | 8.14 | 3.03 | Executivo Forte / Poderoso |
-| `fhc-1999` | Fernando Henrique Cardoso 2 | 1999-2003 | 86.8% | 75.1% | **0.810** | 7.12 | 2.94 | Executivo Forte / Poderoso |
-| `lula-2003` | Luiz Inácio Lula da Silva 1 | 2003-2007 | 87.2% | 81.3% | **0.842** | 8.52 | 4.02 | Executivo Forte / Poderoso |
-| `lula-2007` | Luiz Inácio Lula da Silva 2 | 2007-2011 | 91.4% | 90.4% | **0.909** | 9.33 | 3.82 | Executivo Forte / Poderoso |
-| `dilma-2011` | Dilma Rousseff 1 | 2011-2015 | 86.8% | 71.5% | **0.792** | 10.74 | 3.91 | Executivo Forte / Poderoso |
-| `dilma-2015` | Dilma Rousseff 2 | 2015-2016 | 61.1% | 42.2% | **0.516** | 13.56 | 4.88 | Executivo Fraco (Impeachment) |
-| `temer-2016` | Michel Temer | 2016-2019 | 80.0% | 72.2% | **0.761** | 14.12 | 3.10 | Executivo Fraco / Desafiado |
-| `bolsonaro-2019` | Jair Bolsonaro | 2019-2023 | 74.0% | 62.7% | **0.683** | 16.41 | 4.40 | Executivo Fraco / Desafiado |
-| `lula-2023` | Luiz Inácio Lula da Silva 3 | 2023-2027 | 82.1% | 68.8% | **0.755** | 9.93 | 4.55 | Executivo Fraco / Desafiado |
+| `fhc-1995` | Fernando Henrique Cardoso (FHC 1) | 1995 - 1998 | 90.9% | 89.8% | **0.904** | 8.14 | 3.03 | Executivo Forte / Poderoso |
+| `fhc-1999` | Fernando Henrique Cardoso (FHC 2) | 1999 - 2002 | 83.1% | 78.8% | **0.810** | indisponível | indisponível | Executivo Forte / Poderoso |
+| `lula-2003` | Lula (Lula 1) | 2003 - 2006 | 87.2% | 81.2% | **0.842** | 8.52 | 4.02 | Executivo Forte / Poderoso |
+| `lula-2007` | Lula (Lula 2) | 2007 - 2010 | 91.6% | 90.2% | **0.909** | 9.29 | 3.82 | Executivo Forte / Poderoso |
+| `dilma-2011` | Dilma Rousseff (Dilma 1) | 2011 - 2014 | 84.5% | 73.8% | **0.792** | 10.43 | 4.00 | Executivo Forte / Poderoso |
+| `dilma-2015` | Dilma Rousseff (Dilma 2) | 2015 - 2016 | 57.1% | 46.2% | **0.516** | 13.33 | 3.47 | Executivo Fraco |
+| `temer-2016` | Michel Temer | 2016 - 2018 | 81.1% | 71.0% | **0.761** | 13.33 | 3.53 | Executivo Fraco |
+| `bolsonaro-2019` | Jair Bolsonaro | 2019 - 2022 | 74.0% | 62.7% | **0.683** | 16.41 | 4.40 | Executivo Fraco |
+| `lula-2023` | Lula (Lula 3) | 2023 - Presente | 82.1% | 68.8% | **0.754** | 9.93 | 4.55 | Executivo Fraco |
 
 ---
 
 ## 7. Arquitetura e Integração Técnica
 
 1. **Módulo de Cálculo (`backend/app/services/iple_service.py`):**
-   - Funções analíticas: `calcular_taxa_sucesso`, `calcular_taxa_manutencao_vetos`, `calcular_iple`, `calcular_nep`, `calcular_polarizacao_ideologica`, `calibrar_crisp_set_qca`.
-   - Banco de dados histórico completo de mandatos presidenciais com parâmetros empíricos calibrados.
+   - Funções analíticas: `calculate_ts`, `calculate_tmv`, `calculate_iple`, `calculate_nep`, `calculate_ipp`, `calibrate_crisp_set`.
+   - A produção do Executivo vem de `leg.producao_executivo`, as bancadas de `leg.bancada_mandato` e a escala ideológica de `core.partido_posicao_ideologica`; nada disso é constante no código. `bancadas_service.py` lê bancadas, totais e governabilidade.
 2. **Endpoints de API:**
    - `GET /api/v1/executivo/iple?mandate_id=...`: Devolve o payload completo do mandato ou de todos os mandatos.
    - `GET /api/v1/analytics/congress-composition?mandate_id=...`: Devolve a composição das casas legislativas e o IPLE.
@@ -108,3 +109,14 @@ Para enriquecer a análise via **QCA (Qualitative Comparative Analysis)**, o sis
    - `CongressCompositionPanel.tsx`: Card de IPLE, barras de TS e TMV, badges Crisp-set e modal expansível com explicação detalhada da metodologia.
    - `ExecutivoPanel.tsx`: Seção completa de IPLE no Raio-X do Executivo e alternador dinâmico de ranking entre PIB Médio e IPLE.
    - `comparador/page.tsx`: Dimensão 4 na Tabela Multidimensional confrontando governabilidade e variáveis QCA lado a lado.
+
+---
+
+## 8. Regras de cálculo da camada de dados (Entrega 3b)
+
+- **Período do mandato.** O fim de `core.mandato` é exclusivo quando coincide com a posse do sucessor em 1º de janeiro (o mandato que termina em 01/01/2003 vai até 2002). Mandato que termina no meio do ano (impeachment, renúncia) vale até o próprio ano do fim: Dilma 2 (fim em 31/08/2016) é "2015 - 2016". A regra única é `periodos.ultimo_ano_do_mandato`.
+- **Governabilidade.** Base aliada, centro e oposição são somas das bancadas classificadas. Maioria simples: `base > total / 2`. Maioria para PEC: `base >= ceil(3 * total / 5)`. Sem nenhuma bancada classificada, tudo é `None`. Com classificação parcial, a maioria só é afirmada quando a base já alcança o mínimo (verdadeiro) ou quando nem somando todas as cadeiras sem classificação ela alcançaria (falso); no meio disso é `None` (não dá para afirmar) e `nao_classificadas_cadeiras` mostra o que falta classificar.
+- **Variável ausente nunca vira zero.** X1, X2 e X3 sem bancadas (ou sem classificação, no caso de X1) ficam `None` e a calibragem sai "Indisponível". A cobertura da escala ideológica (`cobertura_ipp_pct`) informa quantas cadeiras tinham posição conhecida no cálculo do X3.
+- **Índice do salário.** Base 100 no primeiro ano da série (1995). O IPCA acumulado percorre todos os anos desde o primeiro; se faltar o IPCA de algum ano do intervalo, o índice sai `None` dali em diante, em vez de um acumulado parcial.
+- **Oposição parcial não é piso.** Se parte das cadeiras da Casa não foi classificada, X1 não usa a soma parcial da oposição: na Câmara vale a oposição curada de `leg.producao_executivo`, no Senado X1 fica indisponível. A composição marca `dados_incompletos` nesse caso.
+- **Proposições do mandato em curso.** Para o mandato sem data de fim, a contagem real da base considera só proposições do Executivo apresentadas a partir do início do mandato (a base cobre desde 1995) e vale se superar a curadoria.

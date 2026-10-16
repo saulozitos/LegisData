@@ -38,11 +38,7 @@ def get_propositions_with_voting(
     except SQLAlchemyError as e:
         logger.error("Falha ao consultar proposições no banco: %s", e)
         raise HTTPException(status_code=503, detail="Banco de dados indisponível.")
-    if total:
-        response.headers["X-Total-Count"] = str(total)
-        return itens
-    itens = explorer_service.proposicoes_de_arquivos_locais()
-    response.headers["X-Total-Count"] = str(len(itens))
+    response.headers["X-Total-Count"] = str(total)
     return itens
 
 

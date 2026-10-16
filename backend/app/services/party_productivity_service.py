@@ -13,13 +13,11 @@ Implementa integralmente a Especificação do Módulo 4 e Módulo 8:
 5. Rotina de Ingestão e Processamento em Lote (CRON Diário)
 """
 
-import json
 import logging
 from datetime import date, datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from app.core import config
+from app.core.names import chave_sigla
 from app.models.analytics import LogExecucaoCron
 from app.models.politician import SituacaoMandatoEnum
 from app.services.party_catalog_service import DEFAULT_PARTY_COLOR
@@ -32,47 +30,25 @@ logger = logging.getLogger(__name__)
 STATUS_APROVADOS = ("APROVADA_E_SANCIONADA", "APROVADA_E_PROMULGADA", "APROVADO_PLENARIO")
 
 
-def get_party_bloc_alignments() -> Dict[str, str]:
-    """Carrega o alinhamento de bloco governamental de composicao_congresso.json."""
-    json_path = Path(config.PROCESSED_DATA_DIR) / "composicao_congresso.json"
-    party_blocs: Dict[str, str] = {
-        "PT": "BASE_GOVERNO",
-        "PCdoB": "BASE_GOVERNO",
-        "PV": "BASE_GOVERNO",
-        "PSOL": "BASE_GOVERNO",
-        "REDE": "BASE_GOVERNO",
-        "PSB": "BASE_GOVERNO",
-        "PDT": "BASE_GOVERNO",
-        "PL": "OPOSICAO",
-        "NOVO": "OPOSICAO",
-        "UNIÃO": "INDEPENDENTE_CENTRO",
-        "PP": "INDEPENDENTE_CENTRO",
-        "REPUBLICANOS": "INDEPENDENTE_CENTRO",
-        "MDB": "INDEPENDENTE_CENTRO",
-        "PSD": "INDEPENDENTE_CENTRO",
-        "PODE": "INDEPENDENTE_CENTRO",
-        "PODEMOS": "INDEPENDENTE_CENTRO",
-        "PSDB": "INDEPENDENTE_CENTRO",
-        "CIDADANIA": "INDEPENDENTE_CENTRO",
-        "SOLIDARIEDADE": "INDEPENDENTE_CENTRO",
-        "AVANTE": "INDEPENDENTE_CENTRO",
-        "PRD": "INDEPENDENTE_CENTRO",
-    }
-    if json_path.exists():
-        try:
-            with open(json_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                latest_mandate = data.get("lula-2023", {})
-                camara = latest_mandate.get("camara", {})
-                bancadas = camara.get("bancadas", [])
-                for b in bancadas:
-                    sigla = b.get("partido")
-                    alinhamento = b.get("alinhamento")
-                    if sigla and alinhamento:
-                        party_blocs[sigla.upper()] = alinhamento.upper()
-        except Exception as e:
-            logger.warning("Falha ao carregar blocos de composicao_congresso.json: %s", e)
-    return party_blocs
+_BLOCOS_SQL = text(
+    """
+    SELECT b.partido_sigla, b.alinhamento
+    FROM leg.bancada_mandato b JOIN ref.casa_legislativa k ON k.id = b.casa_id
+    WHERE k.codigo = 'CAMARA_DOS_DEPUTADOS' AND b.cadeiras IS NOT NULL AND b.alinhamento <> 'NAO_CLASSIFICADO'
+      AND b.mandato_id = (
+        SELECT m.id FROM core.mandato m JOIN core.mandato_presidencial mp ON mp.mandato_id = m.id
+        WHERE EXISTS (
+            SELECT 1 FROM leg.bancada_mandato x JOIN ref.casa_legislativa kx ON kx.id = x.casa_id
+            WHERE x.mandato_id = m.id AND kx.codigo = 'CAMARA_DOS_DEPUTADOS'
+              AND x.cadeiras IS NOT NULL AND x.alinhamento <> 'NAO_CLASSIFICADO')
+        ORDER BY m.inicio DESC LIMIT 1)
+    """
+)
+
+
+def get_party_bloc_alignments(db: Session) -> Dict[str, str]:
+    """Bloco de governo de cada partido (chave `chave_sigla`) na Câmara durante o mandato presidencial mais recente com classificação."""
+    return {chave_sigla(sigla): alinhamento.upper() for sigla, alinhamento in db.execute(_BLOCOS_SQL)}
 
 
 def sync_mandate_history(db: Session) -> int:
@@ -192,7 +168,7 @@ def calculate_party_ippm_ranking(
     clean_bloco = (bloco or "ALL").upper().strip()
     clean_espectro = (espectro or "ALL").upper().strip()
 
-    bloc_map = get_party_bloc_alignments()
+    bloc_map = get_party_bloc_alignments(db)
     parties = (
         db.execute(
             text("SELECT * FROM core.vw_partido WHERE sigla <> 'S.PART.' AND linhagem_id IS NULL ORDER BY sigla")
@@ -307,7 +283,7 @@ def calculate_party_ippm_ranking(
         nome = party["nome"]
         cor = party["cor_hex"] or DEFAULT_PARTY_COLOR
         espectro = party["espectro_politico"] or "CENTRO"
-        bloco_class = bloc_map.get(sigla, "INDEPENDENTE_CENTRO")
+        bloco_class = bloc_map.get(chave_sigla(sigla), "INDEPENDENTE_CENTRO")
 
         # Filtro de Espectro
         if clean_espectro != "ALL":

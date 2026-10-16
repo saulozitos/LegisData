@@ -25,8 +25,20 @@ BANCO_ETL = "legis_test_etl"
 TEST_DATABASE_URL = SERVIDOR_URL.rsplit("/", 1)[0] + f"/{BANCO_ETL}"
 
 
+def _hash_das_migracoes() -> str:
+    """Resumo do conteúdo das revisões: uma migração editada dentro da branch (mesma revisão) invalida o banco reaproveitado."""
+    import hashlib
+
+    from app.core.migrations import BACKEND_DIR
+
+    resumo = hashlib.sha256()
+    for arquivo in sorted((BACKEND_DIR / "alembic" / "versions").glob("*.py")):
+        resumo.update(arquivo.name.encode() + arquivo.read_bytes())
+    return resumo.hexdigest()
+
+
 def _schema_atualizado(engine) -> bool:
-    """O banco próprio já está na última revisão (evita refazer ~90 s de migrações a cada execução)."""
+    """O banco próprio já está na última revisão e com as mesmas migrações (evita refazer ~90 s a cada execução)."""
     from alembic.config import Config
     from alembic.script import ScriptDirectory
     from app.core.migrations import BACKEND_DIR
@@ -36,7 +48,11 @@ def _schema_atualizado(engine) -> bool:
     cabeca = ScriptDirectory.from_config(config).get_current_head()
     try:
         with engine.connect() as conn:
-            return conn.execute(text("SELECT version_num FROM public.alembic_version")).scalar() == cabeca
+            na_cabeca = conn.execute(text("SELECT version_num FROM public.alembic_version")).scalar() == cabeca
+            return (
+                na_cabeca
+                and conn.execute(text("SELECT h FROM public.etl_test_migracoes")).scalar() == _hash_das_migracoes()
+            )
     except Exception:  # noqa: BLE001 - sem tabela de versão: schema por criar
         return False
 
@@ -64,6 +80,11 @@ def pg_engine():
         os.environ["ALEMBIC_DATABASE_URL"] = TEST_DATABASE_URL
         try:
             upgrade_schema()
+            with engine.begin() as conn:
+                conn.execute(text("CREATE TABLE public.etl_test_migracoes (h text NOT NULL)"))
+                conn.execute(
+                    text("INSERT INTO public.etl_test_migracoes (h) VALUES (:h)"), {"h": _hash_das_migracoes()}
+                )
         finally:
             if anterior is None:
                 os.environ.pop("ALEMBIC_DATABASE_URL", None)

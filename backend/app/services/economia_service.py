@@ -72,6 +72,11 @@ _IPCA_MENSAL_SQL = text(
 CODIGO_SGS_IPCA_MENSAL = 433
 
 
+def dominantes_por_ano(db: Session) -> Dict[int, Dict[str, Any]]:
+    """Presidente dominante de cada ano de série (mandato, nome e rótulo)."""
+    return {r["ano"]: dict(r) for r in db.execute(_DOMINANTE_DO_ANO_SQL).mappings()}
+
+
 def resumo_anual(db: Session, mandate_id: Optional[str]) -> List[Dict[str, Any]]:
     """Série anual consolidada, com o presidente dominante do ano e a inflação acumulada no mandato."""
     ultimo_ano = db.execute(text("SELECT max(ano) FROM eco.vw_resumo_anual")).scalar()
@@ -86,7 +91,7 @@ def resumo_anual(db: Session, mandate_id: Optional[str]) -> List[Dict[str, Any]]
             raise ErroDeDominio(404, f"Mandato '{mandate_id}' não encontrado.")
         primeiro, ultimo = intervalo_de_anos(mandato["inicio"], mandato["fim"], int(ultimo_ano))
 
-    dominantes = {r["ano"]: r for r in db.execute(_DOMINANTE_DO_ANO_SQL).mappings()}
+    dominantes = dominantes_por_ano(db)
     acumulado = _acumulado_no_mandato(db, dominantes)
     linhas: List[Dict[str, Any]] = []
     for r in db.execute(_RESUMO_SQL, {"primeiro": primeiro, "ultimo": ultimo}).mappings():

@@ -1,5 +1,7 @@
 """CLI: etapas isoladas, resumo honesto, carga bloqueada após falha na extração, código de saída."""
 
+import pytest
+
 import etl.run_etl as cli
 from etl.run_etl import Etapa, construir_etapas, executar, imprimir_resumo, montar_parser
 
@@ -15,6 +17,14 @@ def test_modo_completo_inclui_ceap_e_carga_mas_nao_itens_com_autorizacao_explici
     # presença/remuneração oficiais: extração antes da carga e carga depois do load_db
     assert chaves.index("presenca") < chaves.index("load_db") < chaves.index("load_presenca")
     assert "remuneracao" in chaves
+
+
+def test_modo_completo_tem_a_carga_economica_depois_do_load_db_e_nao_tem_mais_renda():
+    chaves = [e.chave for e in construir_etapas(args())]
+    assert "load_economia" in chaves and chaves.index("load_db") < chaves.index("load_economia")
+    assert "renda" not in chaves
+    with pytest.raises(SystemExit):
+        montar_parser().parse_args(["--renda"])  # a etapa foi removida do CLI
 
 
 def test_processos_so_com_autorizacao():
@@ -76,3 +86,56 @@ def test_main_retorna_0_quando_tudo_ok(monkeypatch):
     monkeypatch.setattr(cli, "ensure_data_dirs", lambda: None)
     monkeypatch.setattr(cli, "construir_etapas", lambda _args: [etapa("x")])
     assert cli.main(["--camara"]) == 0
+
+
+def test_carga_economica_isola_cada_loader_e_relata_as_falhas_no_fim(monkeypatch):
+    chamadas = []
+
+    def ok(nome):
+        return lambda engine: chamadas.append(nome) or {"ok": nome}
+
+    def quebra(engine):
+        chamadas.append("composicao")
+        raise RuntimeError("Mandatos sem identificador no banco: y-1999")
+
+    monkeypatch.setattr("etl.pipelines.economia_loader.carregar", ok("series"))
+    monkeypatch.setattr("etl.pipelines.presidencia_loader.carregar", ok("presidencia"))
+    monkeypatch.setattr("etl.pipelines.composicao_loader.carregar", quebra)
+    monkeypatch.setattr("etl.pipelines.pnad_loader.carregar", ok("pnad"))
+    with pytest.raises(RuntimeError, match="Composição do Congresso.*y-1999"):
+        cli._load_economia()
+    assert chamadas == ["series", "presidencia", "composicao", "pnad"]  # a PNAD rodou apesar da falha da composição
+
+
+def test_carga_economica_sem_falha_nao_levanta_e_com_duas_falhas_relata_as_duas(monkeypatch):
+    def quebra(mensagem):
+        def _(engine):
+            raise RuntimeError(mensagem)
+
+        return _
+
+    for modulo in ("economia_loader", "presidencia_loader", "composicao_loader", "pnad_loader"):
+        monkeypatch.setattr(f"etl.pipelines.{modulo}.carregar", lambda engine: {})
+    cli._load_economia()  # nenhuma falha: sem exceção
+
+    monkeypatch.setattr("etl.pipelines.economia_loader.carregar", quebra("BCB sem arquivo"))
+    monkeypatch.setattr("etl.pipelines.pnad_loader.carregar", quebra("PNAD ausente"))
+    with pytest.raises(RuntimeError) as erro:
+        cli._load_economia()
+    assert "BCB sem arquivo" in str(erro.value) and "PNAD ausente" in str(erro.value)
+
+
+def test_composicao_nao_roda_se_os_mandatos_presidenciais_falharam(monkeypatch):
+    chamadas = []
+
+    def quebra(engine):
+        raise RuntimeError("sem arquivo de presidentes")
+
+    monkeypatch.setattr("etl.pipelines.economia_loader.carregar", lambda engine: chamadas.append("series") or {})
+    monkeypatch.setattr("etl.pipelines.presidencia_loader.carregar", quebra)
+    monkeypatch.setattr("etl.pipelines.composicao_loader.carregar", lambda engine: chamadas.append("composicao") or {})
+    monkeypatch.setattr("etl.pipelines.pnad_loader.carregar", lambda engine: chamadas.append("pnad") or {})
+    with pytest.raises(RuntimeError) as erro:
+        cli._load_economia()
+    assert "sem arquivo de presidentes" in str(erro.value) and "não executada" in str(erro.value)
+    assert chamadas == ["series", "pnad"]  # a composição foi pulada, sem erro em cascata mascarando a causa

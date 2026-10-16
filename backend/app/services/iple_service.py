@@ -13,62 +13,20 @@ Implementação matemática e metodológica rigorosa conforme a Especificação 
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
+from app.core.errors import ErroDeDominio
+from app.core.names import chave_sigla
+from app.models.leg import Proposicao
+from app.services import bancadas_service
+from app.services.periodos import mandato_em_curso, nome_do_mandato, rotulo_do_periodo
+from sqlalchemy import func, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-# Escala ideológica de 1 (Esquerda) a 10 (Direita) conforme surveys legislativos (BLS / Power & Zucco / Tarouco & Madeira)
-ESCALA_IDEOLOGICA_PADRAO: Dict[str, float] = {
-    # Esquerda (1.0 - 2.5)
-    "PSTU": 1.0,
-    "PCB": 1.0,
-    "PCO": 1.0,
-    "UP": 1.0,
-    "PSOL": 1.5,
-    "REDE": 2.0,
-    "PT": 2.5,
-    "PC do B": 2.5,
-    "PCdoB": 2.5,
-    # Centro-Esquerda (3.5 - 4.5)
-    "PDT": 3.8,
-    "PSB": 4.0,
-    "PV": 4.2,
-    "SOLIDARIEDADE": 4.8,
-    # Centro (5.0 - 6.0)
-    "CIDADANIA": 5.2,
-    "PPS": 5.0,
-    "MDB": 5.5,
-    "PMDB": 5.5,
-    "PSD": 5.7,
-    "AVANTE": 5.8,
-    "PODEMOS": 5.9,
-    "PODE": 5.9,
-    "PROS": 5.5,
-    "PHS": 6.0,
-    # Centro-Direita (6.5 - 7.5)
-    "PSDB": 6.8,
-    "UNIÃO": 7.2,
-    "UNIAO": 7.2,
-    "DEM": 7.5,
-    "PFL": 7.5,
-    "PP": 7.4,
-    "PPB": 7.4,
-    "PPR": 7.4,
-    "PDS": 7.4,
-    "REPUBLICANOS": 7.6,
-    "PRD": 7.3,
-    "PATRIOTA": 7.8,
-    "PTB": 7.2,
-    "PSC": 7.7,
-    # Direita (8.0 - 9.0)
-    "PL": 8.5,
-    "PR": 8.0,
-    "PSL": 8.8,
-    "NOVO": 8.7,
-    "PRONA": 9.0,
-}
+STATUS_APROVADA = ("APROVADA_E_SANCIONADA", "APROVADA_E_PROMULGADA")
 
 # Parâmetros de corte Crisp-set (Tabela 4)
 CORTE_TS = 0.87
@@ -121,21 +79,32 @@ def calculate_nep(bancadas: List[Dict[str, Any]]) -> float:
     return round(1.0 / sum_sq, 2)
 
 
-def calculate_ipp(bancadas: List[Dict[str, Any]], custom_scale: Optional[Dict[str, float]] = None) -> float:
+def calculate_ipp(bancadas: List[Dict[str, Any]], scale: Dict[str, float]) -> Optional[float]:
     """
     Polarização Ideológica Ponderada (IPP):
     IPP = sum(p_i * (x_i - mean_x)^2)
-    onde p_i é a proporção de cadeiras, x_i é a escala de 1 a 10 e mean_x é a média ponderada.
+    onde p_i é a proporção de cadeiras, x_i é a escala de 1 a 10 e mean_x é a média ponderada. Só entram partidos com
+    posição na escala; se nenhum tiver, o IPP é indeterminado (`None`), nunca zero.
     """
-    scale = custom_scale or ESCALA_IDEOLOGICA_PADRAO
-    valid_b = [b for b in bancadas if b.get("partido") in scale and b.get("cadeiras", 0) > 0]
+    scale = {chave_sigla(k): v for k, v in scale.items()}
+    valid_b = [b for b in bancadas if chave_sigla(b.get("partido", "")) in scale and b.get("cadeiras", 0) > 0]
     total = sum(b["cadeiras"] for b in valid_b)
     if total <= 0:
-        return 0.0
+        return None
 
-    mean_x = sum((b["cadeiras"] / total) * scale[b["partido"]] for b in valid_b)
-    ipp = sum((b["cadeiras"] / total) * ((scale[b["partido"]] - mean_x) ** 2) for b in valid_b)
+    mean_x = sum((b["cadeiras"] / total) * scale[chave_sigla(b["partido"])] for b in valid_b)
+    ipp = sum((b["cadeiras"] / total) * ((scale[chave_sigla(b["partido"])] - mean_x) ** 2) for b in valid_b)
     return round(ipp, 2)
+
+
+def cobertura_da_escala(bancadas: List[Dict[str, Any]], scale: Dict[str, float]) -> Optional[float]:
+    """Percentual das cadeiras cujo partido tem posição na escala ideológica (base do IPP); None sem cadeiras."""
+    total = sum(b["cadeiras"] for b in bancadas)
+    if total <= 0:
+        return None
+    chaves = {chave_sigla(k) for k in scale}
+    coberto = sum(b["cadeiras"] for b in bancadas if chave_sigla(b.get("partido", "")) in chaves)
+    return round(coberto / total * 100, 1)
 
 
 def calculate_opposition_share(opposition_seats: int, total_seats: int) -> float:
@@ -147,271 +116,206 @@ def calculate_opposition_share(opposition_seats: int, total_seats: int) -> float
     return round(min(1.0, max(0.0, opposition_seats / total_seats)), 4)
 
 
-def calibrate_crisp_set(ts: float, tmv: float, iple: float, x1: float, x2: float, x3: float) -> Dict[str, Any]:
+def _item(score: Optional[float], corte: float, ativo: Optional[bool], alto: str, baixo: str) -> Dict[str, Any]:
+    """Item da calibragem; score ausente vira `crisp_val` None e classificação "Indisponível" (nunca um 0 inventado)."""
+    if score is None:
+        return {"score": None, "corte": corte, "crisp_val": None, "classificacao": "Indisponível"}
+    return {"score": score, "corte": corte, "crisp_val": int(bool(ativo)), "classificacao": alto if ativo else baixo}
+
+
+def calibrate_crisp_set(
+    ts: float, tmv: float, iple: float, x1: Optional[float], x2: Optional[float], x3: Optional[float]
+) -> Dict[str, Any]:
     """
     Classificação categórica booleana (Crisp-set QCA) conforme os limiares da Tabela 4.
+    As variáveis contextuais (X1, X2, X3) podem faltar quando as bancadas não foram levantadas.
     """
-    ts_bool = int(ts >= CORTE_TS)
-    tmv_bool = int(tmv >= CORTE_TMV)
-    iple_bool = int(iple >= CORTE_IPLE)
-    x1_bool = int(x1 > CORTE_OPOSICAO_X1)
-    x2_bool = int(x2 >= CORTE_FRAGMENTACAO_X2)
-    x3_bool = int(x3 > CORTE_POLARIZACAO_X3)
-
     return {
-        "ts": {
-            "score": ts,
-            "corte": CORTE_TS,
-            "crisp_val": ts_bool,
-            "classificacao": "Sucesso Alto" if ts_bool == 1 else "Sucesso Baixo",
-        },
-        "tmv": {
-            "score": tmv,
-            "corte": CORTE_TMV,
-            "crisp_val": tmv_bool,
-            "classificacao": "Manutenção Alta" if tmv_bool == 1 else "Manutenção Baixa",
-        },
-        "iple": {
-            "score": iple,
-            "corte": CORTE_IPLE,
-            "crisp_val": iple_bool,
-            "classificacao": "Executivo Forte / Poderoso" if iple_bool == 1 else "Executivo Fraco",
-        },
-        "oposicao_x1": {
-            "score": x1,
-            "corte": CORTE_OPOSICAO_X1,
-            "crisp_val": x1_bool,
-            "classificacao": "Oposição Numerosa (Quórum CPI)" if x1_bool == 1 else "Oposição Fraca",
-        },
-        "fragmentacao_x2": {
-            "score": x2,
-            "corte": CORTE_FRAGMENTACAO_X2,
-            "crisp_val": x2_bool,
-            "classificacao": "Parlamento Fragmentado" if x2_bool == 1 else "Baixa Fragmentação",
-        },
-        "polarizacao_x3": {
-            "score": x3,
-            "corte": CORTE_POLARIZACAO_X3,
-            "crisp_val": x3_bool,
-            "classificacao": "Parlamento Polarizado" if x3_bool == 1 else "Baixa Polarização",
-        },
+        "ts": _item(ts, CORTE_TS, ts >= CORTE_TS, "Sucesso Alto", "Sucesso Baixo"),
+        "tmv": _item(tmv, CORTE_TMV, tmv >= CORTE_TMV, "Manutenção Alta", "Manutenção Baixa"),
+        "iple": _item(iple, CORTE_IPLE, iple >= CORTE_IPLE, "Executivo Forte / Poderoso", "Executivo Fraco"),
+        "oposicao_x1": _item(
+            x1,
+            CORTE_OPOSICAO_X1,
+            x1 is not None and x1 > CORTE_OPOSICAO_X1,
+            "Oposição Numerosa (Quórum CPI)",
+            "Oposição Fraca",
+        ),
+        "fragmentacao_x2": _item(
+            x2,
+            CORTE_FRAGMENTACAO_X2,
+            x2 is not None and x2 >= CORTE_FRAGMENTACAO_X2,
+            "Parlamento Fragmentado",
+            "Baixa Fragmentação",
+        ),
+        "polarizacao_x3": _item(
+            x3,
+            CORTE_POLARIZACAO_X3,
+            x3 is not None and x3 > CORTE_POLARIZACAO_X3,
+            "Parlamento Polarizado",
+            "Baixa Polarização",
+        ),
     }
 
 
-# Base Curada Oficial de Produção do Executivo e Vetos Presidenciais (1995 - 2026)
-# Fontes: SICON, SEPAR (Secretaria de Assuntos Parlamentares da Presidência), OLB e Anais do Congresso
-DADOS_HISTORICOS_EXECUTIVO: Dict[str, Dict[str, Any]] = {
-    "fhc-1995": {
-        "presidente": "Fernando Henrique Cardoso (FHC 1)",
-        "periodo": "1995 - 1999",
-        "p_exec": 298,
-        "p_exec_aprov": 271,
-        "v_total_apreciados": 88,
-        "v_mantidos": 79,
-        "v_pendentes": 0,
-        "oposicao_cadeiras_camara": 112,
-        "total_cadeiras_camara": 513,
-    },
-    "fhc-1999": {
-        "presidente": "Fernando Henrique Cardoso (FHC 2)",
-        "periodo": "1999 - 2003",
-        "p_exec": 284,
-        "p_exec_aprov": 236,
-        "v_total_apreciados": 104,
-        "v_mantidos": 82,
-        "v_pendentes": 0,
-        "oposicao_cadeiras_camara": 135,
-        "total_cadeiras_camara": 513,
-    },
-    "lula-2003": {
-        "presidente": "Luiz Inácio Lula da Silva (Lula 1)",
-        "periodo": "2003 - 2007",
-        "p_exec": 312,
-        "p_exec_aprov": 272,
-        "v_total_apreciados": 96,
-        "v_mantidos": 78,
-        "v_pendentes": 0,
-        "oposicao_cadeiras_camara": 155,
-        "total_cadeiras_camara": 513,
-    },
-    "lula-2007": {
-        "presidente": "Luiz Inácio Lula da Silva (Lula 2)",
-        "periodo": "2007 - 2011",
-        "p_exec": 345,
-        "p_exec_aprov": 316,
-        "v_total_apreciados": 112,
-        "v_mantidos": 101,
-        "v_pendentes": 0,
-        "oposicao_cadeiras_camara": 140,
-        "total_cadeiras_camara": 513,
-    },
-    "dilma-2011": {
-        "presidente": "Dilma Rousseff (Dilma 1)",
-        "periodo": "2011 - 2015",
-        "p_exec": 265,
-        "p_exec_aprov": 224,
-        "v_total_apreciados": 84,
-        "v_mantidos": 62,
-        "v_pendentes": 0,
-        "oposicao_cadeiras_camara": 130,
-        "total_cadeiras_camara": 513,
-    },
-    "dilma-2015": {
-        "presidente": "Dilma Rousseff (Dilma 2)",
-        "periodo": "2015 - 2016",
-        "p_exec": 98,
-        "p_exec_aprov": 56,
-        "v_total_apreciados": 52,
-        "v_mantidos": 24,
-        "v_pendentes": 0,
-        "oposicao_cadeiras_camara": 152,
-        "total_cadeiras_camara": 513,
-    },
-    "temer-2016": {
-        "presidente": "Michel Temer",
-        "periodo": "2016 - 2019",
-        "p_exec": 175,
-        "p_exec_aprov": 142,
-        "v_total_apreciados": 76,
-        "v_mantidos": 54,
-        "v_pendentes": 0,
-        "oposicao_cadeiras_camara": 145,
-        "total_cadeiras_camara": 513,
-    },
-    "bolsonaro-2019": {
-        "presidente": "Jair Bolsonaro",
-        "periodo": "2019 - 2023",
-        "p_exec": 242,
-        "p_exec_aprov": 179,
-        "v_total_apreciados": 158,
-        "v_mantidos": 99,
-        "v_pendentes": 0,
-        "oposicao_cadeiras_camara": 145,
-        "total_cadeiras_camara": 513,
-    },
-    "lula-2023": {
-        "presidente": "Luiz Inácio Lula da Silva (Lula 3)",
-        "periodo": "2023 - 2027",
-        "p_exec": 84,
-        "p_exec_aprov": 69,
-        "v_total_apreciados": 48,
-        "v_mantidos": 33,
-        "v_pendentes": 12,
-        "oposicao_cadeiras_camara": 121,
-        "total_cadeiras_camara": 513,
-    },
-}
-
-
-def get_mandate_iple(mandate_id: str, db: Optional[Session] = None) -> Optional[Dict[str, Any]]:
+_PRODUCAO_SQL = text(
     """
-    Calcula e consolida todos os indicadores de IPLE, variáveis contextuais e calibragem QCA para um mandato.
+    SELECT mp.slug, p.nome_exibicao, mp.rotulo, m.inicio, m.fim, pe.proposicoes_executivo, pe.proposicoes_aprovadas,
+           pe.vetos_apreciados, pe.vetos_mantidos, pe.vetos_pendentes, pe.oposicao_cadeiras_camara,
+           pe.total_cadeiras_camara
+    FROM leg.producao_executivo pe
+    JOIN core.mandato m ON m.id = pe.mandato_id
+    JOIN core.mandato_presidencial mp ON mp.mandato_id = m.id
+    JOIN core.pessoa p ON p.id = m.pessoa_id
+    WHERE (CAST(:slug AS text) IS NULL OR mp.slug = :slug)
+    ORDER BY m.inicio
     """
-    raw = DADOS_HISTORICOS_EXECUTIVO.get(mandate_id)
-    if not raw:
-        return None
+)
 
-    p_exec = raw["p_exec"]
-    p_exec_aprov = raw["p_exec_aprov"]
-    v_total = raw["v_total_apreciados"]
-    v_mantidos = raw["v_mantidos"]
-    v_pendentes = raw.get("v_pendentes", 0)
+_ESCALA_SQL = text(
+    """
+    SELECT p.sigla_normalizada, pp.valor
+    FROM core.partido_posicao_ideologica pp JOIN core.partido p ON p.id = pp.partido_id
+    WHERE pp.escala = 'ESCALA_1_10' AND pp.valor IS NOT NULL AND p.sigla_normalizada IS NOT NULL
+    """
+)
 
-    # Se houver conexão com o banco e for o mandato corrente, podemos enriquecer com proposições reais
-    if db is not None and mandate_id == "lula-2023":
-        try:
-            from app.models.leg import Proposicao
+# Palavras que marcam proposição simbólica (homenagens, datas comemorativas): não contam como "substantiva".
+_PALAVRAS_SIMBOLICAS = ("denominar", "dia nacional", "homenageia")
 
-            db_exec_props = db.query(Proposicao).filter(Proposicao.iniciativa_executivo.is_(True)).all()
-            if db_exec_props:
-                # Contabilizar substantivas
-                db_substantivas = [
-                    p
-                    for p in db_exec_props
-                    if not (
-                        p.ementa and any(kw in p.ementa.lower() for kw in ("denominar", "dia nacional", "homenageia"))
-                    )
-                ]
-                db_aprov = [
-                    p for p in db_substantivas if p.status_codigo in ("APROVADA_E_SANCIONADA", "APROVADA_E_PROMULGADA")
-                ]
-                if len(db_substantivas) > 0:
-                    p_exec = max(p_exec, len(db_substantivas))
-                    p_exec_aprov = max(p_exec_aprov, len(db_aprov))
-        except Exception as e:
-            logger.debug("Falha ao consultar proposicoes do banco para calculo do IPLE: %s", e)
 
-    ts = calculate_ts(p_exec, p_exec_aprov)
-    tmv = calculate_tmv(v_mantidos, v_total, fallback_ts=ts)
+def escala_ideologica(db: Session) -> Dict[str, float]:
+    """Escala 1 (esquerda) a 10 (direita) por partido, da tabela `core.partido_posicao_ideologica`."""
+    return {chave_sigla(sigla): float(valor) for sigla, valor in db.execute(_ESCALA_SQL)}
+
+
+def producoes(db: Session, slug: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Produção legislativa do Executivo (insumo do IPLE) de um mandato ou de todos, do mais antigo ao mais recente."""
+    return [dict(r) for r in db.execute(_PRODUCAO_SQL, {"slug": slug}).mappings()]
+
+
+def _contagem_com_proposicoes_reais(db: Session, raw: Dict[str, Any]) -> Dict[str, int]:
+    """
+    Proposições do Executivo e aprovadas: a curadoria, ou a contagem real da base quando esta tem mais proposições
+    (mandato em curso: sem `fim` ou com fim ainda no futuro). Total e aprovadas vêm sempre da mesma fonte, para o TS
+    não misturar numerador de uma com denominador de outra. Falha de consulta não derruba o IPLE: usa um savepoint e
+    fica com a curadoria.
+    """
+    contagem = {"total": raw["proposicoes_executivo"], "aprovadas": raw["proposicoes_aprovadas"]}
+    if not mandato_em_curso(raw["fim"]):
+        return contagem
+    try:
+        with db.begin_nested():
+            # Só as proposições apresentadas dentro do mandato (a base cobre desde 1995)
+            base = db.query(Proposicao).filter(
+                Proposicao.iniciativa_executivo.is_(True), Proposicao.data_apresentacao >= raw["inicio"]
+            )
+            if raw["fim"] is not None:
+                base = base.filter(Proposicao.data_apresentacao < raw["fim"])
+            for palavra in _PALAVRAS_SIMBOLICAS:
+                base = base.filter(~func.coalesce(func.lower(Proposicao.ementa), "").contains(palavra))
+            total = base.count()
+            aprovadas = base.filter(Proposicao.status_codigo.in_(STATUS_APROVADA)).count()
+        if total > contagem["total"]:
+            contagem = {"total": total, "aprovadas": aprovadas}
+    except SQLAlchemyError as exc:
+        logger.warning("Falha ao contar proposições do Executivo para o IPLE; usando a curadoria: %s", exc)
+    return contagem
+
+
+def calcular_iple(
+    raw: Dict[str, Any],
+    contagem: Dict[str, int],
+    total_cadeiras: Optional[int],
+    bancadas: List[Dict[str, Any]],
+    escala: Dict[str, float],
+    oposicao_reserva: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    IPLE, variáveis contextuais e calibragem QCA de um mandato numa Casa, a partir dos dados já lidos.
+
+    Quando as bancadas ou a oposição não foram levantadas (ou só em parte), a variável contextual sai `None` (nunca um
+    valor inventado ou um piso apresentado como total); `oposicao_reserva` é a oposição curada que a Câmara usa nesse caso.
+    """
+    ts = calculate_ts(contagem["total"], contagem["aprovadas"])
+    tmv = calculate_tmv(raw["vetos_mantidos"], raw["vetos_apreciados"], fallback_ts=ts)
     iple = calculate_iple(ts, tmv)
 
-    # Carregar dados da composição partidária para X1, X2 (NEP), X3 (IPP)
-    import json
-    from pathlib import Path
+    oposicao = bancadas_service.cadeiras_da_oposicao(bancadas, total_cadeiras)
+    if oposicao is None:
+        oposicao = oposicao_reserva
 
-    from app.core import config
-
-    bancadas_camara: List[Dict[str, Any]] = []
-    total_cadeiras = raw.get("total_cadeiras_camara", 513)
-    oposicao_cadeiras = raw.get("oposicao_cadeiras_camara", 0)
-
-    json_path = Path(config.PROCESSED_DATA_DIR) / "composicao_congresso.json"
-    if json_path.exists():
-        try:
-            with open(json_path, "r", encoding="utf-8") as f:
-                cong = json.load(f)
-                if mandate_id in cong:
-                    cam = cong[mandate_id].get("camara", {})
-                    bancadas_camara = cam.get("bancadas", [])
-                    if not bancadas_camara and cam.get("bancadas_eleitas_tse"):
-                        bancadas_camara = cam.get("bancadas_eleitas_tse", [])
-                    if cam.get("total_cadeiras"):
-                        total_cadeiras = cam["total_cadeiras"]
-                    gov = cam.get("governabilidade", {})
-                    if gov.get("oposicao_cadeiras") is not None:
-                        oposicao_cadeiras = gov["oposicao_cadeiras"]
-        except Exception as e:
-            logger.warning("Falha ao processar arquivo composicao_congresso.json: %s", e)
-
-    x1 = calculate_opposition_share(oposicao_cadeiras, total_cadeiras)
-    x2 = calculate_nep(bancadas_camara)
-    x3 = calculate_ipp(bancadas_camara)
-
+    x1 = calculate_opposition_share(oposicao, total_cadeiras) if oposicao is not None and total_cadeiras else None
+    com_cadeiras = [b for b in bancadas if b.get("cadeiras")]
+    x2 = calculate_nep(com_cadeiras) if com_cadeiras else None
+    x3 = calculate_ipp(com_cadeiras, escala) if com_cadeiras else None
     crisp = calibrate_crisp_set(ts, tmv, iple, x1, x2, x3)
-
     return {
-        "mandato_id": mandate_id,
-        "presidente": raw["presidente"],
-        "periodo": raw["periodo"],
+        "mandato_id": raw["slug"],
+        "presidente": nome_do_mandato(raw["nome_exibicao"], raw["rotulo"]),
+        "periodo": rotulo_do_periodo(raw["inicio"], raw["fim"]),
         "indicadores_base": {
-            "proposicoes_executivo_total": p_exec,
-            "proposicoes_executivo_aprovadas": p_exec_aprov,
-            "vetos_total_apreciados": v_total,
-            "vetos_mantidos": v_mantidos,
-            "vetos_pendentes_pauta": v_pendentes,
+            "proposicoes_executivo_total": contagem["total"],
+            "proposicoes_executivo_aprovadas": contagem["aprovadas"],
+            "vetos_total_apreciados": raw["vetos_apreciados"],
+            "vetos_mantidos": raw["vetos_mantidos"],
+            "vetos_pendentes_pauta": raw["vetos_pendentes"] or 0,
             "taxa_sucesso_ts": ts,
             "taxa_manutencao_vetos_tmv": tmv,
             "iple_score": iple,
         },
         "variaveis_contextuais": {
             "tamanho_oposicao_x1": x1,
-            "oposicao_cadeiras": oposicao_cadeiras,
+            "oposicao_cadeiras": oposicao,
             "total_cadeiras": total_cadeiras,
             "fragmentacao_nep_x2": x2,
             "polarizacao_ipp_x3": x3,
+            "cobertura_ipp_pct": cobertura_da_escala(com_cadeiras, escala),
         },
         "calibragem_crisp_set": crisp,
         "classificacao_geral": crisp["iple"]["classificacao"],
     }
 
 
-def get_all_mandates_iple(db: Optional[Session] = None) -> List[Dict[str, Any]]:
+def iple_das_casas(
+    db: Session,
+    raw: Dict[str, Any],
+    escala: Optional[Dict[str, float]] = None,
+    casas: Optional[Iterable[str]] = None,
+    metas: Optional[Dict[str, Dict[str, Any]]] = None,
+    linhas: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Dict[str, Any]]:
     """
-    Retorna a lista completa do IPLE para todos os mandatos presidenciais curados.
+    IPLE do mandato em cada Casa pedida (padrão: `camara` e `senado`). Bancadas e totais são lidos uma única vez, ou
+    reaproveitados de quem já os leu (`metas` e `linhas`). Só a Câmara usa os totais e a oposição curados da produção.
     """
-    results = []
-    for mid in DADOS_HISTORICOS_EXECUTIVO.keys():
-        m = get_mandate_iple(mid, db=db)
-        if m:
-            results.append(m)
-    return results
+    escala = escala if escala is not None else escala_ideologica(db)
+    contagem = _contagem_com_proposicoes_reais(db, raw)
+    metas = metas if metas is not None else bancadas_service.composicoes(db, raw["slug"])
+    linhas = linhas if linhas is not None else bancadas_service.linhas_de_bancada(db, raw["slug"])
+    resultado = {}
+    for casa in casas or bancadas_service.CASAS:
+        codigo = bancadas_service.CASAS[casa]
+        meta = metas.get(codigo)
+        total = int(meta["total_cadeiras"]) if meta else None
+        reserva = None
+        if casa == "camara":
+            total = total if total is not None else raw["total_cadeiras_camara"]
+            reserva = raw["oposicao_cadeiras_camara"]
+        bancadas = bancadas_service.bancadas_exibidas([r for r in linhas if r["casa_codigo"] == codigo], total or 0)
+        resultado[casa] = calcular_iple(raw, contagem, total, bancadas, escala, reserva)
+    return resultado
+
+
+def get_mandate_iple(db: Session, mandate_id: str, casa: str = "camara") -> Optional[Dict[str, Any]]:
+    """IPLE de um mandato na Casa pedida (`camara` ou `senado`); None se o mandato não tem produção carregada."""
+    if casa not in bancadas_service.CASAS:
+        raise ErroDeDominio(422, f"Casa inválida '{casa}'. Use: {', '.join(bancadas_service.CASAS)}.")
+    lista = producoes(db, mandate_id)
+    return iple_das_casas(db, lista[0], casas=(casa,))[casa] if lista else None
+
+
+def get_all_mandates_iple(db: Session) -> List[Dict[str, Any]]:
+    """IPLE (Câmara) de todos os mandatos com produção do Executivo carregada (a escala ideológica é lida uma só vez)."""
+    escala = escala_ideologica(db)
+    return [iple_das_casas(db, raw, escala, casas=("camara",))["camara"] for raw in producoes(db)]

@@ -8,7 +8,7 @@ Data do registro: 2026-10-13.
 
 ## 1. Composição das Bancadas e Presidentes das Casas Legislativas
 
-- **Arquivo**: `etl/data/processed/composicao_congresso.json` e `etl/extractors/composicao_extractor.py`.
+- **Arquivo**: `etl/data/processed/composicao_congresso.json` e `etl/extractors/composicao_extractor.py`. O arquivo é a entrada do `composicao_loader`, que o grava em `leg.composicao_mandato`, `leg.bancada_mandato` e `leg.presidencia_casa*`; a API lê essas tabelas (`/analytics/congress-composition`, IPLE), não o arquivo.
 - **Fonte Primária**:
   - Dados Abertos do TSE (bancadas eleitas para a Câmara e Senado na data da eleição geral).
   - Anais da Câmara dos Deputados e do Senado Federal para mesas diretoras e presidentes eleitos em fevereiro de cada biênio.

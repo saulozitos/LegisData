@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { getPresidentPhotoUrl } from "@/components/PresidentTimeline";
 import { isActiveStatus } from "@/lib/mandate";
+import { fmtNum, fmtPct, isNum } from "@/lib/format";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -575,12 +576,12 @@ export default function ExecutivoPanel({
                     X₁: Tamanho da Oposição
                   </span>
                   <span className="text-[10px] text-slate-400">
-                    {p.iple.variaveis_contextuais.oposicao_cadeiras} de {p.iple.variaveis_contextuais.total_cadeiras} assentos
+                    {fmtNum(p.iple.variaveis_contextuais.oposicao_cadeiras, 0)} de {fmtNum(p.iple.variaveis_contextuais.total_cadeiras, 0)} assentos
                   </span>
                 </div>
                 <div className="text-right">
                   <span className="text-xs font-mono font-bold text-slate-200">
-                    {(p.iple.variaveis_contextuais.tamanho_oposicao_x1 * 100).toFixed(1)}%
+                    {fmtPct(isNum(p.iple.variaveis_contextuais.tamanho_oposicao_x1) ? p.iple.variaveis_contextuais.tamanho_oposicao_x1 * 100 : null, 1)}
                   </span>
                   <span className="text-[9px] block text-slate-400">
                     {p.iple.calibragem_crisp_set.oposicao_x1.classificacao}
@@ -599,7 +600,7 @@ export default function ExecutivoPanel({
                 </div>
                 <div className="text-right">
                   <span className="text-xs font-mono font-bold text-slate-200">
-                    {p.iple.variaveis_contextuais.fragmentacao_nep_x2.toFixed(2)}
+                    {fmtNum(p.iple.variaveis_contextuais.fragmentacao_nep_x2, 2)}
                   </span>
                   <span className="text-[9px] block text-slate-400">
                     {p.iple.calibragem_crisp_set.fragmentacao_x2.classificacao}
@@ -618,7 +619,7 @@ export default function ExecutivoPanel({
                 </div>
                 <div className="text-right">
                   <span className="text-xs font-mono font-bold text-slate-200">
-                    {p.iple.variaveis_contextuais.polarizacao_ipp_x3.toFixed(2)}
+                    {fmtNum(p.iple.variaveis_contextuais.polarizacao_ipp_x3, 2)}
                   </span>
                   <span className="text-[9px] block text-slate-400">
                     {p.iple.calibragem_crisp_set.polarizacao_x3.classificacao}

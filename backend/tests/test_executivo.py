@@ -113,52 +113,6 @@ def test_indicators_empty_series_and_unknown_mandate(client, mandates):
     assert client.get(f"{BASE}/mandates/{uuid.uuid4()}/indicators").status_code == 404
 
 
-def test_get_all_mandates_iple(client):
-    res = client.get(f"{BASE}/iple")
-    assert res.status_code == 200
-    data = res.json()
-    assert isinstance(data, list)
-    ids = [m["mandato_id"] for m in data]
-    # FHC 1 e 2, Lula 1 a 3, Dilma 1 e 2, Temer e Bolsonaro; a janela começa em 1995, sem Itamar Franco
-    assert ids == [
-        "fhc-1995",
-        "fhc-1999",
-        "lula-2003",
-        "lula-2007",
-        "dilma-2011",
-        "dilma-2015",
-        "temer-2016",
-        "bolsonaro-2019",
-        "lula-2023",
-    ]
-    assert "itamar-franco-1992" not in ids
-    first = data[0]
-    assert "mandato_id" in first
-    assert "indicadores_base" in first
-    assert "variaveis_contextuais" in first
-    assert "calibragem_crisp_set" in first
-    assert 0.0 <= first["indicadores_base"]["iple_score"] <= 1.0
-
-
-def test_get_single_mandate_iple(client):
-    res = client.get(f"{BASE}/iple?mandate_id=lula-2023")
-    assert res.status_code == 200
-    data = res.json()
-    assert data["mandato_id"] == "lula-2023"
-    base = data["indicadores_base"]
-    assert 0.0 <= base["taxa_sucesso_ts"] <= 1.0
-    assert 0.0 <= base["taxa_manutencao_vetos_tmv"] <= 1.0
-    assert 0.0 <= base["iple_score"] <= 1.0
-    ctx = data["variaveis_contextuais"]
-    assert ctx["fragmentacao_nep_x2"] > 0
-    assert ctx["polarizacao_ipp_x3"] > 0
-    assert "calibragem_crisp_set" in data
-
-
-def test_unknown_mandate_iple_is_404(client):
-    assert client.get(f"{BASE}/iple?mandate_id=desconhecido-9999").status_code == 404
-
-
 def test_iple_service_mathematical_formulas():
     from app.services.iple_service import (
         calculate_iple,

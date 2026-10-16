@@ -72,6 +72,55 @@ describe('CongressCompositionPanel', () => {
     expect(screen.getByRole('button', { name: 'Senado Federal' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('sem bancadas classificadas não mostra barra nem quóruns como "não atingido"', async () => {
+    const semClassificacao = {
+      ...composition,
+      camara: {
+        ...composition.camara,
+        governabilidade: {
+          base_aliada_cadeiras: null,
+          base_aliada_pct: null,
+          centro_cadeiras: null,
+          centro_pct: null,
+          oposicao_cadeiras: null,
+          oposicao_pct: null,
+          maioria_simples_atingida: null,
+          maioria_pec_atingida: null,
+        },
+      },
+    };
+    getComposition.mockResolvedValue(semClassificacao);
+    const { container } = render(<CongressCompositionPanel mandateId="m1" />);
+    expect(await screen.findByText(/ainda não foram classificadas como base, centro ou oposição/)).toBeInTheDocument();
+    expect(screen.queryByText(/Dependente de negociação/)).not.toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/null/);
+  });
+
+  it('com classificação parcial mostra a maioria como indeterminada', async () => {
+    const parcial = {
+      ...composition,
+      camara: {
+        ...composition.camara,
+        governabilidade: {
+          ...composition.camara.governabilidade,
+          nao_classificadas_cadeiras: 40,
+          maioria_simples_atingida: null,
+          maioria_pec_atingida: null,
+        },
+      },
+    };
+    getComposition.mockResolvedValue(parcial);
+    render(<CongressCompositionPanel mandateId="m1" />);
+    expect(await screen.findAllByText(/Indetermin.*40 cadeiras ainda sem classificação/)).toHaveLength(2); // quórum simples e PEC
+    expect(screen.queryByText(/Dependente de negociação/)).not.toBeInTheDocument();
+  });
+
+  it('mostra o aviso de dados incompletos com a observação da curadoria', async () => {
+    getComposition.mockResolvedValue({ ...composition, dados_incompletos: true, observacao: 'Composição não curada.' });
+    render(<CongressCompositionPanel mandateId="m1" />);
+    expect(await screen.findByText(/Dados incompletos neste mandato: Composição não curada\./)).toBeInTheDocument();
+  });
+
   it('exibe presidentes da casa, usando sigla quando a foto é insegura', async () => {
     getComposition.mockResolvedValue(composition);
     const { container } = render(<CongressCompositionPanel mandateId="m1" />);

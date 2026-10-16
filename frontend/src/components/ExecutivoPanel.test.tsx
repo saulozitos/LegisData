@@ -239,6 +239,53 @@ describe('ExecutivoPanel', () => {
     expect(screen.getByText(/X₃: Polarização \(IPP\)/)).toBeInTheDocument();
   });
 
+  it("IPLE sem bancadas (X1, X2 e X3 nulos) mostra indisponível e nunca null ou NaN", () => {
+    const indisponivel = { score: null, corte: 0.334, crisp_val: null, classificacao: "Indisponível" };
+    const mockIple = {
+      mandato_id: "fhc-1999",
+      presidente: "Fernando Henrique Cardoso (FHC 2)",
+      periodo: "1999 - 2002",
+      indicadores_base: {
+        proposicoes_executivo_total: 284,
+        proposicoes_executivo_aprovadas: 236,
+        vetos_total_apreciados: 104,
+        vetos_mantidos: 82,
+        vetos_pendentes_pauta: 0,
+        taxa_sucesso_ts: 0.831,
+        taxa_manutencao_vetos_tmv: 0.7885,
+        iple_score: 0.8098,
+      },
+      variaveis_contextuais: {
+        tamanho_oposicao_x1: null,
+        oposicao_cadeiras: null,
+        total_cadeiras: null,
+        fragmentacao_nep_x2: null,
+        polarizacao_ipp_x3: null,
+      },
+      calibragem_crisp_set: {
+        ts: { score: 0.831, corte: 0.87, crisp_val: 0, classificacao: "Sucesso Baixo" },
+        tmv: { score: 0.7885, corte: 0.7, crisp_val: 1, classificacao: "Manutenção Alta" },
+        iple: { score: 0.8098, corte: 0.785, crisp_val: 1, classificacao: "Executivo Forte / Poderoso" },
+        oposicao_x1: indisponivel,
+        fragmentacao_x2: { ...indisponivel, corte: 8.45 },
+        polarizacao_x3: { ...indisponivel, corte: 2.2 },
+      },
+      classificacao_geral: "Executivo Forte / Poderoso",
+    };
+    const { container } = render(
+      <ExecutivoPanel
+        performance={perf({ iple: mockIple as never })}
+        presidentMeta={meta()}
+        annualData={annual}
+        mandateId="fhc-1999"
+        allPerformances={[]}
+      />
+    );
+    expect(screen.getByText(/X₁: Tamanho da Oposição/)).toBeInTheDocument();
+    expect(screen.getAllByText("Indisponível").length).toBeGreaterThanOrEqual(3);
+    expect(container.textContent).not.toMatch(/\bnull\b|NaN|undefined/);
+  });
+
   it("permite alternar entre ranking de PIB e ranking de IPLE", () => {
     const mockIple1 = {
       mandato_id: "lula-2023",

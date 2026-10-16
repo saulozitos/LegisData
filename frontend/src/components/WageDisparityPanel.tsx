@@ -113,10 +113,10 @@ export default function WageDisparityPanel() {
               Subsídio Parlamentar Atual
             </span>
             <div className="text-2xl font-black text-amber-400 font-mono">
-              {fmtBrlValue(estatisticas_disparidade.salario_parlamentar_atual_2024)}
+              {fmtBrlValue(estatisticas_disparidade.salario_parlamentar_atual)}
             </div>
             <span className="text-[11px] text-slate-400 mt-1 block">
-              {fmtGrowth(estatisticas_disparidade.crescimento_acumulado_salario_parlamentar_pct)} desde {primeiroAno} ({fmtBrlValue(estatisticas_disparidade.salario_parlamentar_inicial_1994)})
+              {fmtGrowth(estatisticas_disparidade.crescimento_acumulado_salario_parlamentar_pct)} desde {primeiroAno} ({fmtBrlValue(estatisticas_disparidade.salario_parlamentar_inicial)})
             </span>
           </div>
 
@@ -125,10 +125,10 @@ export default function WageDisparityPanel() {
               Salário Mínimo Nacional
             </span>
             <div className="text-2xl font-black text-emerald-400 font-mono">
-              {fmtBrlValue(estatisticas_disparidade.salario_minimo_atual_2024)}
+              {fmtBrlValue(estatisticas_disparidade.salario_minimo_atual)}
             </div>
             <span className="text-[11px] text-slate-400 mt-1 block">
-              {fmtGrowth(estatisticas_disparidade.crescimento_acumulado_salario_minimo_pct)} desde {primeiroAno} ({fmtBrlValue(estatisticas_disparidade.salario_minimo_inicial_real_1994)})
+              {fmtGrowth(estatisticas_disparidade.crescimento_acumulado_salario_minimo_pct)} desde {primeiroAno} ({fmtBrlValue(estatisticas_disparidade.salario_minimo_inicial)})
             </span>
           </div>
 
@@ -169,7 +169,7 @@ export default function WageDisparityPanel() {
             <h3 className="text-sm font-bold text-slate-200">
               {chartMode === "valores"
                 ? "Evolução do Salário Parlamentar (Eixo Esq.) vs Salário Mínimo (Eixo Dir.)"
-                : "Trajetória Indexada: Crescimento Relativo (1994 = 100)"}
+                : `Trajetória Indexada: Crescimento Relativo (${primeiroAno} = 100)`}
             </h3>
           </div>
           <span className="text-xs text-slate-400">
@@ -209,7 +209,8 @@ export default function WageDisparityPanel() {
                   }}
                   formatter={(val, name) => {
                     const num = Number(val);
-                    if (!Number.isFinite(num)) return ["Indisponível", String(name)];
+                    // null/undefined viram 0 em Number(): tratar antes para nunca exibir "R$ 0,00" como dado
+                    if (val === null || val === undefined || !Number.isFinite(num)) return ["Indisponível", String(name)];
                     if (name === "Salário Parlamentar (BRL)" || name === "Salário Mínimo (BRL)") {
                       return [`R$ ${num.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, String(name)];
                     }
@@ -253,7 +254,7 @@ export default function WageDisparityPanel() {
                 Votação Nominal Auditável
               </span>
               <span className="text-xs text-slate-400 font-mono">
-                {votacao_salario_minimo.data_votacao} • {votacao_salario_minimo.casa}
+                {votacao_salario_minimo.data_votacao ?? "data indisponível"} • {votacao_salario_minimo.casa}
               </span>
             </div>
             <h3 className="text-lg font-bold text-slate-100">

@@ -7,9 +7,10 @@ import {
   getCompareMandates,
   getPresidentes,
   PresidenteHistorico,
+  type IpleData,
 } from "@/services/api";
 import { useApi } from "@/hooks/useApi";
-import { fmtBRL, fmtNum, fmtSigned, isNum } from "@/lib/format";
+import { fmtBRL, fmtNum, fmtPct, fmtSigned, isNum } from "@/lib/format";
 import { EmptyState, ErrorState, LoadingState } from "@/components/StateViews";
 import { getPresidentPhotoUrl } from "@/components/PresidentTimeline";
 import {
@@ -87,6 +88,16 @@ function deltaPillClass(value: number | null | undefined, lowerIsBetter = false)
   return good
     ? `${base} bg-emerald-500/20 text-emerald-300 border border-emerald-500/30`
     : `${base} bg-rose-500/20 text-rose-300 border border-rose-500/30`;
+}
+
+type IpleDoMandato = { iple?: IpleData | null };
+type CampoIple = "fragmentacao_nep_x2" | "polarizacao_ipp_x3" | "tamanho_oposicao_x1";
+
+/** Diferença (mandato 2 menos mandato 1) de uma variável contextual do IPLE; null se faltar em qualquer um dos dois. */
+function diffIple(m1: IpleDoMandato | undefined, m2: IpleDoMandato | undefined, campo: CampoIple): number | null {
+  const a = m1?.iple?.variaveis_contextuais[campo];
+  const b = m2?.iple?.variaveis_contextuais[campo];
+  return isNum(a) && isNum(b) ? b - a : null;
 }
 
 export default function ComparadorPage() {
@@ -1444,21 +1455,21 @@ export default function ComparadorPage() {
                           </div>
                         </td>
                         <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                          {m1.iple ? m1.iple.variaveis_contextuais.fragmentacao_nep_x2.toFixed(2) : "N/D"}
+                          {fmtNum(m1.iple?.variaveis_contextuais.fragmentacao_nep_x2, 2)}
                         </td>
                         <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                          {m2.iple ? m2.iple.variaveis_contextuais.fragmentacao_nep_x2.toFixed(2) : "N/D"}
+                          {fmtNum(m2.iple?.variaveis_contextuais.fragmentacao_nep_x2, 2)}
                         </td>
                         <td className="py-3 px-4 text-right">
-                          {m1.iple && m2.iple ? (
+                          {diffIple(m1, m2, "fragmentacao_nep_x2") !== null ? (
                             <span
                               className={deltaPillClass(
-                                m2.iple.variaveis_contextuais.fragmentacao_nep_x2 - m1.iple.variaveis_contextuais.fragmentacao_nep_x2,
+                                (diffIple(m1, m2, "fragmentacao_nep_x2") ?? 0),
                                 true
                               )}
                             >
                               {fmtSigned(
-                                m2.iple.variaveis_contextuais.fragmentacao_nep_x2 - m1.iple.variaveis_contextuais.fragmentacao_nep_x2,
+                                (diffIple(m1, m2, "fragmentacao_nep_x2") ?? 0),
                                 "",
                                 2
                               )}
@@ -1480,21 +1491,21 @@ export default function ComparadorPage() {
                           </div>
                         </td>
                         <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                          {m1.iple ? m1.iple.variaveis_contextuais.polarizacao_ipp_x3.toFixed(2) : "N/D"}
+                          {fmtNum(m1.iple?.variaveis_contextuais.polarizacao_ipp_x3, 2)}
                         </td>
                         <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                          {m2.iple ? m2.iple.variaveis_contextuais.polarizacao_ipp_x3.toFixed(2) : "N/D"}
+                          {fmtNum(m2.iple?.variaveis_contextuais.polarizacao_ipp_x3, 2)}
                         </td>
                         <td className="py-3 px-4 text-right">
-                          {m1.iple && m2.iple ? (
+                          {diffIple(m1, m2, "polarizacao_ipp_x3") !== null ? (
                             <span
                               className={deltaPillClass(
-                                m2.iple.variaveis_contextuais.polarizacao_ipp_x3 - m1.iple.variaveis_contextuais.polarizacao_ipp_x3,
+                                (diffIple(m1, m2, "polarizacao_ipp_x3") ?? 0),
                                 true
                               )}
                             >
                               {fmtSigned(
-                                m2.iple.variaveis_contextuais.polarizacao_ipp_x3 - m1.iple.variaveis_contextuais.polarizacao_ipp_x3,
+                                (diffIple(m1, m2, "polarizacao_ipp_x3") ?? 0),
                                 "",
                                 2
                               )}
@@ -1516,21 +1527,21 @@ export default function ComparadorPage() {
                           </div>
                         </td>
                         <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                          {m1.iple ? `${(m1.iple.variaveis_contextuais.tamanho_oposicao_x1 * 100).toFixed(1)}%` : "N/D"}
+                          {fmtPct(isNum(m1.iple?.variaveis_contextuais.tamanho_oposicao_x1) ? m1.iple.variaveis_contextuais.tamanho_oposicao_x1 * 100 : null, 1)}
                         </td>
                         <td className="py-3 px-4 font-mono font-semibold text-slate-300">
-                          {m2.iple ? `${(m2.iple.variaveis_contextuais.tamanho_oposicao_x1 * 100).toFixed(1)}%` : "N/D"}
+                          {fmtPct(isNum(m2.iple?.variaveis_contextuais.tamanho_oposicao_x1) ? m2.iple.variaveis_contextuais.tamanho_oposicao_x1 * 100 : null, 1)}
                         </td>
                         <td className="py-3 px-4 text-right">
-                          {m1.iple && m2.iple ? (
+                          {diffIple(m1, m2, "tamanho_oposicao_x1") !== null ? (
                             <span
                               className={deltaPillClass(
-                                (m2.iple.variaveis_contextuais.tamanho_oposicao_x1 - m1.iple.variaveis_contextuais.tamanho_oposicao_x1) * 100,
+                                (diffIple(m1, m2, "tamanho_oposicao_x1") ?? 0) * 100,
                                 true
                               )}
                             >
                               {fmtSigned(
-                                (m2.iple.variaveis_contextuais.tamanho_oposicao_x1 - m1.iple.variaveis_contextuais.tamanho_oposicao_x1) * 100,
+                                (diffIple(m1, m2, "tamanho_oposicao_x1") ?? 0) * 100,
                                 " p.p."
                               )}
                             </span>

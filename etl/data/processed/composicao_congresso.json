@@ -314,17 +314,11 @@
         }
       ],
       "verificacao_tse": {
-        "status": "divergente",
+        "status": "conferido",
         "ano_legislatura": 1995,
         "total_eleitos_tse": 513,
-        "conferido": false,
-        "divergencias": [
-          {
-            "partido": "PCdoB",
-            "curado": 10,
-            "tse": 0
-          }
-        ],
+        "conferido": true,
+        "divergencias": [],
         "nota": "O TSE conta o partido no dia da eleição. Trocas partidárias até a posse (e, no Senado, desde a eleição de 4 anos antes) e vagas preenchidas por suplentes explicam as diferenças em relação à bancada curada."
       }
     },
@@ -903,11 +897,6 @@
           {
             "partido": "PP",
             "curado": 48,
-            "tse": 0
-          },
-          {
-            "partido": "PCdoB",
-            "curado": 12,
             "tse": 0
           },
           {
@@ -1712,11 +1701,6 @@
             "partido": "SOLIDARIEDADE",
             "curado": 15,
             "tse": 0
-          },
-          {
-            "partido": "PCdoB",
-            "curado": 10,
-            "tse": 0
           }
         ],
         "nota": "O TSE conta o partido no dia da eleição. Trocas partidárias até a posse (e, no Senado, desde a eleição de 4 anos antes) e vagas preenchidas por suplentes explicam as diferenças em relação à bancada curada."
@@ -2007,11 +1991,6 @@
         "total_eleitos_tse": 81,
         "conferido": false,
         "divergencias": [
-          {
-            "partido": "PCdoB",
-            "curado": 1,
-            "tse": 0
-          },
           {
             "partido": "REPUBLICANOS",
             "curado": 1,
@@ -2551,11 +2530,6 @@
           {
             "partido": "REPUBLICANOS",
             "curado": 29,
-            "tse": 0
-          },
-          {
-            "partido": "PCdoB",
-            "curado": 9,
             "tse": 0
           }
         ],
@@ -3408,11 +3382,6 @@
             "partido": "PODE",
             "curado": 12,
             "tse": 14
-          },
-          {
-            "partido": "PCdoB",
-            "curado": 7,
-            "tse": 0
           },
           {
             "partido": "PROS",

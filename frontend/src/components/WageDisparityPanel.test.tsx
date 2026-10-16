@@ -26,10 +26,12 @@ const response = {
     ],
   },
   estatisticas_disparidade: {
-    salario_minimo_inicial_real_1994: 70,
-    salario_minimo_atual_2024: 1412,
-    salario_parlamentar_inicial_1994: 1000,
-    salario_parlamentar_atual_2024: 44008.52,
+    ano_referencia_inicial: 1995,
+    ano_referencia_atual: 2024,
+    salario_minimo_inicial: 70,
+    salario_minimo_atual: 1412,
+    salario_parlamentar_inicial: 1000,
+    salario_parlamentar_atual: 44008.52,
     multiplo_medio_historico: 25,
     pico_multiplo_ano: 2010,
     pico_multiplo_valor: 31.4,
@@ -100,7 +102,7 @@ describe('WageDisparityPanel', () => {
   it('dados ausentes viram "Indisponível", nunca null/NaN', async () => {
     getWage.mockResolvedValue({
       ...response,
-      estatisticas_disparidade: { ...response.estatisticas_disparidade, multiplo_atual: null, salario_parlamentar_atual_2024: null, crescimento_acumulado_salario_minimo_pct: null },
+      estatisticas_disparidade: { ...response.estatisticas_disparidade, multiplo_atual: null, salario_parlamentar_atual: null, crescimento_acumulado_salario_minimo_pct: null },
       votacao_salario_minimo: { ...response.votacao_salario_minimo, placar: undefined },
     });
     render(<WageDisparityPanel />);
@@ -109,6 +111,17 @@ describe('WageDisparityPanel', () => {
     expect(screen.getByText(/Variação indisponível/)).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/NaN|null|undefined/);
     expect(screen.getAllByText('—').length).toBe(3);
+  });
+
+  it('votação sem data (indisponível na API) mostra "data indisponível"', async () => {
+    getWage.mockResolvedValue({
+      ...response,
+      votacao_salario_minimo: { ...response.votacao_salario_minimo, data_votacao: null, placar: null, dados_indisponiveis: true },
+    });
+    render(<WageDisparityPanel />);
+    await screen.findByText('MPV 1234/2024');
+    expect(screen.getByText(/data indisponível/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/NaN|null|undefined/);
   });
 
   it('erro mostra alerta e retry recarrega', async () => {

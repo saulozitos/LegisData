@@ -478,7 +478,7 @@ export interface WagePoint {
   ipca_acumulado_ano_pct: number | null;
   indice_salario_minimo_base100: number;
   indice_salario_parlamentar_base100: number;
-  indice_ipca_base100: number;
+  indice_ipca_base100: number | null;
 }
 
 export interface MinimumWageVoteRecord {
@@ -493,25 +493,28 @@ export interface MinimumWageVoteRecord {
 export interface MinimumWageVotingSummary {
   proposicao_titulo: string;
   ementa: string;
-  data_votacao: string;
+  data_votacao: string | null;
   casa: string;
   placar: {
     SIM: number;
     NAO: number;
     ABSTENCAO: number;
     TOTAL: number;
-  };
+  } | null;
   votos_amostra: MinimumWageVoteRecord[];
+  dados_indisponiveis?: boolean | null;
 }
 
 export interface WageDisparityResponse {
   serie_historica: WagePoint[];
   votacao_salario_minimo: MinimumWageVotingSummary;
   estatisticas_disparidade: {
-    salario_minimo_inicial_real_1994: number;
-    salario_minimo_atual_2024: number;
-    salario_parlamentar_inicial_1994: number;
-    salario_parlamentar_atual_2024: number;
+    ano_referencia_inicial: number;
+    ano_referencia_atual: number;
+    salario_minimo_inicial: number;
+    salario_minimo_atual: number;
+    salario_parlamentar_inicial: number;
+    salario_parlamentar_atual: number;
     multiplo_medio_historico: number;
     pico_multiplo_ano: number;
     pico_multiplo_valor: number;
@@ -541,22 +544,30 @@ export interface ChamberComposition {
   total_cadeiras: number;
   presidentes: LeaderProfile[];
   bancadas: PartySeat[];
+  /** Bancadas eleitas segundo o TSE (conferência com a curadoria); só nos mandatos com esse dado */
+  bancadas_eleitas_tse?: Array<{ partido: string; cadeiras: number; percentual: number }>;
+  bancadas_origem?: string;
+  verificacao_tse?: Record<string, unknown>;
   governabilidade: {
-    base_aliada_cadeiras: number;
-    base_aliada_pct: number;
-    centro_cadeiras: number;
-    centro_pct: number;
-    oposicao_cadeiras: number;
-    oposicao_pct: number;
-    maioria_simples_atingida: boolean;
-    maioria_pec_atingida: boolean;
+    /** IPLE do mandato nesta Casa (null quando o mandato não tem produção do Executivo carregada) */
+    iple?: IpleData | null;
+    // Sem nenhuma bancada classificada (base/centro/oposição), tudo vem null; maioria null = indeterminada
+    base_aliada_cadeiras: number | null;
+    base_aliada_pct: number | null;
+    centro_cadeiras: number | null;
+    centro_pct: number | null;
+    oposicao_cadeiras: number | null;
+    oposicao_pct: number | null;
+    nao_classificadas_cadeiras?: number | null;
+    maioria_simples_atingida: boolean | null;
+    maioria_pec_atingida: boolean | null;
   };
 }
 
 export interface IpleCrispSetItem {
-  score: number;
+  score: number | null;
   corte: number;
-  crisp_val: number;
+  crisp_val: number | null;
   classificacao: string;
 }
 
@@ -581,11 +592,12 @@ export interface IpleBaseIndicators {
 }
 
 export interface IpleContextualVariables {
-  tamanho_oposicao_x1: number;
-  oposicao_cadeiras: number;
-  total_cadeiras: number;
-  fragmentacao_nep_x2: number;
-  polarizacao_ipp_x3: number;
+  tamanho_oposicao_x1: number | null;
+  oposicao_cadeiras: number | null;
+  total_cadeiras: number | null;
+  fragmentacao_nep_x2: number | null;
+  polarizacao_ipp_x3: number | null;
+  cobertura_ipp_pct?: number | null;
 }
 
 export interface IpleData {
@@ -602,9 +614,12 @@ export interface CongressCompositionResponse {
   mandato_id: string;
   presidente_republica: string;
   periodo: string;
-  camara: ChamberComposition;
-  senado: ChamberComposition;
-  iple?: IpleData;
+  camara?: ChamberComposition | null;
+  senado?: ChamberComposition | null;
+  iple?: IpleData | null;
+  dados_incompletos?: boolean | null;
+  observacao?: string | null;
+  fonte_curadoria?: string | null;
 }
 
 export interface StateTransferItem {
@@ -1222,15 +1237,15 @@ export interface ClasseSocialItem {
 }
 
 export interface ClassesSociaisResponse {
-  /** `pnad`: calculado dos microdados da PNAD Contínua; `referencia_fixa`: estimativa fixa rotulada. */
-  origem?: "pnad" | "referencia_fixa";
+  /** Sempre `pnad`: calculado dos microdados da PNAD Contínua (sem microdados a API responde 404). */
+  origem?: "pnad";
   salario_minimo_referencia_brl: number;
   ano_referencia: number;
   anos_disponiveis?: number[];
   fonte: string;
   resumo_populacional: {
-    maioria_populacao_acumulada_d_e_pct: number;
-    texto_educativo: string;
+    maioria_populacao_acumulada_d_e_pct: number | null;
+    texto_educativo: string | null;
   };
   classes: ClasseSocialItem[];
 }

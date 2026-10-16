@@ -17,7 +17,7 @@ import logging
 import math
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, NamedTuple, Optional
 
 from etl.config import PROCESSED_DATA_DIR
 from etl.utils.bootstrap import ensure_backend_on_path
@@ -68,7 +68,14 @@ SERIES_ANUAIS_UF: Dict[str, Dict[str, str]] = {
     }
 }
 
-Observacao = Tuple[str, date, Optional[str], float, bool]  # (série, referência, uf, valor, parcial)
+
+class Observacao(NamedTuple):
+    serie: str
+    referencia: date
+    uf: Optional[str]
+    valor: float
+    parcial: bool
+    nota: Optional[str] = None
 
 
 def numero(valor: Any) -> Optional[float]:
@@ -115,7 +122,7 @@ def observacoes_anuais(linhas: Iterable[Dict[str, str]], colunas: Dict[str, str]
         for coluna, codigo in colunas.items():
             valor = numero(linha.get(coluna))
             if valor is not None:
-                resultado.append((codigo, date(int(ano), 1, 1), uf, valor, parcial(linha)))
+                resultado.append(Observacao(codigo, date(int(ano), 1, 1), uf, valor, parcial(linha)))
     return resultado
 
 
@@ -128,7 +135,7 @@ def observacoes_ipca_mensal(linhas: Iterable[Dict[str, str]]) -> List[Observacao
             continue
         valor = numero(linha.get("valor"))
         if valor is not None and referencia >= INICIO_JANELA:
-            resultado.append(("IPCA_MENSAL", referencia.replace(day=1), None, valor, False))
+            resultado.append(Observacao("IPCA_MENSAL", referencia.replace(day=1), None, valor, False))
     return resultado
 
 
@@ -143,8 +150,19 @@ def observacoes_mensais(linhas: Iterable[Dict[str, str]]) -> List[Observacao]:
         codigo = (linha.get("serie") or "").strip()
         valor = numero(linha.get("valor"))
         if codigo and valor is not None and referencia >= INICIO_JANELA:
-            resultado.append((codigo, referencia.replace(day=1), None, valor, False))
+            resultado.append(Observacao(codigo, referencia.replace(day=1), None, valor, False))
     return resultado
+
+
+def observacoes_subsidio(linhas: Iterable[Dict[str, str]]) -> List[Observacao]:
+    """Subsídio parlamentar: só entra valor com a norma citada (decreto legislativo), que vai para a `nota`."""
+    observacoes: List[Observacao] = []
+    for linha in linhas:
+        ano, valor, norma = numero(linha.get("ano")), numero(linha.get("valor")), (linha.get("norma") or "").strip()
+        if ano is None or valor is None or valor <= 0 or not norma or date(int(ano), 1, 1) < INICIO_JANELA:
+            continue
+        observacoes.append(Observacao("SUBSIDIO_PARLAMENTAR", date(int(ano), 1, 1), None, valor, False, norma))
+    return observacoes
 
 
 def reunir(processed_dir: Path) -> List[Observacao]:
@@ -156,15 +174,17 @@ def reunir(processed_dir: Path) -> List[Observacao]:
         todas += observacoes_anuais(ler_csv(processed_dir / arquivo), colunas, com_uf=True)
     todas += observacoes_ipca_mensal(ler_csv(processed_dir / "ipca_mensal_historico.csv"))
     todas += observacoes_mensais(ler_csv(processed_dir / "bcb_series_mensais.csv"))
+    todas += observacoes_subsidio(ler_csv(processed_dir / "subsidio_parlamentar.csv"))
     return todas
 
 
 def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, int]:
     """Grava as observações e devolve a contagem por série."""
-    observacoes = reunir(Path(processed_dir or PROCESSED_DATA_DIR))
+    pasta = Path(processed_dir or PROCESSED_DATA_DIR)
+    observacoes = reunir(pasta)
     por_serie: Dict[str, List[Observacao]] = {}
     for obs in observacoes:
-        por_serie.setdefault(obs[0], []).append(obs)
+        por_serie.setdefault(obs.serie, []).append(obs)
     if not por_serie:
         logger.warning("Nenhuma observação nos arquivos; a base não foi alterada.")
         return {}
@@ -178,12 +198,15 @@ def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, 
             conn.execute(text("DELETE FROM eco.observacao WHERE serie_id = :s"), {"s": ids[codigo]})
             conn.execute(
                 text(
-                    "INSERT INTO eco.observacao (serie_id, referencia, uf, valor, parcial) "
-                    "VALUES (:s, :r, :uf, :v, :p) "
+                    "INSERT INTO eco.observacao (serie_id, referencia, uf, valor, parcial, nota) "
+                    "VALUES (:s, :r, :uf, :v, :p, :n) "
                     "ON CONFLICT (serie_id, referencia, uf_chave) DO UPDATE SET valor = EXCLUDED.valor, "
-                    "parcial = EXCLUDED.parcial"
+                    "parcial = EXCLUDED.parcial, nota = EXCLUDED.nota"
                 ),
-                [{"s": ids[codigo], "r": r, "uf": uf, "v": v, "p": p} for _, r, uf, v, p in linhas],
+                [
+                    {"s": ids[codigo], "r": o.referencia, "uf": o.uf, "v": o.valor, "p": o.parcial, "n": o.nota}
+                    for o in linhas
+                ],
             )
     contagem = {codigo: len(linhas) for codigo, linhas in por_serie.items()}
     logger.info("Séries carregadas em eco.observacao: %s", contagem)

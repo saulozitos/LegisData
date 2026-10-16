@@ -5,7 +5,7 @@ import { Users, Info, ShieldAlert, Calculator } from "lucide-react";
 import { getSocialClasses } from "@/services/api";
 import { useApi } from "@/hooks/useApi";
 import { EmptyState, ErrorState, LoadingState } from "@/components/StateViews";
-import { fmtNum, isNum } from "@/lib/format";
+import { fmtNum, fmtPct, isNum } from "@/lib/format";
 
 /**
  * Converte a renda digitada em número. Aceita "5000,50", "5.000,50", "5000.50" e "5.000".
@@ -66,10 +66,8 @@ export default function SocialClassesExplainer() {
   const mostPopulous = data.classes.reduce((a, b) => (b.percentual_populacao > a.percentual_populacao ? b : a));
   const currentClassInfo = data.classes.find((c) => c.classe === selectedClass) ?? mostPopulous;
   const topClass = data.classes[0];
-  const lowerClasses = data.classes.filter((c) => c.classe === "Classe D" || c.classe === "Classe E");
-  const lowerPct = isNum(data.resumo_populacional?.maioria_populacao_acumulada_d_e_pct)
-    ? data.resumo_populacional.maioria_populacao_acumulada_d_e_pct
-    : lowerClasses.reduce((acc, c) => acc + c.percentual_populacao, 0);
+  // Percentual da base da pirâmide só vem da API (nunca somado aqui por nome de classe); sem ele fica indisponível
+  const lowerPct = data.resumo_populacional?.maioria_populacao_acumulada_d_e_pct ?? null;
 
   return (
     <div className="bg-slate-900/70 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-md shadow-xl space-y-6">
@@ -85,9 +83,7 @@ export default function SocialClassesExplainer() {
                 Estratificação Social no Brasil (Classes A, B, C, D e E)
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                {data.origem === "pnad"
-                  ? "Microdados da PNAD Contínua (IBGE) • renda domiciliar em salários mínimos"
-                  : "Estimativa de referência (não calculada de microdados)"}
+                Microdados da PNAD Contínua (IBGE) • renda domiciliar em salários mínimos
                 {" "}• Salário Mínimo de {data.ano_referencia}: R$ {data.salario_minimo_referencia_brl.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
               </p>
             </div>
@@ -117,19 +113,21 @@ export default function SocialClassesExplainer() {
       </div>
 
       {/* Destaque Educativo: Onde o Brasileiro Realmente Está */}
-      <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 rounded-xl p-4.5 text-xs text-amber-200/90 flex flex-col md:flex-row items-start md:items-center gap-3">
-        <div className="p-2 bg-amber-500/20 rounded-lg text-amber-400 flex-shrink-0">
-          <ShieldAlert className="w-5 h-5" aria-hidden="true" />
+      {data.resumo_populacional?.texto_educativo && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 rounded-xl p-4.5 text-xs text-amber-200/90 flex flex-col md:flex-row items-start md:items-center gap-3">
+          <div className="p-2 bg-amber-500/20 rounded-lg text-amber-400 flex-shrink-0">
+            <ShieldAlert className="w-5 h-5" aria-hidden="true" />
+          </div>
+          <div className="space-y-1">
+            <h4 className="font-bold text-amber-200 text-sm">
+              A Ilusão da &quot;Classe Média&quot; e a Realidade da Renda Nacional
+            </h4>
+            <p className="text-amber-300/80 leading-relaxed">
+              {data.resumo_populacional.texto_educativo}
+            </p>
+          </div>
         </div>
-        <div className="space-y-1">
-          <h4 className="font-bold text-amber-200 text-sm">
-            A Ilusão da &quot;Classe Média&quot; e a Realidade da Renda Nacional
-          </h4>
-          <p className="text-amber-300/80 leading-relaxed">
-            {data.resumo_populacional?.texto_educativo}
-          </p>
-        </div>
-      </div>
+      )}
 
       {/* Pirâmide Visual e Comparação de Classes */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -198,7 +196,7 @@ export default function SocialClassesExplainer() {
           <div className="pt-2">
             <div className="text-[11px] text-slate-400 mb-1.5 flex justify-between">
               <span>Distribuição Total da População Brasileira (100%):</span>
-              <span className="text-slate-300 font-semibold">{fmtNum(lowerPct)}% em Classes D/E</span>
+              <span className="text-slate-300 font-semibold">{fmtPct(lowerPct)} em Classes D/E</span>
             </div>
             <div className="w-full h-3.5 bg-slate-800 rounded-lg overflow-hidden flex shadow-inner">
               {data.classes.map((c) => (
@@ -219,7 +217,7 @@ export default function SocialClassesExplainer() {
             <div className="flex justify-between text-[10px] text-slate-400 mt-1 px-0.5">
               <span>Topo ({topClass.classe}: {fmtNum(topClass.percentual_populacao)}%)</span>
               <span>{mostPopulous.classe} ({fmtNum(mostPopulous.percentual_populacao, 0)}%)</span>
-              <span>Base (Classes D/E: {fmtNum(lowerPct, 0)}%)</span>
+              <span>Base (Classes D/E: {fmtPct(lowerPct, 0)})</span>
             </div>
           </div>
         </div>

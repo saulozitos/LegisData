@@ -12,7 +12,7 @@ os.environ.setdefault("ENVIRONMENT", "test")
 
 import pytest  # noqa: E402
 from app import main as main_module  # noqa: E402
-from app.api.v1 import analytics, politicians  # noqa: E402
+from app.api.v1 import politicians  # noqa: E402
 from app.core import data_files  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.core.database import get_db  # noqa: E402
@@ -36,7 +36,7 @@ from app.models import (  # noqa: E402
     VotingSession,
     VotoOpcaoEnum,
 )
-from app.services import cidadania_service, explorer_service  # noqa: E402
+from app.services import cidadania_service  # noqa: E402
 from app.services.core_sync import sync_legacy_to_core  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
@@ -67,7 +67,15 @@ TEST_DATABASE_URL = os.environ.get(
 
 
 # Tabelas de dados (não de referência) fora do schema public, esvaziadas a cada teste
-_ETL_DATA_TABLES = ("etl.execucao", "etl.arquivo_bruto", "etl.rejeito", "etl.verificacao", "eco.observacao")
+_ETL_DATA_TABLES = (
+    "etl.execucao",
+    "etl.arquivo_bruto",
+    "etl.rejeito",
+    "etl.verificacao",
+    "eco.observacao",
+    "eco.pnad_ano",
+    "eco.pnad_metodologia",
+)
 
 
 @pytest.fixture(scope="session")
@@ -161,7 +169,7 @@ def data_dir(tmp_path, monkeypatch):
     """Diretório de dados do ETL isolado: nenhum teste depende dos arquivos reais do repositório."""
     directory = tmp_path / "processed"
     directory.mkdir()
-    for module in (analytics, politicians, explorer_service):
+    for module in (politicians,):
         monkeypatch.setattr(module, "DATA_DIR", directory)
     data_files._cache.clear()
     politicians._json_cache.clear()

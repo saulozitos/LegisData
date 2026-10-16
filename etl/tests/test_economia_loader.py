@@ -27,19 +27,19 @@ def test_observacoes_anuais_descarta_sinteticas_vazias_e_anos_antes_da_janela():
         {"ano": "abc", "gini": "0.5"},
     ]
     obs = eco.observacoes_anuais(linhas, {"gini": "GINI"}, com_uf=False)
-    assert obs == [("GINI", date(1995, 1, 1), None, 0.58, False)]
+    assert obs == [eco.Observacao("GINI", date(1995, 1, 1), None, 0.58, False)]
 
 
 def test_observacoes_por_uf_exigem_a_sigla():
     linhas = [{"ano": "2020", "uf": "sp", "pobreza_pct": "10"}, {"ano": "2020", "uf": "", "pobreza_pct": "11"}]
     assert eco.observacoes_anuais(linhas, {"pobreza_pct": "POBREZA_UF"}, com_uf=True) == [
-        ("POBREZA_UF", date(2020, 1, 1), "SP", 10.0, False)
+        eco.Observacao("POBREZA_UF", date(2020, 1, 1), "SP", 10.0, False)
     ]
 
 
 def test_parcial_vem_da_coluna_do_arquivo():
     obs = eco.observacoes_anuais([{"ano": "2024", "x": "1", "parcial": "true"}], {"x": "X"}, com_uf=False)
-    assert obs[0][4] is True
+    assert obs[0].parcial is True
 
 
 def test_ipca_mensal_normaliza_para_o_dia_1_e_ignora_antes_da_janela():
@@ -49,7 +49,7 @@ def test_ipca_mensal_normaliza_para_o_dia_1_e_ignora_antes_da_janela():
         {"data": "data ruim", "valor": "1"},
         {"data": "1995-02-01", "valor": ""},
     ]
-    assert eco.observacoes_ipca_mensal(linhas) == [("IPCA_MENSAL", date(1995, 1, 1), None, 1.7, False)]
+    assert eco.observacoes_ipca_mensal(linhas) == [eco.Observacao("IPCA_MENSAL", date(1995, 1, 1), None, 1.7, False)]
 
 
 def test_series_mensais_trazem_o_codigo_da_serie_na_linha():
@@ -59,14 +59,14 @@ def test_series_mensais_trazem_o_codigo_da_serie_na_linha():
         {"serie": "", "data": "1995-01-01", "valor": "1"},
         {"serie": "SELIC_META", "data": "1995-02-01", "valor": "nan"},
     ]
-    assert eco.observacoes_mensais(linhas) == [("CAMBIO_MENSAL", date(1995, 1, 1), None, 0.85, False)]
+    assert eco.observacoes_mensais(linhas) == [eco.Observacao("CAMBIO_MENSAL", date(1995, 1, 1), None, 0.85, False)]
 
 
 def test_zero_e_valor_valido_e_nao_ausencia():
     for zero in (0, "0", "0,0", " 0.00 "):
         assert eco.numero(zero) == 0.0
     linhas = [{"data": "1995-02-01", "valor": "0,00"}]
-    assert eco.observacoes_ipca_mensal(linhas) == [("IPCA_MENSAL", date(1995, 2, 1), None, 0.0, False)]
+    assert eco.observacoes_ipca_mensal(linhas) == [eco.Observacao("IPCA_MENSAL", date(1995, 2, 1), None, 0.0, False)]
     assert eco.observacoes_anuais([{"ano": "1996", "gini": "0"}], {"gini": "GINI"}, com_uf=False)[0][3] == 0.0
 
 
@@ -101,12 +101,16 @@ def arquivos(tmp_path):
     _escrever_csv(
         tmp_path, "bcb_series_mensais.csv", ["serie", "data", "valor"], [["CAMBIO_MENSAL", "1995-01-01", 0.85]]
     )
+    _escrever_csv(
+        tmp_path, "subsidio_parlamentar.csv", ["ano", "valor", "norma"], [[1995, 8000, "Decreto Legislativo 7/1995"]]
+    )
     _escrever_csv(tmp_path, "ipca_mensal_historico.csv", ["data", "valor"], [["1995-01-01", 1.7], ["1995-02-01", 1.0]])
     return tmp_path
 
 
-def test_reunir_falha_se_faltar_arquivo(arquivos):
-    (arquivos / "ipca_mensal_historico.csv").unlink()
+@pytest.mark.parametrize("arquivo", ["ipca_mensal_historico.csv", "subsidio_parlamentar.csv"])
+def test_reunir_falha_se_faltar_arquivo(arquivos, arquivo):
+    (arquivos / arquivo).unlink()
     with pytest.raises(FileNotFoundError):
         eco.reunir(arquivos)
 
@@ -120,11 +124,20 @@ def _contagem(engine):
         )
 
 
-def test_carga_grava_e_e_idempotente(pg_engine, arquivos):
+@pytest.fixture()
+def eco_limpo(pg_engine):
+    """`eco.observacao` vazia antes e depois do teste (o banco do ETL é compartilhado)."""
     with pg_engine.begin() as conn:
         conn.execute(text("TRUNCATE eco.observacao"))
+    yield pg_engine
+    with pg_engine.begin() as conn:
+        conn.execute(text("TRUNCATE eco.observacao"))
+
+
+def test_carga_grava_e_e_idempotente(eco_limpo, pg_engine, arquivos):
     primeira = eco.carregar(pg_engine, arquivos)
     assert primeira["IPCA_MENSAL"] == 2 and primeira["PIB_CRESC_REAL"] == 1 and primeira["CAMBIO_MENSAL"] == 1
+    assert primeira["SUBSIDIO_PARLAMENTAR"] == 1
     antes = _contagem(pg_engine)
     assert eco.carregar(pg_engine, arquivos) == primeira
     assert _contagem(pg_engine) == antes
@@ -132,11 +145,17 @@ def test_carga_grava_e_e_idempotente(pg_engine, arquivos):
         uf = conn.execute(text("SELECT uf, uf_chave FROM eco.observacao WHERE uf IS NOT NULL")).one()
         nacional = conn.execute(text("SELECT DISTINCT uf_chave FROM eco.observacao WHERE uf IS NULL")).scalars().all()
     assert tuple(uf) == ("SP", "SP") and nacional == ["BR"]
+    with pg_engine.connect() as conn:
+        nota = conn.execute(
+            text(
+                "SELECT o.nota FROM eco.observacao o JOIN eco.serie s ON s.id = o.serie_id "
+                "WHERE s.codigo = 'SUBSIDIO_PARLAMENTAR'"
+            )
+        ).scalar()
+    assert nota == "Decreto Legislativo 7/1995"  # o valor chega ao banco com a norma que o sustenta
 
 
-def test_carga_regrava_a_serie_inteira_mas_preserva_as_que_o_arquivo_nao_traz(pg_engine, arquivos):
-    with pg_engine.begin() as conn:
-        conn.execute(text("TRUNCATE eco.observacao"))
+def test_carga_regrava_a_serie_inteira_mas_preserva_as_que_o_arquivo_nao_traz(eco_limpo, pg_engine, arquivos):
     eco.carregar(pg_engine, arquivos)
     _escrever_csv(
         arquivos,
@@ -150,9 +169,7 @@ def test_carga_regrava_a_serie_inteira_mas_preserva_as_que_o_arquivo_nao_traz(pg
     assert contagem["PIB_CRESC_REAL"] == 1  # coluna vazia no arquivo novo: a série não foi tocada
 
 
-def test_carga_com_arquivos_sem_dados_nao_apaga_a_base(pg_engine, arquivos):
-    with pg_engine.begin() as conn:
-        conn.execute(text("TRUNCATE eco.observacao"))
+def test_carga_com_arquivos_sem_dados_nao_apaga_a_base(eco_limpo, pg_engine, arquivos):
     eco.carregar(pg_engine, arquivos)
     for nome, cab in (
         ("resumo_macroeconomico_anual.csv", ["ano", "ipca_acumulado_ano_pct"]),
@@ -161,6 +178,7 @@ def test_carga_com_arquivos_sem_dados_nao_apaga_a_base(pg_engine, arquivos):
         ("indicadores_sociais_uf.csv", ["ano", "uf", "pobreza_pct"]),
         ("ipca_mensal_historico.csv", ["data", "valor"]),
         ("bcb_series_mensais.csv", ["serie", "data", "valor"]),
+        ("subsidio_parlamentar.csv", ["ano", "valor", "norma"]),
     ):
         _escrever_csv(arquivos, nome, cab, [])
     antes = _contagem(pg_engine)
@@ -274,9 +292,7 @@ def test_presidencia_sem_catalogo_e_erro(pg_engine, tmp_path):
         pres.carregar(pg_engine, tmp_path)
 
 
-def test_serie_fora_do_catalogo_e_erro_e_nao_altera_a_base(pg_engine, arquivos):
-    with pg_engine.begin() as conn:
-        conn.execute(text("TRUNCATE eco.observacao"))
+def test_serie_fora_do_catalogo_e_erro_e_nao_altera_a_base(eco_limpo, pg_engine, arquivos):
     eco.carregar(pg_engine, arquivos)
     antes = _contagem(pg_engine)
     _escrever_csv(
@@ -287,9 +303,7 @@ def test_serie_fora_do_catalogo_e_erro_e_nao_altera_a_base(pg_engine, arquivos):
     assert _contagem(pg_engine) == antes
 
 
-def test_parcial_e_zero_chegam_ao_banco(pg_engine, arquivos):
-    with pg_engine.begin() as conn:
-        conn.execute(text("TRUNCATE eco.observacao"))
+def test_parcial_e_zero_chegam_ao_banco(eco_limpo, pg_engine, arquivos):
     _escrever_csv(
         arquivos,
         "seguranca_publica_historico.csv",

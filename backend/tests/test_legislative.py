@@ -18,8 +18,6 @@ from app.services.votos_proposicao_service import parse_casa, parse_enum
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
-from .conftest import write_json
-
 BASE = "/api/v1/legislative"
 
 
@@ -96,9 +94,8 @@ def test_propositions_validates_pagination(client, seed, params):
     assert client.get(f"{BASE}/propositions", params=params).status_code == 422
 
 
-def test_propositions_database_failure_is_503_not_stale_fallback_data(client, data_dir, session_factory, monkeypatch):
+def test_propositions_database_failure_is_503_not_stale_fallback_data(client, session_factory, monkeypatch):
     """Antes um erro de banco devolvia dados de 2023 com status 200."""
-    write_json(data_dir, "proposicoes_2023.json", [{"camara_id": 1, "titulo": "Dado antigo"}])
     from app import main as main_module
     from app.core.database import get_db
 
@@ -115,47 +112,12 @@ def test_propositions_database_failure_is_503_not_stale_fallback_data(client, da
     finally:
         main_module.app.dependency_overrides.pop(get_db, None)
     assert response.status_code == 503
-    assert "Dado antigo" not in response.text
 
 
-def test_propositions_empty_database_without_files_is_empty_list(client, data_dir):
+def test_propositions_empty_database_is_an_empty_list(client):
     response = client.get(f"{BASE}/propositions")
     assert response.status_code == 200 and response.json() == []
     assert response.headers["x-total-count"] == "0"
-
-
-def test_propositions_empty_database_uses_etl_files_in_development(client, data_dir):
-    write_json(
-        data_dir,
-        "proposicoes_2023.json",
-        [
-            {
-                "camara_id": 10,
-                "tipo": "PL",
-                "numero": 1,
-                "ano": 2023,
-                "titulo": "PL 1/2023",
-                "ementa": "e",
-                "iniciativa_executivo": True,
-            },
-            {"camara_id": None, "titulo": "sem id"},
-        ],
-    )
-    write_json(
-        data_dir,
-        "votos_nominais_2023.json",
-        [
-            {"proposicao_camara_id": 10, "voto": "SIM"},
-            {"proposicao_camara_id": 10, "voto": "OBSTRUCAO"},
-            {"proposicao_camara_id": 10, "voto": "AUSENTE"},
-        ],
-    )
-    response = client.get(f"{BASE}/propositions")
-    rows = response.json()
-    assert len(rows) == 1 and response.headers["x-total-count"] == "1"
-    assert rows[0]["autor_nome"] == "Poder Executivo"
-    assert rows[0]["placar"] == {"SIM": 1, "NAO": 0, "ABSTENCAO": 1, "TOTAL": 2}  # AUSENTE fora do total
-    assert rows[0]["sessao"] is None  # nenhuma data/sessão inventada
 
 
 # ---------------------------------------------------------------------------
