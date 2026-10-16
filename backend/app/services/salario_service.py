@@ -12,10 +12,11 @@ from sqlalchemy.orm import Session
 
 _SERIES_SQL = text(
     """
-    SELECT s.codigo, extract(year FROM o.referencia)::int AS ano, o.valor
+    SELECT s.codigo, extract(year FROM o.referencia)::int AS ano, o.valor, o.parcial
     FROM eco.observacao o JOIN eco.serie s ON s.id = o.serie_id
     WHERE s.codigo IN ('SALARIO_MINIMO', 'SUBSIDIO_PARLAMENTAR', 'IPCA_ACUM_ANO') AND o.uf IS NULL
       AND o.valor IS NOT NULL
+    ORDER BY o.referencia
     """
 )
 
@@ -35,7 +36,9 @@ def serie_historica(db: Session) -> List[Dict[str, Any]]:
     (nunca um acumulado parcial apresentado como completo).
     """
     por_serie: Dict[str, Dict[int, float]] = {}
-    for codigo, ano, valor in db.execute(_SERIES_SQL):
+    for codigo, ano, valor, parcial in db.execute(_SERIES_SQL):
+        if parcial and codigo == "IPCA_ACUM_ANO":
+            continue  # inflação do ano ainda em curso: o acumulado parcial não entra como se fosse o ano completo
         por_serie.setdefault(codigo, {})[ano] = float(valor)
     minimo, subsidio, ipca = (por_serie.get(c, {}) for c in ("SALARIO_MINIMO", "SUBSIDIO_PARLAMENTAR", "IPCA_ACUM_ANO"))
     anos = sorted(a for a in minimo if minimo[a] > 0 and subsidio.get(a, 0) > 0)

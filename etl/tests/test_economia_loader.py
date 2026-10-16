@@ -124,9 +124,17 @@ def _contagem(engine):
         )
 
 
-def test_carga_grava_e_e_idempotente(pg_engine, arquivos):
+@pytest.fixture()
+def eco_limpo(pg_engine):
+    """`eco.observacao` vazia antes e depois do teste (o banco do ETL é compartilhado)."""
     with pg_engine.begin() as conn:
         conn.execute(text("TRUNCATE eco.observacao"))
+    yield pg_engine
+    with pg_engine.begin() as conn:
+        conn.execute(text("TRUNCATE eco.observacao"))
+
+
+def test_carga_grava_e_e_idempotente(eco_limpo, pg_engine, arquivos):
     primeira = eco.carregar(pg_engine, arquivos)
     assert primeira["IPCA_MENSAL"] == 2 and primeira["PIB_CRESC_REAL"] == 1 and primeira["CAMBIO_MENSAL"] == 1
     assert primeira["SUBSIDIO_PARLAMENTAR"] == 1
@@ -147,9 +155,7 @@ def test_carga_grava_e_e_idempotente(pg_engine, arquivos):
     assert nota == "Decreto Legislativo 7/1995"  # o valor chega ao banco com a norma que o sustenta
 
 
-def test_carga_regrava_a_serie_inteira_mas_preserva_as_que_o_arquivo_nao_traz(pg_engine, arquivos):
-    with pg_engine.begin() as conn:
-        conn.execute(text("TRUNCATE eco.observacao"))
+def test_carga_regrava_a_serie_inteira_mas_preserva_as_que_o_arquivo_nao_traz(eco_limpo, pg_engine, arquivos):
     eco.carregar(pg_engine, arquivos)
     _escrever_csv(
         arquivos,
@@ -163,9 +169,7 @@ def test_carga_regrava_a_serie_inteira_mas_preserva_as_que_o_arquivo_nao_traz(pg
     assert contagem["PIB_CRESC_REAL"] == 1  # coluna vazia no arquivo novo: a série não foi tocada
 
 
-def test_carga_com_arquivos_sem_dados_nao_apaga_a_base(pg_engine, arquivos):
-    with pg_engine.begin() as conn:
-        conn.execute(text("TRUNCATE eco.observacao"))
+def test_carga_com_arquivos_sem_dados_nao_apaga_a_base(eco_limpo, pg_engine, arquivos):
     eco.carregar(pg_engine, arquivos)
     for nome, cab in (
         ("resumo_macroeconomico_anual.csv", ["ano", "ipca_acumulado_ano_pct"]),

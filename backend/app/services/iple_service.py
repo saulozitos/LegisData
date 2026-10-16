@@ -210,7 +210,10 @@ def _contagem_com_proposicoes_reais(db: Session, raw: Dict[str, Any]) -> Dict[st
         return contagem
     try:
         with db.begin_nested():
-            base = db.query(Proposicao).filter(Proposicao.iniciativa_executivo.is_(True))
+            # Só as proposições apresentadas dentro do mandato (a base cobre desde 1995)
+            base = db.query(Proposicao).filter(
+                Proposicao.iniciativa_executivo.is_(True), Proposicao.data_apresentacao >= raw["inicio"]
+            )
             for palavra in _PALAVRAS_SIMBOLICAS:
                 base = base.filter(~func.coalesce(func.lower(Proposicao.ementa), "").contains(palavra))
             total = base.count()
@@ -227,23 +230,21 @@ def calcular_iple(
     total_cadeiras: Optional[int],
     bancadas: List[Dict[str, Any]],
     escala: Dict[str, float],
-    casa: str,
+    oposicao_reserva: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     IPLE, variáveis contextuais e calibragem QCA de um mandato numa Casa, a partir dos dados já lidos.
 
-    Quando as bancadas ou a oposição não foram levantadas, a variável contextual sai `None` (nunca um valor inventado);
-    só a Câmara usa a oposição curada de `leg.producao_executivo` como reserva.
+    Quando as bancadas ou a oposição não foram levantadas (ou só em parte), a variável contextual sai `None` (nunca um
+    valor inventado ou um piso apresentado como total); `oposicao_reserva` é a oposição curada que a Câmara usa nesse caso.
     """
     ts = calculate_ts(contagem["total"], contagem["aprovadas"])
     tmv = calculate_tmv(raw["vetos_mantidos"], raw["vetos_apreciados"], fallback_ts=ts)
     iple = calculate_iple(ts, tmv)
 
-    if total_cadeiras is None and casa == "camara":
-        total_cadeiras = raw["total_cadeiras_camara"]
-    oposicao = bancadas_service.cadeiras_da_oposicao(bancadas)
-    if oposicao is None and casa == "camara":
-        oposicao = raw["oposicao_cadeiras_camara"]  # curadoria: sobra quando as bancadas não foram classificadas
+    oposicao = bancadas_service.cadeiras_da_oposicao(bancadas, total_cadeiras)
+    if oposicao is None:
+        oposicao = oposicao_reserva
 
     x1 = calculate_opposition_share(oposicao, total_cadeiras) if oposicao is not None and total_cadeiras else None
     com_cadeiras = [b for b in bancadas if b.get("cadeiras")]
@@ -282,19 +283,28 @@ def iple_das_casas(
     raw: Dict[str, Any],
     escala: Optional[Dict[str, float]] = None,
     casas: Optional[Iterable[str]] = None,
+    metas: Optional[Dict[str, Dict[str, Any]]] = None,
+    linhas: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Dict[str, Any]]:
-    """IPLE do mandato em cada Casa pedida (padrão: `camara` e `senado`), lendo bancadas e totais uma única vez."""
+    """
+    IPLE do mandato em cada Casa pedida (padrão: `camara` e `senado`). Bancadas e totais são lidos uma única vez, ou
+    reaproveitados de quem já os leu (`metas` e `linhas`). Só a Câmara usa os totais e a oposição curados da produção.
+    """
     escala = escala if escala is not None else escala_ideologica(db)
     contagem = _contagem_com_proposicoes_reais(db, raw)
-    metas = bancadas_service.composicoes(db, raw["slug"])
-    linhas = bancadas_service.linhas_de_bancada(db, raw["slug"])
+    metas = metas if metas is not None else bancadas_service.composicoes(db, raw["slug"])
+    linhas = linhas if linhas is not None else bancadas_service.linhas_de_bancada(db, raw["slug"])
     resultado = {}
     for casa in casas or bancadas_service.CASAS:
         codigo = bancadas_service.CASAS[casa]
         meta = metas.get(codigo)
         total = int(meta["total_cadeiras"]) if meta else None
+        reserva = None
+        if casa == "camara":
+            total = total if total is not None else raw["total_cadeiras_camara"]
+            reserva = raw["oposicao_cadeiras_camara"]
         bancadas = bancadas_service.bancadas_exibidas([r for r in linhas if r["casa_codigo"] == codigo], total or 0)
-        resultado[casa] = calcular_iple(raw, contagem, total, bancadas, escala, casa)
+        resultado[casa] = calcular_iple(raw, contagem, total, bancadas, escala, reserva)
     return resultado
 
 

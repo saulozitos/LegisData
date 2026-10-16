@@ -72,6 +72,49 @@ describe('CongressCompositionPanel', () => {
     expect(screen.getByRole('button', { name: 'Senado Federal' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('sem bancadas classificadas não mostra barra nem quóruns como "não atingido"', async () => {
+    const semClassificacao = {
+      ...composition,
+      camara: {
+        ...composition.camara,
+        governabilidade: {
+          base_aliada_cadeiras: null,
+          base_aliada_pct: null,
+          centro_cadeiras: null,
+          centro_pct: null,
+          oposicao_cadeiras: null,
+          oposicao_pct: null,
+          maioria_simples_atingida: null,
+          maioria_pec_atingida: null,
+        },
+      },
+    };
+    getComposition.mockResolvedValue(semClassificacao);
+    const { container } = render(<CongressCompositionPanel mandateId="m1" />);
+    expect(await screen.findByText(/ainda não foram classificadas como base, centro ou oposição/)).toBeInTheDocument();
+    expect(screen.queryByText(/Dependente de negociação/)).not.toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/null/);
+  });
+
+  it('com classificação parcial mostra a maioria como indeterminada', async () => {
+    const parcial = {
+      ...composition,
+      camara: {
+        ...composition.camara,
+        governabilidade: {
+          ...composition.camara.governabilidade,
+          nao_classificadas_cadeiras: 40,
+          maioria_simples_atingida: null,
+          maioria_pec_atingida: null,
+        },
+      },
+    };
+    getComposition.mockResolvedValue(parcial);
+    render(<CongressCompositionPanel mandateId="m1" />);
+    expect(await screen.findAllByText(/Indetermin.*40 cadeiras ainda sem classificação/)).toHaveLength(2);
+    expect(screen.queryByText(/Dependente de negociação/)).not.toBeInTheDocument();
+  });
+
   it('exibe presidentes da casa, usando sigla quando a foto é insegura', async () => {
     getComposition.mockResolvedValue(composition);
     const { container } = render(<CongressCompositionPanel mandateId="m1" />);

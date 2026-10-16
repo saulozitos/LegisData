@@ -64,6 +64,7 @@ def test_pnad_ano_so_vale_com_chave_visita_salario_e_as_duas_distribuicoes():
     assert not pnad.ano_valido("2024", _ano_basico(salario_minimo_brl=0))
     assert not pnad.ano_valido("2024", _ano_basico(salario_minimo_brl=-1))
     assert not pnad.ano_valido("2024", _ano_basico(salario_minimo_brl="abc"))
+    assert not pnad.ano_valido("2024", _ano_basico(salario_minimo_brl=float("inf")))
     assert not pnad.ano_valido("2024", _ano_basico(nacional={}))
     assert not pnad.ano_valido("2024", None)
     assert not pnad.ano_valido("1900", _ano_basico())  # antes da janela de 1995
@@ -239,6 +240,65 @@ def test_casa_que_saiu_da_curadoria_ou_ficou_sem_total_sai_do_banco(pg_engine, m
     )
 
 
+def test_producao_removida_do_csv_sai_do_banco_e_csv_vazio_nao_apaga(pg_engine, mandato, tmp_path):
+    with pg_engine.begin() as conn:
+        outro = conn.execute(
+            text(
+                "INSERT INTO core.mandato (pessoa_id, cargo_id, circunscricao_id, inicio, numero_mandato) VALUES "
+                "((SELECT pessoa_id FROM core.mandato WHERE id = :m), (SELECT id FROM ref.cargo WHERE codigo = 'PRESIDENTE'), "
+                "(SELECT id FROM ref.circunscricao WHERE tipo = 'BR'), DATE '2027-01-01', 2) RETURNING id"
+            ),
+            {"m": mandato},
+        ).scalar()
+        conn.execute(
+            text("INSERT INTO core.mandato_presidencial (mandato_id, slug) VALUES (:m, 'x-2027')"), {"m": outro}
+        )
+    duas = PRODUCAO + [["x-2027", 5, 4, 2, 1, 0, 100, 513, "Curadoria"]]
+    _arquivos(tmp_path, COMPOSICAO, duas)
+    comp.carregar(pg_engine, tmp_path)
+    assert _contagens(pg_engine)["producao_executivo"] == 2
+    _arquivos(tmp_path, COMPOSICAO, PRODUCAO)
+    comp.carregar(pg_engine, tmp_path)
+    assert _contagens(pg_engine)["producao_executivo"] == 1  # a linha que saiu do CSV saiu do banco
+    _arquivos(tmp_path, COMPOSICAO, [])
+    comp.carregar(pg_engine, tmp_path)
+    assert _contagens(pg_engine)["producao_executivo"] == 1  # CSV sem linhas não apaga a base
+
+
+@pytest.mark.parametrize(
+    "linha, trecho",
+    [
+        (["x-2023", "", 8, 4, 3, 1, 121, 513, "Curadoria"], "proposicoes_executivo"),
+        (["x-2023", 10, 8, 4, 3, 1, 121, 513, ""], "fonte"),
+        (["x-2023", 10, 8, 4, "abc", 1, 121, 513, "Curadoria"], "invalid literal"),
+    ],
+)
+def test_linha_invalida_do_csv_de_producao_aborta_sem_gravar_nada(pg_engine, mandato, tmp_path, linha, trecho):
+    _arquivos(tmp_path, COMPOSICAO, [linha])
+    with pytest.raises(ValueError, match=trecho):
+        comp.carregar(pg_engine, tmp_path)
+    assert _contagens(pg_engine)["composicao_mandato"] == 0  # a composição também não foi gravada
+
+
+def test_linha_que_viola_o_check_do_banco_reverte_toda_a_carga(pg_engine, mandato, tmp_path):
+    _arquivos(tmp_path, COMPOSICAO, [["x-2023", 5, 9, 4, 3, 1, 121, 513, "Curadoria"]])  # aprovadas > total
+    with pytest.raises(Exception, match="producao_executivo"):
+        comp.carregar(pg_engine, tmp_path)
+    assert _contagens(pg_engine)["composicao_mandato"] == 0
+
+
+def test_presidente_sem_foto_em_outro_mandato_nao_apaga_a_foto_ja_gravada(pg_engine, mandato, tmp_path):
+    _arquivos(tmp_path, COMPOSICAO, PRODUCAO)
+    comp.carregar(pg_engine, tmp_path)
+    sem_foto = copy.deepcopy(COMPOSICAO)
+    sem_foto["x-2023"]["camara"]["presidentes"][0].pop("foto_url")
+    _arquivos(tmp_path, sem_foto, PRODUCAO)
+    comp.carregar(pg_engine, tmp_path)
+    with pg_engine.connect() as conn:
+        foto = conn.execute(text("SELECT foto_url FROM leg.presidencia_casa WHERE nome = 'Primeiro'")).scalar()
+    assert foto == "http://x/1.jpg"
+
+
 def test_senado_com_bancadas_e_presidente_e_bancada_so_do_tse(pg_engine, mandato, tmp_path):
     composicao = copy.deepcopy(COMPOSICAO)
     composicao["x-2023"]["senado"] = {
@@ -396,8 +456,8 @@ def test_curadoria_real_carrega_nos_nove_mandatos_e_e_idempotente(pg_engine):
     composicao = json.loads((PROCESSED_DATA_DIR / "composicao_congresso.json").read_text(encoding="utf-8"))
     with open(PROCESSED_DATA_DIR / "producao_executivo.csv", newline="", encoding="utf-8") as fh:
         slugs_producao = [r["mandato_slug"] for r in csv.DictReader(fh)]
-    assert set(composicao) == set(slugs_producao) and len(slugs_producao) == 9
-    assert "fhc-1995" in composicao and not any(s.startswith("itamar") for s in composicao)
+    assert set(composicao) == set(slugs_producao) and len(slugs_producao) >= 9
+    assert "fhc-1995" in composicao and not any(s.startswith("itamar") for s in composicao)  # a janela começa em FHC
     _limpar(pg_engine)
     try:
         with pg_engine.begin() as conn:
@@ -418,9 +478,10 @@ def test_curadoria_real_carrega_nos_nove_mandatos_e_e_idempotente(pg_engine):
                     {"m": mid, "s": slug},
                 )
         primeira = comp.carregar(pg_engine)
-        assert primeira["mandatos"] == 9 and primeira["producao"] == 9
+        assert primeira["mandatos"] == len(composicao) and primeira["producao"] == len(slugs_producao)
         contagens = _contagens(pg_engine)
-        assert contagens["composicao_mandato"] == 18 and contagens["producao_executivo"] == 9
+        assert contagens["composicao_mandato"] == 2 * len(composicao)  # Câmara e Senado de cada mandato
+        assert contagens["producao_executivo"] == len(slugs_producao)
         with pg_engine.connect() as conn:
             sem_cadeiras = conn.execute(
                 text(

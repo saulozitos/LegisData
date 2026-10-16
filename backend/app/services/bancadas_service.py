@@ -3,12 +3,12 @@
 import math
 from typing import Any, Dict, List, Optional
 
+from app.services.party_catalog_service import DEFAULT_PARTY_COLOR as COR_PADRAO
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 # Casa (chave usada pela API e pelo IPLE) -> código em `ref.casa_legislativa`
 CASAS = {"camara": "CAMARA_DOS_DEPUTADOS", "senado": "SENADO_FEDERAL"}
-COR_PADRAO = "#64748b"
 NAO_CLASSIFICADO = "NAO_CLASSIFICADO"
 
 _COMPOSICAO_SQL = text(
@@ -62,10 +62,17 @@ def _classificadas(bancadas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [b for b in bancadas if b.get("alinhamento") not in (None, NAO_CLASSIFICADO)]
 
 
-def cadeiras_da_oposicao(bancadas: List[Dict[str, Any]]) -> Optional[int]:
-    """Soma da oposição; None quando não há bancadas ou nenhuma foi classificada (base/centro/oposição)."""
+def cadeiras_da_oposicao(bancadas: List[Dict[str, Any]], total: Optional[int] = None) -> Optional[int]:
+    """
+    Soma da oposição; None quando não há bancadas ou nenhuma foi classificada (base/centro/oposição). Com `total`,
+    também é None se parte das cadeiras ficou sem classificação: a soma parcial seria só um piso, não a oposição.
+    """
     classificadas = _classificadas(bancadas)
-    return sum(b["cadeiras"] for b in classificadas if b["alinhamento"] == "OPOSICAO") if classificadas else None
+    if not classificadas:
+        return None
+    if total is not None and sum(b["cadeiras"] for b in classificadas) < total:
+        return None
+    return sum(b["cadeiras"] for b in classificadas if b["alinhamento"] == "OPOSICAO")
 
 
 def governabilidade(total: int, bancadas: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -92,7 +99,7 @@ def governabilidade(total: int, bancadas: List[Dict[str, Any]]) -> Dict[str, Any
         if b["alinhamento"] in soma:
             soma[b["alinhamento"]] += b["cadeiras"]
     base = soma["BASE_GOVERNO"]
-    sem_classificar = total - sum(soma.values())
+    sem_classificar = max(0, total - sum(soma.values()))
     return {
         "base_aliada_cadeiras": base,
         "base_aliada_pct": pct(base, total),

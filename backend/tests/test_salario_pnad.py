@@ -4,6 +4,7 @@ from datetime import date
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from .conftest import criar_mandato_presidencial, observar_serie
 
@@ -90,6 +91,23 @@ def test_ipca_acumula_os_anos_sem_salario_no_meio_da_serie(client, db):
     pontos = client.get(f"{BASE}/wage-disparity").json()["serie_historica"]
     assert [p["ano"] for p in pontos] == [2000, 2002]
     assert pontos[1]["indice_ipca_base100"] == 115.5  # 1,10 * 1,05
+
+
+def test_ipca_parcial_do_ano_em_curso_nao_e_apresentado_como_completo(client, db):
+    for ano, minimo in ((2000, 100.0), (2001, 110.0)):
+        observar_serie(db, "SALARIO_MINIMO", date(ano, 1, 1), minimo)
+        _subsidio(db, ano, 8000.0)
+    observar_serie(db, "IPCA_ACUM_ANO", date(2000, 1, 1), 6.0)
+    db.execute(  # IPCA de 2001 ainda parcial (acumulado até o mês atual)
+        text(
+            "INSERT INTO eco.observacao (serie_id, referencia, valor, parcial) "
+            "VALUES ((SELECT id FROM eco.serie WHERE codigo = 'IPCA_ACUM_ANO'), :r, 3.0, true)"
+        ),
+        {"r": date(2001, 1, 1)},
+    )
+    db.commit()
+    pontos = client.get(f"{BASE}/wage-disparity").json()["serie_historica"]
+    assert pontos[1]["ipca_acumulado_ano_pct"] is None and pontos[1]["indice_ipca_base100"] is None
 
 
 def test_subsidio_zerado_no_primeiro_ano_nao_derruba_a_serie(client, db):
@@ -196,7 +214,11 @@ def test_classes_usam_o_ano_mais_recente_e_o_salario_do_proprio_ano(client, pnad
     assert classes["Classe A"]["faixa_renda_formatada"].startswith("Acima de R$ 28.240,00")
     assert corpo["metodologia"] == {"ponderacao": "Peso calibrado"}
     assert len(corpo["faixas"]) == 8 and corpo["faixas"][0]["rotulo"] == "Sem rendimento"
-    assert corpo["resumo_populacional"]["maioria_populacao_acumulada_d_e_pct"] == 73.0  # D 33 + E 40 (domicílios)
+    resumo = corpo["resumo_populacional"]
+    assert resumo["maioria_populacao_acumulada_d_e_pct"] == 73.0  # D 33 + E 40 (domicílios)
+    # o texto sai das classes cadastradas: base = classes com teto de até 4 SM; topo = classe sem teto
+    assert "até 4 salários mínimos (Classes D e E)" in resumo["texto_educativo"]
+    assert "2% estavam na Classe A (acima de 20 salários mínimos)" in resumo["texto_educativo"]
 
 
 def test_ano_pedido_usa_o_salario_daquele_ano(client, pnad):
@@ -238,6 +260,6 @@ def test_classes_do_cadastro_cobrem_as_oito_faixas_sem_sobreposicao(db):
 
 
 def test_classe_com_faixa_fora_do_intervalo_e_barrada_pelo_banco(db):
-    with pytest.raises(Exception, match="classe_social"):
+    with pytest.raises(IntegrityError, match="classe_social_faixas_pnad_check"):
         db.execute(text("UPDATE eco.classe_social SET faixas_pnad = ARRAY[9]::smallint[] WHERE ordem = 1"))
     db.rollback()

@@ -9,7 +9,7 @@ def test_execute_cron_pipeline():
         patch("etl.pipelines.cron_daily_consolidation.sync_mandate_history", return_value=10),
         patch("etl.pipelines.presenca_atualizacao.atualizar", return_value={"camara_portal": {}}),
         patch("etl.pipelines.votacoes_atualizacao.atualizar", return_value={"carga": {}}),
-        patch("etl.pipelines.economia_atualizacao.atualizar", return_value={"series": 28}),
+        patch("etl.pipelines.economia_atualizacao.atualizar", return_value={"series": 28}) as economia,
         patch(
             "etl.pipelines.cron_daily_consolidation.calculate_party_ippm_ranking", return_value={"ranking": [1, 2, 3]}
         ),
@@ -27,7 +27,9 @@ def test_execute_cron_pipeline():
 
         assert result["status"] == "SUCESSO"
         assert result["tempo_processamento_segundos"] >= 0
+        # mandatos sincronizados + vínculos de autoria + partidos no ranking + arestas do grafo
         assert result["registros_atualizados"] == 10 + 50 + 3 + 2
+        economia.assert_called_once()  # a etapa 1c (séries econômicas) rodou
         assert result["erro_mensagem"] is None
         assert "data_execucao" in result
         assert mock_db.add.called

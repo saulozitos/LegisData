@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from etl.config import PROCESSED_DATA_DIR
+from etl.pipelines.loader_helpers import texto
 from etl.utils.bootstrap import ensure_backend_on_path
 from etl.utils.datafiles import load_json
 
@@ -26,12 +27,6 @@ from sqlalchemy.engine import Engine  # noqa: E402
 logger = logging.getLogger("PresidenciaLoader")
 
 STATUS_VALIDOS = {"CONCLUIDO", "IMPEACHMENT", "TITULAR_ATIVO", "RENUNCIA", "FALECIMENTO"}
-
-
-def texto(valor: Any) -> Optional[str]:
-    """Texto sem espaços nas pontas; vazio vira None."""
-    limpo = str(valor).strip() if valor is not None else ""
-    return limpo or None
 
 
 def marcos(entrada: Dict[str, Any]) -> List[str]:

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from etl.config import PROCESSED_DATA_DIR
+from etl.pipelines.loader_helpers import inteiro_em
 from etl.utils.bootstrap import ensure_backend_on_path
 from etl.utils.datafiles import load_json
 
@@ -41,14 +42,6 @@ def percentual_valido(valor: Any) -> Optional[List[float]]:
     return numeros if all(math.isfinite(n) for n in numeros) else None
 
 
-def inteiro_em(valor: Any, minimo: int, maximo: int) -> Optional[int]:
-    try:
-        numero = int(valor)
-    except (TypeError, ValueError):
-        return None
-    return numero if minimo <= numero <= maximo else None
-
-
 def ano_valido(ano: Any, entrada: Any) -> bool:
     """
     O ano só entra com chave entre 1995 e 2100, visita (1 a 5), salário mínimo positivo e as duas distribuições usadas
@@ -59,7 +52,8 @@ def ano_valido(ano: Any, entrada: Any) -> bool:
     if inteiro_em(entrada.get("visita"), 1, 5) is None:
         return False
     try:
-        if not float(entrada.get("salario_minimo_brl")) > 0:
+        salario = float(entrada.get("salario_minimo_brl"))
+        if not (math.isfinite(salario) and salario > 0):
             return False
     except (TypeError, ValueError):
         return False

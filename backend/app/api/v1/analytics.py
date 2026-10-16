@@ -23,7 +23,7 @@ from app.schemas.analytics import (
 )
 from app.services.composicao_service import composicao_do_mandato
 from app.services.eco_dados import macro_por_ano, seguranca_por_ano, sociais_por_ano
-from app.services.iple_service import get_mandate_iple
+from app.services.iple_service import get_all_mandates_iple, get_mandate_iple
 from app.services.mandato_economia_service import matriz_de_mandatos
 from app.services.pnad_service import classes_sociais
 from app.services.presidencia_service import presidente_por_referencia
@@ -183,11 +183,12 @@ def get_mandates_economic_performance(db: Session = Depends(get_db)):
     data = matriz_de_mandatos(db)
     if not data:
         raise HTTPException(status_code=404, detail="Matriz de mandatos não encontrada. Execute o ETL.")
+    iple_por_mandato = {i["mandato_id"]: i for i in get_all_mandates_iple(db)}  # uma leitura para todos os mandatos
     return [
         {
             **m,
             "score_prosperidade": _calculate_mandate_prosperity_score(m),
-            "iple": get_mandate_iple(db, m["id_mandato"]),
+            "iple": iple_por_mandato.get(m["id_mandato"]),
         }
         for m in data
     ]

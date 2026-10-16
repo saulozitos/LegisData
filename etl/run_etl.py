@@ -229,19 +229,26 @@ def _load_economia():
     from etl.pipelines.presidencia_loader import carregar as carregar_presidencia
 
     # Cada carga é independente: uma curadoria com problema não impede as demais; os erros são relatados no fim
+    # (nome, função, nome da carga de que depende): a composição só existe sobre os mandatos presidenciais carregados
     cargas = (
-        ("Séries (eco.observacao)", carregar_series),
-        ("Mandatos presidenciais", carregar_presidencia),
-        ("Composição do Congresso e produção do Executivo", carregar_composicao),
-        ("PNAD (classes sociais)", carregar_pnad),
+        ("Séries (eco.observacao)", carregar_series, None),
+        ("Mandatos presidenciais", carregar_presidencia, None),
+        ("Composição do Congresso e produção do Executivo", carregar_composicao, "Mandatos presidenciais"),
+        ("PNAD (classes sociais)", carregar_pnad, None),
     )
     falhas = []
-    for nome, carregar in cargas:
+    falharam = set()
+    for nome, carregar, depende_de in cargas:
+        if depende_de in falharam:
+            falhas.append(f"{nome}: não executada porque '{depende_de}' falhou")
+            falharam.add(nome)
+            continue
         try:
             print(f"    {nome}:", carregar(engine))
         except Exception as exc:  # noqa: BLE001 - isolada de propósito; relatada abaixo
             logger.error("Carga '%s' falhou: %s", nome, exc, exc_info=True)
             falhas.append(f"{nome}: {exc}")
+            falharam.add(nome)
     if falhas:
         raise RuntimeError("; ".join(falhas))
 
@@ -407,7 +414,7 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         ),
         Etapa(
             "load_economia",
-            "Carga das séries econômicas e dos mandatos presidenciais",
+            "Carga das séries econômicas, mandatos presidenciais, composição do Congresso e PNAD",
             _load_economia,
             depende_de_extracao=True,
         ),

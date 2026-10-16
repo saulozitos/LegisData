@@ -10,6 +10,7 @@ Revision ID: 0030
 Revises: 0029
 """
 
+import sqlalchemy as sa
 from alembic import op
 
 revision = "0030"
@@ -88,10 +89,6 @@ CLASSES = [
 ]
 
 
-def _q(valor: object) -> str:
-    return "NULL" if valor is None else "'" + str(valor).replace("'", "''") + "'"
-
-
 def upgrade() -> None:
     op.execute(
         """
@@ -149,16 +146,33 @@ def upgrade() -> None:
         """
     )
     op.execute("CREATE TABLE eco.pnad_metodologia (chave text PRIMARY KEY, texto text NOT NULL)")
+    bind = op.get_bind()
     for posicao, codigo, rotulo, minimo, maximo in FAIXAS:
-        op.execute(
-            "INSERT INTO eco.pnad_faixa (posicao, codigo, rotulo, min_sm, max_sm) VALUES "
-            f"({posicao}, {_q(codigo)}, {_q(rotulo)}, {_q(minimo)}, {_q(maximo)})"
+        bind.execute(
+            sa.text(
+                "INSERT INTO eco.pnad_faixa (posicao, codigo, rotulo, min_sm, max_sm) "
+                "VALUES (:posicao, :codigo, :rotulo, :minimo, :maximo)"
+            ),
+            {"posicao": posicao, "codigo": codigo, "rotulo": rotulo, "minimo": minimo, "maximo": maximo},
         )
     for ordem, codigo, rotulo, minimo, maximo, faixas, descricao, cor, destaque in CLASSES:
-        op.execute(
-            "INSERT INTO eco.classe_social (ordem, codigo, faixa_rotulo, min_sm, max_sm, faixas_pnad, descricao, "
-            f"cor_hex, destaque) VALUES ({ordem}, {_q(codigo)}, {_q(rotulo)}, {minimo}, {_q(maximo)}, "
-            f"ARRAY{faixas}::smallint[], {_q(descricao)}, {_q(cor)}, {_q(destaque)})"
+        bind.execute(
+            sa.text(
+                "INSERT INTO eco.classe_social (ordem, codigo, faixa_rotulo, min_sm, max_sm, faixas_pnad, descricao, "
+                "cor_hex, destaque) VALUES (:ordem, :codigo, :rotulo, :minimo, :maximo, "
+                "CAST(:faixas AS smallint[]), :descricao, :cor, :destaque)"
+            ),
+            {
+                "ordem": ordem,
+                "codigo": codigo,
+                "rotulo": rotulo,
+                "minimo": minimo,
+                "maximo": maximo,
+                "faixas": faixas,
+                "descricao": descricao,
+                "cor": cor,
+                "destaque": destaque,
+            },
         )
 
 

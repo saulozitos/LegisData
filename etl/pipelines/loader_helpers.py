@@ -25,6 +25,26 @@ LEGISLATURA_ATUAL_INICIO = date(2023, 2, 1)
 SEM_PARTIDO = "S.PART."
 
 
+def texto(valor: Any) -> Optional[str]:
+    """Texto sem espaços nas pontas; vazio ou None viram None."""
+    limpo = str(valor).strip() if valor is not None else ""
+    return limpo or None
+
+
+def inteiro(valor: Any) -> Optional[int]:
+    """Inteiro ou None para vazio e para o que não converte."""
+    try:
+        return None if valor is None or valor == "" else int(valor)
+    except (TypeError, ValueError):
+        return None
+
+
+def inteiro_em(valor: Any, minimo: int, maximo: int) -> Optional[int]:
+    """Inteiro dentro do intervalo fechado [minimo, maximo]; fora dele ou inválido, None."""
+    numero = inteiro(valor)
+    return numero if numero is not None and minimo <= numero <= maximo else None
+
+
 def normalizar_sigla_presenca(sigla: Any) -> Optional[str]:
     """Sigla de partido vinda das fontes de presença -> sigla canônica; None quando a fonte não registra partido.
 

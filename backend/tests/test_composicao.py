@@ -364,6 +364,15 @@ def test_blocos_ignoram_mandato_recente_sem_classificacao(db, mandato):
 
 
 def test_mandato_em_curso_usa_as_proposicoes_reais_quando_superam_a_curadoria(db, mandato):
+    for i in range(30):  # anteriores ao mandato (a base cobre desde 1995): não podem entrar na contagem
+        db.execute(
+            text(
+                "INSERT INTO leg.proposicao (tipo_codigo, numero, ano, titulo, ementa, data_apresentacao, status_codigo, "
+                "iniciativa_executivo) VALUES ('PL', :n, 2010, 'PL', 'Dispõe sobre algo', DATE '2010-01-01', "
+                "'APROVADA_E_SANCIONADA', true)"
+            ),
+            {"n": 1000 + i},
+        )
     for i in range(150):  # a curadoria diz 100 proposições (80 aprovadas)
         db.execute(
             text(
@@ -388,17 +397,58 @@ def test_mandato_em_curso_usa_as_proposicoes_reais_quando_superam_a_curadoria(db
     )  # simbólica fora
 
 
-def test_falha_ao_contar_proposicoes_mantem_a_curadoria_e_a_sessao_utilizavel(db, mandato, monkeypatch):
-    from sqlalchemy.exc import OperationalError
-
+def _query_que_falha_no_banco(db, monkeypatch):
+    """`db.query(Proposicao)` passa a executar SQL inválido de verdade (tabela inexistente), como uma tabela perdida."""
     original = db.query
 
     def falha(*args, **kwargs):
         if args and getattr(args[0], "__name__", "") == "Proposicao":
-            raise OperationalError("SELECT", {}, Exception("tabela indisponível"))
+            db.execute(text("SELECT 1 FROM leg.tabela_que_nao_existe"))
         return original(*args, **kwargs)
 
     monkeypatch.setattr(db, "query", falha)
+
+
+def test_falha_de_sql_ao_contar_proposicoes_mantem_a_curadoria_e_a_sessao_utilizavel(db, mandato, monkeypatch):
+    _query_que_falha_no_banco(db, monkeypatch)
     dados = iple_service.get_mandate_iple(db, "lula-2023")
     assert dados["indicadores_base"]["proposicoes_executivo_total"] == 100  # curadoria
-    assert db.execute(text("SELECT 1")).scalar() == 1  # a transação não ficou abortada
+    assert dados["variaveis_contextuais"]["total_cadeiras"] == 100  # as consultas seguintes na mesma sessão funcionaram
+    assert db.execute(text("SELECT 1")).scalar() == 1
+
+
+def test_sem_o_savepoint_a_mesma_falha_abortaria_a_transacao(db, mandato, monkeypatch):
+    """Controle do teste acima: prova que ele é sensível ao `begin_nested` (sem savepoint a sessão fica inutilizável)."""
+    from contextlib import nullcontext
+
+    from sqlalchemy.exc import DBAPIError
+
+    _query_que_falha_no_banco(db, monkeypatch)
+    monkeypatch.setattr(db, "begin_nested", nullcontext)
+    with pytest.raises(
+        DBAPIError
+    ):  # a falha do SQL é capturada, mas a consulta seguinte já encontra a transação abortada
+        iple_service.get_mandate_iple(db, "lula-2023")
+    db.rollback()
+
+
+def test_classificacao_parcial_nao_vira_piso_da_oposicao(client, db):
+    mid = criar_mandato_presidencial(db, "P", date(2023, 1, 1), None, "p-2023")
+    parcial = [
+        ("PL", 40, "OPOSICAO", "#1d4ed8", None),
+        ("PT", 30, "BASE_GOVERNO", "#ef4444", None),
+        ("MDB", 20, "NAO_CLASSIFICADO", "#15803d", None),
+        ("PSOL", 10, "NAO_CLASSIFICADO", "#facc15", None),
+    ]
+    _composicao(db, mid, "CAMARA_DOS_DEPUTADOS", 100, parcial)
+    _composicao(db, mid, "SENADO_FEDERAL", 100, parcial)
+    _producao(db, mid, oposicao_camara=45)  # oposição curada da Câmara (total 100)
+    _escala(db)
+    db.commit()
+    camara = client.get(IPLE, params={"mandate_id": "p-2023"}).json()["variaveis_contextuais"]
+    assert (camara["oposicao_cadeiras"], camara["tamanho_oposicao_x1"]) == (45, 0.45)  # curadoria, não o piso de 40
+    senado = iple_service.get_mandate_iple(db, "p-2023", "senado")["variaveis_contextuais"]
+    assert senado["oposicao_cadeiras"] is None and senado["tamanho_oposicao_x1"] is None  # sem reserva: indisponível
+    corpo = client.get(f"{BASE}/congress-composition", params={"mandate_id": "p-2023"}).json()
+    assert corpo["dados_incompletos"] is True
+    assert corpo["camara"]["governabilidade"]["nao_classificadas_cadeiras"] == 30

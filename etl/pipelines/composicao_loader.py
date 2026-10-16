@@ -6,8 +6,9 @@ Fontes (curadoria versionada em `etl/data/processed`):
 - `producao_executivo.csv`: proposições do Executivo e vetos (insumo do IPLE).
 
 Só mandatos que já existem em `core.mandato_presidencial` são carregados: mandato do arquivo sem identificador no banco
-faz a carga falhar sem gravar nada. Cada par (mandato, Casa) é regravado por inteiro, e a Casa (ou o mandato) que sai da curadoria sai do banco, então a
-carga é idempotente e o banco espelha o arquivo.
+faz a carga falhar sem gravar nada. Cada par (mandato, Casa) é regravado por inteiro, e a Casa (ou o mandato) que sai
+da curadoria sai do banco, então a carga é idempotente e o banco espelha o arquivo. A produção do Executivo segue a mesma
+regra, mas um CSV sem nenhuma linha não apaga a base.
 """
 
 import csv
@@ -17,6 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from etl.config import PROCESSED_DATA_DIR
+from etl.pipelines.loader_helpers import inteiro, texto
 from etl.utils.bootstrap import ensure_backend_on_path
 from etl.utils.datafiles import load_json
 
@@ -29,18 +31,6 @@ logger = logging.getLogger("ComposicaoLoader")
 
 CASAS = {"camara": "CAMARA_DOS_DEPUTADOS", "senado": "SENADO_FEDERAL"}
 ALINHAMENTOS = {"BASE_GOVERNO", "INDEPENDENTE_CENTRO", "OPOSICAO", "NAO_CLASSIFICADO"}
-
-
-def inteiro(valor: Any) -> Optional[int]:
-    try:
-        return None if valor is None or valor == "" else int(valor)
-    except (TypeError, ValueError):
-        return None
-
-
-def texto(valor: Any) -> Optional[str]:
-    limpo = str(valor).strip() if valor is not None else ""
-    return limpo or None
 
 
 def bancadas_da_casa(casa: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -67,9 +57,8 @@ def bancadas_da_casa(casa: Dict[str, Any]) -> List[Dict[str, Any]]:
         )
         linha["cadeiras_tse"] = inteiro(b.get("cadeiras"))
     linhas = [b for b in por_partido.values() if b["cadeiras"] is not None or b["cadeiras_tse"] is not None]
-    for ordem, linha in enumerate(
-        linhas
-    ):  # a ordem da curadoria (desempates entre partidos de mesmo tamanho) é preservada
+    # a ordem da curadoria (desempates entre partidos de mesmo tamanho) é preservada
+    for ordem, linha in enumerate(linhas):
         linha["ordem"] = ordem
     return linhas
 
@@ -113,10 +102,37 @@ def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, 
     return contagem
 
 
+COLUNAS_PRODUCAO = ("proposicoes_executivo", "proposicoes_aprovadas", "vetos_apreciados", "vetos_mantidos", "fonte")
+
+
+def _linha_de_producao(linha: Dict[str, str]) -> Dict[str, Any]:
+    """Valida a linha do CSV: contagens obrigatórias inteiras, ausência de coluna ou célula vazia é erro claro."""
+    faltam = [c for c in COLUNAS_PRODUCAO if texto(linha.get(c)) is None]
+    if faltam:
+        raise ValueError(f"Produção do Executivo de '{linha.get('mandato_slug')}' sem: {', '.join(faltam)}")
+    return {
+        "pe": int(linha["proposicoes_executivo"]),
+        "pa": int(linha["proposicoes_aprovadas"]),
+        "va": int(linha["vetos_apreciados"]),
+        "vm": int(linha["vetos_mantidos"]),
+        "vp": inteiro(linha.get("vetos_pendentes")) or 0,
+        "oc": inteiro(linha.get("oposicao_cadeiras_camara")),
+        "tc": inteiro(linha.get("total_cadeiras_camara")),
+        "f": linha["fonte"],
+    }
+
+
 def _gravar_producao(
     conn: Any, mandatos: Dict[str, int], producao: List[Dict[str, str]], contagem: Dict[str, int]
 ) -> None:
-    for linha in producao:
+    """Grava a produção do CSV e remove a dos mandatos que saíram dele (o banco espelha o arquivo)."""
+    linhas = [(mandatos[linha["mandato_slug"]], _linha_de_producao(linha)) for linha in producao]  # valida tudo antes
+    if linhas:
+        conn.execute(
+            text("DELETE FROM leg.producao_executivo WHERE mandato_id <> ALL(CAST(:ids AS bigint[]))"),
+            {"ids": [mandato_id for mandato_id, _ in linhas]},
+        )
+    for mandato_id, valores in linhas:
         conn.execute(
             text(
                 "INSERT INTO leg.producao_executivo (mandato_id, proposicoes_executivo, proposicoes_aprovadas, "
@@ -128,17 +144,7 @@ def _gravar_producao(
                 "oposicao_cadeiras_camara = EXCLUDED.oposicao_cadeiras_camara, "
                 "total_cadeiras_camara = EXCLUDED.total_cadeiras_camara, fonte_texto = EXCLUDED.fonte_texto"
             ),
-            {
-                "m": mandatos[linha["mandato_slug"]],
-                "pe": int(linha["proposicoes_executivo"]),
-                "pa": int(linha["proposicoes_aprovadas"]),
-                "va": int(linha["vetos_apreciados"]),
-                "vm": int(linha["vetos_mantidos"]),
-                "vp": int(linha.get("vetos_pendentes") or 0),
-                "oc": inteiro(linha.get("oposicao_cadeiras_camara")),
-                "tc": inteiro(linha.get("total_cadeiras_camara")),
-                "f": linha["fonte"],
-            },
+            {"m": mandato_id, **valores},
         )
         contagem["producao"] += 1
 
@@ -236,7 +242,8 @@ def _gravar_presidentes(
             text(
                 "INSERT INTO leg.presidencia_casa (casa_id, nome, partido_sigla, uf, foto_url) "
                 "VALUES (:c, :n, :p, :uf, :f) ON CONFLICT (casa_id, nome, partido_sigla) DO UPDATE SET "
-                "uf = EXCLUDED.uf, foto_url = EXCLUDED.foto_url RETURNING id"
+                "uf = COALESCE(EXCLUDED.uf, leg.presidencia_casa.uf), "
+                "foto_url = COALESCE(EXCLUDED.foto_url, leg.presidencia_casa.foto_url) RETURNING id"
             ),
             {
                 "c": casa_id,

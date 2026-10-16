@@ -110,7 +110,7 @@ def composicao_do_mandato(db: Session, slug: str) -> Dict[str, Any]:
     linhas = bancadas_service.linhas_de_bancada(db, slug)
     todos_presidentes = [dict(r) for r in db.execute(_PRESIDENTES_SQL, {"slug": slug}).mappings()]
     producao = iple_service.producoes(db, slug)
-    iples = iple_service.iple_das_casas(db, producao[0]) if producao else {}
+    iples = iple_service.iple_das_casas(db, producao[0], metas=metas, linhas=linhas) if producao else {}
 
     resultado: Dict[str, Any] = {
         "mandato_id": slug,
@@ -125,7 +125,12 @@ def composicao_do_mandato(db: Session, slug: str) -> Dict[str, Any]:
                 _presidentes(todos_presidentes, codigo),
                 iples.get(chave),
             )
-    if any(resultado[c]["governabilidade"]["oposicao_cadeiras"] is None for c in CASAS if c in resultado):
+    if any(
+        resultado[c]["governabilidade"]["oposicao_cadeiras"] is None
+        or resultado[c]["governabilidade"]["nao_classificadas_cadeiras"]
+        for c in CASAS
+        if c in resultado
+    ):
         resultado["dados_incompletos"] = True
         resultado["observacao"] = next((m["observacao"] for m in metas.values() if m["observacao"]), None)
     resultado["fonte_curadoria"] = next((metas[c]["fonte_texto"] for c in CASAS.values() if c in metas), None)

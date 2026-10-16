@@ -122,6 +122,9 @@ export default function CongressCompositionPanel({
   const quorumSimples = Math.floor(totalSeats / 2) + 1;
 
   const { governabilidade } = currentHouse;
+  // Sem bancadas classificadas (base/centro/oposição) a API devolve null: nunca exibir como zero ou como "não atingiu"
+  const classificada = isNum(governabilidade.oposicao_cadeiras);
+  const semClassificar = governabilidade.nao_classificadas_cadeiras ?? 0;
   const iple = ((governabilidade as Record<string, unknown>)?.iple as IpleData | undefined) ?? data?.iple;
 
   return (
@@ -187,68 +190,83 @@ export default function CongressCompositionPanel({
             <div className="flex items-center gap-3">
               <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" aria-hidden="true" />
-                Base ({governabilidade.base_aliada_cadeiras} cad. • {fmtNum(governabilidade.base_aliada_pct)}%)
+                Base ({fmtNum(governabilidade.base_aliada_cadeiras, 0)} cad. • {fmtNum(governabilidade.base_aliada_pct)}%)
               </span>
               <span className="flex items-center gap-1.5 text-amber-400 font-bold">
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-500" aria-hidden="true" />
-                Centro ({governabilidade.centro_cadeiras} cad. • {fmtNum(governabilidade.centro_pct)}%)
+                Centro ({fmtNum(governabilidade.centro_cadeiras, 0)} cad. • {fmtNum(governabilidade.centro_pct)}%)
               </span>
               <span className="flex items-center gap-1.5 text-rose-400 font-bold">
                 <span className="w-2.5 h-2.5 rounded-full bg-rose-500" aria-hidden="true" />
-                Oposição ({governabilidade.oposicao_cadeiras} cad. • {fmtNum(governabilidade.oposicao_pct)}%)
+                Oposição ({fmtNum(governabilidade.oposicao_cadeiras, 0)} cad. • {fmtNum(governabilidade.oposicao_pct)}%)
               </span>
             </div>
           </div>
+
+          {!classificada && (
+            <p className="mt-3 text-xs text-slate-400" role="note">
+              As bancadas deste mandato ainda não foram classificadas como base, centro ou oposição; por isso a
+              governabilidade não é calculada.
+            </p>
+          )}
 
           {/* Barra Visual */}
-          <div className="w-full h-4 bg-slate-900 rounded-full overflow-hidden flex shadow-inner">
-            <div
-              style={{ width: `${governabilidade.base_aliada_pct}%` }}
-              className="bg-emerald-500 h-full transition-all duration-500"
-              title={`Base Aliada: ${governabilidade.base_aliada_cadeiras} cadeiras`}
-            />
-            <div
-              style={{ width: `${governabilidade.centro_pct}%` }}
-              className="bg-amber-500 h-full transition-all duration-500"
-              title={`Centro/Independente: ${governabilidade.centro_cadeiras} cadeiras`}
-            />
-            <div
-              style={{ width: `${governabilidade.oposicao_pct}%` }}
-              className="bg-rose-500 h-full transition-all duration-500"
-              title={`Oposição: ${governabilidade.oposicao_cadeiras} cadeiras`}
-            />
-          </div>
+          {classificada && (
+            <div className="w-full h-4 bg-slate-900 rounded-full overflow-hidden flex shadow-inner">
+              <div
+                style={{ width: `${governabilidade.base_aliada_pct ?? 0}%` }}
+                className="bg-emerald-500 h-full transition-all duration-500"
+                title={`Base Aliada: ${governabilidade.base_aliada_cadeiras} cadeiras`}
+              />
+              <div
+                style={{ width: `${governabilidade.centro_pct ?? 0}%` }}
+                className="bg-amber-500 h-full transition-all duration-500"
+                title={`Centro/Independente: ${governabilidade.centro_cadeiras} cadeiras`}
+              />
+              <div
+                style={{ width: `${governabilidade.oposicao_pct ?? 0}%` }}
+                className="bg-rose-500 h-full transition-all duration-500"
+                title={`Oposição: ${governabilidade.oposicao_cadeiras} cadeiras`}
+              />
+            </div>
+          )}
 
           {/* Quóruns Constitucionais */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-900 text-xs">
-            <div className="flex items-center gap-2">
-              {governabilidade.maioria_simples_atingida ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" aria-hidden="true" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" aria-hidden="true" />
-              )}
-              <span className="text-slate-300">
-                <strong>Maioria Simples ({quorumSimples} votos):</strong>{" "}
-                {governabilidade.maioria_simples_atingida
-                  ? "Garantida exclusivamente pela bancada governista."
-                  : "Dependente de negociação com o Centro/Independente."}
-              </span>
-            </div>
+          {classificada && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-900 text-xs">
+              <div className="flex items-center gap-2">
+                {governabilidade.maioria_simples_atingida === true ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" aria-hidden="true" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" aria-hidden="true" />
+                )}
+                <span className="text-slate-300">
+                  <strong>Maioria Simples ({quorumSimples} votos):</strong>{" "}
+                  {governabilidade.maioria_simples_atingida === true
+                    ? "Garantida exclusivamente pela bancada governista."
+                    : governabilidade.maioria_simples_atingida === false
+                      ? "Dependente de negociação com o Centro/Independente."
+                      : `Indeterminada: ${semClassificar} cadeiras ainda sem classificação.`}
+                </span>
+              </div>
 
-            <div className="flex items-center gap-2">
-              {governabilidade.maioria_pec_atingida ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" aria-hidden="true" />
-              ) : (
-                <ShieldAlert className="w-4 h-4 text-rose-400 flex-shrink-0" aria-hidden="true" />
-              )}
-              <span className="text-slate-300">
-                <strong>Quórum de PEC ({quorumPec} votos - 3/5):</strong>{" "}
-                {governabilidade.maioria_pec_atingida
-                  ? "Alcançado pela coalizão de sustentação."
-                  : "Exige composição com partidos de Centro e Oposição moderada."}
-              </span>
+              <div className="flex items-center gap-2">
+                {governabilidade.maioria_pec_atingida === true ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" aria-hidden="true" />
+                ) : (
+                  <ShieldAlert className="w-4 h-4 text-rose-400 flex-shrink-0" aria-hidden="true" />
+                )}
+                <span className="text-slate-300">
+                  <strong>Quórum de PEC ({quorumPec} votos - 3/5):</strong>{" "}
+                  {governabilidade.maioria_pec_atingida === true
+                    ? "Alcançado pela coalizão de sustentação."
+                    : governabilidade.maioria_pec_atingida === false
+                      ? "Exige composição com partidos de Centro e Oposição moderada."
+                      : `Indeterminado: ${semClassificar} cadeiras ainda sem classificação.`}
+                </span>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* ========================================================================= */}
           {/* ÍNDICE DE PODER LEGISLATIVO DO EXECUTIVO (IPLE) - MODELO CIENTÍFICO QCA  */}

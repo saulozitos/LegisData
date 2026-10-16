@@ -21,7 +21,7 @@ log() { printf '%s [deploy] %s\n' "$(date '+%F %T')" "$*"; }
 
 mkdir -p "$ESTADO_DIR" "$BACKUP_DIR"
 # Depois de se reexecutar (abaixo) o lock já está aberto no descritor 9, herdado do processo anterior.
-if [[ -z "${DEPLOY_REEXEC:-}" ]]; then
+if [[ -z "${_LEGISDATA_DEPLOY_REEXEC:-}" ]]; then
   exec 9>"$ESTADO_DIR/deploy.lock"
   flock -n 9 || { log "outra execução em andamento"; exit 0; }
 fi
@@ -47,12 +47,14 @@ log "implantando $TAG (anterior: ${ATUAL:0:7})"
 
 # O timer executa a cópia instalada em $ESTADO_DIR, que pode ser mais antiga que o script da main. Antes de mexer em
 # qualquer coisa, passa a usar o script do commit que será implantado (reexecuta uma única vez).
-if [[ -z "${DEPLOY_REEXEC:-}" ]] && git cat-file -e "origin/main:scripts/deploy/deploy.sh" 2>/dev/null; then
-  git show "origin/main:scripts/deploy/deploy.sh" >"$ESTADO_DIR/deploy.sh.novo"
-  if ! cmp -s "$ESTADO_DIR/deploy.sh.novo" "$ESTADO_DIR/deploy.sh"; then
+if [[ -z "${_LEGISDATA_DEPLOY_REEXEC:-}" ]] && git cat-file -e "$ALVO:scripts/deploy/deploy.sh" 2>/dev/null; then
+  git show "$ALVO:scripts/deploy/deploy.sh" >"$ESTADO_DIR/deploy.sh.novo"
+  if ! bash -n "$ESTADO_DIR/deploy.sh.novo"; then
+    log "script de deploy do commit $TAG com erro de sintaxe; mantenho o atual"
+  elif ! cmp -s "$ESTADO_DIR/deploy.sh.novo" "$ESTADO_DIR/deploy.sh"; then
     chmod 755 "$ESTADO_DIR/deploy.sh.novo" && mv "$ESTADO_DIR/deploy.sh.novo" "$ESTADO_DIR/deploy.sh"
     log "script de deploy atualizado para o da main; reexecutando"
-    DEPLOY_REEXEC=1 exec "$ESTADO_DIR/deploy.sh" "$@"
+    _LEGISDATA_DEPLOY_REEXEC=1 exec "$ESTADO_DIR/deploy.sh" "$@"
   fi
   rm -f "$ESTADO_DIR/deploy.sh.novo"
 fi
@@ -65,17 +67,26 @@ PG_USER="${POSTGRES_USER:-politica_user}"
 PG_DB="${POSTGRES_DB:-politica_db}"
 
 # 1. backup antes de qualquer alteração (formato custom, restaurável com pg_restore)
-DUMP="$BACKUP_DIR/legisdata_${TAG}_$(date +%Y%m%d_%H%M%S).dump"
-docker exec politica_postgres pg_dump -U "$PG_USER" -d "$PG_DB" -Fc >"$DUMP"
-[[ -s "$DUMP" ]] || { log "backup vazio, abortando"; rm -f "$DUMP"; exit 1; }
-log "backup: $DUMP ($(du -h "$DUMP" | cut -f1))"
+# Uma tentativa anterior deste mesmo commit que falhou já deixou o backup de antes das migrações: reaproveita-o, para
+# um deploy quebrado repetido pelo timer não encher a rotação com dumps de um banco já migrado e apagar o bom.
+DUMP="$(ls -1t "$BACKUP_DIR"/legisdata_"${TAG}"_*.dump 2>/dev/null | head -n 1 || true)"
+if [[ -n "$DUMP" && -s "$DUMP" ]]; then
+  log "backup deste commit já existe, reaproveitado: $DUMP"
+else
+  DUMP="$BACKUP_DIR/legisdata_${TAG}_$(date +%Y%m%d_%H%M%S).dump"
+  docker exec politica_postgres pg_dump -U "$PG_USER" -d "$PG_DB" -Fc >"$DUMP"
+  [[ -s "$DUMP" ]] || { log "backup vazio, abortando"; rm -f "$DUMP"; exit 1; }
+  log "backup: $DUMP ($(du -h "$DUMP" | cut -f1))"
+fi
 # shellcheck disable=SC2012
 ls -1t "$BACKUP_DIR"/legisdata_*.dump | tail -n +"$((GUARDAR_BACKUPS + 1))" | xargs -r rm -f
 
 # 2. código (compose, dados do ETL, scripts). O cron diário regrava arquivos versionados de etl/data/processed no
 # checkout; essas mudanças locais impediriam o fast-forward. Os arquivos voltam ao commit e o próximo cron os atualiza.
 if ! git diff --quiet -- etl/data/processed || [[ -n "$(git ls-files --others --exclude-standard -- etl/data/processed)" ]]; then
-  log "descartando saídas do cron em etl/data/processed antes de atualizar o código"
+  log "descartando saídas do cron em etl/data/processed antes de atualizar o código:"
+  { git diff --name-only -- etl/data/processed; git ls-files --others --exclude-standard -- etl/data/processed; } |
+    while read -r arquivo; do log "  $arquivo"; done
   git checkout -q -- etl/data/processed
   git clean -fdq -- etl/data/processed
 fi
@@ -85,13 +96,13 @@ URL_BANCO="postgresql+psycopg2://${PG_USER}:${POSTGRES_PASSWORD}@postgres:5432/$
 um_comando() { # roda um comando Python no contêiner da imagem nova, na rede do compose
   docker run --rm --network "$REDE" -e ENVIRONMENT=production -e POSTGRES_PASSWORD -e DB_SSLMODE=disable \
     -e ALEMBIC_DATABASE_URL="$URL_BANCO" -e DATABASE_URL="$URL_BANCO" -e PYTHONPATH=/repo/backend:/repo \
-    -v "$RAIZ:/repo:ro" -w /app "$REGISTRO/legisdata-backend:$TAG" "$@"
+    -v "$RAIZ:/repo:ro" -w /app "$REGISTRO/legisdata-backend:$TAG" "$@" 9>&-
 }
 
 # 3. migrações e 4. carga das séries econômicas (idempotentes)
 log "migrações"
 docker run --rm --network "$REDE" -e ENVIRONMENT=production -e POSTGRES_PASSWORD -e DB_SSLMODE=disable \
-  -e ALEMBIC_DATABASE_URL="$URL_BANCO" -e DATABASE_URL="$URL_BANCO" "$REGISTRO/legisdata-backend:$TAG" alembic upgrade head
+  -e ALEMBIC_DATABASE_URL="$URL_BANCO" -e DATABASE_URL="$URL_BANCO" "$REGISTRO/legisdata-backend:$TAG" alembic upgrade head 9>&-
 # Só depois que o schema `eco` existe (a migração 0025 em diante) e o código da carga está no checkout.
 TEM_ECO="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select to_regclass('eco.observacao') is not null")"
 if [[ "$TEM_ECO" == "t" && -f "$RAIZ/etl/pipelines/economia_loader.py" ]]; then

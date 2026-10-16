@@ -545,14 +545,16 @@ export interface ChamberComposition {
   presidentes: LeaderProfile[];
   bancadas: PartySeat[];
   governabilidade: {
-    base_aliada_cadeiras: number;
-    base_aliada_pct: number;
-    centro_cadeiras: number;
-    centro_pct: number;
-    oposicao_cadeiras: number;
-    oposicao_pct: number;
-    maioria_simples_atingida: boolean;
-    maioria_pec_atingida: boolean;
+    // Sem nenhuma bancada classificada (base/centro/oposição), tudo vem null; maioria null = indeterminada
+    base_aliada_cadeiras: number | null;
+    base_aliada_pct: number | null;
+    centro_cadeiras: number | null;
+    centro_pct: number | null;
+    oposicao_cadeiras: number | null;
+    oposicao_pct: number | null;
+    nao_classificadas_cadeiras?: number | null;
+    maioria_simples_atingida: boolean | null;
+    maioria_pec_atingida: boolean | null;
   };
 }
 
@@ -1237,7 +1239,7 @@ export interface ClassesSociaisResponse {
   fonte: string;
   resumo_populacional: {
     maioria_populacao_acumulada_d_e_pct: number;
-    texto_educativo: string;
+    texto_educativo: string | null;
   };
   classes: ClasseSocialItem[];
 }

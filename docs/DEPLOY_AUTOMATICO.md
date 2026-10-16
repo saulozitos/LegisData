@@ -11,7 +11,9 @@ Todo commit que entra na `main` e passa no CI é implantado sozinho em https://l
 3. Com commit novo e imagens prontas, o script primeiro confere se a cópia dele que o timer executa é a mesma do commit
    a implantar; se for diferente, instala a do commit e se reexecuta uma vez (assim uma mudança no próprio deploy, como
    uma carga nova, vale já no deploy que a traz). Depois faz, nesta ordem:
-   1. `pg_dump` (formato custom) em `~/backups`, guardando os 14 mais recentes. Backup vazio aborta o deploy.
+   1. `pg_dump` (formato custom) em `~/backups`, guardando os 14 mais recentes. Backup vazio aborta o deploy. Se uma
+      tentativa anterior do mesmo commit já deixou o dump (de antes das migrações), ele é reaproveitado: um deploy
+      quebrado repetido pelo timer não expulsa da rotação o último backup bom.
    2. `git merge --ff-only origin/main` no checkout do projeto (compose, dados do ETL e scripts). O cron diário regrava
       arquivos versionados de `etl/data/processed` no checkout, o que impediria o fast-forward; por isso o script
       descarta essas saídas locais antes do merge (o próximo cron as gera de novo). Fora dessa pasta, mudança local
