@@ -6,7 +6,8 @@
 # O banco só é tocado depois do backup, e o estado só avança quando tudo termina bem (a próxima execução tenta de novo).
 set -Eeuo pipefail
 
-# LEGISDATA_DIR aponta para o checkout do projeto (obrigatório quando o script roda de uma cópia fora dele).
+# LEGISDATA_DIR aponta para o checkout do projeto. O timer o recebe do systemd; numa execução manual vem do mesmo arquivo.
+[[ -z "${LEGISDATA_DIR:-}" && -f "$HOME/.legisdata-deploy/ambiente" ]] && . "$HOME/.legisdata-deploy/ambiente"
 RAIZ="${LEGISDATA_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 ESTADO_DIR="${DEPLOY_STATE_DIR:-$HOME/.legisdata-deploy}"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/backups}"

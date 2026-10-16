@@ -24,21 +24,18 @@ O Watchtower foi removido: ele trocava a imagem da API sem backup, e a API aplic
 ## Instalação (uma vez, sem sudo)
 
 Nenhum caminho, endereço ou credencial do servidor entra no repositório: o diretório do projeto fica só no arquivo
-`~/.legisdata-deploy/ambiente` da máquina.
+`~/.legisdata-deploy/ambiente` da máquina. O instalador lê os arquivos com `git show`, sem alterar o checkout:
 
 ```bash
 cd <diretório do projeto no servidor>
-mkdir -p ~/.legisdata-deploy ~/.config/systemd/user
-echo "LEGISDATA_DIR=$PWD" > ~/.legisdata-deploy/ambiente && chmod 600 ~/.legisdata-deploy/ambiente
-install -m 755 scripts/deploy/deploy.sh ~/.legisdata-deploy/deploy.sh
-cp scripts/systemd/legisdata-deploy.service scripts/systemd/legisdata-deploy.timer ~/.config/systemd/user/
-# marca o commit atual como já implantado, para o primeiro ciclo não refazer o que já roda
-git rev-parse origin/main > ~/.legisdata-deploy/ultimo_sha
-systemctl --user daemon-reload
-systemctl --user enable --now legisdata-deploy.timer
-loginctl enable-linger "$USER"   # mantém o timer ativo sem sessão aberta (pode exigir permissão do administrador)
-docker rm -f politica_watchtower
+git clean -fdq scripts            # só se sobrou cópia solta de uma instalação manual anterior
+git fetch -q origin
+git show origin/main:scripts/deploy/instalar.sh > /tmp/instalar.sh
+bash /tmp/instalar.sh origin/main
 ```
+
+O instalador grava o ambiente, instala o script e as units, marca o commit atual como já implantado, roda um dry-run,
+remove o Watchtower e liga o timer. Pode ser executado de novo.
 
 ## Operação
 
