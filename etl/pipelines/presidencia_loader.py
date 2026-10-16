@@ -3,9 +3,10 @@ Carga dos metadados dos mandatos presidenciais em `core.mandato_presidencial` e 
 
 A fonte é o catálogo curado `presidentes_historico.json` (vice, como o mandato começou, situação e marcos econômicos).
 Os mandatos e os identificadores públicos (`slug`) já existem no banco: entrada do catálogo sem mandato correspondente
-é registrada e ignorada, e nada é criado às escondidas. Os marcos de um mandato são regravados por inteiro, mas só
+faz a carga falhar (nada é gravado), e nada é criado às escondidas. Os marcos de um mandato são regravados por inteiro, mas só
 quando o catálogo traz ao menos um.
 
+Campo ausente no catálogo (vice, motivo, situação) não apaga o que já está no banco.
 Idempotente: duas execuções seguidas deixam as tabelas iguais.
 """
 
@@ -79,7 +80,8 @@ def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, 
     if not catalogo:
         raise FileNotFoundError(f"Catálogo de presidentes ausente ou vazio: {arquivo}")
 
-    atualizados = ignorados = 0
+    atualizados = 0
+    ausentes: List[str] = []
     with engine.begin() as conn:
         for entrada in catalogo:
             slug = texto(entrada.get("id_referencia"))
@@ -87,13 +89,14 @@ def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, 
                 text("SELECT mandato_id FROM core.mandato_presidencial WHERE slug = :s"), {"s": slug}
             ).scalar()
             if mandato_id is None:
-                logger.warning("Presidente fora do banco, ignorado: %s", slug)
-                ignorados += 1
+                logger.error("Presidente do catálogo sem mandato no banco: %s", slug)
+                ausentes.append(str(slug))
                 continue
             status = texto(entrada.get("status_mandato"))
             conn.execute(
                 text(
-                    "UPDATE core.mandato_presidencial SET vice_texto = :v, motivo_inicio = :m, status = :st "
+                    "UPDATE core.mandato_presidencial SET vice_texto = coalesce(:v, vice_texto), "
+                    "motivo_inicio = coalesce(:m, motivo_inicio), status = coalesce(:st, status) "
                     "WHERE mandato_id = :id"
                 ),
                 {
@@ -113,5 +116,9 @@ def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, 
                     [{"id": mandato_id, "o": i, "t": t} for i, t in enumerate(lista, start=1)],
                 )
             atualizados += 1
-    logger.info("Mandatos presidenciais atualizados: %d (ignorados: %d)", atualizados, ignorados)
-    return {"atualizados": atualizados, "ignorados": ignorados}
+        if ausentes:
+            # Falha alto, e a transação inteira volta: mandato ausente costuma ser carga fora de ordem
+            # (`make db-migrate`, depois `--load-db`, depois `--load-economia`), e seguir sem ele esvaziaria o painel.
+            raise RuntimeError(f"Mandatos presidenciais ausentes no banco: {', '.join(ausentes)}")
+    logger.info("Mandatos presidenciais atualizados: %d", atualizados)
+    return {"atualizados": atualizados}

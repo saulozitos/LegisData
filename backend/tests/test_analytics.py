@@ -19,9 +19,8 @@ from app.models import (
     StatePresidentialElectionResult,
     StateSocialIndicator,
 )
-from sqlalchemy import text
 
-from .conftest import criar_mandato_presidencial, write_json
+from .conftest import criar_mandato_presidencial, observar_serie, write_json
 
 BASE = "/api/v1/analytics"
 
@@ -175,26 +174,16 @@ def test_prosperity_score_derives_years_from_dates_when_series_missing():
 # ---------------------------------------------------------------------------
 # mandates-performance / compare-mandates
 # ---------------------------------------------------------------------------
-def _observar(db, codigo, referencia, valor):
-    db.execute(
-        text(
-            "INSERT INTO eco.observacao (serie_id, referencia, valor) "
-            "VALUES ((SELECT id FROM eco.serie WHERE codigo = :c), :r, :v)"
-        ),
-        {"c": codigo, "r": referencia, "v": valor},
-    )
-
-
 @pytest.fixture()
 def mandates_db(db):
     """Dois mandatos: A com IPCA zero, PIB e salário; B com IPCA e salário, sem PIB."""
     criar_mandato_presidencial(db, "Alfa", date(2011, 1, 1), date(2015, 1, 1), "a-2011")
     criar_mandato_presidencial(db, "Beta", date(2015, 1, 1), date(2019, 1, 1), "b-2015")
-    _observar(db, "IPCA_MENSAL", date(2012, 1, 1), 0.0)
-    _observar(db, "PIB_CRESC_REAL", date(2011, 1, 1), 1.0)
-    _observar(db, "SALARIO_MINIMO_MENSAL", date(2014, 12, 1), 700.0)
-    _observar(db, "IPCA_MENSAL", date(2016, 1, 1), 5.0)
-    _observar(db, "SALARIO_MINIMO_MENSAL", date(2018, 12, 1), 900.0)
+    observar_serie(db, "IPCA_MENSAL", date(2012, 1, 1), 0.0)
+    observar_serie(db, "PIB_CRESC_REAL", date(2011, 1, 1), 1.0)
+    observar_serie(db, "SALARIO_MINIMO_MENSAL", date(2014, 12, 1), 700.0)
+    observar_serie(db, "IPCA_MENSAL", date(2016, 1, 1), 5.0)
+    observar_serie(db, "SALARIO_MINIMO_MENSAL", date(2018, 12, 1), 900.0)
     db.commit()
 
 
@@ -232,8 +221,8 @@ def test_compare_mandates_trajectory_uses_exclusive_end_years(client, mandates_d
 
 
 def test_compare_mandates_joins_optional_datasets(client, db, mandates_db):
-    _observar(db, "PIB_CRESC_REAL", date(2015, 1, 1), -3.5)
-    _observar(db, "IPCA_ACUM_ANO", date(2011, 1, 1), 6.5)
+    observar_serie(db, "PIB_CRESC_REAL", date(2015, 1, 1), -3.5)
+    observar_serie(db, "IPCA_ACUM_ANO", date(2011, 1, 1), 6.5)
     db.add_all(
         [
             _transfer(mandate_id_ref="a-2011", valor_pago_brl=Decimal("100.00"), valor_per_capita_brl=Decimal("2.00")),
@@ -478,8 +467,8 @@ def test_social_indicators_empty_table_is_an_empty_list(client):
 
 
 def test_social_classes_use_latest_minimum_wage_from_the_series(client, db, data_dir):
-    _observar(db, "SALARIO_MINIMO", date(2023, 1, 1), 1320.0)
-    _observar(db, "SALARIO_MINIMO", date(2024, 1, 1), 1412.0)
+    observar_serie(db, "SALARIO_MINIMO", date(2023, 1, 1), 1320.0)
+    observar_serie(db, "SALARIO_MINIMO", date(2024, 1, 1), 1412.0)
     db.commit()
     body = client.get(f"{BASE}/social-classes").json()
     assert body["salario_minimo_referencia_brl"] == 1412.0

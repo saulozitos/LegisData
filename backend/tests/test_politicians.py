@@ -117,9 +117,13 @@ def test_presidents_list_and_detail(client, db):
     detalhe = client.get(f"{BASE}/presidents/lula-2003").json()
     assert detalhe["nome_eleitoral"] == "Lula (Lula 1)" and detalhe["vice_presidente"] == "José Alencar"
     assert detalhe["marcos_economicos"] == ["Marco"] and detalhe["cpf"] is None
+    assert detalhe["foto_url"] is None and detalhe["genero"] is None and detalhe["data_fim"] == "2007-01-01"
     assert client.get(f"{BASE}/presidents/{detalhe['db_id']}").json()["id_referencia"] == "lula-2003"
     assert client.get(f"{BASE}/presidents/ninguem").status_code == 404
-    assert client.get(f"{BASE}/presidents/../etc").status_code == 404
+    # a busca ignora maiúsculas; slug fora do formato (barra codificada, 61 caracteres) é rejeitado pelo serviço
+    assert client.get(f"{BASE}/presidents/LULA-2003").status_code == 200
+    for invalido in ("%2e%2e%2fetc", "a" * 61):
+        assert client.get(f"{BASE}/presidents/{invalido}").status_code == 404
 
 
 def test_presidents_without_dataset_is_404(client):
@@ -508,14 +512,27 @@ def test_search_politicians_uses_the_period_of_the_presidential_mandate_from_the
     ]
 
 
-def test_dossier_vote_summary_counts_yes_no_and_absent(client, seed):
+def test_dossier_vote_summary_lists_every_yes_vote_with_its_total(client, seed):
     resumo = client.get(f"{BASE}/{seed.fulano.id}").json()["resumo_votos"]
     assert (resumo["sim"]["total"], resumo["nao"]["total"], resumo["ausente"]["total"]) == (2, 0, 0)
-    assert len(resumo["sim"]["itens"]) == 2 and resumo["nao"]["itens"] == []
+    assert len(resumo["sim"]["itens"]) == resumo["sim"]["total"] and resumo["nao"]["itens"] == []
     assert {"proposicao_numero", "data", "url_oficial"} <= set(resumo["sim"]["itens"][0])
 
-    nao = client.get(f"{BASE}/{seed.lula_fonte.id}").json()["resumo_votos"]
-    assert nao["nao"]["total"] == 1 and nao["sim"]["total"] == 0
 
+def test_dossier_vote_summary_no_and_absent_groups(client, seed):
+    nao = client.get(f"{BASE}/{seed.lula_fonte.id}").json()["resumo_votos"]
+    assert nao["nao"]["total"] == 1 and nao["sim"]["total"] == 0 and len(nao["nao"]["itens"]) == 1
     ausente = client.get(f"{BASE}/{seed.maria_a.id}").json()["resumo_votos"]
     assert ausente["ausente"]["total"] == 1 and len(ausente["ausente"]["itens"]) == 1
+
+
+def test_dossier_vote_summary_for_someone_without_votes_is_zero_and_empty(client, seed):
+    resumo = client.get(f"{BASE}/{seed.presidente.id}").json()["resumo_votos"]
+    for grupo in resumo.values():
+        assert grupo == {"total": 0, "itens": []}
+
+
+def test_dossier_vote_summary_ignores_other_options(client, seed):
+    """Obstrução e Art. 17 não entram em nenhum dos três grupos."""
+    resumo = client.get(f"{BASE}/{seed.beltrano.id}").json()["resumo_votos"]
+    assert sum(g["total"] for g in resumo.values()) == 0

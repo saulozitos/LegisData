@@ -14,7 +14,7 @@ estimado ou preenchido por palpite. Cada registro traz `fonte` (e, quando há ma
 | Homicídios | `--economic` | Atlas da Violência (IPEA, SIM/DataSUS), séries 328 (contagem) e 20 (taxa) por UF | Taxa nacional = Σ homicídios / Σ população implícita nas próprias séries do Atlas; pode diferir ±0,4 da taxa de manchete do Atlas |
 | Feminicídio | — | **Sem fonte aberta automatizável** | `taxa_feminicidios` fica `null` em todos os anos (antes eram valores digitados e retroações estimadas) |
 | Desmatamento (Amazônia Legal) | `--economic` | INPE/PRODES, `ratesAAAA.json` do painel TerraBrasilis (taxa consolidada por Estado) | 1993 e 1994 repetem a média 1993-94 divulgada pelo INPE. A soma das geometrias do WFS **não** reproduz a taxa oficial (até 12% de diferença) |
-| Ibovespa | `--economic` | Yahoo Finance (^BVSP) conferido com a tabela da B3 | **Não é carregado no banco**: Yahoo e a tabela digitada não são fonte oficial rastreada (decisão D7). A coluna segue no CSV do ETL, mas a API deixou de expor o Ibovespa |
+| Ibovespa | — | Yahoo Finance e tabela digitada da B3 | **Removido do pipeline `--economic`** e da API: não é fonte oficial rastreada (decisão D7). O extrator `ibovespa_extractor` segue no repositório sem uso |
 | Composição do Congresso | `--composicao` | Presidentes das Casas, base/oposição e bancadas na posse: **curadoria manual**. Conferência: TSE `consulta_cand` (eleitos por partido) | `verificacao_tse` por casa/mandato. O TSE conta o partido no dia da eleição (trocas partidárias explicam diferenças). Eleição de 1990 ausente dos dados abertos → Senado de 1995 não verificável |
 
 ## Lacunas conhecidas

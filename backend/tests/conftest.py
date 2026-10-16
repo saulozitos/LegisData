@@ -195,6 +195,17 @@ def criar_mandato_presidencial(db, nome, inicio, fim, slug, rotulo=None, partido
     return mandato
 
 
+def observar_serie(db, codigo, referencia, valor):
+    """Grava uma observação de `eco.observacao` para a série do catálogo."""
+    db.execute(
+        text(
+            "INSERT INTO eco.observacao (serie_id, referencia, valor) "
+            "VALUES ((SELECT id FROM eco.serie WHERE codigo = :c), :r, :v)"
+        ),
+        {"c": codigo, "r": referencia, "v": valor},
+    )
+
+
 def write_json(directory, name, payload):
     path = directory / name
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")

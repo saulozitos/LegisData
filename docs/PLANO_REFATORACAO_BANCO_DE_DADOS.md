@@ -48,6 +48,14 @@ Este documento é um plano, não uma implementação. Nenhuma tabela ou código 
 
 **Decisões aplicadas (D7)**: saíram por falta de fonte oficial rastreável a aprovação popular e as emendas mensais do painel do Executivo, o Ibovespa (Yahoo/tabela digitada) e o feminicídio. O painel mostra inflação (IPCA em 12 meses), desemprego (PNAD Contínua, desde 2012), câmbio e Selic meta.
 
+**Deploy da 3a (ordem obrigatória)**
+1. `pg_dump` do banco: as migrations 0026 e 0027 apagam dados (Itamar Franco e seus ministros, as tabelas do painel antigo) e o `downgrade` só recria a estrutura.
+2. `make db-migrate` **antes** de subir a imagem nova. Enquanto o contêiner antigo ainda atende, `/executivo/*` dá erro, porque `public.presidential_mandates` deixa de existir.
+3. Se o banco é novo ou foi migrado antes do `--load-db`, rode `--load-db` e só depois `make run-load-economia`: a migration 0026 só cria o identificador (`slug`) de mandato que já existe, e a carga das séries falha, sem gravar nada, se o catálogo trouxer mandato sem identificador.
+4. `make run-etl` agora extrai e carrega (`--economic --load-economia`). `make daily` ainda não atualiza as séries econômicas (3b).
+5. Rotas que liam arquivo (`/analytics/social-indicators`, `/analytics/federal-transfers`) devolvem lista vazia quando a tabela não foi carregada, em vez de cair no arquivo.
+6. Teste a 0026 numa cópia do banco de produção antes: o `DELETE` em `public.politicos` supõe que só `public.mandatos` aponta para o político.
+
 **Fica para a Entrega 3b**: `wage-disparity` (`salario_vs_inflacao.json`, com o salário parlamentar digitado), `congress-composition` e a composição do IPLE (`composicao_congresso.json` e `DADOS_HISTORICOS_EXECUTIVO`, ambos curados à mão), faixas da PNAD (`pnad_faixas_salario_minimo.json`), repasses e eleições presidenciais por UF direto das tabelas `eco` e a atualização diária das séries no cron. Só então `grep load_json_cached backend/app` fica vazio nesses módulos; CEAP e emendas seguem para a Fase 5.
 
 ### Entrega 2b — cobertura de proposições e de cadeiras (2026-10-15)

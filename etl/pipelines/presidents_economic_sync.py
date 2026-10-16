@@ -114,10 +114,6 @@ class PresidentsEconomicSyncPipeline:
         desocupacao_df = self.bcb_extractor.fetch_serie_dataframe("desemprego_pnad", use_cache=use_cache)
         logger.info(f"-> Selic meta: {len(selic_df)} registros; desocupação PNADC: {len(desocupacao_df)} registros.")
 
-        # Ibovespa Fechamento Anual (Série 7 BCB / B3)
-        ibovespa_df = self.bcb_extractor.fetch_ibovespa_annual_closing()
-        logger.info(f"-> Ibovespa Fechamento Anual: {len(ibovespa_df)} anos registrados.")
-
         # 2.1 Extrair indicadores socioambientais expandidos
         logger.info("-> Extraindo dados de desemprego (IBGE), desmatamento (INPE/PRODES) e fome...")
         unemployment_dict = self.social_extractor.get_annual_unemployment_history()
@@ -164,7 +160,6 @@ class PresidentsEconomicSyncPipeline:
             salario_min_df=salario_min_df,
             divida_df=divida_df,
             presidents=presidents,
-            ibovespa_df=ibovespa_df,
             unemployment_dict=unemployment_dict,
             deforestation_dict=deforestation_dict,
             food_insecurity_dict=food_insecurity_dict,

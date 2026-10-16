@@ -62,6 +62,14 @@ def test_series_mensais_trazem_o_codigo_da_serie_na_linha():
     assert eco.observacoes_mensais(linhas) == [("CAMBIO_MENSAL", date(1995, 1, 1), None, 0.85, False)]
 
 
+def test_zero_e_valor_valido_e_nao_ausencia():
+    for zero in (0, "0", "0,0", " 0.00 "):
+        assert eco.numero(zero) == 0.0
+    linhas = [{"data": "1995-02-01", "valor": "0,00"}]
+    assert eco.observacoes_ipca_mensal(linhas) == [("IPCA_MENSAL", date(1995, 2, 1), None, 0.0, False)]
+    assert eco.observacoes_anuais([{"ano": "1996", "gini": "0"}], {"gini": "GINI"}, com_uf=False)[0][3] == 0.0
+
+
 def test_marcos_ignoram_vazios_e_espacos():
     assert pres.marcos({"marcos_economicos": [" Plano Real ", "", None, "  "]}) == ["Plano Real"]
     assert pres.marcos({}) == []
@@ -160,7 +168,7 @@ def test_carga_com_arquivos_sem_dados_nao_apaga_a_base(pg_engine, arquivos):
     assert _contagem(pg_engine) == antes
 
 
-def test_presidencia_atualiza_metadados_e_ignora_slug_desconhecido(pg_engine, tmp_path):
+def _semear_presidente(pg_engine, slug="x-2023"):
     with pg_engine.begin() as conn:
         conn.execute(
             text(
@@ -177,26 +185,123 @@ def test_presidencia_atualiza_metadados_e_ignora_slug_desconhecido(pg_engine, tm
             {"p": pessoa},
         ).scalar()
         conn.execute(
-            text("INSERT INTO core.mandato_presidencial (mandato_id, slug) VALUES (:m, 'x-2023')"), {"m": mandato}
+            text("INSERT INTO core.mandato_presidencial (mandato_id, slug) VALUES (:m, :s)"), {"m": mandato, "s": slug}
         )
-    catalogo = [
-        {
-            "id_referencia": "x-2023",
-            "vice_presidente": " Vice ",
-            "status_mandato": "TITULAR_ATIVO",
-            "marcos_economicos": ["A", "B"],
-        },
-        {"id_referencia": "y-1999", "vice_presidente": "Outro"},
-    ]
-    (tmp_path / "presidentes_historico.json").write_text(json.dumps(catalogo), encoding="utf-8")
-    assert pres.carregar(pg_engine, tmp_path) == {"atualizados": 1, "ignorados": 1}
-    assert pres.carregar(pg_engine, tmp_path) == {"atualizados": 1, "ignorados": 1}
+
+
+@pytest.fixture()
+def presidente(pg_engine):
+    """Um mandato presidencial `x-2023`; o banco do ETL é compartilhado, então limpa também ao final."""
+    _semear_presidente(pg_engine)
+    yield
+    with pg_engine.begin() as conn:
+        conn.execute(
+            text(
+                "TRUNCATE core.pessoa, core.mandato, core.mandato_presidencial, core.marco_governo RESTART IDENTITY CASCADE"
+            )
+        )
+
+
+def _catalogo(tmp_path, itens):
+    (tmp_path / "presidentes_historico.json").write_text(json.dumps(itens), encoding="utf-8")
+
+
+def _estado(pg_engine):
     with pg_engine.connect() as conn:
-        linha = conn.execute(text("SELECT vice_texto, status FROM core.mandato_presidencial")).one()
+        linha = conn.execute(text("SELECT vice_texto, motivo_inicio, status FROM core.mandato_presidencial")).one()
         marcos = conn.execute(text("SELECT texto FROM core.marco_governo ORDER BY ordem")).scalars().all()
-    assert tuple(linha) == ("Vice", "TITULAR_ATIVO") and marcos == ["A", "B"]
+    return tuple(linha), marcos
+
+
+def test_presidencia_atualiza_metadados_e_e_idempotente(pg_engine, tmp_path, presidente):
+    _catalogo(
+        tmp_path,
+        [
+            {
+                "id_referencia": "x-2023",
+                "vice_presidente": " Vice ",
+                "motivo_inicio": "Eleito",
+                "status_mandato": "TITULAR_ATIVO",
+                "marcos_economicos": ["A", "B"],
+            }
+        ],
+    )
+    assert pres.carregar(pg_engine, tmp_path) == {"atualizados": 1}
+    assert pres.carregar(pg_engine, tmp_path) == {"atualizados": 1}
+    assert _estado(pg_engine) == (("Vice", "Eleito", "TITULAR_ATIVO"), ["A", "B"])
+
+
+def test_presidencia_campo_ausente_no_catalogo_nao_apaga_o_que_ja_esta_no_banco(pg_engine, tmp_path, presidente):
+    _catalogo(
+        tmp_path,
+        [
+            {
+                "id_referencia": "x-2023",
+                "vice_presidente": "Vice",
+                "status_mandato": "TITULAR_ATIVO",
+                "marcos_economicos": ["A"],
+            }
+        ],
+    )
+    pres.carregar(pg_engine, tmp_path)
+    _catalogo(tmp_path, [{"id_referencia": "x-2023", "motivo_inicio": "Novo motivo"}])
+    pres.carregar(pg_engine, tmp_path)
+    # vice, situação e marcos continuam; só o motivo mudou
+    assert _estado(pg_engine) == (("Vice", "Novo motivo", "TITULAR_ATIVO"), ["A"])
+
+
+def test_presidencia_status_invalido_nao_e_gravado(pg_engine, tmp_path, presidente):
+    _catalogo(tmp_path, [{"id_referencia": "x-2023", "status_mandato": "INVENTADO"}])
+    pres.carregar(pg_engine, tmp_path)
+    assert _estado(pg_engine)[0][2] is None
+
+
+def test_presidencia_mandato_do_catalogo_sem_identificador_falha_e_nao_grava_nada(pg_engine, tmp_path, presidente):
+    _catalogo(
+        tmp_path,
+        [
+            {"id_referencia": "x-2023", "vice_presidente": "Vice"},
+            {"id_referencia": "y-1999", "vice_presidente": "Outro"},
+        ],
+    )
+    with pytest.raises(RuntimeError, match="y-1999"):
+        pres.carregar(pg_engine, tmp_path)
+    assert _estado(pg_engine) == ((None, None, None), [])  # a transação inteira voltou
 
 
 def test_presidencia_sem_catalogo_e_erro(pg_engine, tmp_path):
     with pytest.raises(FileNotFoundError):
         pres.carregar(pg_engine, tmp_path)
+
+
+def test_serie_fora_do_catalogo_e_erro_e_nao_altera_a_base(pg_engine, arquivos):
+    with pg_engine.begin() as conn:
+        conn.execute(text("TRUNCATE eco.observacao"))
+    eco.carregar(pg_engine, arquivos)
+    antes = _contagem(pg_engine)
+    _escrever_csv(
+        arquivos, "bcb_series_mensais.csv", ["serie", "data", "valor"], [["SERIE_INEXISTENTE", "1995-01-01", 1]]
+    )
+    with pytest.raises(ValueError, match="SERIE_INEXISTENTE"):
+        eco.carregar(pg_engine, arquivos)
+    assert _contagem(pg_engine) == antes
+
+
+def test_parcial_e_zero_chegam_ao_banco(pg_engine, arquivos):
+    with pg_engine.begin() as conn:
+        conn.execute(text("TRUNCATE eco.observacao"))
+    _escrever_csv(
+        arquivos,
+        "seguranca_publica_historico.csv",
+        ["ano", "taxa_homicidios", "homicidios_total", "parcial"],
+        [[2024, 0, 10, "true"]],
+    )
+    eco.carregar(pg_engine, arquivos)
+    with pg_engine.connect() as conn:
+        linha = conn.execute(
+            text(
+                "SELECT o.valor, o.parcial FROM eco.observacao o JOIN eco.serie s ON s.id = o.serie_id "
+                "WHERE s.codigo = 'HOMICIDIOS_TAXA'"
+            )
+        ).one()
+    assert (float(linha[0]), linha[1]) == (0.0, True)

@@ -5,21 +5,10 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from app.core.errors import ErroDeDominio
-from app.services.mandato_economia_service import do_mandato
+from app.services.periodos import do_mandato, nome_do_mandato
+from app.services.presidencia_service import mandatos_presidenciais
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-
-_MANDATOS_SQL = text(
-    """
-    SELECT m.uid, m.inicio, m.fim, pe.nome_exibicao, mp.rotulo, pt.sigla AS partido, mi.url_origem AS foto_url
-    FROM core.mandato_presidencial mp
-    JOIN core.mandato m ON m.id = mp.mandato_id
-    JOIN core.pessoa pe ON pe.id = m.pessoa_id
-    LEFT JOIN core.vw_partido pt ON pt.id = m.partido_id
-    LEFT JOIN core.midia mi ON mi.id = pe.foto_midia_id
-    ORDER BY m.inicio
-    """
-)
 
 _SERIE_SQL = text(
     """
@@ -38,28 +27,31 @@ INDICADORES = {
 }
 
 
-def _nome(r: Any) -> str:
-    return f"{r['nome_exibicao']} ({r['rotulo']})" if r["rotulo"] else r["nome_exibicao"]
+def _linhas(db: Session) -> List[Dict[str, Any]]:
+    return [
+        {**r, "nome": nome_do_mandato(r["nome_exibicao"], r["rotulo"]), "partido": r["partido_sigla"] or ""}
+        for r in mandatos_presidenciais(db)
+    ]
 
 
 def listar_mandatos(db: Session) -> List[Dict[str, Any]]:
     return [
         {
             "id": r["uid"],
-            "nome": _nome(r),
+            "nome": r["nome"],
             "inicio": r["inicio"],
             "fim": r["fim"],
-            "partido": r["partido"] or "",
+            "partido": r["partido"],
             "foto_url": r["foto_url"],
         }
-        for r in db.execute(_MANDATOS_SQL).mappings()
+        for r in _linhas(db)
     ]
 
 
 def _mandato(db: Session, mandate_id: UUID) -> Dict[str, Any]:
-    for r in db.execute(_MANDATOS_SQL).mappings():
+    for r in _linhas(db):
         if r["uid"] == mandate_id:
-            return dict(r)
+            return r
     raise ErroDeDominio(404, "Mandato não encontrado.")
 
 
@@ -113,8 +105,8 @@ def resumo_do_mandato(db: Session, mandate_id: UUID) -> Dict[str, Any]:
         ipca["variacao_pp"] = round(ipca["ultimo"] - ipca["primeiro"], 2)
     return {
         "mandate_id": str(mandate_id),
-        "nome": _nome(mandato),
-        "partido": mandato["partido"] or "",
+        "nome": mandato["nome"],
+        "partido": mandato["partido"],
         "inicio": mandato["inicio"].isoformat(),
         "fim": mandato["fim"].isoformat() if mandato["fim"] else None,
         "foto_url": mandato["foto_url"],

@@ -4,6 +4,9 @@
 mão (aprovação popular, emendas, câmbio, Selic) por `seed_executivo.py`, que deixou de existir (decisão D7: só fonte
 oficial rastreada). O painel passou a ler `core.mandato_presidencial` e as séries de `eco`.
 
+Irreversível nos dados: o `downgrade` recria a estrutura, mas não restaura o que foi apagado ou renomeado. Faça backup antes
+de aplicar (`pg_dump`).
+
 Revision ID: 0027
 Revises: 0026
 """

@@ -74,8 +74,8 @@ export interface ScoreProsperidadeData {
 }
 
 export interface TermometroRepassesData {
-  m1_lider_per_capita: { uf: string; estado: string; valor_per_capita: number };
-  m2_lider_per_capita: { uf: string; estado: string; valor_per_capita: number };
+  m1_lider_per_capita: { uf: string | null; estado: string | null; valor_per_capita: number | null };
+  m2_lider_per_capita: { uf: string | null; estado: string | null; valor_per_capita: number | null };
   diagnostico: string;
 }
 
@@ -261,9 +261,9 @@ export interface UFRepasseComparison {
   m2_total: number;
   diff_brl: number;
   growth_pct: number;
-  m1_per_capita: number;
-  m2_per_capita: number;
-  diff_per_capita: number;
+  m1_per_capita: number | null;
+  m2_per_capita: number | null;
+  diff_per_capita: number | null;
   areas: Record<string, { m1: number; m2: number; diff: number; growth_pct: number }>;
 }
 

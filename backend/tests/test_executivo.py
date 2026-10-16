@@ -5,19 +5,9 @@ import pytest
 from app.services.executivo_service import acumulado_12_meses
 from sqlalchemy import text
 
-from .conftest import criar_mandato_presidencial
+from .conftest import criar_mandato_presidencial, observar_serie
 
 BASE = "/api/v1/executivo"
-
-
-def _observar(db, codigo, referencia, valor):
-    db.execute(
-        text(
-            "INSERT INTO eco.observacao (serie_id, referencia, valor) "
-            "VALUES ((SELECT id FROM eco.serie WHERE codigo = :c), :r, :v)"
-        ),
-        {"c": codigo, "r": referencia, "v": valor},
-    )
 
 
 def _uid(db, mandato_id):
@@ -32,11 +22,11 @@ def mandates(db):
     # IPCA mensal de 2022-01 a 2023-04; a taxa do mês sobe em 2023, então o acumulado em 12 meses também sobe
     for i in range(16):
         ano, mes = 2022 + i // 12, i % 12 + 1
-        _observar(db, "IPCA_MENSAL", date(ano, mes, 1), 0.5 if i < 12 else 1.0)
-    _observar(db, "DESEMPREGO_PNADC_MENSAL", date(2023, 1, 1), 8.0)
-    _observar(db, "DESEMPREGO_PNADC_MENSAL", date(2023, 2, 1), 9.0)
-    _observar(db, "CAMBIO_MENSAL", date(2023, 1, 1), 5.0)
-    _observar(db, "SELIC_META", date(2023, 1, 1), 13.75)
+        observar_serie(db, "IPCA_MENSAL", date(ano, mes, 1), 0.5 if i < 12 else 1.0)
+    observar_serie(db, "DESEMPREGO_PNADC_MENSAL", date(2023, 1, 1), 8.0)
+    observar_serie(db, "DESEMPREGO_PNADC_MENSAL", date(2023, 2, 1), 9.0)
+    observar_serie(db, "CAMBIO_MENSAL", date(2023, 1, 1), 5.0)
+    observar_serie(db, "SELIC_META", date(2023, 1, 1), 13.75)
     db.commit()
     return {"antigo": _uid(db, antigo), "atual": _uid(db, atual), "vazio": _uid(db, vazio)}
 
@@ -74,9 +64,11 @@ def test_summary_computes_stats_from_official_series(client, mandates):
     body = client.get(f"{BASE}/mandates/{mandates['atual']}/summary").json()
     assert body["nome"] == "Atual" and body["fim"] is None and body["partido"] == "PT"
     ipca = body["kpis"]["inflacao_ipca"]
-    assert ipca["ultimo"] > ipca["primeiro"] and ipca["variacao_pp"] == pytest.approx(
-        ipca["ultimo"] - ipca["primeiro"], abs=0.01
-    )
+    # jan/2023: fev-dez/2022 a 0,5% (11 meses) e jan/2023 a 1,0%; abr/2023: mai-dez/2022 (8 meses) a 0,5% e 4 a 1,0%
+    assert ipca["primeiro"] == pytest.approx((1.005**11 * 1.01 - 1) * 100, abs=0.01)
+    assert ipca["ultimo"] == pytest.approx((1.005**8 * 1.01**4 - 1) * 100, abs=0.01)
+    assert ipca["variacao_pp"] == pytest.approx(round(ipca["ultimo"] - ipca["primeiro"], 2), abs=0.01)
+    assert ipca["minimo"] == ipca["primeiro"] and ipca["maximo"] == ipca["ultimo"]
     assert body["kpis"]["desemprego_pnad"] == {
         "primeiro": 8.0,
         "ultimo": 9.0,
@@ -126,7 +118,20 @@ def test_get_all_mandates_iple(client):
     assert res.status_code == 200
     data = res.json()
     assert isinstance(data, list)
-    assert len(data) == 9
+    ids = [m["mandato_id"] for m in data]
+    # FHC 1 e 2, Lula 1 a 3, Dilma 1 e 2, Temer e Bolsonaro; a janela começa em 1995, sem Itamar Franco
+    assert ids == [
+        "fhc-1995",
+        "fhc-1999",
+        "lula-2003",
+        "lula-2007",
+        "dilma-2011",
+        "dilma-2015",
+        "temer-2016",
+        "bolsonaro-2019",
+        "lula-2023",
+    ]
+    assert "itamar-franco-1992" not in ids
     first = data[0]
     assert "mandato_id" in first
     assert "indicadores_base" in first

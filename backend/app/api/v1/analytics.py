@@ -22,12 +22,12 @@ from app.schemas.analytics import (
     FederalTransfersResponse,
     WageDisparityResponse,
 )
-from app.services.eco_dados import macro_por_ano, seguranca_por_ano, sociais_por_ano
+from app.services.eco_dados import macro_por_ano, seguranca_por_ano, sociais_por_ano, ultimo_salario_minimo
 from app.services.iple_service import get_mandate_iple
 from app.services.mandato_economia_service import matriz_de_mandatos
 from app.services.presidencia_service import presidente_por_referencia
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_, text
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 router = APIRouter()
@@ -199,6 +199,19 @@ def get_mandates_economic_performance(db: Session = Depends(get_db)):
     ]
 
 
+def _repasse_como_dict(r: FederalTransferByState) -> Dict[str, Any]:
+    """Repasse em dict. Total é obrigatório na tabela; per capita desconhecido continua None (nunca vira 0)."""
+    return {
+        "mandato_id_ref": r.mandate_id_ref,
+        "uf": r.uf,
+        "estado_nome": r.estado_nome,
+        "regiao": r.regiao,
+        "area_tematica": r.area_tematica,
+        "valor_pago_brl": float(r.valor_pago_brl),
+        "valor_per_capita_brl": float(r.valor_per_capita_brl) if r.valor_per_capita_brl is not None else None,
+    }
+
+
 def _sum_by(rows: List[Dict[str, Any]], key: str = "valor_pago_brl") -> float:
     return sum(float(r.get(key) or 0.0) for r in rows)
 
@@ -235,18 +248,7 @@ def compare_mandates(
     macro_dict = macro_por_ano(db)
     sociais_map = sociais_por_ano(db)
     seg_map = seguranca_por_ano(db)
-    repasses_list: List[Dict[str, Any]] = [
-        {
-            "mandato_id_ref": r.mandate_id_ref,
-            "uf": r.uf,
-            "estado_nome": r.estado_nome,
-            "regiao": r.regiao,
-            "area_tematica": r.area_tematica,
-            "valor_pago_brl": float(r.valor_pago_brl or 0),
-            "valor_per_capita_brl": float(r.valor_per_capita_brl or 0),
-        }
-        for r in db.query(FederalTransferByState).all()
-    ]
+    repasses_list = [_repasse_como_dict(r) for r in db.query(FederalTransferByState).all()]
 
     # Anos cobertos por cada mandato
     years1 = _get_mandate_years(m1)
@@ -377,8 +379,9 @@ def compare_mandates(
         regiao = u1[0]["regiao"] if u1 else (u2[0]["regiao"] if u2 else "")
         tot1 = _sum_by(u1)
         tot2 = _sum_by(u2)
-        pc1 = float(u1[0].get("valor_per_capita_brl") or 0.0) if u1 else 0.0
-        pc2 = float(u2[0].get("valor_per_capita_brl") or 0.0) if u2 else 0.0
+        # per capita desconhecido (sem população estimada, ou UF sem repasse no mandato) fica None, nunca 0
+        pc1 = u1[0].get("valor_per_capita_brl") if u1 else None
+        pc2 = u2[0].get("valor_per_capita_brl") if u2 else None
 
         areas_breakdown = {}
         for a in areas_meta:
@@ -401,9 +404,9 @@ def compare_mandates(
                 "m2_total": round(tot2, 2),
                 "diff_brl": round(tot2 - tot1, 2),
                 "growth_pct": round(((tot2 - tot1) / tot1) * 100, 2) if tot1 > 0 else 0.0,
-                "m1_per_capita": round(pc1, 2),
-                "m2_per_capita": round(pc2, 2),
-                "diff_per_capita": round(pc2 - pc1, 2),
+                "m1_per_capita": round(pc1, 2) if pc1 is not None else None,
+                "m2_per_capita": round(pc2, 2) if pc2 is not None else None,
+                "diff_per_capita": round(pc2 - pc1, 2) if pc1 is not None and pc2 is not None else None,
                 "areas": areas_breakdown,
             }
         )
@@ -414,8 +417,10 @@ def compare_mandates(
     score_m1 = _calculate_mandate_prosperity_score(m1)
     score_m2 = _calculate_mandate_prosperity_score(m2)
 
-    top_uf_m1 = max(by_uf, key=lambda x: x["m1_per_capita"]) if by_uf else None
-    top_uf_m2 = max(by_uf, key=lambda x: x["m2_per_capita"]) if by_uf else None
+    com_pc1 = [u for u in by_uf if u["m1_per_capita"] is not None]
+    com_pc2 = [u for u in by_uf if u["m2_per_capita"] is not None]
+    top_uf_m1 = max(com_pc1, key=lambda x: x["m1_per_capita"]) if com_pc1 else None
+    top_uf_m2 = max(com_pc2, key=lambda x: x["m2_per_capita"]) if com_pc2 else None
     termometro_repasses = {
         "m1_lider_per_capita": {
             "uf": top_uf_m1["uf"] if top_uf_m1 else None,
@@ -735,7 +740,7 @@ def get_federal_transfers(
             "area_tematica": r.area_tematica,
             "valor_pago_brl": float(r.valor_pago_brl),
             "populacao_estimada": r.populacao_estimada or 0,
-            "valor_per_capita_brl": float(r.valor_per_capita_brl or 0.0),
+            "valor_per_capita_brl": float(r.valor_per_capita_brl) if r.valor_per_capita_brl is not None else None,
         }
         for r in rows
     ]
@@ -855,18 +860,6 @@ SOCIAL_CLASSES_REFERENCE = [
 
 def _format_brl(value: float) -> str:
     return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-
-def _latest_minimum_wage(db: Session) -> Optional[Dict[str, float]]:
-    """Último salário mínimo nominal da série oficial (ano e valor)."""
-    row = db.execute(
-        text(
-            "SELECT extract(year FROM o.referencia)::int AS ano, o.valor FROM eco.observacao o "
-            "JOIN eco.serie s ON s.id = o.serie_id WHERE s.codigo = 'SALARIO_MINIMO' "
-            "ORDER BY o.referencia DESC LIMIT 1"
-        )
-    ).first()
-    return {"ano": row[0], "valor": float(row[1])} if row else None
 
 
 PNAD_FILE = "pnad_faixas_salario_minimo.json"
@@ -1023,7 +1016,7 @@ def get_social_classes_distribution(
     if ano is not None:
         raise HTTPException(status_code=404, detail="Microdados da PNAD ainda não processados (rode o ETL --pnad).")
 
-    wage = _latest_minimum_wage(db)
+    wage = ultimo_salario_minimo(db)
     sm_ref = wage["valor"] if wage else None
 
     classes = []

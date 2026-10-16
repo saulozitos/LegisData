@@ -9,7 +9,7 @@ import {
   PresidenteHistorico,
 } from "@/services/api";
 import { useApi } from "@/hooks/useApi";
-import { fmtNum, fmtSigned, isNum } from "@/lib/format";
+import { fmtBRL, fmtNum, fmtSigned, isNum } from "@/lib/format";
 import { EmptyState, ErrorState, LoadingState } from "@/components/StateViews";
 import { getPresidentPhotoUrl } from "@/components/PresidentTimeline";
 import {
@@ -1876,7 +1876,7 @@ export default function ComparadorPage() {
                       <div className="flex justify-between">
                         <span className="text-slate-400">Valor Per Capita:</span>
                         <strong className="text-cyan-300 font-mono">
-                          R$ {fmtNum(termometroRepasses.m1_lider_per_capita.valor_per_capita, 0)}/hab
+                          {fmtBRL(termometroRepasses.m1_lider_per_capita.valor_per_capita, 0)}/hab
                         </strong>
                       </div>
                     </div>
@@ -1897,7 +1897,7 @@ export default function ComparadorPage() {
                       <div className="flex justify-between">
                         <span className="text-slate-400">Valor Per Capita:</span>
                         <strong className="text-amber-300 font-mono">
-                          R$ {fmtNum(termometroRepasses.m2_lider_per_capita.valor_per_capita, 0)}/hab
+                          {fmtBRL(termometroRepasses.m2_lider_per_capita.valor_per_capita, 0)}/hab
                         </strong>
                       </div>
                     </div>
@@ -2049,9 +2049,9 @@ export default function ComparadorPage() {
                         </span>
                       </td>
                       <td className="py-2.5 px-3.5 text-right font-mono text-slate-400">
-                        <span className="text-cyan-400">R$ {fmtNum(item.m1_per_capita, 0)}</span>
+                        <span className="text-cyan-400">{fmtBRL(item.m1_per_capita, 0)}</span>
                         <span className="mx-1 text-slate-400">/</span>
-                        <span className="text-amber-400 font-bold">R$ {fmtNum(item.m2_per_capita, 0)}</span>
+                        <span className="text-amber-400 font-bold">{fmtBRL(item.m2_per_capita, 0)}</span>
                       </td>
                     </tr>
                   ))}

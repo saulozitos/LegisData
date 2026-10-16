@@ -132,7 +132,7 @@ A infraestrutura e o pipeline de CI/CD do LegisData foram endurecidos contra ame
   - **Python 3.11+** com **FastAPI** assíncrono.
   - **Pydantic v2** com `pydantic-settings` para validação estrita de contratos.
   - **SQLAlchemy 2.0** com connection pooling resiliente.
-  - **Serviço Presidencial Unificado** (`presidential_service.py`) como fonte única de verdade temporal e política.
+  - **Serviço Presidencial Unificado** (`presidencia_service.py`, lido de `core.mandato_presidencial`) como fonte única de verdade temporal e política.
   - **Gunicorn & Uvicorn Workers** em produção.
 - **Banco de Dados:**
   - **PostgreSQL 16** com mais de 1,4 milhão de registros relacionais oficiais indexados.

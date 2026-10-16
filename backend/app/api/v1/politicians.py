@@ -30,6 +30,7 @@ from app.services.basometro import calcular_basometro
 from app.services.ialp_pesos import carregar_pesos_ialp
 from app.services.ialp_pontos import pontos_ialp_pessoa
 from app.services.presidencia_service import listar_presidentes, periodo_do_mandato, presidente_por_referencia
+from app.services.resumo_votos_service import resumo_votos as resumo_votos_do_parlamentar
 from app.services.roi_cidadao import METODOLOGIA as ROI_METODOLOGIA
 from app.services.roi_cidadao import PISO_DE_PONTOS, calcular_roi
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -172,44 +173,6 @@ VOTE_LABELS = {
     "AUSENTE": "Ausente",
     "ARTIGO_17": "Art. 17",
 }
-
-
-RESUMO_VOTOS_GRUPOS = (("sim", "SIM"), ("nao", "NAO"), ("ausente", "AUSENTE"))
-
-
-def _resumo_votos(db: Session, pessoa_id: int) -> Dict[str, Any]:
-    """Total e lista completa (da mais recente à mais antiga) das votações em que votou Sim, Não ou esteve ausente."""
-    totais = dict(
-        db.query(Voto.opcao_codigo, func.count())
-        .filter(Voto.pessoa_id == pessoa_id, Voto.opcao_codigo.in_([c for _, c in RESUMO_VOTOS_GRUPOS]))
-        .group_by(Voto.opcao_codigo)
-        .all()
-    )
-    resumo: Dict[str, Any] = {}
-    for chave, codigo in RESUMO_VOTOS_GRUPOS:
-        linhas = (
-            db.query(Votacao, Proposicao)
-            .join(Voto, Voto.votacao_id == Votacao.id)
-            .join(Proposicao, Votacao.proposicao_id == Proposicao.id)
-            .filter(Voto.pessoa_id == pessoa_id, Voto.opcao_codigo == codigo)
-            .order_by(desc(Votacao.data_hora), Votacao.id)
-            .all()
-        )
-        itens = []
-        for sess, prop in linhas:
-            quando = _to_brt(sess.data_hora)
-            itens.append(
-                {
-                    "proposicao_id": str(prop.uid),
-                    "proposicao_titulo": prop.titulo,
-                    "proposicao_numero": f"{prop.tipo_codigo} {prop.numero}/{prop.ano}" if prop.numero else prop.titulo,
-                    "data": quando.strftime("%d/%m/%Y") if quando else "",
-                    "casa_legislativa": sess.casa.codigo if sess.casa else "CAMARA_DOS_DEPUTADOS",
-                    "url_oficial": url_oficial_proposicao(prop),
-                }
-            )
-        resumo[chave] = {"total": int(totais.get(codigo, 0)), "itens": itens}
-    return resumo
 
 
 def _opt_float(valor: Any) -> Optional[float]:
@@ -1448,7 +1411,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             }
         )
 
-    resumo_votos = _resumo_votos(db, pessoa_param)
+    resumo_votos = resumo_votos_do_parlamentar(db, pessoa_param)
 
     # Basômetro: alinhamento à orientação do governo em cada votação nominal (sem baseline inventado).
     basometro = calcular_basometro(db, pessoa_id, partido_atual_sigla, votos_sim_total, votos_nao_total)

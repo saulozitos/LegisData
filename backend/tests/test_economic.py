@@ -3,21 +3,11 @@
 from datetime import date
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
-from .conftest import criar_mandato_presidencial
+from .conftest import criar_mandato_presidencial, observar_serie
 
 BASE = "/api/v1/economic"
-
-
-def _observar(db, codigo, referencia, valor):
-    db.execute(
-        text(
-            "INSERT INTO eco.observacao (serie_id, referencia, valor) "
-            "VALUES ((SELECT id FROM eco.serie WHERE codigo = :c), :r, :v)"
-        ),
-        {"c": codigo, "r": referencia, "v": valor},
-    )
 
 
 @pytest.fixture()
@@ -25,9 +15,9 @@ def macro(db):
     criar_mandato_presidencial(db, "Presidente Um", date(2019, 1, 1), date(2023, 1, 1), "teste-2019")
     criar_mandato_presidencial(db, "Presidente Dois", date(2023, 1, 1), None, "aberto-2023", "Dois 1")
     for ano, ipca, pib in ((2019, 4.3, 1.2), (2020, 4.5, None), (2021, 10.1, 4.8), (2022, 5.8, 3.0), (2023, 4.6, 2.9)):
-        _observar(db, "IPCA_ACUM_ANO", date(ano, 1, 1), ipca)
+        observar_serie(db, "IPCA_ACUM_ANO", date(ano, 1, 1), ipca)
         if pib is not None:
-            _observar(db, "PIB_CRESC_REAL", date(ano, 1, 1), pib)
+            observar_serie(db, "PIB_CRESC_REAL", date(ano, 1, 1), pib)
     db.commit()
 
 
@@ -65,7 +55,7 @@ def test_annual_summary_open_mandate_runs_to_last_year_of_series(client, macro):
 def test_annual_summary_accumulated_inflation_restarts_in_each_mandate(client, db, macro):
     for ano in range(2019, 2024):
         for mes in range(1, 13):
-            _observar(db, "IPCA_MENSAL", date(ano, mes, 1), 1.0)
+            observar_serie(db, "IPCA_MENSAL", date(ano, mes, 1), 1.0)
     db.commit()
     rows = {r["ano"]: r["inflacao_acumulada_mandato"] for r in client.get(f"{BASE}/annual-summary").json()}
     assert rows[2019] == pytest.approx((1.01**12 - 1) * 100, rel=1e-6)
@@ -95,7 +85,7 @@ def test_ipca_monthly_filters_by_year_range(client, db):
         (date(2021, 2, 1), 0.6),
         (date(2022, 1, 1), 0.7),
     ):
-        _observar(db, "IPCA_MENSAL", referencia, valor)
+        observar_serie(db, "IPCA_MENSAL", referencia, valor)
     db.commit()
     rows = client.get(f"{BASE}/ipca-monthly", params={"ano_inicio": 2021, "ano_fim": 2021}).json()
     assert [(r["ano"], r["mes"], r["valor"]) for r in rows] == [(2021, 1, 0.5), (2021, 2, 0.6)]
@@ -117,7 +107,29 @@ def test_ipca_monthly_without_data_is_404(client):
     assert client.get(f"{BASE}/ipca-monthly").status_code == 404
 
 
+def test_ipca_monthly_filter_without_rows_is_an_empty_list_not_a_missing_series(client, db):
+    observar_serie(db, "IPCA_MENSAL", date(2021, 1, 1), 0.5)
+    db.commit()
+    resposta = client.get(f"{BASE}/ipca-monthly", params={"ano_inicio": 2030})
+    assert resposta.status_code == 200 and resposta.json() == []
+
+
+def test_ipca_monthly_exposes_unit_and_series_code(client, db):
+    observar_serie(db, "IPCA_MENSAL", date(2021, 1, 1), 0.5)
+    db.commit()
+    linha = client.get(f"{BASE}/ipca-monthly").json()[0]
+    assert (linha["codigo_serie"], linha["unidade"], linha["valor"], linha["dia"]) == (433, "%", 0.5, 1)
+
+
 def test_observation_before_1995_is_rejected_by_the_table(db):
-    with pytest.raises(Exception, match="observacao_referencia_check"):
-        _observar(db, "IPCA_MENSAL", date(1994, 12, 1), 1.0)
-        db.flush()
+    with pytest.raises(IntegrityError, match="observacao_referencia_check"):
+        observar_serie(db, "IPCA_MENSAL", date(1994, 12, 1), 1.0)
+    db.rollback()
+
+
+def test_zero_is_a_valid_observation_and_not_confused_with_missing(client, db):
+    observar_serie(db, "IPCA_MENSAL", date(2021, 1, 1), 0.0)
+    observar_serie(db, "PIB_CRESC_REAL", date(2021, 1, 1), 0.0)
+    db.commit()
+    assert client.get(f"{BASE}/ipca-monthly").json()[0]["valor"] == 0.0
+    assert client.get(f"{BASE}/annual-summary").json()[0]["pib_crescimento_real_pct"] == 0.0

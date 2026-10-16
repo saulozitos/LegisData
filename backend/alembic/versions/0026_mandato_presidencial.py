@@ -8,8 +8,14 @@
   Fernando Henrique Cardoso (decisões D8 e confirmação de 2026-10-15). Sai também do legado, senão a ponte
   `etl.sincronizar_legado()` o recriaria na próxima execução.
 
+Os identificadores só são criados para mandatos que já existem em `core.mandato` (depois do `--load-db`); a carga
+`--load-economia` falha se o catálogo trouxer um mandato sem identificador.
+
 Os textos (vice, motivo, marcos) vêm do arquivo curado `presidentes_historico.json` pela carga
 `etl.pipelines.presidencia_loader`; a migração só cria a estrutura e os identificadores.
+
+Irreversível nos dados: o `downgrade` recria a estrutura, mas não restaura o que foi apagado ou renomeado. Faça backup antes
+de aplicar (`pg_dump`).
 
 Revision ID: 0026
 Revises: 0025

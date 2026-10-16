@@ -110,7 +110,10 @@ run-all:
 	PYTHONPATH=. $(PY) etl/run_etl.py
 
 run-etl:
-	PYTHONPATH=. $(PY) etl/run_etl.py --economic
+	PYTHONPATH=. $(PY) etl/run_etl.py --economic --load-economia
+
+run-load-economia:
+	PYTHONPATH=. $(PY) etl/run_etl.py --load-economia
 
 run-camara:
 	PYTHONPATH=. $(PY) etl/run_etl.py --camara

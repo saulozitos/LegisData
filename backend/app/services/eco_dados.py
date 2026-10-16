@@ -1,7 +1,8 @@
 """Leitura das séries anuais de `eco` no formato por ano que as telas de comparação usam."""
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
+from app.core.errors import ErroDeDominio
 from app.services import economia_service
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -47,6 +48,21 @@ def macro_por_ano(db: Session) -> Dict[int, Dict[str, Any]]:
     """Resumo macroeconômico por ano, com as mesmas colunas de `GET /economic/annual-summary`."""
     try:
         linhas: List[Dict[str, Any]] = economia_service.resumo_anual(db, None)
-    except Exception:  # sem série carregada: a comparação segue sem trajetória macro
+    except ErroDeDominio:  # série ainda não carregada: a comparação segue sem trajetória macro
         return {}
     return {linha["ano"]: linha for linha in linhas}
+
+
+_SALARIO_SQL = text(
+    """
+    SELECT extract(year FROM o.referencia)::int AS ano, o.valor
+    FROM eco.observacao o JOIN eco.serie s ON s.id = o.serie_id
+    WHERE s.codigo = 'SALARIO_MINIMO' ORDER BY o.referencia DESC LIMIT 1
+    """
+)
+
+
+def ultimo_salario_minimo(db: Session) -> Optional[Dict[str, float]]:
+    """Último salário mínimo nominal da série oficial (ano e valor)."""
+    row = db.execute(_SALARIO_SQL).first()
+    return {"ano": row[0], "valor": float(row[1])} if row else None
