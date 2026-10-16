@@ -26,8 +26,8 @@ from etl.utils.io_utils import atomic_write_json
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("BCBExtractor")
 
-# Desde 2025 o SGS limita séries diárias a janelas de 10 anos por consulta.
-JANELA_MAXIMA_ANOS = 10
+# Desde 2025 o SGS limita séries diárias a janelas de 10 anos por consulta; 5 anos respondem antes do timeout.
+JANELA_MAXIMA_ANOS = 5
 CACHE_MAX_IDADE_HORAS = 24
 
 # Fechamentos anuais do Ibovespa (pontos) digitados a partir de dados da B3. Anos sem valor ficam None
@@ -279,7 +279,7 @@ class BCBExtractor:
             return None
 
     def fetch_ibovespa_annual_closing(
-        self, start_year: int = 1993, end_year: Optional[int] = None, ibovespa: Optional[IbovespaExtractor] = None
+        self, start_year: int = 1995, end_year: Optional[int] = None, ibovespa: Optional[IbovespaExtractor] = None
     ) -> pd.DataFrame:
         """
         Fechamento anual do Ibovespa. Fonte principal: Yahoo Finance (^BVSP, barra de dezembro), conferida contra a

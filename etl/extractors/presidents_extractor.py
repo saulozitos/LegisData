@@ -1,6 +1,7 @@
 """
-Extrator e Catálogo Histórico dos Presidentes da República do Brasil (1992 - Presente)
-Abrange desde a posse de Itamar Franco (outubro/1992) até a atual administração.
+Extrator e Catálogo Histórico dos Presidentes da República do Brasil (1995 - Presente)
+Abrange desde a posse de Fernando Henrique Cardoso (1º de janeiro de 1995), início da janela de dados do projeto,
+até a atual administração.
 """
 
 from datetime import datetime
@@ -8,50 +9,10 @@ from typing import Any, Dict, List, Optional
 
 PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
     {
-        "id_referencia": "itamar-franco-1992",
-        "nome_civil": "Itamar Augusto Cautiero Franco",
-        "nome_eleitoral": "Itamar Franco",
-        "cpf": None,
-        "data_nascimento": "1930-06-28",
-        "data_falecimento": "2011-07-02",
-        "genero": "MASCULINO",
-        "naturalidade_municipio": "Salvador",
-        "naturalidade_uf": "BA",
-        "partido_eleicao": "PMDB",
-        "partido_sigla": "PMDB",
-        "partido_nome": "Partido do Movimento Democrático Brasileiro",
-        "mandato_numero": 1,
-        "ano_eleicao": 1989,  # Eleito vice-presidente na chapa de Fernando Collor
-        "data_inicio": "1992-10-02",  # Posse interina (afastamento de Collor) / Efetivação em 29/12/1992
-        "data_fim": "1995-01-01",
-        "status_mandato": "CONCLUIDO",
-        "motivo_inicio": "Assumiu interinamente após abertura do processo de impeachment de Collor; efetivado com a renúncia deste.",
-        "vice_presidente": "Vago (Itamar era o vice-presidente)",
-        "ministros_fazenda_chave": [
-            {"nome": "Gustavo Krause", "inicio": "1992-10-02", "fim": "1992-12-16"},
-            {"nome": "Paulo Roberto Haddad", "inicio": "1992-12-16", "fim": "1993-03-01"},
-            {"nome": "Eliseu Resende", "inicio": "1993-03-01", "fim": "1993-05-19"},
-            {
-                "nome": "Fernando Henrique Cardoso",
-                "inicio": "1993-05-19",
-                "fim": "1994-03-30",
-                "papel": "Arquiteto do Plano Real",
-            },
-            {"nome": "Rubens Ricupero", "inicio": "1994-03-30", "fim": "1994-09-06"},
-            {"nome": "Ciro Gomes", "inicio": "1994-09-06", "fim": "1995-01-01"},
-        ],
-        "marcos_economicos": [
-            "Lançamento do Plano Real (Medida Provisória nº 434 de 27/02/1994)",
-            "Criação da Unidade Real de Valor (URV) em março de 1994",
-            "Entrada em circulação da nova moeda Real (R$) em 01/07/1994",
-            "Fim da hiperinflação crônica de décadas (queda de ~40% ao mês para ~2% ao mês)",
-        ],
-        "foto_url": "/presidents/itamar-franco.jpg",
-    },
-    {
         "id_referencia": "fhc-1995",
         "nome_civil": "Fernando Henrique Cardoso",
-        "nome_eleitoral": "Fernando Henrique Cardoso (FHC 1)",
+        "nome_eleitoral": "Fernando Henrique Cardoso",
+        "rotulo_mandato": "FHC 1",
         "cpf": None,
         "data_nascimento": "1931-06-18",
         "data_falecimento": None,
@@ -88,7 +49,8 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
     {
         "id_referencia": "fhc-1999",
         "nome_civil": "Fernando Henrique Cardoso",
-        "nome_eleitoral": "Fernando Henrique Cardoso (FHC 2)",
+        "nome_eleitoral": "Fernando Henrique Cardoso",
+        "rotulo_mandato": "FHC 2",
         "cpf": None,
         "data_nascimento": "1931-06-18",
         "data_falecimento": None,
@@ -118,7 +80,8 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
     {
         "id_referencia": "lula-2003",
         "nome_civil": "Luiz Inácio Lula da Silva",
-        "nome_eleitoral": "Lula (Lula 1)",
+        "nome_eleitoral": "Lula",
+        "rotulo_mandato": "Lula 1",
         "cpf": None,
         "data_nascimento": "1945-10-27",
         "data_falecimento": None,
@@ -152,7 +115,8 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
     {
         "id_referencia": "lula-2007",
         "nome_civil": "Luiz Inácio Lula da Silva",
-        "nome_eleitoral": "Lula (Lula 2)",
+        "nome_eleitoral": "Lula",
+        "rotulo_mandato": "Lula 2",
         "cpf": None,
         "data_nascimento": "1945-10-27",
         "data_falecimento": None,
@@ -182,7 +146,8 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
     {
         "id_referencia": "dilma-2011",
         "nome_civil": "Dilma Vana Rousseff",
-        "nome_eleitoral": "Dilma Rousseff (Dilma 1)",
+        "nome_eleitoral": "Dilma Rousseff",
+        "rotulo_mandato": "Dilma 1",
         "cpf": None,
         "data_nascimento": "1947-12-14",
         "data_falecimento": None,
@@ -212,7 +177,8 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
     {
         "id_referencia": "dilma-2015",
         "nome_civil": "Dilma Vana Rousseff",
-        "nome_eleitoral": "Dilma Rousseff (Dilma 2)",
+        "nome_eleitoral": "Dilma Rousseff",
+        "rotulo_mandato": "Dilma 2",
         "cpf": None,
         "data_nascimento": "1947-12-14",
         "data_falecimento": None,
@@ -317,7 +283,8 @@ PRESIDENTES_HISTORICO: List[Dict[str, Any]] = [
     {
         "id_referencia": "lula-2023",
         "nome_civil": "Luiz Inácio Lula da Silva",
-        "nome_eleitoral": "Lula (Lula 3)",
+        "nome_eleitoral": "Lula",
+        "rotulo_mandato": "Lula 3",
         "cpf": None,
         "data_nascimento": "1945-10-27",
         "data_falecimento": None,
@@ -355,7 +322,7 @@ class PresidentsExtractor:
 
     @staticmethod
     def get_presidents() -> List[Dict[str, Any]]:
-        """Retorna a lista completa e estruturada dos presidentes desde 1992."""
+        """Retorna a lista completa e estruturada dos presidentes desde 1995."""
         return PRESIDENTES_HISTORICO
 
     @staticmethod

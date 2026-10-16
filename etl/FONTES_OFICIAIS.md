@@ -14,11 +14,29 @@ estimado ou preenchido por palpite. Cada registro traz `fonte` (e, quando há ma
 | Homicídios | `--economic` | Atlas da Violência (IPEA, SIM/DataSUS), séries 328 (contagem) e 20 (taxa) por UF | Taxa nacional = Σ homicídios / Σ população implícita nas próprias séries do Atlas; pode diferir ±0,4 da taxa de manchete do Atlas |
 | Feminicídio | — | **Sem fonte aberta automatizável** | `taxa_feminicidios` fica `null` em todos os anos (antes eram valores digitados e retroações estimadas) |
 | Desmatamento (Amazônia Legal) | `--economic` | INPE/PRODES, `ratesAAAA.json` do painel TerraBrasilis (taxa consolidada por Estado) | 1993 e 1994 repetem a média 1993-94 divulgada pelo INPE. A soma das geometrias do WFS **não** reproduz a taxa oficial (até 12% de diferença) |
-| Ibovespa | `--economic` | Yahoo Finance (^BVSP, barra mensal de dezembro), conferido com a tabela da B3 | Se divergirem >1% o ano é descartado. Ano em curso: `ibovespa_ultimo_pregao` + `parcial=true`, sem `ibovespa_fechamento` |
+| Ibovespa | `--economic` | Yahoo Finance (^BVSP) conferido com a tabela da B3 | **Não é carregado no banco**: Yahoo e a tabela digitada não são fonte oficial rastreada (decisão D7). A coluna segue no CSV do ETL, mas a API deixou de expor o Ibovespa |
 | Composição do Congresso | `--composicao` | Presidentes das Casas, base/oposição e bancadas na posse: **curadoria manual**. Conferência: TSE `consulta_cand` (eleitos por partido) | `verificacao_tse` por casa/mandato. O TSE conta o partido no dia da eleição (trocas partidárias explicam diferenças). Eleição de 1990 ausente dos dados abertos → Senado de 1995 não verificável |
 
 ## Lacunas conhecidas
 - Pobreza/extrema pobreza antes de 2012, analfabetismo antes de 2016 e insegurança alimentar em 2009/2013/2017-18:
   sem série oficial automatizável (o Ipeadata, que cobriria parte disso, não respondeu a partir do ambiente de desenvolvimento).
 - Feminicídio (ver acima).
-- Itamar Franco (1992-94) e Temer (2016) iniciaram no meio de uma legislatura: sem conferência de bancada própria.
+- Temer (2016) iniciou no meio de uma legislatura: sem conferência de bancada própria. A janela dos dados começa em 1995-01-01 (decisão D8) e a linha presidencial em Fernando Henrique Cardoso.
+
+## Carga no banco (schema `eco`)
+
+`python etl/run_etl.py --load-economia` grava as séries em `eco.observacao` e os dados curados dos mandatos presidenciais em
+`core.mandato_presidencial` / `core.marco_governo`. Só entram séries com fonte oficial rastreada em `etl.fonte`; linha
+`is_synthetic` e célula vazia viram ausência de observação (nunca zero) e nada anterior a 1995-01-01 é gravado.
+
+| Série (`eco.serie.codigo`) | Fonte | Periodicidade |
+|---|---|---|
+| `IPCA_MENSAL`, `CAMBIO_MENSAL`, `DIVIDA_LIQUIDA_PIB_MENSAL`, `SALARIO_MINIMO_MENSAL`, `SELIC_META`, `DESEMPREGO_PNADC_MENSAL` | BCB SGS (433, 3698, 4513, 1619, 432, 24369) | mensal (Selic: último valor do mês) |
+| `IPCA_ACUM_ANO`, `PIB_CRESC_REAL`, `DESEMPREGO_ANUAL`, `CAMBIO_*_ANO`, `SALARIO_MINIMO`, `DIVIDA_LIQUIDA_PIB` | BCB SGS e IBGE (consolidados pelo `--economic`) | anual |
+| `DESMATAMENTO_AMAZONIA` | INPE / PRODES | anual |
+| `HOMICIDIOS_TAXA`, `HOMICIDIOS_TOTAL` | IPEA, Atlas da Violência | anual |
+| `GINI`, `ANALFABETISMO`, `EXTREMA_POBREZA_*`, `POBREZA_PCT`, `INSEGURANCA_ALIMENTAR_*` e as versões `*_UF` | IBGE / SIDRA | anual (nacional e por UF) |
+
+**Removidos por não terem fonte oficial rastreável (decisão D7):** aprovação popular (Datafolha/CNT digitada em
+`seed_executivo.py`), emendas mensais acumuladas do painel do Executivo, Ibovespa e feminicídio. O painel do Executivo
+mostra inflação (IPCA em 12 meses), desemprego (PNAD Contínua, desde 2012), câmbio e Selic.
