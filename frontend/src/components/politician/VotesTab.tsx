@@ -171,7 +171,7 @@ export default function VotesTab({ dossier }: VotesTabProps) {
                               </td>
                             </tr>
                           ) : (
-                            filteredVotes.map((v) => {
+                            filteredVotes.map((v, indice) => {
                               const decisaoVoto = v.decisao || v.voto;
                               const tone = voteTone(decisaoVoto);
                               const badgeColor =
@@ -189,7 +189,7 @@ export default function VotesTab({ dossier }: VotesTabProps) {
                               const temaLabel = v.tema || v.setor || "Geral";
 
                               return (
-                                <tr key={`${v.proposicao_id}-${v.data}-${v.casa_legislativa}`} className="hover:bg-slate-900/60 transition-colors">
+                                <tr key={`${v.proposicao_id}-${v.data}-${v.casa_legislativa}-${indice}`} className="hover:bg-slate-900/60 transition-colors">
                                   {/* Coluna 1: Matéria/Proposição com Tema/Setor */}
                                   <td className="py-3 px-4">
                                     <div className="space-y-1">
