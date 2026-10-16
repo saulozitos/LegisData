@@ -292,9 +292,7 @@ def test_presidencia_sem_catalogo_e_erro(pg_engine, tmp_path):
         pres.carregar(pg_engine, tmp_path)
 
 
-def test_serie_fora_do_catalogo_e_erro_e_nao_altera_a_base(pg_engine, arquivos):
-    with pg_engine.begin() as conn:
-        conn.execute(text("TRUNCATE eco.observacao"))
+def test_serie_fora_do_catalogo_e_erro_e_nao_altera_a_base(eco_limpo, pg_engine, arquivos):
     eco.carregar(pg_engine, arquivos)
     antes = _contagem(pg_engine)
     _escrever_csv(
@@ -305,9 +303,7 @@ def test_serie_fora_do_catalogo_e_erro_e_nao_altera_a_base(pg_engine, arquivos):
     assert _contagem(pg_engine) == antes
 
 
-def test_parcial_e_zero_chegam_ao_banco(pg_engine, arquivos):
-    with pg_engine.begin() as conn:
-        conn.execute(text("TRUNCATE eco.observacao"))
+def test_parcial_e_zero_chegam_ao_banco(eco_limpo, pg_engine, arquivos):
     _escrever_csv(
         arquivos,
         "seguranca_publica_historico.csv",

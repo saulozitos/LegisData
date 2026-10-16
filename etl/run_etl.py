@@ -229,26 +229,28 @@ def _load_economia():
     from etl.pipelines.presidencia_loader import carregar as carregar_presidencia
 
     # Cada carga é independente: uma curadoria com problema não impede as demais; os erros são relatados no fim
-    # (nome, função, nome da carga de que depende): a composição só existe sobre os mandatos presidenciais carregados
+    # (chave, nome exibido, função, chave da carga de que depende): a composição só existe sobre os mandatos
+    # presidenciais carregados
     cargas = (
-        ("Séries (eco.observacao)", carregar_series, None),
-        ("Mandatos presidenciais", carregar_presidencia, None),
-        ("Composição do Congresso e produção do Executivo", carregar_composicao, "Mandatos presidenciais"),
-        ("PNAD (classes sociais)", carregar_pnad, None),
+        ("series", "Séries (eco.observacao)", carregar_series, None),
+        ("presidencia", "Mandatos presidenciais", carregar_presidencia, None),
+        ("composicao", "Composição do Congresso e produção do Executivo", carregar_composicao, "presidencia"),
+        ("pnad", "PNAD (classes sociais)", carregar_pnad, None),
     )
+    nomes = {chave: nome for chave, nome, _, _ in cargas}
     falhas = []
     falharam = set()
-    for nome, carregar, depende_de in cargas:
+    for chave, nome, carregar, depende_de in cargas:
         if depende_de in falharam:
-            falhas.append(f"{nome}: não executada porque '{depende_de}' falhou")
-            falharam.add(nome)
+            falhas.append(f"{nome}: não executada porque '{nomes[depende_de]}' falhou")
+            falharam.add(chave)
             continue
         try:
             print(f"    {nome}:", carregar(engine))
         except Exception as exc:  # noqa: BLE001 - isolada de propósito; relatada abaixo
             logger.error("Carga '%s' falhou: %s", nome, exc, exc_info=True)
             falhas.append(f"{nome}: {exc}")
-            falharam.add(nome)
+            falharam.add(chave)
     if falhas:
         raise RuntimeError("; ".join(falhas))
 

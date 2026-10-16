@@ -69,13 +69,20 @@ PG_DB="${POSTGRES_DB:-politica_db}"
 # 1. backup antes de qualquer alteração (formato custom, restaurável com pg_restore)
 # Uma tentativa anterior deste mesmo commit que falhou já deixou o backup de antes das migrações: reaproveita-o, para
 # um deploy quebrado repetido pelo timer não encher a rotação com dumps de um banco já migrado e apagar o bom.
-DUMP="$(ls -1t "$BACKUP_DIR"/legisdata_"${TAG}"_*.dump 2>/dev/null | head -n 1 || true)"
+DUMP="$(ls -1t "$BACKUP_DIR"/legisdata_"${TAG}"_*.dump 2>/dev/null | head -n 1 || true)"  # *.dump.parcial não casa
 if [[ -n "$DUMP" && -s "$DUMP" ]]; then
   log "backup deste commit já existe, reaproveitado: $DUMP"
 else
   DUMP="$BACKUP_DIR/legisdata_${TAG}_$(date +%Y%m%d_%H%M%S).dump"
-  docker exec politica_postgres pg_dump -U "$PG_USER" -d "$PG_DB" -Fc >"$DUMP"
-  [[ -s "$DUMP" ]] || { log "backup vazio, abortando"; rm -f "$DUMP"; exit 1; }
+  # O dump só ganha o nome definitivo depois de terminar bem; um pg_dump interrompido nunca vira "backup bom".
+  rm -f "$BACKUP_DIR"/*.dump.parcial
+  umask 077
+  if ! docker exec politica_postgres pg_dump -U "$PG_USER" -d "$PG_DB" -Fc >"$DUMP.parcial" || [[ ! -s "$DUMP.parcial" ]]; then
+    log "backup falhou ou veio vazio, abortando"
+    rm -f "$DUMP.parcial"
+    exit 1
+  fi
+  mv "$DUMP.parcial" "$DUMP"
   log "backup: $DUMP ($(du -h "$DUMP" | cut -f1))"
 fi
 # shellcheck disable=SC2012

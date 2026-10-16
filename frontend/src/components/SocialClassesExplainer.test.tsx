@@ -132,6 +132,13 @@ describe('SocialClassesExplainer', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/Não foi possível enquadrar/);
   });
 
+  it('sem texto educativo da API não mostra o banner vazio', async () => {
+    getClasses.mockResolvedValue({ ...response, resumo_populacional: { maioria_populacao_acumulada_d_e_pct: null, texto_educativo: null } });
+    render(<SocialClassesExplainer />);
+    await screen.findByText(/Salário Mínimo de 2024/);
+    expect(screen.queryByText(/A Ilusão da/)).not.toBeInTheDocument();
+  });
+
   it('funciona com menos de 3 classes (sem índice fixo) e soma D/E quando o resumo falta', async () => {
     getClasses.mockResolvedValue({
       ...response,

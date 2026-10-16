@@ -209,7 +209,8 @@ export default function WageDisparityPanel() {
                   }}
                   formatter={(val, name) => {
                     const num = Number(val);
-                    if (!Number.isFinite(num)) return ["Indisponível", String(name)];
+                    // null/undefined viram 0 em Number(): tratar antes para nunca exibir "R$ 0,00" como dado
+                    if (val === null || val === undefined || !Number.isFinite(num)) return ["Indisponível", String(name)];
                     if (name === "Salário Parlamentar (BRL)" || name === "Salário Mínimo (BRL)") {
                       return [`R$ ${num.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, String(name)];
                     }

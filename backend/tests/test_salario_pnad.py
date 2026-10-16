@@ -263,3 +263,10 @@ def test_classe_com_faixa_fora_do_intervalo_e_barrada_pelo_banco(db):
     with pytest.raises(IntegrityError, match="classe_social_faixas_pnad_check"):
         db.execute(text("UPDATE eco.classe_social SET faixas_pnad = ARRAY[9]::smallint[] WHERE ordem = 1"))
     db.rollback()
+
+
+def test_sem_classe_de_base_o_resumo_nao_mostra_zero_nem_texto(client, db, pnad):
+    db.execute(text("UPDATE eco.classe_social SET max_sm = 100 WHERE max_sm IS NOT NULL AND max_sm <= 4"))
+    db.commit()
+    resumo = client.get(f"{BASE}/social-classes").json()["resumo_populacional"]
+    assert resumo["maioria_populacao_acumulada_d_e_pct"] is None and resumo["texto_educativo"] is None

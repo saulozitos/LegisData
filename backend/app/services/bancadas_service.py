@@ -78,7 +78,8 @@ def cadeiras_da_oposicao(bancadas: List[Dict[str, Any]], total: Optional[int] = 
 def governabilidade(total: int, bancadas: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Base aliada, centro e oposição calculados das bancadas. Sem classificação, tudo `None`. Com classificação parcial
-    (parte das cadeiras sem alinhamento), as somas valem, mas as maiorias saem `None`: a base real pode ter o que falta.
+    (parte das cadeiras sem alinhamento), as somas e percentuais são PISOS (só as cadeiras classificadas;
+    `nao_classificadas_cadeiras` diz quantas faltam) e as maiorias saem `None`: a base real pode ter o que falta.
     """
     vazio: Dict[str, Any] = {
         "base_aliada_cadeiras": None,

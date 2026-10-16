@@ -181,6 +181,12 @@ export default function CongressCompositionPanel({
           </div>
         </div>
 
+        {data?.dados_incompletos && (
+          <p className="mt-4 text-xs text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3" role="note">
+            Dados incompletos neste mandato: {data.observacao ?? "parte das bancadas ainda não foi classificada."}
+          </p>
+        )}
+
         {/* Barra de Governabilidade Empilhada */}
         <div className="mt-6 bg-slate-950/70 border border-slate-800/90 rounded-2xl p-4">
           <div className="flex items-center justify-between text-xs mb-2.5">

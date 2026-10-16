@@ -16,7 +16,8 @@ _DISTRIBUICOES_SQL = text(
     FROM eco.pnad_distribuicao WHERE ano = :ano AND escopo = 'BR'
     """
 )
-# Teto (em salários mínimos) das classes que formam a base da pirâmide no resumo educativo (D e E)
+# Teto (em salários mínimos) das classes que formam a base da pirâmide no resumo educativo (D e E). É uma definição
+# editorial do texto, não um dado das classes; mudar a política exige mudar este valor e o texto de apoio.
 LIMITE_BASE_SM = 4.0
 _METODOLOGIA_SQL = text("SELECT chave, texto FROM eco.pnad_metodologia")
 
@@ -67,12 +68,15 @@ def _carregar_ano(db: Session, ano: Optional[int]) -> Tuple[int, List[int], Dict
     return escolhido, anos, dict(entrada), distribuicoes
 
 
-def _montar_classes(db: Session, salario: float, domicilios: List[float], pessoas: List[float]) -> List[Dict[str, Any]]:
-    """Classes sociais com a renda em reais e o percentual exato (sem arredondar) de domicílios, para os resumos."""
+def _montar_classes(
+    db: Session, salario: float, domicilios: List[float], pessoas: List[float]
+) -> Tuple[List[Dict[str, Any]], Dict[str, float]]:
+    """Classes sociais com a renda em reais, e o percentual exato (sem arredondar) de domicílios de cada uma."""
     classes: List[Dict[str, Any]] = []
+    exato: Dict[str, float] = {}
     for c in db.execute(_CLASSES_SQL).mappings():
         minimo, maximo = float(c["min_sm"]), float(c["max_sm"]) if c["max_sm"] is not None else None
-        dom_exato = sum(domicilios[i] for i in c["faixas_pnad"])
+        exato[c["codigo"]] = sum(domicilios[i] for i in c["faixas_pnad"])
         classes.append(
             {
                 "classe": c["codigo"],
@@ -81,51 +85,47 @@ def _montar_classes(db: Session, salario: float, domicilios: List[float], pessoa
                 "faixa_salarios_minimos_max": maximo,
                 **_renda_da_classe(minimo, maximo, salario),
                 "percentual_populacao": round(sum(pessoas[i] for i in c["faixas_pnad"]), 1),
-                "percentual_domicilios": round(dom_exato, 1),
+                "percentual_domicilios": round(exato[c["codigo"]], 1),
                 "descricao": c["descricao"],
                 "cor": c["cor_hex"],
                 "destaque": c["destaque"],
-                "_domicilios_exato": dom_exato,
             }
         )
-    return classes
+    return classes, exato
 
 
-def _resumo_populacional(ano: int, classes: List[Dict[str, Any]], total_domicilios: Optional[int]) -> Dict[str, Any]:
+def _resumo_populacional(
+    ano: int, classes: List[Dict[str, Any]], exato: Dict[str, float], total_domicilios: Optional[int]
+) -> Dict[str, Any]:
     """
-    Resumo educativo: a base (classes de renda até o teto mais baixo) e o topo (classe sem teto) saem das próprias
-    classes cadastradas, não de nomes ou limites fixos no código.
+    Resumo educativo. A base da pirâmide são as classes de teto até `LIMITE_BASE_SM` (hoje D e E) e o topo é a classe
+    sem teto, ambos lidos das classes cadastradas. Sem classe de base não há percentual nem texto (nunca 0%).
     """
-    teto_base = max(
-        (
-            c["faixa_salarios_minimos_max"]
-            for c in classes
-            if c["faixa_salarios_minimos_max"] is not None and c["faixa_salarios_minimos_max"] <= LIMITE_BASE_SM
-        ),
-        default=None,
-    )
     base = [
         c
         for c in classes
         if c["faixa_salarios_minimos_max"] is not None and c["faixa_salarios_minimos_max"] <= LIMITE_BASE_SM
     ]
     topo = next((c for c in classes if c["faixa_salarios_minimos_max"] is None), None)
-    pct_base = round(sum(c["_domicilios_exato"] for c in base), 1)
-    nomes_base = " e ".join(c["classe"].replace("Classe ", "") for c in base)
-    texto = None
-    if base and topo is not None and teto_base is not None:
-        pct_topo = round(topo["_domicilios_exato"], 1)
-        texto = (
-            f"Em {ano}, {pct_base:g}% dos domicílios brasileiros viviam com renda domiciliar total de até "
-            f"{teto_base:g} salários mínimos (Classes {nomes_base}). Apenas {pct_topo:g}% estavam na {topo['classe']} "
-            f"(acima de {topo['faixa_salarios_minimos_min']:g} salários mínimos), o que frequentemente distorce a "
-            "percepção sobre o que é a 'classe média' no país."
-        )
-    return {
-        "maioria_populacao_acumulada_d_e_pct": pct_base,
+    resumo: Dict[str, Any] = {
+        "maioria_populacao_acumulada_d_e_pct": None,
         "total_domicilios_estimado": total_domicilios,
-        "texto_educativo": texto,
+        "texto_educativo": None,
     }
+    if not base:
+        return resumo
+    pct_base = round(sum(exato[c["classe"]] for c in base), 1)
+    resumo["maioria_populacao_acumulada_d_e_pct"] = pct_base
+    if topo is not None:
+        teto_base = max(c["faixa_salarios_minimos_max"] for c in base)
+        nomes_base = " e ".join(c["classe"].replace("Classe ", "") for c in base)
+        resumo["texto_educativo"] = (
+            f"Em {ano}, {pct_base:g}% dos domicílios brasileiros viviam com renda domiciliar total de até "
+            f"{teto_base:g} salários mínimos (Classes {nomes_base}). Apenas {round(exato[topo['classe']], 1):g}% estavam na "
+            f"{topo['classe']} (acima de {topo['faixa_salarios_minimos_min']:g} salários mínimos), o que "
+            "frequentemente distorce a percepção sobre o que é a 'classe média' no país."
+        )
+    return resumo
 
 
 def classes_sociais(db: Session, ano: Optional[int]) -> Dict[str, Any]:
@@ -134,10 +134,8 @@ def classes_sociais(db: Session, ano: Optional[int]) -> Dict[str, Any]:
     salario = float(entrada["salario_minimo_brl"])
     domicilios = distribuicoes["domicilios_renda_total"]["percentual"]
     pessoas = distribuicoes["pessoas_renda_domiciliar"]["percentual"]
-    classes = _montar_classes(db, salario, domicilios, pessoas)
-    resumo = _resumo_populacional(escolhido, classes, distribuicoes["domicilios_renda_total"]["total_estimado"])
-    for c in classes:
-        c.pop("_domicilios_exato")
+    classes, exato = _montar_classes(db, salario, domicilios, pessoas)
+    resumo = _resumo_populacional(escolhido, classes, exato, distribuicoes["domicilios_renda_total"]["total_estimado"])
     return {
         "origem": "pnad",
         "salario_minimo_referencia_brl": salario,

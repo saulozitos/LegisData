@@ -19,7 +19,7 @@ def test_modo_completo_inclui_ceap_e_carga_mas_nao_itens_com_autorizacao_explici
     assert "remuneracao" in chaves
 
 
-def test_modo_completo_carrega_economia_inclusive_composicao_e_pnad_e_nao_tem_mais_renda():
+def test_modo_completo_tem_a_carga_economica_depois_do_load_db_e_nao_tem_mais_renda():
     chaves = [e.chave for e in construir_etapas(args())]
     assert "load_economia" in chaves and chaves.index("load_db") < chaves.index("load_economia")
     assert "renda" not in chaves

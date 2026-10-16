@@ -35,7 +35,7 @@ def inteiro(valor: Any) -> Optional[int]:
     """Inteiro ou None para vazio e para o que não converte."""
     try:
         return None if valor is None or valor == "" else int(valor)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
 
 

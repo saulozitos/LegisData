@@ -7,6 +7,7 @@ from datetime import date
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from etl.pipelines import composicao_loader as comp
 from etl.pipelines import economia_loader as eco
@@ -270,6 +271,8 @@ def test_producao_removida_do_csv_sai_do_banco_e_csv_vazio_nao_apaga(pg_engine, 
     [
         (["x-2023", "", 8, 4, 3, 1, 121, 513, "Curadoria"], "proposicoes_executivo"),
         (["x-2023", 10, 8, 4, 3, 1, 121, 513, ""], "fonte"),
+        (["x-2023", 10, 8, 4, 3, "", 121, 513, "Curadoria"], "vetos_pendentes"),  # vazio não vira 0
+        (["x-2023", 10, 8, 4, 3, "n/d", 121, 513, "Curadoria"], "invalid literal"),
         (["x-2023", 10, 8, 4, "abc", 1, 121, 513, "Curadoria"], "invalid literal"),
     ],
 )
@@ -282,7 +285,7 @@ def test_linha_invalida_do_csv_de_producao_aborta_sem_gravar_nada(pg_engine, man
 
 def test_linha_que_viola_o_check_do_banco_reverte_toda_a_carga(pg_engine, mandato, tmp_path):
     _arquivos(tmp_path, COMPOSICAO, [["x-2023", 5, 9, 4, 3, 1, 121, 513, "Curadoria"]])  # aprovadas > total
-    with pytest.raises(Exception, match="producao_executivo"):
+    with pytest.raises(IntegrityError, match="producao_executivo"):
         comp.carregar(pg_engine, tmp_path)
     assert _contagens(pg_engine)["composicao_mandato"] == 0
 

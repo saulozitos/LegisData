@@ -31,8 +31,15 @@ def _posicao(texto, padrao):
 def test_deploy_se_atualiza_antes_de_tocar_no_banco():
     texto = (RAIZ / "scripts" / "deploy" / "deploy.sh").read_text(encoding="utf-8")
     reexecucao = _posicao(texto, r"^\s*_LEGISDATA_DEPLOY_REEXEC=1 exec ")
-    assert reexecucao < _posicao(texto, r"^\s*docker exec politica_postgres pg_dump ")
+    assert reexecucao < _posicao(texto, r"^\s*(if ! )?docker exec politica_postgres pg_dump ")
     assert _posicao(texto, r"bash -n ") < reexecucao  # script novo com erro de sintaxe nunca é instalado
+
+
+def test_deploy_so_da_nome_definitivo_ao_dump_depois_de_terminar_bem():
+    texto = (RAIZ / "scripts" / "deploy" / "deploy.sh").read_text(encoding="utf-8")
+    gravacao = _posicao(texto, r'pg_dump .*>"\$DUMP\.parcial"')
+    promocao = _posicao(texto, r'^\s*mv "\$DUMP\.parcial" "\$DUMP"')
+    assert gravacao < promocao < _posicao(texto, r"^git merge --ff-only ")
 
 
 def test_deploy_descarta_saidas_do_cron_antes_do_merge_e_carrega_composicao_e_pnad():

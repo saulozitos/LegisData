@@ -115,19 +115,21 @@ export default function SocialClassesExplainer() {
       </div>
 
       {/* Destaque Educativo: Onde o Brasileiro Realmente Está */}
-      <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 rounded-xl p-4.5 text-xs text-amber-200/90 flex flex-col md:flex-row items-start md:items-center gap-3">
-        <div className="p-2 bg-amber-500/20 rounded-lg text-amber-400 flex-shrink-0">
-          <ShieldAlert className="w-5 h-5" aria-hidden="true" />
+      {data.resumo_populacional?.texto_educativo && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 rounded-xl p-4.5 text-xs text-amber-200/90 flex flex-col md:flex-row items-start md:items-center gap-3">
+          <div className="p-2 bg-amber-500/20 rounded-lg text-amber-400 flex-shrink-0">
+            <ShieldAlert className="w-5 h-5" aria-hidden="true" />
+          </div>
+          <div className="space-y-1">
+            <h4 className="font-bold text-amber-200 text-sm">
+              A Ilusão da &quot;Classe Média&quot; e a Realidade da Renda Nacional
+            </h4>
+            <p className="text-amber-300/80 leading-relaxed">
+              {data.resumo_populacional.texto_educativo}
+            </p>
+          </div>
         </div>
-        <div className="space-y-1">
-          <h4 className="font-bold text-amber-200 text-sm">
-            A Ilusão da &quot;Classe Média&quot; e a Realidade da Renda Nacional
-          </h4>
-          <p className="text-amber-300/80 leading-relaxed">
-            {data.resumo_populacional?.texto_educativo}
-          </p>
-        </div>
-      </div>
+      )}
 
       {/* Pirâmide Visual e Comparação de Classes */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">

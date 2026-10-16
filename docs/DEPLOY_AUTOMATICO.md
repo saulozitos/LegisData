@@ -13,7 +13,7 @@ Todo commit que entra na `main` e passa no CI é implantado sozinho em https://l
    uma carga nova, vale já no deploy que a traz). Depois faz, nesta ordem:
    1. `pg_dump` (formato custom) em `~/backups`, guardando os 14 mais recentes. Backup vazio aborta o deploy. Se uma
       tentativa anterior do mesmo commit já deixou o dump (de antes das migrações), ele é reaproveitado: um deploy
-      quebrado repetido pelo timer não expulsa da rotação o último backup bom.
+      quebrado repetido pelo timer não expulsa da rotação o último backup bom. O dump é gravado como `.dump.parcial` e só recebe o nome definitivo (e permissão 600) ao terminar bem, então um dump interrompido nunca é reaproveitado.
    2. `git merge --ff-only origin/main` no checkout do projeto (compose, dados do ETL e scripts). O cron diário regrava
       arquivos versionados de `etl/data/processed` no checkout, o que impediria o fast-forward; por isso o script
       descarta essas saídas locais antes do merge (o próximo cron as gera de novo). Fora dessa pasta, mudança local
@@ -23,7 +23,9 @@ Todo commit que entra na `main` e passa no CI é implantado sozinho em https://l
       (`economia_loader`, `presidencia_loader`, `composicao_loader`, `pnad_loader`), se o schema `eco` já existe.
       São idempotentes. Se um arquivo de curadoria estiver ausente ou citar um mandato que não existe no banco, a
       carga falha com as migrações já aplicadas e a imagem antiga ainda no ar (as tabelas novas são aditivas, a API
-      antiga segue funcionando); o estado não avança e a próxima execução repete até alguém corrigir.
+      antiga segue funcionando); o estado não avança e a próxima execução repete até alguém corrigir. É uma decisão consciente: dado de curadoria
+      inválido segura o deploy (nenhuma versão nova sobe sobre telas sem dados), em vez de publicar com a composição ou
+      a PNAD desatualizadas; o log do deploy diz qual arquivo falhou.
    5. `IMAGE_TAG=<sha> docker compose up -d --no-build backend frontend`.
    6. Espera a API ficar saudável por até 3 minutos. Se não ficar, volta para a tag anterior e o estado não avança (a
       próxima execução tenta de novo). O banco já migrado não volta atrás: restaure o backup se preciso.

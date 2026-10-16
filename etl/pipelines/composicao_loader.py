@@ -36,7 +36,7 @@ ALINHAMENTOS = {"BASE_GOVERNO", "INDEPENDENTE_CENTRO", "OPOSICAO", "NAO_CLASSIFI
 def bancadas_da_casa(casa: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Une as bancadas exibidas (`cadeiras`) e as eleitas segundo o TSE (`cadeiras_tse`) por partido."""
     por_partido: Dict[str, Dict[str, Any]] = {}
-    for b in casa.get("bancadas") or []:
+    for b in (x for x in casa.get("bancadas") or [] if isinstance(x, dict)):
         sigla = texto(b.get("partido"))
         if not sigla:
             continue
@@ -48,7 +48,7 @@ def bancadas_da_casa(casa: Dict[str, Any]) -> List[Dict[str, Any]]:
             "alinhamento": alinhamento if alinhamento in ALINHAMENTOS else "NAO_CLASSIFICADO",
             "cor_hex": texto(b.get("cor_hex")),
         }
-    for b in casa.get("bancadas_eleitas_tse") or []:
+    for b in (x for x in casa.get("bancadas_eleitas_tse") or [] if isinstance(x, dict)):
         sigla = texto(b.get("partido"))
         if not sigla:
             continue
@@ -83,7 +83,9 @@ def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, 
             slug: mid for mid, slug in conn.execute(text("SELECT mandato_id, slug FROM core.mandato_presidencial"))
         }
         casas = {codigo: cid for cid, codigo in conn.execute(text("SELECT id, codigo FROM ref.casa_legislativa"))}
-        ausentes = sorted((set(composicao) | {r["mandato_slug"] for r in producao}) - set(mandatos))
+        ausentes = sorted(
+            (set(composicao) | {texto(r.get("mandato_slug")) or "(sem slug)" for r in producao}) - set(mandatos)
+        )
         if ausentes:
             raise RuntimeError(f"Mandatos sem identificador no banco: {', '.join(ausentes)}")
 
@@ -102,7 +104,14 @@ def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, 
     return contagem
 
 
-COLUNAS_PRODUCAO = ("proposicoes_executivo", "proposicoes_aprovadas", "vetos_apreciados", "vetos_mantidos", "fonte")
+COLUNAS_PRODUCAO = (
+    "proposicoes_executivo",
+    "proposicoes_aprovadas",
+    "vetos_apreciados",
+    "vetos_mantidos",
+    "vetos_pendentes",
+    "fonte",
+)
 
 
 def _linha_de_producao(linha: Dict[str, str]) -> Dict[str, Any]:
@@ -115,10 +124,10 @@ def _linha_de_producao(linha: Dict[str, str]) -> Dict[str, Any]:
         "pa": int(linha["proposicoes_aprovadas"]),
         "va": int(linha["vetos_apreciados"]),
         "vm": int(linha["vetos_mantidos"]),
-        "vp": inteiro(linha.get("vetos_pendentes")) or 0,
+        "vp": int(linha["vetos_pendentes"]),
         "oc": inteiro(linha.get("oposicao_cadeiras_camara")),
         "tc": inteiro(linha.get("total_cadeiras_camara")),
-        "f": linha["fonte"],
+        "f": texto(linha["fonte"]),
     }
 
 

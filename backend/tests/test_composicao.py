@@ -165,7 +165,9 @@ def test_senado_aparece_na_composicao_com_total_e_governabilidade_proprios(clien
     assert [(b["partido"], b["cadeiras"]) for b in corpo["senado"]["bancadas"]] == [("PT", 30), ("PL", 20)]
     gov = corpo["senado"]["governabilidade"]
     assert (gov["base_aliada_cadeiras"], gov["oposicao_cadeiras"], gov["nao_classificadas_cadeiras"]) == (30, 20, 31)
-    assert gov["maioria_simples_atingida"] is None  # 30 + os 31 sem classificar podem chegar a 41 (mínimo)
+    assert (
+        gov["maioria_simples_atingida"] is None
+    )  # a base (30) ainda pode chegar a 41 com as 31 cadeiras sem classificar
     assert corpo["senado"]["governabilidade"]["iple"]["variaveis_contextuais"]["total_cadeiras"] == 81
     assert corpo["camara"]["total_cadeiras"] == 100  # a Câmara não é afetada
 
@@ -277,7 +279,7 @@ def test_iple_sem_bancadas_fica_indisponivel_e_nao_vira_zero(client, db):
     }
 
 
-def test_iple_do_senado_sem_classificacao_nao_usa_a_oposicao_da_camara(db, mandato):
+def test_iple_do_senado_sem_composicao_carregada_nao_usa_a_oposicao_da_camara(db, mandato):
     senado = iple_service.get_mandate_iple(db, "lula-2023", "senado")
     assert senado["variaveis_contextuais"]["tamanho_oposicao_x1"] is None
     assert senado["variaveis_contextuais"]["total_cadeiras"] is None
@@ -398,7 +400,10 @@ def test_mandato_em_curso_usa_as_proposicoes_reais_quando_superam_a_curadoria(db
 
 
 def _query_que_falha_no_banco(db, monkeypatch):
-    """`db.query(Proposicao)` passa a executar SQL inválido de verdade (tabela inexistente), como uma tabela perdida."""
+    """
+    `db.query(Proposicao)` passa a executar SQL inválido de verdade (tabela inexistente), como uma tabela perdida.
+    O patch depende de o serviço usar `db.query(Proposicao)`; se isso mudar, o teste de controle abaixo falha e avisa.
+    """
     original = db.query
 
     def falha(*args, **kwargs):
@@ -452,3 +457,29 @@ def test_classificacao_parcial_nao_vira_piso_da_oposicao(client, db):
     corpo = client.get(f"{BASE}/congress-composition", params={"mandate_id": "p-2023"}).json()
     assert corpo["dados_incompletos"] is True
     assert corpo["camara"]["governabilidade"]["nao_classificadas_cadeiras"] == 30
+
+
+def _proposicoes_executivo(db, quantas, aprovadas, data, primeiro_numero):
+    for i in range(quantas):
+        db.execute(
+            text(
+                "INSERT INTO leg.proposicao (tipo_codigo, numero, ano, titulo, ementa, data_apresentacao, status_codigo, "
+                "iniciativa_executivo) VALUES ('PL', :n, 2024, 'PL', 'Dispõe sobre algo', :d, :st, true)"
+            ),
+            {"n": primeiro_numero + i, "d": data, "st": "APROVADA_E_SANCIONADA" if i < aprovadas else "EM_TRAMITACAO"},
+        )
+
+
+def test_contagem_real_menor_que_a_curadoria_nao_a_reduz(db, mandato):
+    _proposicoes_executivo(db, 10, 5, date(2024, 1, 1), 1)  # curadoria: 100 proposições, 80 aprovadas
+    db.commit()
+    base = iple_service.get_mandate_iple(db, "lula-2023")["indicadores_base"]
+    assert (base["proposicoes_executivo_total"], base["proposicoes_executivo_aprovadas"]) == (100, 80)
+
+
+def test_proposicao_apresentada_no_dia_do_inicio_do_mandato_entra_na_contagem(db, mandato):
+    _proposicoes_executivo(db, 120, 90, date(2023, 1, 1), 1)  # exatamente no início do mandato (2023-01-01)
+    _proposicoes_executivo(db, 50, 50, date(2022, 12, 31), 500)  # um dia antes: fora
+    db.commit()
+    base = iple_service.get_mandate_iple(db, "lula-2023")["indicadores_base"]
+    assert (base["proposicoes_executivo_total"], base["proposicoes_executivo_aprovadas"]) == (120, 90)
