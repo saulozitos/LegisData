@@ -473,6 +473,31 @@ def test_votacoes_senado_do_mes_corrente_sao_refeitas_e_meses_fechados_vem_do_ca
     assert len(chamadas) == 3  # janela mudou: refaz
 
 
+def test_cache_do_senado_sem_partido_por_votacao_e_refeito(tmp_path):
+    """Cache gravado antes de existir o partido por votação deixaria o partido do dia em branco: é refeito."""
+    chamadas = []
+
+    class H(HttpFalso):
+        def get_json(self, url, **_):
+            chamadas.append(url)
+            return super().get_json(url)
+
+    url = pe.URL_SENADO_VOTACOES.format(ini="20250101", fim="20250131")
+    h = H({url: {"ListaVotacoes": {}}})
+    ext = montar_extrator(tmp_path, h, hoje=date(2025, 6, 1))
+    cache = tmp_path / "raw" / "senado" / "votacoes_202501.json"
+    cache.parent.mkdir(parents=True)
+    cache.write_text(
+        json.dumps(
+            {"fetched_at": "2025-02-01T00:00:00", "ate": "2025-01-31", "votacoes": [{"codigo": "1", "votos": []}]}
+        )
+    )  # formato antigo: votação sem a chave "partidos"
+    ext._votacoes_mes(date(2025, 1, 1), date(2025, 1, 31), True)
+    assert len(chamadas) == 1  # mês fechado, mas o cache antigo não serve
+    ext._votacoes_mes(date(2025, 1, 1), date(2025, 1, 31), True)
+    assert len(chamadas) == 1  # o cache regravado já é do formato novo
+
+
 def test_ids_deputados_conhecidos(tmp_path):
     assert pe.ids_deputados_conhecidos(tmp_path) is None
     (tmp_path / "deputados_camara.json").write_text(json.dumps([{"camara_id": 5}, {"camara_id": None}, {"x": 1}]))

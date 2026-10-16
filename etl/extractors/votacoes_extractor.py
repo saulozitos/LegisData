@@ -446,15 +446,26 @@ class VotacoesSenadoExtractor:
         raw_dir: Path = RAW_DATA_DIR / "votacoes",
         processed_dir: Path = PROCESSED_DATA_DIR,
         http: Optional[HttpClient] = None,
+        hoje: Optional[date] = None,
     ):
         self.raw_dir = Path(raw_dir)
         self.processed_dir = Path(processed_dir)
         self.http = http or HttpClient(timeout=120.0, max_retries=4, min_interval=0.3)
+        self._hoje = hoje
+
+    @property
+    def hoje(self) -> date:
+        return self._hoje or date.today()
+
+    def _ano_em_andamento(self, ano: int) -> bool:
+        """Ano cujo cache expira: o corrente e, até 1º de março, o anterior (a lista do Senado fecha com atraso)."""
+        hoje = self.hoje
+        return ano >= hoje.year or (ano == hoje.year - 1 and hoje < date(hoje.year, 3, 1))
 
     def _json_com_cache(self, url: str, nome: str, ano: int, force: bool) -> Optional[Any]:
         destino = self.raw_dir / "senado" / f"{nome}-{ano}.json"
         if destino.exists() and not force:
-            corrente = ano >= date.today().year
+            corrente = self._ano_em_andamento(ano)
             if not corrente or (time.time() - destino.stat().st_mtime) < TTL_ANO_CORRENTE_SEGUNDOS:
                 try:
                     return json.loads(destino.read_text(encoding="utf-8"))
@@ -471,10 +482,14 @@ class VotacoesSenadoExtractor:
 
     def _sessoes_plenario(
         self, ano: int, force: bool, partidos: Dict[str, int], parlamentares: Dict[int, Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """Votações nominais do ano pela API de plenário (janelas mensais), no formato das sessões do extrator."""
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """Votações nominais do ano pela API de plenário (janelas mensais), no formato das sessões do extrator.
+
+        Devolve também os meses cuja consulta falhou ("AAAA-MM"): mês vazio e mês com falha são coisas diferentes.
+        """
         sessoes: List[Dict[str, Any]] = []
-        hoje = date.today()
+        falhas: List[str] = []
+        hoje = self.hoje
         for mes in range(1, 13):
             ini = date(ano, mes, 1)
             if ini > hoje:
@@ -482,12 +497,20 @@ class VotacoesSenadoExtractor:
             fim = (date(ano + (mes == 12), mes % 12 + 1, 1) - timedelta(days=1)) if mes < 12 else date(ano, 12, 31)
             url = f"{SENADO_API_URL}/plenario/lista/votacao/{ini:%Y%m%d}/{min(fim, hoje):%Y%m%d}"
             payload = self._json_com_cache(url, f"plenario_lista_{mes:02d}", ano, force)
+            if payload is None:
+                falhas.append(f"{ano}-{mes:02d}")
+                continue
             bloco = ((payload or {}).get("ListaVotacoes") or {}).get("Votacoes") or {}
             itens = bloco.get("Votacao") or []
             for r in itens if isinstance(itens, list) else [itens]:
                 tipo = (r.get("SiglaMateria") or "").upper()
                 numero, ano_materia = _inteiro(r.get("NumeroMateria")), _inteiro(r.get("AnoMateria"))
                 if tipo not in TIPOS_SUPORTADOS or not numero or not ano_materia:
+                    continue
+                if not r.get("CodigoSessaoVotacao"):
+                    logger.warning(
+                        "Votação do plenário sem CodigoSessaoVotacao descartada: %s", r.get("DescricaoVotacao")
+                    )
                     continue
                 secreta = (r.get("Secreta") or "N").upper() == "S"
                 votos: List[List[Any]] = []
@@ -511,6 +534,14 @@ class VotacoesSenadoExtractor:
                 if not votos and not secreta:
                     continue
                 totais = Counter(item[1] for item in votos)
+                if secreta:  # sem voto individual: usa os totais publicados pela fonte
+                    totais = Counter(
+                        {
+                            "SIM": _inteiro(r.get("TotalVotosSim")) or 0,
+                            "NAO": _inteiro(r.get("TotalVotosNao")) or 0,
+                            "ABSTENCAO": _inteiro(r.get("TotalVotosAbstencao")) or 0,
+                        }
+                    )
                 hora = (r.get("HoraInicio") or "00:00")[:5]
                 sessoes.append(
                     {
@@ -534,7 +565,7 @@ class VotacoesSenadoExtractor:
                         "votos": votos,
                     }
                 )
-        return sessoes
+        return sessoes, falhas
 
     def extrair_ano(self, ano: int, force: bool = False) -> Optional[Dict[str, Any]]:
         lista = self._json_com_cache(f"{SENADO_API_URL}/votacao?ano={ano}", "votacao", ano, force)
@@ -629,7 +660,8 @@ class VotacoesSenadoExtractor:
         # A lista anual (`/votacao?ano=`) costuma ficar semanas atrasada. As votações nominais do plenário por data
         # (`/plenario/lista/votacao`) são atuais, então completam o que a lista anual ainda não trouxe.
         conhecidas = {s["id"] for s in sessoes}
-        for sessao in self._sessoes_plenario(ano, force, partidos, parlamentares):
+        do_plenario, falhas_meses = self._sessoes_plenario(ano, force, partidos, parlamentares)
+        for sessao in do_plenario:
             if sessao["id"] not in conhecidas:
                 sessoes.append(sessao)
                 conhecidas.add(sessao["id"])
@@ -652,16 +684,29 @@ class VotacoesSenadoExtractor:
             "parlamentares": {str(k): v for k, v in parlamentares.items()},
             "sessoes": sessoes,
             "descartes": {"tipo_nao_suportado": fora_tipo, "sem_voto_nominal": sem_voto},
+            "falhas_meses": falhas_meses,
         }
 
     def run(self, anos: Optional[List[int]] = None, force: bool = False) -> Dict[str, Any]:
-        anos = anos or list(range(ANO_INICIAL_PADRAO, date.today().year + 1))
+        """`falhas` lista o ano inteiro sem dados (int) e o mês do plenário que falhou ("AAAA-MM").
+
+        Com mês falho o arquivo do ano não é regravado: regravar sem as sessões daquele mês as apagaria.
+        """
+        anos = anos or list(range(ANO_INICIAL_PADRAO, self.hoje.year + 1))
         resumo: Dict[str, Any] = {"anos": {}, "falhas": []}
         for ano in anos:
             dados = self.extrair_ano(ano, force)
             if not dados or not dados["sessoes"]:
                 logger.warning("Senado %s: nada extraído — arquivo existente preservado.", ano)
                 resumo["falhas"].append(ano)
+                continue
+            if dados.get("falhas_meses"):
+                logger.warning(
+                    "Senado %s: consulta do plenário falhou em %s — arquivo existente preservado.",
+                    ano,
+                    ", ".join(dados["falhas_meses"]),
+                )
+                resumo["falhas"].extend(dados["falhas_meses"])
                 continue
             gravar_json_gz(self.processed_dir / PASTA_PROCESSADA / f"senado_{ano}.json.gz", dados)
             resumo["anos"][ano] = {

@@ -39,13 +39,25 @@ def execute_cron_pipeline() -> Dict[str, Any]:
     try:
         logger.info("=== INICIANDO CRON JOB DE CONSOLIDAÇÃO DIÁRIA ===")
 
+        # Etapa 1a: votações nominais do ano anterior e do corrente (alimenta o Calendário de Votações). Só atualiza o
+        # legado: a ponte roda uma vez, na etapa 1, depois de todas as cargas.
+        logger.info("Etapa 1a: atualizando votações nominais...")
+        try:
+            from etl.pipelines.votacoes_atualizacao import atualizar as atualizar_votacoes
+
+            votacoes = atualizar_votacoes(sincronizar=False)
+            logger.info(f"Etapa 1a concluída: {votacoes.get('carga')}")
+        except Exception as e:
+            erros_etapas.append(f"votações: {e}")
+            logger.error(f"Falha na atualização de votações: {e}", exc_info=True)
+
         # Etapa 1: Sincronização de Entidades Base e Mandatos Dinâmicos
         logger.info("Etapa 1/4: Sincronizando histórico dinâmico de mandatos...")
         synced_mandates = sync_mandate_history(db)
         registros_totais += synced_mandates
         logger.info(f"Etapa 1 concluída: {synced_mandates} registros de mandatos sincronizados.")
 
-        # Etapa 1b: presença e faltas (falha aqui não impede as demais etapas, mas marca a execução como FALHA)
+        # Etapa 1b: presença e faltas, depois da ponte (falha aqui não impede as demais etapas, mas marca FALHA)
         logger.info("Etapa 1b: atualizando presença e faltas do Congresso...")
         try:
             from app.core.database import engine
@@ -57,17 +69,6 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         except Exception as e:
             erros_etapas.append(f"presença: {e}")
             logger.error(f"Falha na atualização de presença: {e}", exc_info=True)
-
-        # Etapa 1c: votações nominais do ano anterior e do corrente (alimenta o Calendário de Votações)
-        logger.info("Etapa 1c: atualizando votações nominais...")
-        try:
-            from etl.pipelines.votacoes_atualizacao import atualizar as atualizar_votacoes
-
-            votacoes = atualizar_votacoes()
-            logger.info(f"Etapa 1c concluída: {votacoes.get('carga')}")
-        except Exception as e:
-            erros_etapas.append(f"votações: {e}")
-            logger.error(f"Falha na atualização de votações: {e}", exc_info=True)
 
         # Etapa 2: Ingestão de Proposições e Autores
         logger.info("Etapa 2/4: Verificando autoria e integridade de proposições...")

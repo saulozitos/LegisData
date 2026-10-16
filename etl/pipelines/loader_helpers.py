@@ -25,6 +25,20 @@ LEGISLATURA_ATUAL_INICIO = date(2023, 2, 1)
 SEM_PARTIDO = "S.PART."
 
 
+def normalizar_sigla_presenca(sigla: Any) -> Optional[str]:
+    """Sigla de partido vinda das fontes de presença -> sigla canônica; None quando a fonte não registra partido.
+
+    A Câmara publica "s/partido" para quem não tem partido (vira `S.PART.`) e "sem registro" quando não há informação
+    (vira None, pois não é um partido).
+    """
+    texto = str(sigla).strip() if sigla is not None else ""
+    if not texto or texto.lower() == "sem registro":
+        return None
+    if texto.lower() == "s/partido":
+        return SEM_PARTIDO
+    return texto
+
+
 def _dec(value: Any) -> Optional[Decimal]:
     """Decimal a partir de número/str; None/NaN/vazio -> None. Zero legítimo continua sendo Decimal('0')."""
     if value is None:

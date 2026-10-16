@@ -6,11 +6,17 @@ Origens, da mais confiável para a menos:
 - Votações nominais do Senado (1995 em diante): presença derivada do voto, com o código de justificativa (`SENADO_API`);
 - Arquivos de presença em eventos da Câmara (antes de 2020, `CAMARA_CSV`): trazem só a presença. A falta é
   INFERIDA (`AUSENCIA_INFERIDA`) quando o deputado estava em exercício (situação EXERCICIO ou SUPLENCIA) num dia com
-  sessão deliberativa do plenário e não consta em nenhuma delas. Sem justificativa e sem mistura com a falta oficial.
+  sessão deliberativa do plenário e não consta em nenhuma delas. Quem não tem nenhuma presença no ano não entra: mandato cadastrado como em exercício
+  sem comparecer a sequer um dia é cadastro desatualizado, não ausência. Sem justificativa e sem mistura com a falta oficial.
   A inferência começa em 2003-02-03, quando passam a existir as situações de exercício; antes disso só há presença.
 
-Uma sessão deliberativa só conta como realizada quando tem ao menos `QUORUM_ABERTURA` presentes (um décimo da Casa,
-mínimo regimental para abrir a sessão), o que descarta sessões convocadas e não realizadas.
+Um dia só conta como realizado quando alguma sessão deliberativa dele tem ao menos `QUORUM_ABERTURA` presentes (um
+décimo da Casa, mínimo regimental para abrir a sessão), o que descarta sessões convocadas e não realizadas. Num dia
+realizado, o deputado é presente se constou em QUALQUER sessão deliberativa dele (inclusive uma sem quórum); só quem
+não consta em nenhuma recebe a falta inferida.
+
+Segurança da carga: a carga dos arquivos de eventos recusa anos sem arquivo (erro antes de qualquer alteração) e só
+apaga as linhas dos anos processados; uma fonte oficial que chega sem nenhuma linha não apaga a base.
 
 O partido de cada dia é resolvido ao final por `etl.resolver_partido_presenca()` (votação, mandato, filiação ou
 presença mais próxima), com a origem em `partido_origem`.
@@ -29,6 +35,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 from etl.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
 from etl.extractors.camara_presenca_eventos_extractor import caminho_do_arquivo
 from etl.extractors.presenca_extractor import carregar_dias
+from etl.pipelines.loader_helpers import normalizar_sigla_presenca
 from etl.utils.bootstrap import ensure_backend_on_path
 
 ensure_backend_on_path()
@@ -43,12 +50,27 @@ INFERENCIA_DESDE = date(2003, 2, 3)
 INICIO_JANELA = date(1995, 1, 1)
 
 
+def arquivos_do_ano(raw_dir: Path, ano: int) -> Tuple[Path, Path]:
+    return caminho_do_arquivo(raw_dir, "eventos", ano), caminho_do_arquivo(raw_dir, "eventosPresencaDeputados", ano)
+
+
+def verificar_arquivos(raw_dir: Path, anos: Iterable[int]) -> None:
+    """Falha antes de qualquer alteração no banco se faltar algum arquivo dos anos pedidos."""
+    faltando = [str(c) for ano in anos for c in arquivos_do_ano(raw_dir, ano) if not c.exists()]
+    if faltando:
+        raise FileNotFoundError(
+            "Arquivos de presença da Câmara ausentes (a carga apagaria os anos sem recarregá-los): "
+            + ", ".join(faltando)
+        )
+
+
 def sessoes_deliberativas(raw_dir: Path, ano: int) -> Dict[int, date]:
-    """Eventos do ano que são sessão deliberativa do plenário: {id do evento: data}."""
+    """Eventos do ano que são sessão deliberativa do plenário: {id do evento: data}. Linhas inválidas são puladas."""
     caminho = caminho_do_arquivo(raw_dir, "eventos", ano)
     if not caminho.exists():
         return {}
     saida: Dict[int, date] = {}
+    puladas = 0
     with open(caminho, encoding="utf-8-sig", newline="") as arquivo:
         for linha in csv.DictReader(arquivo, delimiter=";"):
             tipo = (linha.get("descricaoTipo") or "").strip()
@@ -57,30 +79,47 @@ def sessoes_deliberativas(raw_dir: Path, ano: int) -> Dict[int, date]:
                 continue
             if local and "Plenário da Câmara" not in local:
                 continue
-            saida[int(linha["id"])] = datetime.fromisoformat(linha["dataHoraInicio"]).date()
+            try:
+                saida[int(linha["id"])] = datetime.fromisoformat(linha["dataHoraInicio"]).date()
+            except (KeyError, TypeError, ValueError):
+                puladas += 1
+    if puladas:
+        logger.warning("%s: %d sessões deliberativas com id ou data inválidos foram puladas.", caminho.name, puladas)
     return saida
 
 
 def presencas_por_dia(raw_dir: Path, ano: int) -> Tuple[Set[Tuple[int, date]], Set[date]]:
-    """Presenças (deputado, dia) e dias com sessão deliberativa realizada, a partir dos arquivos do ano."""
+    """Presenças (deputado, dia) e dias com sessão deliberativa realizada, a partir dos arquivos do ano.
+
+    O dia é realizado se alguma sessão deliberativa dele teve quórum de abertura; a presença vale para qualquer sessão
+    deliberativa do dia realizado.
+    """
     sessoes = sessoes_deliberativas(raw_dir, ano)
     caminho = caminho_do_arquivo(raw_dir, "eventosPresencaDeputados", ano)
     if not sessoes or not caminho.exists():
         return set(), set()
     por_sessao: Dict[int, Set[int]] = defaultdict(set)
+    puladas = 0
     with open(caminho, encoding="utf-8-sig", newline="") as arquivo:
         for linha in csv.DictReader(arquivo, delimiter=";"):
-            evento = int(linha["idEvento"])
+            try:
+                evento, deputado = int(linha["idEvento"]), int(linha["idDeputado"])
+            except (KeyError, TypeError, ValueError):
+                puladas += 1
+                continue
             if evento in sessoes:
-                por_sessao[evento].add(int(linha["idDeputado"]))
-    presencas: Set[Tuple[int, date]] = set()
-    dias: Set[date] = set()
-    for evento, deputados in por_sessao.items():
-        if len(deputados) < QUORUM_ABERTURA:
-            continue
-        dia = sessoes[evento]
-        dias.add(dia)
-        presencas.update((deputado, dia) for deputado in deputados)
+                por_sessao[evento].add(deputado)
+    if puladas:
+        logger.warning(
+            "%s: %d linhas de presença com idEvento ou idDeputado inválidos foram puladas.", caminho.name, puladas
+        )
+    dias: Set[date] = {sessoes[e] for e, deputados in por_sessao.items() if len(deputados) >= QUORUM_ABERTURA}
+    presencas: Set[Tuple[int, date]] = {
+        (deputado, sessoes[evento])
+        for evento, deputados in por_sessao.items()
+        if sessoes[evento] in dias
+        for deputado in deputados
+    }
     return presencas, dias
 
 
@@ -138,11 +177,20 @@ def _carregar_oficial(
     partidos: Optional[List[List[Any]]] = None,
 ) -> Dict[str, int]:
     """Carrega [parlamentar_id, 'AAAA-MM-DD', status, justificativa] de uma fonte com falta e justificativa."""
-    cursor.execute("CREATE TEMP TABLE _of (codigo int, data date, tipo text, justificativa text) ON COMMIT DROP")
     selecionadas = [(int(c), d, s, j) for c, d, s, j in linhas if date.fromisoformat(d) >= max(desde, INICIO_JANELA)]
+    if not selecionadas:
+        # Fonte sem nenhuma linha (arquivo incompleto): apagar e regravar deixaria a base vazia.
+        logger.warning("Carga %s/%s sem linhas desde %s: nada foi alterado.", casa_codigo, fonte_codigo, desde)
+        return {"apagados": 0, "inseridos": 0, "lidos": 0}
+    cursor.execute("CREATE TEMP TABLE _of (codigo int, data date, tipo text, justificativa text) ON COMMIT DROP")
     _copiar(cursor, "_of", "codigo, data, tipo, justificativa", selecionadas)
     cursor.execute("CREATE TEMP TABLE _pt (codigo int, desde date, sigla text) ON COMMIT DROP")
-    _copiar(cursor, "_pt", "codigo, desde, sigla", [(int(c), d, g) for c, d, g in (partidos or [])])
+    _copiar(
+        cursor,
+        "_pt",
+        "codigo, desde, sigla",
+        [(int(c), d, normalizar_sigla_presenca(g)) for c, d, g in (partidos or [])],
+    )
     cursor.execute("SELECT id FROM ref.casa_legislativa WHERE codigo = %s", (casa_codigo,))
     casa_id = cursor.fetchone()[0]
     cursor.execute("SELECT id FROM ref.cargo WHERE codigo = %s", (cargo_codigo,))
@@ -161,8 +209,7 @@ def _carregar_oficial(
         JOIN core.pessoa pe ON pe.id = i.pessoa_id
         {_MANDATO_LATERAL.format(cargo="%s")}
         LEFT JOIN LATERAL (
-            SELECT CASE WHEN lower(sigla) = 's/partido' THEN 'S.PART.' WHEN lower(sigla) = 'sem registro' THEN NULL
-                        ELSE sigla END AS sigla
+            SELECT sigla
             FROM _pt t WHERE t.codigo = s.codigo AND t.desde <= s.data ORDER BY t.desde DESC LIMIT 1
         ) pt ON true
         LEFT JOIN LATERAL (
@@ -195,21 +242,38 @@ def _nome_deputado_api(camara_id: int) -> str:
         return ""
 
 
-def _carregar_camara_eventos(cursor, raw_dir: Path, anos: Iterable[int]) -> Dict[str, int]:
+def _ler_eventos(raw_dir: Path, anos: Iterable[int]) -> Tuple[Set[Tuple[int, date]], Set[date]]:
+    """Presenças e dias realizados dos anos pedidos, só antes do portal (2020 em diante vem do portal)."""
     presencas: Set[Tuple[int, date]] = set()
     dias: Set[date] = set()
     for ano in anos:
         p, d = presencas_por_dia(raw_dir, ano)
         presencas |= {x for x in p if x[1] < PORTAL_DESDE}
         dias |= {x for x in d if x < PORTAL_DESDE}
+    return presencas, dias
+
+
+def _nomes_desconhecidos(engine: Engine, presencas: Set[Tuple[int, date]]) -> Dict[int, str]:
+    """Nomes (API da Câmara) dos deputados sem cadastro, buscados fora da transação de carga."""
+    conexao = engine.raw_connection()
+    try:
+        cursor = conexao.cursor()
+        cursor.execute("SELECT valor FROM core.pessoa_identificador WHERE tipo = 'CAMARA_ID'")
+        conhecidos = {int(r[0]) for r in cursor.fetchall()}
+    finally:
+        conexao.close()
+    return {c: _nome_deputado_api(c) for c in sorted({codigo for codigo, _ in presencas} - conhecidos)}
+
+
+def _carregar_camara_eventos(
+    cursor, presencas: Set[Tuple[int, date]], dias: Set[date], anos: Iterable[int], nomes: Dict[int, str]
+) -> Dict[str, int]:
+    anos_antes_do_portal = sorted({a for a in anos if a < PORTAL_DESDE.year})
     cursor.execute("CREATE TEMP TABLE _cp (codigo int, data date) ON COMMIT DROP")
     cursor.execute("CREATE TEMP TABLE _cd (data date) ON COMMIT DROP")
     _copiar(cursor, "_cp", "codigo, data", sorted(presencas))
     _copiar(cursor, "_cd", "data", ((d,) for d in sorted(dias)))
-    cursor.execute("SELECT valor FROM core.pessoa_identificador WHERE tipo = 'CAMARA_ID'")
-    conhecidos = {int(r[0]) for r in cursor.fetchall()}
-    desconhecidos = {codigo for codigo, _ in presencas} - conhecidos
-    criados = _garantir_pessoas(cursor, "CAMARA_ID", "CAMARA_API", {c: _nome_deputado_api(c) for c in desconhecidos})
+    criados = _garantir_pessoas(cursor, "CAMARA_ID", "CAMARA_API", nomes)
     cursor.execute("SELECT id FROM ref.casa_legislativa WHERE codigo = 'CAMARA_DOS_DEPUTADOS'")
     casa_id = cursor.fetchone()[0]
     cursor.execute("SELECT id FROM ref.cargo WHERE codigo = 'DEPUTADO_FEDERAL'")
@@ -217,8 +281,9 @@ def _carregar_camara_eventos(cursor, raw_dir: Path, anos: Iterable[int]) -> Dict
     cursor.execute("SELECT id FROM etl.fonte WHERE codigo = 'CAMARA_CSV'")
     fonte_id = cursor.fetchone()[0]
     cursor.execute(
-        "DELETE FROM leg.presenca WHERE casa_id = %s AND fonte_id = %s AND data_sessao < %s",
-        (casa_id, fonte_id, PORTAL_DESDE),
+        "DELETE FROM leg.presenca WHERE casa_id = %s AND fonte_id = %s AND data_sessao < %s "
+        "AND extract(year FROM data_sessao)::int = ANY(%s)",
+        (casa_id, fonte_id, PORTAL_DESDE, anos_antes_do_portal),
     )
     apagados = cursor.rowcount
     cursor.execute(
@@ -243,10 +308,16 @@ def _carregar_camara_eventos(cursor, raw_dir: Path, anos: Iterable[int]) -> Dict
         JOIN core.mandato_situacao ms ON ms.periodo @> d.data AND ms.situacao IN ('EXERCICIO', 'SUPLENCIA')
         JOIN core.mandato m ON m.id = ms.mandato_id AND m.cargo_id = %s
         WHERE d.data >= %s
+          -- quem não tem nenhuma presença no ano não entra: o mandato registrado como em exercício não bate com o
+          -- plenário (ex.: legislatura anterior com situação ainda aberta), e a falta seria inventada
+          AND EXISTS (SELECT 1 FROM leg.presenca x
+                       WHERE x.pessoa_id = m.pessoa_id AND x.casa_id = %s AND x.tipo_codigo = 'PRESENTE'
+                         AND x.data_sessao >= make_date(extract(year FROM d.data)::int, 1, 1)
+                         AND x.data_sessao < make_date(extract(year FROM d.data)::int + 1, 1, 1))
         ORDER BY m.pessoa_id, d.data, m.inicio DESC
         ON CONFLICT (pessoa_id, casa_id, data_sessao) DO NOTHING
         """,
-        (casa_id, fonte_id, cargo_id, INFERENCIA_DESDE),
+        (casa_id, fonte_id, cargo_id, INFERENCIA_DESDE, casa_id),
     )
     return {
         "deputados_criados": criados,
@@ -268,11 +339,16 @@ def carregar(
     anos = list(anos_eventos) if anos_eventos is not None else list(range(INICIO_JANELA.year, PORTAL_DESDE.year + 1))
     corpo = carregar_dias(processed_dir)
     resumo: Dict[str, Any] = {}
+    eventos: Optional[Tuple[Set[Tuple[int, date]], Set[date], Dict[int, str]]] = None
+    if anos:  # sem anos, a história anterior a 2020 (já fechada) é preservada
+        verificar_arquivos(raw_dir, anos)
+        presencas, dias = _ler_eventos(raw_dir, anos)
+        eventos = (presencas, dias, _nomes_desconhecidos(engine, presencas))  # rede antes da transação
     conexao = engine.raw_connection()
     try:
         cursor = conexao.cursor()
-        if anos:  # sem anos, a história anterior a 2020 (já fechada) é preservada
-            resumo["camara_eventos"] = _carregar_camara_eventos(cursor, raw_dir, anos)
+        if eventos:
+            resumo["camara_eventos"] = _carregar_camara_eventos(cursor, eventos[0], eventos[1], anos, eventos[2])
         if corpo:
             nomes_sen = _nomes_senado(processed_dir)
             resumo["senadores_criados"] = _garantir_pessoas(cursor, "SENADO_ID", "SENADO_API", nomes_sen)

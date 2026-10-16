@@ -23,8 +23,12 @@ from app.services.core_sync import sync_legacy_to_core  # noqa: E402
 logger = logging.getLogger("VotacoesAtualizacao")
 
 
-def atualizar(ano_inicio: Optional[int] = None, force: bool = False) -> Dict[str, Any]:
-    """Extrai de `ano_inicio` (padrão: ano anterior) até hoje, carrega e sincroniza com o schema novo."""
+def atualizar(ano_inicio: Optional[int] = None, force: bool = False, sincronizar: bool = True) -> Dict[str, Any]:
+    """Extrai de `ano_inicio` (padrão: ano anterior) até hoje, carrega e sincroniza com o schema novo.
+
+    Com `sincronizar=False` só o legado é atualizado: quem chama (a consolidação diária) roda a ponte uma única vez
+    depois, em vez de reconstruir `leg.voto` a cada etapa.
+    """
     hoje = date.today()
     anos = list(range(ano_inicio or hoje.year - 1, hoje.year + 1))
     extracao = run_votacoes(anos=anos, force=force)
@@ -37,10 +41,16 @@ def atualizar(ano_inicio: Optional[int] = None, force: bool = False) -> Dict[str
             sessao, PROCESSED_DATA_DIR, mapa_deputados, mapa_senadores, mapa_partidos, carregador._ensure_party
         )
         sessao.commit()
-        ponte = sync_legacy_to_core(sessao)
+        ponte = sync_legacy_to_core(sessao) if sincronizar else None
     resumo = {"anos": anos, "extracao": {k: v for k, v in extracao.items() if k != "parlamentares_historicos"}}
     resumo["carga"] = contadores
     resumo["ponte"] = ponte
+    if extracao_falhas := {
+        casa: dados["falhas"]
+        for casa, dados in extracao.items()
+        if casa in ("camara", "senado") and dados.get("falhas")
+    }:
+        logger.warning("Votações extraídas com falhas (arquivos preservados): %s", extracao_falhas)
     logger.info("Votações atualizadas: %s", resumo)
     return resumo
 

@@ -8,7 +8,7 @@ legislaturas e regrava as linhas oficiais em `leg.presenca`. A história anterio
 
 import logging
 from datetime import date
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from etl.extractors.camara_presenca_eventos_extractor import CamaraPresencaEventosExtractor
 from etl.extractors.presenca_extractor import PresencaExtractor
@@ -22,8 +22,8 @@ from sqlalchemy.engine import Engine  # noqa: E402
 logger = logging.getLogger("PresencaAtualizacao")
 
 
-def atualizar(engine: Engine) -> Dict[str, Any]:
-    ano = date.today().year
+def atualizar(engine: Engine, hoje: Optional[date] = None) -> Dict[str, Any]:
+    ano = (hoje or date.today()).year
     arquivos = CamaraPresencaEventosExtractor(anos=[ano - 1, ano]).run()
     extracao = PresencaExtractor().run(usar_cache=True, ids_camara=None)
     falhas = {casa: len(dados["falhas"]) for casa, dados in extracao.items()}

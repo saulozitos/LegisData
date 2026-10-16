@@ -576,7 +576,8 @@ class PresencaExtractor:
         caminho = self.raw_dir / "senado" / f"votacoes_{ini:%Y%m}.json"
         if usar_cache:
             cache = self._ler_cache(caminho)
-            if cache:
+            # cache gravado antes de existir o partido por votação não serve: deixaria o partido do dia em branco
+            if cache and all("partidos" in v for v in cache.get("votacoes") or []):
                 mes_fechado = fim < date(self.hoje.year, self.hoje.month, 1)
                 recente = _cache_vale(cache.get("fetched_at"), self.hoje.year, self.hoje)
                 if mes_fechado or (recente and cache.get("ate") == fim.isoformat()):
