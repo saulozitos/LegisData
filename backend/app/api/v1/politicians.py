@@ -1,13 +1,15 @@
 import re
 import unicodedata
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from app.core.config import PROCESSED_DATA_DIR
 from app.core.data_files import load_json_cached
 from app.core.database import get_db
+from app.core.links import url_oficial_proposicao
+from app.core.query_utils import ALL_KEYWORDS, BRT, contains
 from app.models import (
     CargoPoliticoEnum,
     CasaLegislativaEnum,
@@ -26,7 +28,10 @@ from app.models import (
 from app.models.leg import Autoria, Proposicao, Votacao, Voto
 from app.services.basometro import calcular_basometro
 from app.services.ialp_pesos import carregar_pesos_ialp
+from app.services.ialp_pontos import pontos_ialp_pessoa
 from app.services.presidential_service import get_all_presidents, get_mandate_date_range, get_president_by_reference
+from app.services.roi_cidadao import METODOLOGIA as ROI_METODOLOGIA
+from app.services.roi_cidadao import PISO_DE_PONTOS, calcular_roi
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, asc, desc, func
 from sqlalchemy import inspect as sa_inspect
@@ -36,18 +41,12 @@ from sqlalchemy.orm import Session
 router = APIRouter()
 DATA_DIR = PROCESSED_DATA_DIR
 
-# Fuso fixo do Brasil (sem horário de verão desde 2019) para exibir datas de sessões sem depender de tzdata
-BRT = timezone(timedelta(hours=-3))
 # Limites de listas devolvidas no dossiê (os agregados são sempre calculados no banco, sobre todos os registros)
 MAX_VOTES_LISTED = 300
-# Na Câmara, falta (oficial ou inferida) só existe a partir da 52ª legislatura; antes há apenas presença
-PRESENCA_FALTA_CONHECIDA_DESDE = date(2003, 2, 3)
-# ROI do Cidadão: pontos IALP que dão a nota máxima na parte de entrega e custo por ponto que zera a parte de custo
-ROI_PONTOS_IALP_REFERENCIA = 100.0
-ROI_CUSTO_POR_PONTO_REFERENCIA = 100000.0
 MAX_PROPOSITIONS_LISTED = 500
+# Quando a fonte repete o parlamentar na mesma proposição, vale o papel de maior peso: autor principal, relator, coautor
+_PRIORIDADE_PAPEL: Dict[str, int] = {"AUTOR_PRINCIPAL": 0, "RELATOR": 1, "COAUTOR": 2}
 MAX_EMENDAS_LISTED = 500
-ALL_KEYWORDS = ("todos", "todas", "all")
 
 # Cache dos arquivos JSON processados (invalidado por mtime; arquivo ausente nunca é cacheado)
 _json_cache: Dict[str, Any] = {}
@@ -58,15 +57,6 @@ def _normalize_name(text: Optional[str]) -> str:
     if not text:
         return ""
     return "".join(c for c in unicodedata.normalize("NFD", text.upper()) if unicodedata.category(c) != "Mn").strip()
-
-
-def _escape_like(value: str) -> str:
-    """Escapa curingas do LIKE para que '%' e '_' digitados pelo usuário sejam literais."""
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
-def _contains(column, value: str):
-    return column.ilike(f"%{_escape_like(value.strip())}%", escape="\\")
 
 
 def _mask_document(doc: Optional[str]) -> Optional[str]:
@@ -231,16 +221,6 @@ def _format_photo_url(politician: Politician, is_president: bool = False) -> Opt
     return None
 
 
-def _official_url(prop: Proposicao) -> Optional[str]:
-    if prop.url_oficial:
-        return prop.url_oficial
-    if prop.id_camara:
-        return f"https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao={prop.id_camara}"
-    if prop.id_senado:
-        return f"https://www25.senado.leg.br/web/atividade/materias/-/materia/{prop.id_senado}"
-    return None
-
-
 def _to_brt(dt: Optional[datetime]) -> Optional[datetime]:
     if dt is None:
         return None
@@ -340,8 +320,8 @@ def search_politicians(
     if search and search.strip():
         query = query.filter(
             or_(
-                _contains(Politician.electoral_name, search),
-                _contains(Politician.civil_name, search),
+                contains(Politician.electoral_name, search),
+                contains(Politician.civil_name, search),
             )
         )
 
@@ -1221,7 +1201,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             "area_tematica": p.area_tematica,
             "data_apresentacao": (p.data_apresentacao.isoformat() if p.data_apresentacao else None),
             "is_reforma_estrutural": p.reforma_estrutural,
-            "url_oficial": _official_url(p),
+            "url_oficial": url_oficial_proposicao(p),
             "papel_autoria": papel,
             "peso_participacao": peso_part,
             "peso_complexidade": peso_comp,
@@ -1245,14 +1225,18 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         )
         papeis: Dict[int, str] = {}
         for pa, p in author_items:
-            if pa.tipo_codigo == "AUTOR_PRINCIPAL" or p.id not in papeis:
-                papeis[p.id] = pa.tipo_codigo
+            papel_da_linha = str(pa.tipo_codigo)
+            papel_anterior = papeis.get(p.id)
+            if papel_anterior is None or _PRIORIDADE_PAPEL.get(papel_da_linha, 9) < _PRIORIDADE_PAPEL.get(
+                papel_anterior, 9
+            ):
+                papeis[p.id] = papel_da_linha
         vistos: set = set()
         for pa, p in author_items:
             if p.id in vistos:
                 continue
             vistos.add(p.id)
-            materias_propostas.append(_item(p, "AUTOR_PRINCIPAL" if papeis[p.id] == "AUTOR_PRINCIPAL" else "COAUTOR"))
+            materias_propostas.append(_item(p, papeis[p.id]))
     else:
         prop_conditions = [Proposicao.autor_pessoa_id == pessoa_id] if pessoa_id is not None else []
         for p_start, p_end in presidential_periods:
@@ -1405,7 +1389,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
                 "sessao_titulo": titulo_sessao,
                 "sessao_aprovada": sess.aprovada,
                 "casa_legislativa": casa_codigo,
-                "url_oficial": _official_url(prop),
+                "url_oficial": url_oficial_proposicao(prop),
             }
         )
 
@@ -1429,43 +1413,46 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     # Basômetro: alinhamento à orientação do governo em cada votação nominal (sem baseline inventado).
     basometro = calcular_basometro(db, pessoa_id, partido_atual_sigla, votos_sim_total, votos_nao_total)
 
-    # F. Contabilização de Presenças e Faltas (Assiduidade) a partir de leg.presenca. Na Câmara, antes de
-    # PRESENCA_FALTA_CONHECIDA_DESDE só há presença (nenhuma falta é publicada nem inferida): esses dias ficam fora
+    # F. Contabilização de Presenças e Faltas (Assiduidade) a partir de leg.vw_presenca_conhecida. Na Câmara, antes de
+    # ref.cobertura_presenca.falta_desde só há presença (nenhuma falta é publicada nem inferida): esses dias ficam fora
     # da taxa para não inflá-la, e entram apenas na contagem de presenças sem falta registrada.
-    att_rows = (
+    att_row = (
         db.execute(
             text(
                 """
-                SELECT c.codigo AS casa, p.tipo_codigo AS tipo, (p.data_sessao >= :corte OR c.codigo <> 'CAMARA_DOS_DEPUTADOS') AS mensuravel,
-                       count(*) AS n, min(p.data_sessao) AS inicio, max(p.data_sessao) AS fim
-                FROM leg.presenca p JOIN ref.casa_legislativa c ON c.id = p.casa_id
-                WHERE p.pessoa_id = :pid GROUP BY 1, 2, 3
+                SELECT count(*) AS total,
+                       count(*) FILTER (WHERE presente) AS presencas,
+                       count(*) FILTER (WHERE justificada) AS justificadas,
+                       count(*) FILTER (WHERE tipo_codigo = 'AUSENCIA_NAO_JUSTIFICADA') AS nao_justificadas,
+                       count(*) FILTER (WHERE tipo_codigo = 'AUSENCIA_INFERIDA') AS inferidas,
+                       count(*) FILTER (WHERE com_justificativa) AS dias_com_justificativa,
+                       count(*) FILTER (WHERE na_inferencia) AS dias_na_inferencia,
+                       string_agg(DISTINCT casa, ',') AS casas, min(data_sessao) AS inicio, max(data_sessao) AS fim
+                FROM leg.vw_presenca_conhecida WHERE pessoa_id = :pid
                 """
             ),
-            {"pid": pessoa_param, "corte": PRESENCA_FALTA_CONHECIDA_DESDE},
+            {"pid": pessoa_param},
         )
         .mappings()
-        .all()
+        .one()
     )
-    att_counts: Dict[str, int] = {}
-    att_casas = set()
-    presencas_sem_falta = 0
-    att_inicio = att_fim = None
-    for r in att_rows:
-        if not r["mensuravel"]:
-            presencas_sem_falta += r["n"]
-            continue
-        att_counts[r["tipo"]] = att_counts.get(r["tipo"], 0) + r["n"]
-        att_casas.add(r["casa"])
-        att_inicio = r["inicio"] if att_inicio is None else min(att_inicio, r["inicio"])
-        att_fim = r["fim"] if att_fim is None else max(att_fim, r["fim"])
-    total_sessoes = sum(att_counts.values())
-    presencas_count = att_counts.get("PRESENTE", 0)
-    faltas_justif_count = sum(
-        att_counts.get(t, 0) for t in ("AUSENCIA_JUSTIFICADA", "LICENCA_MEDICA", "MISSAO_OFICIAL")
-    )
-    faltas_inferidas_count = att_counts.get("AUSENCIA_INFERIDA", 0)
-    faltas_injustif_count: Optional[int] = att_counts.get("AUSENCIA_NAO_JUSTIFICADA", 0)
+    presencas_sem_falta = (
+        db.execute(
+            text("SELECT count(*) FROM leg.presenca WHERE pessoa_id = :pid"),
+            {"pid": pessoa_param},
+        ).scalar()
+        or 0
+    ) - att_row["total"]
+    att_casas = set((att_row["casas"] or "").split(",")) - {""}
+    att_inicio, att_fim = att_row["inicio"], att_row["fim"]
+    total_sessoes = att_row["total"]
+    presencas_count = att_row["presencas"]
+    total_faltas = total_sessoes - presencas_count
+    # categoria que o período não permite saber vem como None, nunca como zero
+    informa_justificativa = att_row["dias_com_justificativa"] > 0
+    faltas_justif_count: Optional[int] = att_row["justificadas"] if informa_justificativa else None
+    faltas_injustif_count: Optional[int] = att_row["nao_justificadas"] if informa_justificativa else None
+    faltas_inferidas_count: Optional[int] = att_row["inferidas"] if att_row["dias_na_inferencia"] > 0 else None
     taxa_presenca = round((presencas_count / total_sessoes * 100), 1) if total_sessoes > 0 else None
 
     amostra_faltas = (
@@ -1603,56 +1590,30 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     # requerimentos ou apoiar projetos de outros vale pouco, e só avanço na tramitação pontua de verdade.
     total_gasto_mandato = float(custos_ceap.get("gasto_total_recente") or 0.0)
     custo_total_operacional = total_gasto_mandato + salario_acumulado_registrado
-    pontos_ialp = round(total_score_ponderado, 1)
+    # os pontos vêm da base inteira (não da lista truncada) e do mesmo cálculo dos rankings de autores e de ausências
+    pontos_ialp = round(pontos_ialp_pessoa(db, pessoa_id) if pessoa_id is not None else total_score_ponderado, 1)
     projetos_autoria_estrutural = sum(
         1
         for m in materias_propostas
         if m["papel_autoria"] == "AUTOR_PRINCIPAL" and m["tipo"] in ("PEC", "PLP", "PL", "MPV")
     )
     roi_dados_ok = bool(custos_ceap.get("possui_dados")) and salario_acumulado_registrado > 0 and total_sessoes > 0
-
-    if roi_dados_ok:
-        custo_por_ponto = round(custo_total_operacional / max(pontos_ialp, 1.0), 2)
-        fator_presenca = min(taxa_presenca or 0.0, 100.0) * 0.30
-        fator_entrega = min(pontos_ialp / ROI_PONTOS_IALP_REFERENCIA * 100.0, 100.0) * 0.40
-        fator_custo = max(0.0, 100.0 - custo_por_ponto / ROI_CUSTO_POR_PONTO_REFERENCIA * 100.0) * 0.30
-        nota_roi: Optional[float] = round(fator_presenca + fator_entrega + fator_custo, 1)
-
-        if nota_roi >= 85:
-            score_roi = "A+"
-            diag_roi = "Alta eficiência: entrega legislativa expressiva em pontos IALP, assiduidade alta e baixo custo por ponto."
-        elif nota_roi >= 70:
-            score_roi = "A"
-            diag_roi = "Bom custo-benefício para o cidadão, com produção legislativa consistente."
-        elif nota_roi >= 55:
-            score_roi = "B"
-            diag_roi = "Produção legislativa e assiduidade em nível regular."
-        elif nota_roi >= 40:
-            score_roi = "C"
-            diag_roi = "Custo operacional elevado em relação à entrega legislativa medida em pontos IALP."
-        else:
-            score_roi = "D"
-            diag_roi = "Baixo retorno legislativo em proporção ao custo operacional do mandato."
-    else:
-        custo_por_ponto = None
-        nota_roi = None
-        score_roi = None
-        diag_roi = "Dados insuficientes (CEAP, remuneração e presenças são necessários para calcular o indicador)."
-
+    roi = calcular_roi(
+        custo_total=custo_total_operacional,
+        pontos_ialp=pontos_ialp,
+        taxa_presenca=taxa_presenca,
+        dados_suficientes=roi_dados_ok,
+    )
     roi_cidadao = {
-        "score": score_roi,
-        "nota": nota_roi,
+        "score": roi["score"],
+        "nota": roi["nota"],
         "custo_total_operacional": round(custo_total_operacional, 2) if roi_dados_ok else None,
         "pontos_ialp": pontos_ialp,
-        "custo_por_ponto_ialp": custo_por_ponto,
+        # abaixo de 1 ponto o custo "por ponto" seria o custo total: não é exibido
+        "custo_por_ponto_ialp": roi["custo_por_ponto"] if pontos_ialp >= PISO_DE_PONTOS else None,
         "projetos_estruturantes": projetos_autoria_estrutural,
-        "metodologia": (
-            "Nota = 30% assiduidade + 40% pontos IALP (referência de "
-            f"{ROI_PONTOS_IALP_REFERENCIA:.0f} pontos para a nota máxima nesta parte) + 30% custo por ponto IALP "
-            f"(zera em R$ {ROI_CUSTO_POR_PONTO_REFERENCIA:,.0f} por ponto). O custo soma a cota parlamentar (CEAP) e os "
-            "subsídios brutos registrados."
-        ).replace(",", "."),
-        "diagnostico": diag_roi,
+        "metodologia": ROI_METODOLOGIA,
+        "diagnostico": roi["diagnostico"],
     }
 
     # 2. Concentração de Fornecedores da CEAP (Índice HHI)
@@ -1856,6 +1817,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             "faltas_justificadas": faltas_justif_count,
             "faltas_nao_justificadas": faltas_injustif_count,
             "faltas_inferidas": faltas_inferidas_count,
+            "total_faltas": total_faltas,
             "observacao": observacao_assiduidade,
             "taxa_presenca_pct": taxa_presenca,
             "amostra_faltas": faltas_registros,

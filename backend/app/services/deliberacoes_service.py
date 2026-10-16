@@ -1,8 +1,10 @@
 import uuid
 from typing import Any, Dict, List, Optional, cast
 
+from app.core.links import url_oficial_proposicao
 from app.models.core import Partido, Pessoa, PessoaNome
 from app.models.leg import Proposicao, Votacao, Voto
+from app.services.placar import contagens_por_votacao, placar_da_votacao
 from sqlalchemy import or_, select, text
 from sqlalchemy.orm import Session
 
@@ -13,18 +15,6 @@ AVISO_SIMBOLICA = (
 )
 
 
-def _official_url(prop: Proposicao) -> Optional[str]:
-    if prop.url_oficial:
-        return prop.url_oficial
-    if prop.url_texto_original:
-        return prop.url_texto_original
-    if prop.id_camara:
-        return f"https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao={prop.id_camara}"
-    if prop.id_senado:
-        return f"https://legis.senado.leg.br/materia/detalhe/{prop.id_senado}"
-    return None
-
-
 def _orientacoes(v: Votacao) -> List[Dict[str, str]]:
     return [
         {"partido_bancada": o.bancada, "orientacao": o.orientacao}
@@ -33,27 +23,9 @@ def _orientacoes(v: Votacao) -> List[Dict[str, str]]:
 
 
 def _placar_nominal(db: Session, v: Votacao) -> Dict[str, int]:
-    """Total informado pela fonte; sem ele, a contagem dos votos nominais registrados."""
-    sim, nao, abst, obs = (
-        v.total_sim_fonte or 0,
-        v.total_nao_fonte or 0,
-        v.total_abstencao_fonte or 0,
-        v.total_obstrucao_fonte or 0,
-    )
-    if not (sim or nao or abst or obs):
-        contagem = dict(
-            db.execute(
-                text("SELECT opcao_codigo, count(*) FROM leg.voto WHERE votacao_id = :id GROUP BY opcao_codigo"),
-                {"id": v.id},
-            ).all()
-        )
-        sim, nao, abst, obs = (
-            contagem.get("SIM", 0),
-            contagem.get("NAO", 0),
-            contagem.get("ABSTENCAO", 0),
-            contagem.get("OBSTRUCAO", 0),
-        )
-    return {"sim": sim, "nao": nao, "abstencao": abst, "obstrucao": obs, "total": sim + nao + abst + obs}
+    """Placar oficial da votação (totais da fonte ou contagem dos votos nominais), no formato das deliberações."""
+    placar = placar_da_votacao(v, contagens_por_votacao(db, Votacao.id == v.id).get(v.id))
+    return {k: placar[k] for k in ("sim", "nao", "abstencao", "obstrucao", "total")}
 
 
 def _campos_comissao(v: Votacao) -> Dict[str, Any]:
@@ -84,7 +56,7 @@ def get_proposicao_deliberacoes(db: Session, prop_id: int) -> Optional[Dict[str,
         "autor_nome": prop.autor_nome or ("Poder Executivo" if prop.iniciativa_executivo else "Congresso Nacional"),
         "status": prop.status_codigo,
         "data_apresentacao": prop.data_apresentacao.isoformat() if prop.data_apresentacao else None,
-        "url_oficial": _official_url(prop),
+        "url_oficial": url_oficial_proposicao(prop),
     }
 
     votacoes = db.query(Votacao).filter(Votacao.proposicao_id == prop.id).order_by(Votacao.data_hora.desc()).all()
@@ -137,7 +109,7 @@ def get_deliberacao_detalhe(
             "ementa": prop.ementa,
             "setor": prop.area_tematica or "Geral",
             "autor_nome": prop.autor_nome or ("Poder Executivo" if prop.iniciativa_executivo else "Congresso"),
-            "url_oficial": _official_url(prop),
+            "url_oficial": url_oficial_proposicao(prop),
         }
 
     tipo = "NOMINAL" if votacao.tipo_deliberacao == "SECRETA" else votacao.tipo_deliberacao
