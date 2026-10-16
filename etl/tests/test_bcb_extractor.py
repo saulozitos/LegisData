@@ -1,4 +1,4 @@
-"""BCB: validação de resposta, janelas de 10 anos, cache reaproveitável e nenhum cache de erro."""
+"""BCB: validação de resposta, janelas de 5 anos, cache reaproveitável e nenhum cache de erro."""
 
 import json
 import os
@@ -74,7 +74,7 @@ def test_recusa_de_janela_longa_repete_em_janelas_menores(tmp_path):
     http = HttpFalso(HttpError("u", 400, "janela"), pontos(1))
     ext = BCBExtractor(tmp_path, http=http)
     dados = ext.fetch_serie(11, "01/01/1990", "31/12/2025")
-    assert len(http.urls) >= 4  # 1 tentativa completa + janelas de até 10 anos
+    assert len(http.urls) >= 4  # 1 tentativa completa + janelas de até 5 anos
     assert len(dados) == len(http.urls) - 1
 
 

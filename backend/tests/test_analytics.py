@@ -20,7 +20,7 @@ from app.models import (
     StateSocialIndicator,
 )
 
-from .conftest import write_json, write_text
+from .conftest import criar_mandato_presidencial, observar_serie, write_json
 
 BASE = "/api/v1/analytics"
 
@@ -69,7 +69,7 @@ def test_delta_and_relative():
     "mandate,expected",
     [
         ({"id_mandato": "sem-datas"}, []),
-        ({"data_inicio": "1992-10-02", "data_fim": "1995-01-01"}, [1993, 1994]),
+        ({"data_inicio": "1992-10-02", "data_fim": "1999-01-01"}, [1995, 1996, 1997, 1998]),
         # a data de fim é exclusiva: mandato que termina em 01/01/2023 NÃO inclui 2023 (antes havia off-by-one)
         ({"data_inicio": "2019-01-01", "data_fim": "2023-01-01"}, [2019, 2020, 2021, 2022]),
         ({"data_inicio": "2010-01-01", "data_fim": "2014-12-31"}, [2010, 2011, 2012, 2013, 2014]),
@@ -175,44 +175,32 @@ def test_prosperity_score_derives_years_from_dates_when_series_missing():
 # mandates-performance / compare-mandates
 # ---------------------------------------------------------------------------
 @pytest.fixture()
-def mandates_file(data_dir):
-    write_json(
-        data_dir,
-        "indicadores_por_mandato.json",
-        [
-            {
-                "id_mandato": "a-2011",
-                "data_inicio": "2011-01-01",
-                "data_fim": "2015-01-01",
-                "ipca_acumulado_pct": 0.0,
-                "pib_medio_anual_pct": 1.0,
-                "salario_minimo_final_brl": 700.0,
-            },
-            {
-                "id_mandato": "b-2015",
-                "data_inicio": "2015-01-01",
-                "data_fim": "2019-01-01",
-                "ipca_acumulado_pct": 5.0,
-                "salario_minimo_final_brl": 900.0,
-            },
-        ],
-    )
-    return data_dir
+def mandates_db(db):
+    """Dois mandatos: A com IPCA zero, PIB e salário; B com IPCA e salário, sem PIB."""
+    criar_mandato_presidencial(db, "Alfa", date(2011, 1, 1), date(2015, 1, 1), "a-2011")
+    criar_mandato_presidencial(db, "Beta", date(2015, 1, 1), date(2019, 1, 1), "b-2015")
+    observar_serie(db, "IPCA_MENSAL", date(2012, 1, 1), 0.0)
+    observar_serie(db, "PIB_CRESC_REAL", date(2011, 1, 1), 1.0)
+    observar_serie(db, "SALARIO_MINIMO_MENSAL", date(2014, 12, 1), 700.0)
+    observar_serie(db, "IPCA_MENSAL", date(2016, 1, 1), 5.0)
+    observar_serie(db, "SALARIO_MINIMO_MENSAL", date(2018, 12, 1), 900.0)
+    db.commit()
 
 
-def test_mandates_performance_adds_score_without_mutating_cache(client, mandates_file):
+def test_mandates_performance_adds_score_and_is_stable(client, mandates_db):
     first = client.get(f"{BASE}/mandates-performance").json()
     second = client.get(f"{BASE}/mandates-performance").json()
     assert first == second
     assert first[0]["score_prosperidade"]["pilares_ausentes"]  # dados incompletos sinalizados
-    assert first[0]["id_mandato"] == "a-2011"
+    assert [m["id_mandato"] for m in first] == ["a-2011", "b-2015"]
+    assert first[0]["ipca_acumulado_pct"] == 0.0 and first[1]["pib_medio_anual_pct"] is None
 
 
-def test_mandates_performance_missing_file_is_404(client, data_dir):
+def test_mandates_performance_without_mandates_is_404(client):
     assert client.get(f"{BASE}/mandates-performance").status_code == 404
 
 
-def test_compare_mandates_preserves_zero_and_nulls_for_missing_values(client, mandates_file):
+def test_compare_mandates_preserves_zero_and_nulls_for_missing_values(client, mandates_db):
     body = client.get(f"{BASE}/compare-mandates", params={"mandate1": "a-2011", "mandate2": "b-2015"}).json()
     deltas = body["deltas"]
     assert deltas["ipca_acumulado_diff_pp"] == 5.0  # 0 -> 5: o zero do mandato A é um valor válido
@@ -225,53 +213,38 @@ def test_compare_mandates_preserves_zero_and_nulls_for_missing_values(client, ma
     )
 
 
-def test_compare_mandates_trajectory_uses_exclusive_end_years(client, mandates_file):
+def test_compare_mandates_trajectory_uses_exclusive_end_years(client, mandates_db):
     body = client.get(f"{BASE}/compare-mandates", params={"mandate1": "a-2011", "mandate2": "b-2015"}).json()
     years = [row["m1_calendar_year"] for row in body["normalized_trajectory"]]
     assert years == [2011, 2012, 2013, 2014]
     assert [row["m2_calendar_year"] for row in body["normalized_trajectory"]] == [2015, 2016, 2017, 2018]
 
 
-def test_compare_mandates_joins_optional_datasets(client, mandates_file):
-    write_text(mandates_file, "resumo_macroeconomico_anual.csv", "ano,pib_crescimento_real_pct\n2011,3.9\n2015,-3.5\n")
-    write_json(
-        mandates_file,
-        "repasses_federais_uf.json",
+def test_compare_mandates_joins_optional_datasets(client, db, mandates_db):
+    observar_serie(db, "PIB_CRESC_REAL", date(2015, 1, 1), -3.5)
+    observar_serie(db, "IPCA_ACUM_ANO", date(2011, 1, 1), 6.5)
+    db.add_all(
         [
-            {
-                "mandato_id_ref": "a-2011",
-                "uf": "SP",
-                "estado_nome": "São Paulo",
-                "regiao": "Sudeste",
-                "area_tematica": "Saúde",
-                "valor_pago_brl": 100.0,
-                "valor_per_capita_brl": 2.0,
-            },
-            {
-                "mandato_id_ref": "b-2015",
-                "uf": "SP",
-                "estado_nome": "São Paulo",
-                "regiao": "Sudeste",
-                "area_tematica": "Saúde",
-                "valor_pago_brl": 150.0,
-                "valor_per_capita_brl": 3.0,
-            },
-        ],
+            _transfer(mandate_id_ref="a-2011", valor_pago_brl=Decimal("100.00"), valor_per_capita_brl=Decimal("2.00")),
+            _transfer(mandate_id_ref="b-2015", valor_pago_brl=Decimal("150.00"), valor_per_capita_brl=Decimal("3.00")),
+        ]
     )
+    db.commit()
     body = client.get(f"{BASE}/compare-mandates", params={"mandate1": "a-2011", "mandate2": "b-2015"}).json()
-    assert body["normalized_trajectory"][0]["m1_pib"] == 3.9
+    assert body["normalized_trajectory"][0]["m1_pib"] == 1.0 and body["normalized_trajectory"][0]["m1_ipca"] == 6.5
+    assert body["normalized_trajectory"][0]["m2_pib"] == -3.5
     assert body["repasses_comparison"]["by_area"]["Saúde"]["growth_pct"] == 50.0
     assert body["repasses_comparison"]["summary"]["diff_total_brl"] == 50.0
     assert body["termometro_repasses_apoio"]["m2_lider_per_capita"]["uf"] == "SP"
 
 
-def test_compare_mandates_unknown_mandate_is_404(client, mandates_file):
+def test_compare_mandates_unknown_mandate_is_404(client, mandates_db):
     response = client.get(f"{BASE}/compare-mandates", params={"mandate1": "a-2011", "mandate2": "zzz"})
     assert response.status_code == 404
     assert "zzz" in response.json()["detail"]
 
 
-def test_compare_mandates_requires_both_parameters(client, mandates_file):
+def test_compare_mandates_requires_both_parameters(client, mandates_db):
     assert client.get(f"{BASE}/compare-mandates", params={"mandate1": "a-2011"}).status_code == 422
 
 
@@ -377,9 +350,10 @@ def _transfer(**kw):
 
 
 @pytest.fixture()
-def known_mandates(data_dir):
-    write_json(data_dir, "indicadores_por_mandato.json", [{"id_mandato": "lula-2023"}, {"id_mandato": "outro-2019"}])
-    return data_dir
+def known_mandates(db):
+    criar_mandato_presidencial(db, "Lula", date(2023, 1, 1), None, "lula-2023")
+    criar_mandato_presidencial(db, "Outro", date(2019, 1, 1), date(2023, 1, 1), "outro-2019")
+    db.commit()
 
 
 def test_federal_transfers_from_database(client, db, known_mandates):
@@ -438,46 +412,16 @@ def test_federal_transfers_area_filter_is_literal_not_a_wildcard(client, db, kno
     )
 
 
-def test_federal_transfers_area_filter_without_hits_does_not_mix_in_file_data(client, db, known_mandates):
+def test_federal_transfers_area_filter_without_hits_is_empty(client, db, known_mandates):
     db.add(_transfer())
     db.commit()
-    write_json(
-        known_mandates,
-        "repasses_federais_uf.json",
-        [
-            {
-                "mandato_id_ref": "lula-2023",
-                "uf": "AC",
-                "estado_nome": "Acre",
-                "regiao": "Norte",
-                "area_tematica": "Segurança",
-                "valor_pago_brl": 999,
-            }
-        ],
-    )
     body = client.get(f"{BASE}/federal-transfers", params={"mandate_id": "lula-2023", "area": "Segurança"}).json()
     assert body["por_uf"] == [] and body["total_repassado_brl"] == 0.0
 
 
-def test_federal_transfers_falls_back_to_file_when_database_has_no_mandate(client, known_mandates):
-    write_json(
-        known_mandates,
-        "repasses_federais_uf.json",
-        [
-            {
-                "mandato_id_ref": "outro-2019",
-                "uf": "AC",
-                "estado_nome": "Acre",
-                "regiao": "Norte",
-                "area_tematica": "Saúde",
-                "valor_pago_brl": 10.0,
-                "populacao_estimada": 5,
-                "valor_per_capita_brl": 2.0,
-            }
-        ],
-    )
+def test_federal_transfers_mandate_without_rows_is_empty_not_filled_from_files(client, known_mandates):
     body = client.get(f"{BASE}/federal-transfers", params={"mandate_id": "outro-2019"}).json()
-    assert body["total_repassado_brl"] == 10.0 and body["regioes_resumo"] == {"Norte": 10.0}
+    assert body["por_uf"] == [] and body["total_repassado_brl"] == 0.0
 
 
 def test_federal_transfers_unknown_mandate_is_404(client, known_mandates):
@@ -518,13 +462,14 @@ def test_social_indicators_expose_official_series_fields(client, db):
     assert row["analfabetismo_pct"] is None  # lacuna de pesquisa continua null, nunca zero
 
 
-def test_social_indicators_fall_back_to_json_when_table_is_empty(client, data_dir):
-    write_json(data_dir, "indicadores_sociais_anuais.json", [{"ano": 2001, "gini": 0.6}])
-    assert client.get(f"{BASE}/social-indicators").json() == [{"ano": 2001, "gini": 0.6}]
+def test_social_indicators_empty_table_is_an_empty_list(client):
+    assert client.get(f"{BASE}/social-indicators").json() == []
 
 
-def test_social_classes_use_latest_minimum_wage_from_the_series(client, data_dir):
-    write_text(data_dir, "resumo_macroeconomico_anual.csv", "ano,salario_minimo\n2023,1320.0\n2024,1412.0\n2025,\n")
+def test_social_classes_use_latest_minimum_wage_from_the_series(client, db, data_dir):
+    observar_serie(db, "SALARIO_MINIMO", date(2023, 1, 1), 1320.0)
+    observar_serie(db, "SALARIO_MINIMO", date(2024, 1, 1), 1412.0)
+    db.commit()
     body = client.get(f"{BASE}/social-classes").json()
     assert body["salario_minimo_referencia_brl"] == 1412.0
     assert body["ano_referencia"] == 2024

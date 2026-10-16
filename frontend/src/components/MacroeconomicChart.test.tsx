@@ -15,11 +15,10 @@ const row = (ano: number, over: Partial<ResumoMacroeconomicoAnual> = {}): Resumo
   cambio_dolar_medio: 4.5,
   divida_liquida_pct_pib: null,
   salario_minimo_nominal_brl: null,
-  ibovespa_fechamento: 120000,
   ...over,
 });
 
-const data = [row(1993, { ipca_acumulado_ano_pct: 2477, cambio_dolar_medio: 19323 }), row(1995), row(2010), row(2023)];
+const data = [row(1995), row(2010), row(2023)];
 const mandates: MandateRange[] = [
   { id: 'fhc-1995', label: 'Cardoso 1', start: 1995, end: 1998, electionYear: 1994 },
   { id: 'lula-2023', label: 'Silva 3', start: 2023, end: 2026, electionYear: 2022 },
@@ -33,18 +32,11 @@ describe('MacroeconomicChart', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
-  it('por padrão recorta o pós-Plano Real e rotula os intervalos', () => {
+  it('mostra o gráfico com a série inteira, sem recortes de período', () => {
     render(<MacroeconomicChart data={data} mandates={mandates} />);
-    expect(screen.getByRole('button', { name: 'Pós-Plano Real (1995-2023)' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Histórico Completo (1993-2023)' })).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.queryByText(/Atenção: a inflação do período pré-Real/)).not.toBeInTheDocument();
     expect(screen.getByRole('img')).toBeInTheDocument();
-  });
-
-  it('histórico completo exibe o aviso do pré-Real', () => {
-    render(<MacroeconomicChart data={data} />);
-    fireEvent.click(screen.getByRole('button', { name: /Histórico Completo/ }));
-    expect(screen.getByText(/Atenção: a inflação do período pré-Real/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Pós-Plano Real|Histórico Completo/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ibovespa/)).not.toBeInTheDocument();
   });
 
   it('delimita zonas presidenciais dentro do intervalo exibido', () => {
@@ -73,18 +65,6 @@ describe('MacroeconomicChart', () => {
     expect(screen.queryByRole('button', { name: /Zoom:/ })).not.toBeInTheDocument();
   });
 
-  it('Ibovespa liga/desliga título, eixo e tooltip', () => {
-    render(<MacroeconomicChart data={data} />);
-    const toggle = screen.getByRole('button', { name: /Ibovespa \(Pontos B3\)/ });
-    expect(screen.queryByText(/vs\. Ibovespa/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Ibovespa \(Fechamento\)/)).not.toBeInTheDocument();
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText(/vs\. Ibovespa/)).toBeInTheDocument();
-    expect(screen.getByText(/Ibovespa \(Fechamento\)/)).toBeInTheDocument();
-    expect(screen.getByText('120.000 pts')).toBeInTheDocument();
-  });
-
   it('tooltip formata PIB/IPCA/câmbio e usa N/D quando falta dado', () => {
     const { unmount } = render(<MacroeconomicChart data={[row(1995)]} />);
     const tip = screen.getByTestId('tooltip-content');
@@ -98,12 +78,5 @@ describe('MacroeconomicChart', () => {
     const tip2 = screen.getByTestId('tooltip-content');
     expect(tip2.textContent?.match(/N\/D/g)).toHaveLength(2);
     expect(tip2).not.toHaveTextContent('Câmbio Médio');
-  });
-
-  it('câmbio em moeda pré-Real não é mostrado como R$', () => {
-    render(<MacroeconomicChart data={[row(1993, { cambio_dolar_medio: 19323 })]} />);
-    fireEvent.click(screen.getByRole('button', { name: /Histórico Completo/ }));
-    expect(screen.getByTestId('tooltip-content')).toHaveTextContent('moeda pré-Real (não comparável)');
-    expect(screen.getByTestId('tooltip-content')).not.toHaveTextContent('R$ 19323');
   });
 });

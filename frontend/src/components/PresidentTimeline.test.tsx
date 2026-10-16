@@ -29,7 +29,6 @@ const presidents = [
 describe('getPresidentPhotoUrl', () => {
   it('prefere a foto local e mapeia por id de referência', () => {
     expect(getPresidentPhotoUrl('x', '/presidents/a.jpg')).toBe('/presidents/a.jpg');
-    expect(getPresidentPhotoUrl('itamar-1992')).toBe('/presidents/itamar-franco.jpg');
     expect(getPresidentPhotoUrl('fhc-1995')).toBe('/presidents/fhc.jpg');
     expect(getPresidentPhotoUrl('lula-2023')).toBe('/presidents/lula.jpg');
     expect(getPresidentPhotoUrl('dilma-2015')).toBe('/presidents/dilma.jpg');

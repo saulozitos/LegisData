@@ -28,7 +28,6 @@ import {
   Users,
   DollarSign,
   BarChart2,
-  AlertTriangle,
   Briefcase,
   Minus,
   Calendar,
@@ -280,7 +279,7 @@ export default function ExecutivoDashboard() {
             </div>
 
             {/* ── KPI Cards ── */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
 
               <KPICard
                 label="Inflação IPCA"
@@ -307,17 +306,6 @@ export default function ExecutivoDashboard() {
               />
 
               <KPICard
-                label="Aprovação"
-                value={fmt(kpis?.aprovacao_popular?.media)}
-                unit="% pop."
-                sublabel={`Pico: ${fmt(kpis?.aprovacao_popular?.maximo)}% · Vale: ${fmt(kpis?.aprovacao_popular?.minimo)}%`}
-                delta={diff(kpis?.aprovacao_popular?.ultimo, kpis?.aprovacao_popular?.primeiro)}
-                icon={<Users className="w-5 h-5 text-emerald-400" />}
-                accent="text-emerald-400 bg-emerald-400/10"
-                tooltip="Aprovação popular média (Datafolha/CNT). Considera 'ótimo + bom'."
-              />
-
-              <KPICard
                 label="Câmbio (USD)"
                 value={fmt(kpis?.cambio_usd_brl?.ultimo, 2)}
                 unit="R$"
@@ -340,25 +328,15 @@ export default function ExecutivoDashboard() {
                 accent="text-violet-400 bg-violet-400/10"
                 tooltip="Taxa Selic meta ao final do mandato (%). Fonte: BCB/COPOM"
               />
-
-              <KPICard
-                label="Emendas"
-                value={fmt(kpis?.emendas_bilhoes?.total_acumulado, 1)}
-                unit="R$ bi"
-                sublabel="Total acumulado"
-                icon={<AlertTriangle className="w-5 h-5 text-orange-400" />}
-                accent="text-orange-400 bg-orange-400/10"
-                tooltip="Total de emendas parlamentares executadas no período. Fonte: Portal da Transparência"
-              />
             </div>
 
             {/* ── Gráficos ── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-              {/* Inflação × Aprovação */}
+              {/* Inflação */}
               <ChartSection
-                title="Inflação vs. Aprovação Popular"
-                description="Como a inflação impactou a popularidade do governo (IPCA 12m · Datafolha)"
+                title="Inflação (IPCA em 12 meses)"
+                description="Quanto os preços subiram nos 12 meses anteriores a cada mês do mandato"
                 icon={<BarChart2 className="w-5 h-5 text-rose-400" />}
               >
                 <div className="h-72">
@@ -366,12 +344,9 @@ export default function ExecutivoDashboard() {
                     <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                       <XAxis dataKey="label" stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} interval="preserveStartEnd" />
-                      <YAxis yAxisId="left" stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
-                      <YAxis yAxisId="right" orientation="right" stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
+                      <YAxis stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
                       <Tooltip {...TOOLTIP_STYLE} formatter={(val, name) => [`${fmt(Number(val))}%`, name]} />
-                      <Legend wrapperStyle={{ fontSize: "12px", paddingTop: "8px" }} />
-                      <Line yAxisId="left" type="monotone" dataKey="inflacao_ipca" name="Inflação IPCA (%)" stroke="#fb7185" strokeWidth={2.5} dot={false} />
-                      <Line yAxisId="right" type="monotone" dataKey="aprovacao_popular" name="Aprovação (%)" stroke="#34d399" strokeWidth={2.5} dot={false} />
+                      <Line type="monotone" dataKey="inflacao_ipca" name="Inflação IPCA (%)" stroke="#fb7185" strokeWidth={2.5} dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -428,45 +403,14 @@ export default function ExecutivoDashboard() {
                   </ResponsiveContainer>
                 </div>
               </ChartSection>
-
-              {/* Emendas */}
-              <ChartSection
-                title="Emendas Parlamentares (R$ bilhões)"
-                description="Acumulado mensal de emendas liberadas — instrumento de negociação política do Executivo"
-                icon={<AlertTriangle className="w-5 h-5 text-orange-400" />}
-              >
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="colorEmendas" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#fb923c" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#fb923c" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                      <XAxis dataKey="label" stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} interval="preserveStartEnd" />
-                      <YAxis stroke="#334155" tick={{ fill: "#64748b", fontSize: 11 }} tickFormatter={(v) => `R$${v}bi`} />
-                      <Tooltip {...TOOLTIP_STYLE} formatter={(val) => [`R$ ${fmt(Number(val))} bilhões`, "Emendas"]} />
-                      <Area type="monotone" dataKey="emendas_bilhoes" name="Emendas (R$ bi)" stroke="#fb923c" strokeWidth={2.5} fill="url(#colorEmendas)" dot={false} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-                <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
-                  <Info className="w-3 h-3" aria-hidden="true" />
-                  Valores crescem ao longo do ano e resetam em janeiro — padrão do ciclo orçamentário.
-                </p>
-              </ChartSection>
             </div>
 
             {/* ── Nota de fontes ── */}
             <div className="bg-slate-900/40 border border-slate-800/60 rounded-xl p-4 text-xs text-slate-400 flex flex-wrap gap-x-6 gap-y-1">
-              <span>📊 <strong className="text-slate-400">IPCA:</strong> IBGE (variação acumulada 12 meses)</span>
+              <span>📊 <strong className="text-slate-400">IPCA:</strong> IBGE (variação acumulada em 12 meses, calculada do IPCA mensal)</span>
               <span>👷 <strong className="text-slate-400">Desemprego:</strong> PNAD Contínua / IBGE (trimestral)</span>
-              <span>📢 <strong className="text-slate-400">Aprovação:</strong> Datafolha / CNT-MDA</span>
               <span>💵 <strong className="text-slate-400">Câmbio:</strong> Banco Central do Brasil</span>
               <span>🏦 <strong className="text-slate-400">Selic:</strong> Banco Central / COPOM</span>
-              <span>📋 <strong className="text-slate-400">Emendas:</strong> Portal da Transparência</span>
             </div>
           </>
         )}

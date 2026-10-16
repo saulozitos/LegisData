@@ -1,21 +1,24 @@
-import pytest
+"""Resumo anual e IPCA mensal lidos de `eco` (séries oficiais, janela de 1995 em diante)."""
 
-from .conftest import write_json, write_text
+from datetime import date
+
+import pytest
+from sqlalchemy.exc import IntegrityError
+
+from .conftest import criar_mandato_presidencial, observar_serie
 
 BASE = "/api/v1/economic"
 
-MACRO_CSV = "ano,ipca,pib\n2019,4.3,1.2\n2020,4.5,\n2021,10.1,4.8\n2022,5.8,3.0\n2023,4.6,2.9\n"
-MANDATES = [
-    {"id_mandato": "teste-2019", "data_inicio": "2019-01-01", "data_fim": "2023-01-01"},
-    {"id_mandato": "aberto-2023", "data_inicio": "2023-01-01", "data_fim": None},
-]
-
 
 @pytest.fixture()
-def macro(data_dir):
-    write_text(data_dir, "resumo_macroeconomico_anual.csv", MACRO_CSV)
-    write_json(data_dir, "indicadores_por_mandato.json", MANDATES)
-    return data_dir
+def macro(db):
+    criar_mandato_presidencial(db, "Presidente Um", date(2019, 1, 1), date(2023, 1, 1), "teste-2019")
+    criar_mandato_presidencial(db, "Presidente Dois", date(2023, 1, 1), None, "aberto-2023", "Dois 1")
+    for ano, ipca, pib in ((2019, 4.3, 1.2), (2020, 4.5, None), (2021, 10.1, 4.8), (2022, 5.8, 3.0), (2023, 4.6, 2.9)):
+        observar_serie(db, "IPCA_ACUM_ANO", date(ano, 1, 1), ipca)
+        if pib is not None:
+            observar_serie(db, "PIB_CRESC_REAL", date(ano, 1, 1), pib)
+    db.commit()
 
 
 def test_annual_summary_without_filter_returns_all_years(client, macro):
@@ -24,11 +27,18 @@ def test_annual_summary_without_filter_returns_all_years(client, macro):
     assert [row["ano"] for row in response.json()] == [2019, 2020, 2021, 2022, 2023]
 
 
-def test_annual_summary_nan_becomes_json_null(client, macro):
-    """NaN não é JSON válido: antes virava HTTP 500 na serialização."""
+def test_annual_summary_missing_value_is_null_never_zero(client, macro):
     rows = client.get(f"{BASE}/annual-summary").json()
-    assert rows[1]["ano"] == 2020 and rows[1]["pib"] is None
-    assert rows[0]["pib"] == 1.2
+    assert rows[1]["ano"] == 2020 and rows[1]["pib_crescimento_real_pct"] is None
+    assert rows[0]["pib_crescimento_real_pct"] == 1.2
+    # séries sem fonte carregada vêm null: nunca 0
+    assert rows[0]["taxa_feminicidios"] is None and "ibovespa_fechamento" not in rows[0]
+    assert rows[0]["salario_minimo"] is None
+
+
+def test_annual_summary_names_the_dominant_president(client, macro):
+    rows = {r["ano"]: r["presidente_dominante"] for r in client.get(f"{BASE}/annual-summary").json()}
+    assert rows[2019] == "Presidente Um" and rows[2023] == "Presidente Dois (Dois 1)"
 
 
 def test_annual_summary_mandate_end_date_is_exclusive(client, macro):
@@ -42,6 +52,17 @@ def test_annual_summary_open_mandate_runs_to_last_year_of_series(client, macro):
     assert [row["ano"] for row in rows] == [2023]
 
 
+def test_annual_summary_accumulated_inflation_restarts_in_each_mandate(client, db, macro):
+    for ano in range(2019, 2024):
+        for mes in range(1, 13):
+            observar_serie(db, "IPCA_MENSAL", date(ano, mes, 1), 1.0)
+    db.commit()
+    rows = {r["ano"]: r["inflacao_acumulada_mandato"] for r in client.get(f"{BASE}/annual-summary").json()}
+    assert rows[2019] == pytest.approx((1.01**12 - 1) * 100, rel=1e-6)
+    assert rows[2022] == pytest.approx((1.01**48 - 1) * 100, rel=1e-6)
+    assert rows[2023] == pytest.approx((1.01**12 - 1) * 100, rel=1e-6)
+
+
 def test_annual_summary_unknown_mandate_is_404_not_the_whole_series(client, macro):
     response = client.get(f"{BASE}/annual-summary", params={"mandate_id": "nao-existe"})
     assert response.status_code == 404
@@ -53,53 +74,62 @@ def test_annual_summary_does_not_treat_mandate_id_as_a_path(client, macro):
     assert response.status_code == 404
 
 
-def test_annual_summary_missing_csv_is_404(client, data_dir):
+def test_annual_summary_without_data_is_404(client):
     assert client.get(f"{BASE}/annual-summary").status_code == 404
 
 
-def test_annual_summary_missing_mandate_catalog_is_404(client, data_dir):
-    write_text(data_dir, "resumo_macroeconomico_anual.csv", MACRO_CSV)
-    response = client.get(f"{BASE}/annual-summary", params={"mandate_id": "teste-2019"})
-    assert response.status_code == 404
-    assert "Catálogo" in response.json()["detail"]
-
-
-def test_annual_summary_csv_without_year_column_is_a_clear_500(client, data_dir):
-    write_text(data_dir, "resumo_macroeconomico_anual.csv", "x,y\n1,2\n")
-    response = client.get(f"{BASE}/annual-summary")
-    assert response.status_code == 500
-    assert "ano" in response.json()["detail"]
-
-
-def test_annual_summary_infinite_values_become_null(client, data_dir):
-    write_text(data_dir, "resumo_macroeconomico_anual.csv", "ano,divida\n2020,inf\n2021,-inf\n2022,3.5\n")
-    rows = client.get(f"{BASE}/annual-summary").json()
-    assert [row["divida"] for row in rows] == [None, None, 3.5]
-
-
-def test_ipca_monthly_filters_by_year_range(client, data_dir):
-    write_text(data_dir, "ipca_mensal_historico.csv", "ano,mes,valor\n2020,1,0.2\n2021,1,0.5\n2021,2,0.6\n2022,1,0.7\n")
+def test_ipca_monthly_filters_by_year_range(client, db):
+    for referencia, valor in (
+        (date(2020, 1, 1), 0.2),
+        (date(2021, 1, 1), 0.5),
+        (date(2021, 2, 1), 0.6),
+        (date(2022, 1, 1), 0.7),
+    ):
+        observar_serie(db, "IPCA_MENSAL", referencia, valor)
+    db.commit()
     rows = client.get(f"{BASE}/ipca-monthly", params={"ano_inicio": 2021, "ano_fim": 2021}).json()
-    assert [(r["ano"], r["mes"]) for r in rows] == [(2021, 1), (2021, 2)]
+    assert [(r["ano"], r["mes"], r["valor"]) for r in rows] == [(2021, 1, 0.5), (2021, 2, 0.6)]
     only_start = client.get(f"{BASE}/ipca-monthly", params={"ano_inicio": 2021}).json()
     assert {r["ano"] for r in only_start} == {2021, 2022}
 
 
-def test_ipca_monthly_inverted_range_is_422(client, data_dir):
-    write_text(data_dir, "ipca_mensal_historico.csv", "ano,mes,valor\n2020,1,0.2\n")
+def test_ipca_monthly_inverted_range_is_422(client):
     response = client.get(f"{BASE}/ipca-monthly", params={"ano_inicio": 2022, "ano_fim": 2020})
     assert response.status_code == 422
 
 
 @pytest.mark.parametrize("params", [{"ano_inicio": 1800}, {"ano_fim": 3000}, {"ano_inicio": "abc"}])
-def test_ipca_monthly_rejects_out_of_range_years(client, data_dir, params):
+def test_ipca_monthly_rejects_out_of_range_years(client, params):
     assert client.get(f"{BASE}/ipca-monthly", params=params).status_code == 422
 
 
-def test_ipca_monthly_missing_file_is_404(client, data_dir):
+def test_ipca_monthly_without_data_is_404(client):
     assert client.get(f"{BASE}/ipca-monthly").status_code == 404
 
 
-def test_ipca_monthly_nan_becomes_null(client, data_dir):
-    write_text(data_dir, "ipca_mensal_historico.csv", "ano,mes,valor\n2020,1,\n")
-    assert client.get(f"{BASE}/ipca-monthly").json() == [{"ano": 2020, "mes": 1, "valor": None}]
+def test_ipca_monthly_filter_without_rows_is_an_empty_list_not_a_missing_series(client, db):
+    observar_serie(db, "IPCA_MENSAL", date(2021, 1, 1), 0.5)
+    db.commit()
+    resposta = client.get(f"{BASE}/ipca-monthly", params={"ano_inicio": 2030})
+    assert resposta.status_code == 200 and resposta.json() == []
+
+
+def test_ipca_monthly_exposes_unit_and_series_code(client, db):
+    observar_serie(db, "IPCA_MENSAL", date(2021, 1, 1), 0.5)
+    db.commit()
+    linha = client.get(f"{BASE}/ipca-monthly").json()[0]
+    assert (linha["codigo_serie"], linha["unidade"], linha["valor"], linha["dia"]) == (433, "%", 0.5, 1)
+
+
+def test_observation_before_1995_is_rejected_by_the_table(db):
+    with pytest.raises(IntegrityError, match="observacao_referencia_check"):
+        observar_serie(db, "IPCA_MENSAL", date(1994, 12, 1), 1.0)
+    db.rollback()
+
+
+def test_zero_is_a_valid_observation_and_not_confused_with_missing(client, db):
+    observar_serie(db, "IPCA_MENSAL", date(2021, 1, 1), 0.0)
+    observar_serie(db, "PIB_CRESC_REAL", date(2021, 1, 1), 0.0)
+    db.commit()
+    assert client.get(f"{BASE}/ipca-monthly").json()[0]["valor"] == 0.0
+    assert client.get(f"{BASE}/annual-summary").json()[0]["pib_crescimento_real_pct"] == 0.0

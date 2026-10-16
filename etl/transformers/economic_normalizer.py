@@ -95,7 +95,7 @@ class EconomicNormalizer:
     ) -> List[Dict[str, Any]]:
         """
         Cruza todas as séries macroeconômicas oficiais com as datas exatas
-        de cada mandato presidencial de Itamar Franco até o presente.
+        de cada mandato presidencial de Fernando Henrique Cardoso até o presente.
         """
         mandate_summaries = []
 
@@ -339,14 +339,14 @@ class EconomicNormalizer:
         dolar_fechamento_df: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
         """
-        Cria a tabela macroeconômica consolidada ano a ano (1993 a presente)
+        Cria a tabela macroeconômica consolidada ano a ano (1995 a presente)
         associando cada ano ao presidente dominante daquele exercício e calculando
         indicadores socioambientais expandidos (PIB, IPCA anual, IPCA acumulado do mandato,
         desemprego, desmatamento da Amazônia, insegurança alimentar, dólar fechamento,
         salário mínimo, homicídios e feminicídios).
         """
         all_years = sorted(list(set(ipca_df["ano"].unique())))
-        all_years = [y for y in all_years if y >= 1993]
+        all_years = [y for y in all_years if y >= 1995]
 
         records = []
         for ano in all_years:

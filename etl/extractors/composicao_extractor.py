@@ -34,78 +34,6 @@ CORES_PARTIDOS: Dict[str, str] = {
 }
 
 COMPOSICAO_CONGRESSO_HISTORICO: Dict[str, Any] = {
-    "itamar-franco-1992": {
-        "mandato_id": "itamar-franco-1992",
-        "presidente_republica": "Itamar Franco",
-        "periodo": "1992 - 1995",
-        "camara": {
-            "total_cadeiras": 503,
-            "presidentes": [
-                {"nome": "Ibsen Pinheiro", "partido": "PMDB", "uf": "RS", "periodo": "1991 - 1993", "foto_url": "https://upload.wikimedia.org/wikipedia/commons/d/da/Ibsen_Pinheiro.jpg"},
-                {"nome": "Inocêncio Oliveira", "partido": "PFL", "uf": "PE", "periodo": "1993 - 1995", "foto_url": "https://upload.wikimedia.org/wikipedia/commons/2/23/Inocencio_Oliveira.jpg"}
-            ],
-            "bancadas": [
-                {"partido": "PMDB", "cadeiras": 108, "percentual": 21.5, "alinhamento": "BASE_GOVERNO", "cor_hex": "#15803d"},
-                {"partido": "PFL", "cadeiras": 89, "percentual": 17.7, "alinhamento": "BASE_GOVERNO", "cor_hex": "#2563eb"},
-                {"partido": "PDT", "cadeiras": 46, "percentual": 9.1, "alinhamento": "INDEPENDENTE_CENTRO", "cor_hex": "#dc2626"},
-                {"partido": "PDS", "cadeiras": 42, "percentual": 8.3, "alinhamento": "INDEPENDENTE_CENTRO", "cor_hex": "#475569"},
-                {"partido": "PRN", "cadeiras": 40, "percentual": 8.0, "alinhamento": "INDEPENDENTE_CENTRO", "cor_hex": "#0284c7"},
-                {"partido": "PTB", "cadeiras": 38, "percentual": 7.6, "alinhamento": "BASE_GOVERNO", "cor_hex": "#9333ea"},
-                {"partido": "PSDB", "cadeiras": 37, "percentual": 7.4, "alinhamento": "BASE_GOVERNO", "cor_hex": "#0284c7"},
-                {"partido": "PT", "cadeiras": 35, "percentual": 7.0, "alinhamento": "OPOSICAO", "cor_hex": "#ef4444"},
-                {"partido": "PDC", "cadeiras": 22, "percentual": 4.4, "alinhamento": "BASE_GOVERNO", "cor_hex": "#0284c7"},
-                {"partido": "PL", "cadeiras": 16, "percentual": 3.2, "alinhamento": "BASE_GOVERNO", "cor_hex": "#1e3a8a"},
-                {"partido": "PSB", "cadeiras": 11, "percentual": 2.2, "alinhamento": "OPOSICAO", "cor_hex": "#f97316"},
-                {"partido": "PSC", "cadeiras": 6, "percentual": 1.2, "alinhamento": "INDEPENDENTE_CENTRO", "cor_hex": "#0284c7"},
-                {"partido": "PCdoB", "cadeiras": 5, "percentual": 1.0, "alinhamento": "OPOSICAO", "cor_hex": "#b91c1c"},
-                {"partido": "PPS", "cadeiras": 3, "percentual": 0.6, "alinhamento": "OPOSICAO", "cor_hex": "#f97316"},
-                {"partido": "PTR", "cadeiras": 2, "percentual": 0.4, "alinhamento": "INDEPENDENTE_CENTRO", "cor_hex": "#64748b"},
-                {"partido": "PST", "cadeiras": 2, "percentual": 0.4, "alinhamento": "INDEPENDENTE_CENTRO", "cor_hex": "#64748b"},
-                {"partido": "PMN", "cadeiras": 1, "percentual": 0.2, "alinhamento": "INDEPENDENTE_CENTRO", "cor_hex": "#dc2626"}
-            ],
-            "governabilidade": {
-                "base_aliada_cadeiras": 310,
-                "base_aliada_pct": 61.6,
-                "centro_cadeiras": 139,
-                "centro_pct": 27.6,
-                "oposicao_cadeiras": 54,
-                "oposicao_pct": 10.7,
-                "maioria_simples_atingida": True,
-                "maioria_pec_atingida": True
-            }
-        },
-        "senado": {
-            "total_cadeiras": 81,
-            "presidentes": [
-                {"nome": "Mauro Benevides", "partido": "PMDB", "uf": "CE", "periodo": "1991 - 1993", "foto_url": "https://upload.wikimedia.org/wikipedia/commons/4/4b/Mauro_Benevides.jpg"},
-                {"nome": "Humberto Lucena", "partido": "PMDB", "uf": "PB", "periodo": "1993 - 1995", "foto_url": "https://upload.wikimedia.org/wikipedia/commons/3/36/Humberto_Lucena.jpg"}
-            ],
-            "bancadas": [
-                {"partido": "PMDB", "cadeiras": 27, "percentual": 33.3, "alinhamento": "BASE_GOVERNO", "cor_hex": "#15803d"},
-                {"partido": "PFL", "cadeiras": 18, "percentual": 22.2, "alinhamento": "BASE_GOVERNO", "cor_hex": "#2563eb"},
-                {"partido": "PSDB", "cadeiras": 10, "percentual": 12.3, "alinhamento": "BASE_GOVERNO", "cor_hex": "#0284c7"},
-                {"partido": "PDS", "cadeiras": 8, "percentual": 9.9, "alinhamento": "INDEPENDENTE_CENTRO", "cor_hex": "#475569"},
-                {"partido": "PRN", "cadeiras": 5, "percentual": 6.2, "alinhamento": "INDEPENDENTE_CENTRO", "cor_hex": "#0284c7"},
-                {"partido": "PDC", "cadeiras": 3, "percentual": 3.7, "alinhamento": "BASE_GOVERNO", "cor_hex": "#0284c7"},
-                {"partido": "PDT", "cadeiras": 3, "percentual": 3.7, "alinhamento": "INDEPENDENTE_CENTRO", "cor_hex": "#dc2626"},
-                {"partido": "PT", "cadeiras": 2, "percentual": 2.5, "alinhamento": "OPOSICAO", "cor_hex": "#ef4444"},
-                {"partido": "PL", "cadeiras": 2, "percentual": 2.5, "alinhamento": "BASE_GOVERNO", "cor_hex": "#1e3a8a"},
-                {"partido": "PSB", "cadeiras": 1, "percentual": 1.2, "alinhamento": "OPOSICAO", "cor_hex": "#f97316"},
-                {"partido": "PSC", "cadeiras": 1, "percentual": 1.2, "alinhamento": "INDEPENDENTE_CENTRO", "cor_hex": "#0284c7"},
-                {"partido": "PTR", "cadeiras": 1, "percentual": 1.2, "alinhamento": "INDEPENDENTE_CENTRO", "cor_hex": "#64748b"}
-            ],
-            "governabilidade": {
-                "base_aliada_cadeiras": 60,
-                "base_aliada_pct": 74.1,
-                "centro_cadeiras": 18,
-                "centro_pct": 22.2,
-                "oposicao_cadeiras": 3,
-                "oposicao_pct": 3.7,
-                "maioria_simples_atingida": True,
-                "maioria_pec_atingida": True
-            }
-        }
-    },
     "fhc-1995": {
         "mandato_id": "fhc-1995",
         "presidente_republica": "Fernando Henrique Cardoso (FHC 1)",
@@ -587,9 +515,8 @@ for m_id, template_id in [
 
 
 # Legislatura (ano de início) de cada mandato presidencial: a composição "da posse" é a eleita no ano anterior.
-# Itamar (1992) assumiu no meio de uma legislatura e Temer (2016) também: para ele vale a eleição de 2014.
+# Temer (2016) assumiu no meio de uma legislatura: para ele vale a eleição de 2014.
 LEGISLATURA_POR_MANDATO: Dict[str, Optional[int]] = {
-    "itamar-franco-1992": None,
     "fhc-1995": 1995,
     "fhc-1999": 1999,
     "lula-2003": 2003,

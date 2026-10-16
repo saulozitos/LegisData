@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional, Tuple
 _cache: Dict[str, Tuple[float, Any]] = {}
 
 # Primeiro ano das séries anuais (IPCA/PIB/etc.): mandatos iniciados antes começam a contar nele
-FIRST_SERIES_YEAR = 1993
+FIRST_SERIES_YEAR = 1995
 
 
 def _cached(file_path: Path, loader) -> Optional[Any]:

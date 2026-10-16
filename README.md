@@ -132,7 +132,7 @@ A infraestrutura e o pipeline de CI/CD do LegisData foram endurecidos contra ame
   - **Python 3.11+** com **FastAPI** assíncrono.
   - **Pydantic v2** com `pydantic-settings` para validação estrita de contratos.
   - **SQLAlchemy 2.0** com connection pooling resiliente.
-  - **Serviço Presidencial Unificado** (`presidential_service.py`) como fonte única de verdade temporal e política.
+  - **Serviço Presidencial Unificado** (`presidencia_service.py`, lido de `core.mandato_presidencial`) como fonte única de verdade temporal e política.
   - **Gunicorn & Uvicorn Workers** em produção.
 - **Banco de Dados:**
   - **PostgreSQL 16** com mais de 1,4 milhão de registros relacionais oficiais indexados.
@@ -191,9 +191,11 @@ make run-load-db
 ```
 *O pipeline executará as migrações, ingerindo séries históricas, parlamentares, cota CEAP, emendas, processos e doações do TSE.*
 
-Cargas complementares de assiduidade e remuneração oficiais:
+Cargas complementares de assiduidade e remuneração oficiais, e das séries econômicas e dos mandatos presidenciais
+(`eco.observacao`, `core.mandato_presidencial`):
 ```bash
 python etl/run_etl.py --load-presenca
+python etl/run_etl.py --load-economia
 ```
 
 ### Passo 5: Iniciar o Backend (FastAPI)
@@ -250,7 +252,7 @@ Você também pode executar as validações de forma granular:
 | `GET` | `/api/v1/emendas/resumo` | Visão macro das emendas: totais pagos/empenhados, divisão por tipo de autor e áreas |
 | `GET` | `/api/v1/emendas/localidade/{localidade}` | Consulta territorial de emendas por município ou UF de destino |
 | `GET` | `/api/v1/emendas/autor/{autor}` | Consulta de emendas por deputado, senador, comissão, bancada estadual ou relator |
-| `GET` | `/api/v1/economic/annual-summary` | Séries macroeconômicas oficiais (PIB, IPCA, Dólar, Selic, Salário Mínimo) |
+| `GET` | `/api/v1/economic/annual-summary` | Séries macroeconômicas oficiais desde 1995 (PIB, IPCA, Dólar, Salário Mínimo, Dívida) |
 | `GET` | `/api/v1/analytics/mandates-performance` | Desempenho consolidado por mandato presidencial |
 | `GET` | `/api/v1/analytics/compare-mandates` | Comparação normalizada de mandatos presidenciais ($T_0 \dots T_n$) |
 | `GET` | `/api/v1/analytics/social-classes` | Distribuição de classes por salário mínimo baseada em microdados da PNAD Contínua |

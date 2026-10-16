@@ -19,7 +19,7 @@ from app.models import (
 )
 from sqlalchemy import text
 
-from .conftest import write_json
+from .conftest import criar_mandato_presidencial, write_json
 
 BASE = "/api/v1/politicians"
 
@@ -100,14 +100,33 @@ def test_processed_files_with_unexpected_shape_are_ignored(data_dir):
 # ---------------------------------------------------------------------------
 # /presidents
 # ---------------------------------------------------------------------------
-def test_presidents_list_and_detail(client, data_dir):
-    write_json(data_dir, "presidentes_historico.json", [{"id_referencia": "lula-2003", "nome_eleitoral": "Lula"}])
-    assert client.get(f"{BASE}/presidents").json() == [{"id_referencia": "lula-2003", "nome_eleitoral": "Lula"}]
-    assert client.get(f"{BASE}/presidents/lula-2003").json()["nome_eleitoral"] == "Lula"
+def test_presidents_list_and_detail(client, db):
+    mandato = criar_mandato_presidencial(db, "Lula", date(2003, 1, 1), date(2007, 1, 1), "lula-2003", "Lula 1")
+    db.execute(
+        text(
+            "UPDATE core.mandato_presidencial SET vice_texto = 'José Alencar', status = 'CONCLUIDO' WHERE mandato_id = :m"
+        ),
+        {"m": mandato},
+    )
+    db.execute(
+        text("INSERT INTO core.marco_governo (mandato_id, ordem, texto) VALUES (:m, 1, 'Marco')"), {"m": mandato}
+    )
+    db.commit()
+    lista = client.get(f"{BASE}/presidents").json()
+    assert [p["id_referencia"] for p in lista] == ["lula-2003"]
+    detalhe = client.get(f"{BASE}/presidents/lula-2003").json()
+    assert detalhe["nome_eleitoral"] == "Lula (Lula 1)" and detalhe["vice_presidente"] == "José Alencar"
+    assert detalhe["marcos_economicos"] == ["Marco"] and detalhe["cpf"] is None
+    assert detalhe["foto_url"] is None and detalhe["genero"] is None and detalhe["data_fim"] == "2007-01-01"
+    assert client.get(f"{BASE}/presidents/{detalhe['db_id']}").json()["id_referencia"] == "lula-2003"
     assert client.get(f"{BASE}/presidents/ninguem").status_code == 404
+    # a busca ignora maiúsculas; slug fora do formato (barra codificada, 61 caracteres) é rejeitado pelo serviço
+    assert client.get(f"{BASE}/presidents/LULA-2003").status_code == 200
+    for invalido in ("%2e%2e%2fetc", "a" * 61):
+        assert client.get(f"{BASE}/presidents/{invalido}").status_code == 404
 
 
-def test_presidents_without_dataset_is_404(client, data_dir):
+def test_presidents_without_dataset_is_404(client):
     assert client.get(f"{BASE}/presidents").status_code == 404
     assert client.get(f"{BASE}/presidents/lula-2003").status_code == 404
 
@@ -480,3 +499,40 @@ def test_search_politicians_filters_active_by_presidential_mandate(client, seed,
     assert resp.status_code == 200
     ids = [p["id"] for p in resp.json()["politicos"]]
     assert str(seed.fulano.id) in ids
+
+
+def test_search_politicians_uses_the_period_of_the_presidential_mandate_from_the_database(client, seed, db):
+    criar_mandato_presidencial(db, "Presidente Antigo", date(2000, 1, 1), date(2004, 1, 1), "antigo-2000")
+    criar_mandato_presidencial(db, "Presidente Atual", date(2023, 1, 1), None, "atual-2023")
+    db.commit()
+    # ninguém do seed tinha mandato entre 2000 e 2004; todos os atuais tinham em 2023
+    assert client.get(BASE, params={"mandate_id": "antigo-2000"}).json()["politicos"] == []
+    assert str(seed.fulano.id) in [
+        p["id"] for p in client.get(BASE, params={"mandate_id": "atual-2023"}).json()["politicos"]
+    ]
+
+
+def test_dossier_vote_summary_lists_every_yes_vote_with_its_total(client, seed):
+    resumo = client.get(f"{BASE}/{seed.fulano.id}").json()["resumo_votos"]
+    assert (resumo["sim"]["total"], resumo["nao"]["total"], resumo["ausente"]["total"]) == (2, 0, 0)
+    assert len(resumo["sim"]["itens"]) == resumo["sim"]["total"] and resumo["nao"]["itens"] == []
+    assert {"proposicao_numero", "data", "url_oficial"} <= set(resumo["sim"]["itens"][0])
+
+
+def test_dossier_vote_summary_no_and_absent_groups(client, seed):
+    nao = client.get(f"{BASE}/{seed.lula_fonte.id}").json()["resumo_votos"]
+    assert nao["nao"]["total"] == 1 and nao["sim"]["total"] == 0 and len(nao["nao"]["itens"]) == 1
+    ausente = client.get(f"{BASE}/{seed.maria_a.id}").json()["resumo_votos"]
+    assert ausente["ausente"]["total"] == 1 and len(ausente["ausente"]["itens"]) == 1
+
+
+def test_dossier_vote_summary_for_someone_without_votes_is_zero_and_empty(client, seed):
+    resumo = client.get(f"{BASE}/{seed.presidente.id}").json()["resumo_votos"]
+    for grupo in resumo.values():
+        assert grupo == {"total": 0, "itens": []}
+
+
+def test_dossier_vote_summary_ignores_other_options(client, seed):
+    """Obstrução e Art. 17 não entram em nenhum dos três grupos."""
+    resumo = client.get(f"{BASE}/{seed.beltrano.id}").json()["resumo_votos"]
+    assert sum(g["total"] for g in resumo.values()) == 0

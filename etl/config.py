@@ -19,8 +19,8 @@ def ensure_data_dirs() -> None:
     PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# Parâmetros temporais padrão (Início do governo Itamar Franco até o presente)
-DATA_INICIO_PADRAO = "02/10/1992"  # Posse interina de Itamar Franco
+# Parâmetros temporais padrão (início da janela de dados, 1995-01-01, até o presente)
+DATA_INICIO_PADRAO = "01/01/1995"  # Posse de Fernando Henrique Cardoso; primeiro ano completo após o Plano Real
 
 
 def data_fim_padrao() -> str:

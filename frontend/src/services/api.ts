@@ -43,6 +43,26 @@ export interface PresidenteHistorico {
   marcos_economicos: string[];
 }
 
+export interface ResumoVotosItem {
+  proposicao_id: string;
+  proposicao_titulo: string;
+  proposicao_numero: string;
+  data: string;
+  casa_legislativa: string;
+  url_oficial?: string | null;
+}
+
+export interface ResumoVotosGrupo {
+  total: number;
+  itens: ResumoVotosItem[];
+}
+
+export interface ResumoVotos {
+  sim: ResumoVotosGrupo;
+  nao: ResumoVotosGrupo;
+  ausente: ResumoVotosGrupo;
+}
+
 export interface ScoreProsperidadeData {
   score_geral: number;
   subscore_economico: number;
@@ -54,8 +74,8 @@ export interface ScoreProsperidadeData {
 }
 
 export interface TermometroRepassesData {
-  m1_lider_per_capita: { uf: string; estado: string; valor_per_capita: number };
-  m2_lider_per_capita: { uf: string; estado: string; valor_per_capita: number };
+  m1_lider_per_capita: { uf: string | null; estado: string | null; valor_per_capita: number | null };
+  m2_lider_per_capita: { uf: string | null; estado: string | null; valor_per_capita: number | null };
   diagnostico: string;
 }
 
@@ -120,7 +140,6 @@ export interface ResumoMacroeconomicoAnual {
   taxa_feminicidios?: number | null;
   divida_liquida_pct_pib: number | null;
   salario_minimo_nominal_brl: number | null;
-  ibovespa_fechamento?: number | null;
 }
 
 export interface PlacarVotos {
@@ -242,9 +261,9 @@ export interface UFRepasseComparison {
   m2_total: number;
   diff_brl: number;
   growth_pct: number;
-  m1_per_capita: number;
-  m2_per_capita: number;
-  diff_per_capita: number;
+  m1_per_capita: number | null;
+  m2_per_capita: number | null;
+  diff_per_capita: number | null;
   areas: Record<string, { m1: number; m2: number; diff: number; growth_pct: number }>;
 }
 
@@ -1140,6 +1159,7 @@ export interface PoliticoDossier {
   materias_propostas: ProposicaoAutorItem[];
   votacoes_principais: VotoHistoricoItem[];
   historico_votos?: VotoHistoricoDetalhadoItem[];
+  resumo_votos?: ResumoVotos;
   alinhamento_tematico?: Array<{
     eixo: string;
     total_votacoes: number;
@@ -1849,13 +1869,8 @@ export interface MandateIndicatorData {
   // Indicadores econômicos
   inflacao_ipca?: number;      // IPCA acumulado 12 meses (%) - fonte: IBGE
   desemprego_pnad?: number;    // Taxa PNAD Contínua (%) - fonte: IBGE
-  aprovacao_popular?: number;  // Aprovação (%) - fonte: Datafolha/CNT
   cambio_usd_brl?: number;     // Câmbio USD/BRL médio - fonte: BCB
   selic_meta?: number;         // Selic meta (%) - fonte: BCB/COPOM
-  emendas_bilhoes?: number;    // Emendas parlamentares acumuladas (R$ bi)
-  // Legado / outros
-  taxa_sucesso_congresso?: number;
-  volume_emendas?: number;
   [key: string]: string | number | undefined;
 }
 
@@ -1877,7 +1892,6 @@ export interface KPIStat {
   maximo: number | null;
   media: number | null;
   variacao_pp?: number | null;
-  total_acumulado?: number | null;
 }
 
 export interface MandateSummary {
@@ -1891,10 +1905,8 @@ export interface MandateSummary {
   kpis: {
     inflacao_ipca?: KPIStat;
     desemprego_pnad?: KPIStat;
-    aprovacao_popular?: KPIStat;
     cambio_usd_brl?: KPIStat;
     selic_meta?: KPIStat;
-    emendas_bilhoes?: KPIStat;
   };
 }
 

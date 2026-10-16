@@ -14,7 +14,6 @@ interface PresidentTimelineProps {
 export function getPresidentPhotoUrl(idReferencia?: string, fotoUrl?: string): string | undefined {
   if (fotoUrl && fotoUrl.startsWith("/presidents/")) return fotoUrl;
   if (idReferencia) {
-    if (idReferencia.includes("itamar")) return "/presidents/itamar-franco.jpg";
     if (idReferencia.includes("fhc")) return "/presidents/fhc.jpg";
     if (idReferencia.includes("lula")) return "/presidents/lula.jpg";
     if (idReferencia.includes("dilma")) return "/presidents/dilma.jpg";
@@ -92,7 +91,7 @@ export default function PresidentTimeline({
         <div className="flex items-center gap-2 flex-wrap">
           <Calendar className="w-4 h-4 text-emerald-400" aria-hidden="true" />
           <h2 className="text-sm font-semibold tracking-wider uppercase text-slate-300">
-            Linha do Tempo Presidencial (1992 - Presente)
+            Linha do Tempo Presidencial (1995 - Presente)
           </h2>
           {selectedPresident ? (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
@@ -129,7 +128,7 @@ export default function PresidentTimeline({
               type="button"
               onClick={() => onSelect(null)}
               className="text-[11px] font-medium text-slate-400 hover:text-slate-200 underline underline-offset-2 transition-all cursor-pointer"
-              title="Exibir dados consolidados de todos os mandatos desde 1992"
+              title="Exibir dados consolidados de todos os mandatos desde 1995"
             >
               Ver todos
             </button>
@@ -169,7 +168,7 @@ export default function PresidentTimeline({
             >
               Visão Geral
             </span>
-            <span className="text-[11px] text-slate-400 font-medium">1992 - Presente</span>
+            <span className="text-[11px] text-slate-400 font-medium">1995 - Presente</span>
           </div>
         </button>
 

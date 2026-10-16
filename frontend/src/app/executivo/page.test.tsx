@@ -20,7 +20,7 @@ const mandates = [
   { id: 'lula', nome: 'Luiz Inácio Lula da Silva', inicio: '2023-01-01', fim: null, partido: 'PT', foto_url: null },
 ];
 
-const stat = (v: number | null) => ({ primeiro: v, ultimo: v, minimo: v, maximo: v, media: v, variacao_pp: v == null ? null : 0.7, total_acumulado: v });
+const stat = (v: number | null) => ({ primeiro: v, ultimo: v, minimo: v, maximo: v, media: v, variacao_pp: v == null ? null : 0.7 });
 const summary = (id: string, nome: string) => ({
   mandate_id: id,
   nome,
@@ -32,14 +32,12 @@ const summary = (id: string, nome: string) => ({
   kpis: {
     inflacao_ipca: stat(5),
     desemprego_pnad: { primeiro: 9, ultimo: 7, minimo: 7, maximo: 9, media: 8 },
-    aprovacao_popular: stat(50),
     cambio_usd_brl: stat(5.1),
-    selic_meta: stat(10.5),
-    emendas_bilhoes: stat(null),
+    selic_meta: stat(null),
   },
 });
 
-const indicators = [{ data: '2023-01-01', inflacao_ipca: 5, aprovacao_popular: 50, desemprego_pnad: 8, cambio_usd_brl: 5, selic_meta: 11, emendas_bilhoes: 1 }];
+const indicators = [{ data: '2023-01-01', inflacao_ipca: 5, desemprego_pnad: 8, cambio_usd_brl: 5, selic_meta: 11 }];
 
 beforeEach(() => {
   getMandates.mockReset();
@@ -59,7 +57,8 @@ describe('ExecutivoDashboard', () => {
     expect(getSummary).toHaveBeenCalledWith('lula', expect.any(AbortSignal));
     expect(screen.getByRole('button', { name: /Silva/ })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText(/Governo atual · 12 meses de dados/)).toBeInTheDocument();
-    expect(screen.getByText('Inflação vs. Aprovação Popular')).toBeInTheDocument();
+    expect(screen.getByText('Inflação (IPCA em 12 meses)')).toBeInTheDocument();
+    expect(screen.queryByText(/Aprovação|Emendas/)).not.toBeInTheDocument();
     expect(screen.getByText('Câmbio (USD/BRL) × Selic')).toBeInTheDocument();
   });
 
@@ -69,8 +68,8 @@ describe('ExecutivoDashboard', () => {
     getSummary.mockResolvedValue(summary('lula', 'Lula'));
     render(<ExecutivoDashboard />);
     await screen.findByRole('heading', { level: 2, name: 'Luiz Inácio Lula da Silva' });
-    const emendas = screen.getByText('Emendas', { selector: 'p' }).closest('div')!.parentElement as HTMLElement;
-    expect(within(emendas).getByText('—')).toBeInTheDocument();
+    const selic = screen.getByText('Selic', { selector: 'p' }).closest('div')!.parentElement as HTMLElement;
+    expect(within(selic).getByText('—')).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/NaN|undefined|null/);
   });
 

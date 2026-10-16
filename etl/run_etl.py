@@ -223,6 +223,19 @@ def _remuneracao(no_cache: bool):
         raise RuntimeError(f"{len(resultado['cobertura']['falhas'])} falhas de extração")
 
 
+def _load_economia():
+    from etl.utils.bootstrap import ensure_backend_on_path
+
+    ensure_backend_on_path()
+    from app.core.database import engine
+
+    from etl.pipelines.economia_loader import carregar as carregar_series
+    from etl.pipelines.presidencia_loader import carregar as carregar_presidencia
+
+    print("    Séries (eco.observacao):", carregar_series(engine))
+    print("    Mandatos presidenciais:", carregar_presidencia(engine))
+
+
 def _load_presenca_remuneracao():
     from etl.utils.bootstrap import ensure_backend_on_path
 
@@ -267,6 +280,7 @@ def montar_parser() -> argparse.ArgumentParser:
         ("camara-historico", "Histórico de mandatos dos deputados (posse, licença, suplência, partido) desde 1995"),
         ("load-db", "Carga e upsert no PostgreSQL"),
         ("load-presenca", "Carga de presença e remuneração oficiais no PostgreSQL"),
+        ("load-economia", "Carga das séries econômicas e sociais (eco) e dos metadados dos mandatos presidenciais"),
         ("processos", "Carga do acervo manual de processos judiciais (exige --allow-unverified-legal)"),
     ]:
         p.add_argument(f"--{flag}", action="store_true", help=ajuda)
@@ -321,6 +335,7 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         "camara_historico",
         "load_db",
         "load_presenca",
+        "load_economia",
         "processos",
     ]
     selecionadas = {k for k in chaves if getattr(args, k)}
@@ -381,6 +396,12 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
             "load_presenca",
             "Carga de presença e remuneração oficiais",
             _load_presenca_remuneracao,
+            depende_de_extracao=True,
+        ),
+        Etapa(
+            "load_economia",
+            "Carga das séries econômicas e dos mandatos presidenciais",
+            _load_economia,
             depende_de_extracao=True,
         ),
         Etapa(
@@ -462,6 +483,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             "camara_historico",
             "load_db",
             "load_presenca",
+            "load_economia",
             "processos",
         ]
     )

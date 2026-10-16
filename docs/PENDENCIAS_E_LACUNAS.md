@@ -67,7 +67,7 @@ A refatoração da branch `fix/analise-completa-correcoes` concluiu **100%** das
 - **Rastreabilidade**: Deliberações são registradas com a flag `is_comissao` e metadados do órgão/comissão de origem.
 
 ### 2.6 Filtro de Senadores por Mandato Presidencial [CONCLUÍDO 100%]
-- **Status**: Serviço presidencial unificado em `backend/app/services/presidential_service.py` atuando como única fonte de verdade.
+- **Status**: Serviço presidencial unificado em `backend/app/services/presidencia_service.py` atuando como única fonte de verdade.
 - **Endpoint**: Parâmetro `mandate_id` adicionado a `GET /api/v1/politicians`, filtrando apenas senadores e deputados que estiveram em exercício durante o mandato do Presidente selecionado.
 
 ### 2.7 Emendas Orçamentárias: Arquitetura e UX [CONCLUÍDO 100%]
@@ -103,7 +103,7 @@ A refatoração da branch `fix/analise-completa-correcoes` concluiu **100%** das
 
 ## 3. Resolução das Dívidas Técnicas
 
-- [x] **Unificação de Fontes Presidenciais**: Centralizado em `backend/app/services/presidential_service.py`.
+- [x] **Unificação de Fontes Presidenciais**: Centralizado em `backend/app/services/presidencia_service.py`.
 - [x] **Validação do Prisma**: Validado com sucesso via Prisma CLI v5.
 - [x] **Nulabilidade de `/federal-transfers`**: `StateTransferItem.populacao_estimada` e `valor_per_capita_brl` tipados como `Optional` no backend, schemas Pydantic e frontend, exibindo "Dado indisponível" quando ausentes.
 - [x] **Rota `/executivo`**: Rota órfã removida/alinhada ao `ExecutivoPanel`.

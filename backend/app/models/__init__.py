@@ -17,7 +17,6 @@ from .economic import (
     StateSocialIndicator,
     UnidadeMedidaEnum,
 )
-from .executivo import MandateIndicator, PresidentialMandate
 from .leg import Autoria, Casa, Orientacao, Proposicao, Votacao, Voto
 from .legislative import (
     AttendanceRecord,

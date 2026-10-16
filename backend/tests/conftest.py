@@ -12,7 +12,7 @@ os.environ.setdefault("ENVIRONMENT", "test")
 
 import pytest  # noqa: E402
 from app import main as main_module  # noqa: E402
-from app.api.v1 import analytics, economic, politicians  # noqa: E402
+from app.api.v1 import analytics, politicians  # noqa: E402
 from app.core import data_files  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.core.database import get_db  # noqa: E402
@@ -67,7 +67,7 @@ TEST_DATABASE_URL = os.environ.get(
 
 
 # Tabelas de dados (não de referência) fora do schema public, esvaziadas a cada teste
-_ETL_DATA_TABLES = ("etl.execucao", "etl.arquivo_bruto", "etl.rejeito", "etl.verificacao")
+_ETL_DATA_TABLES = ("etl.execucao", "etl.arquivo_bruto", "etl.rejeito", "etl.verificacao", "eco.observacao")
 
 
 @pytest.fixture(scope="session")
@@ -76,7 +76,7 @@ def pg_engine():
     engine = create_engine(TEST_DATABASE_URL, pool_pre_ping=True)
     try:
         with engine.begin() as conn:
-            for schema in ("api", "stg", "leg", "param", "etl", "core", "ref", "public"):
+            for schema in ("api", "stg", "leg", "param", "etl", "eco", "core", "ref", "public"):
                 conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
             conn.execute(text("CREATE SCHEMA public"))
     except OperationalError as exc:  # pragma: no cover - ambiente sem banco de teste
@@ -161,11 +161,49 @@ def data_dir(tmp_path, monkeypatch):
     """Diretório de dados do ETL isolado: nenhum teste depende dos arquivos reais do repositório."""
     directory = tmp_path / "processed"
     directory.mkdir()
-    for module in (economic, analytics, politicians, explorer_service):
+    for module in (analytics, politicians, explorer_service):
         monkeypatch.setattr(module, "DATA_DIR", directory)
     data_files._cache.clear()
     politicians._json_cache.clear()
     return directory
+
+
+def criar_mandato_presidencial(db, nome, inicio, fim, slug, rotulo=None, partido=None):
+    """Presidente, mandato de `PRESIDENTE` e identificador público (`mandato_presidencial`); devolve o id do mandato."""
+    pessoa = db.execute(text("INSERT INTO core.pessoa (nome_exibicao) VALUES (:n) RETURNING id"), {"n": nome}).scalar()
+    if partido:
+        db.execute(
+            text(
+                "INSERT INTO core.partido (sigla, nome) SELECT :s, :s WHERE NOT EXISTS "
+                "(SELECT 1 FROM core.partido WHERE sigla = :s)"
+            ),
+            {"s": partido},
+        )
+    mandato = db.execute(
+        text(
+            "INSERT INTO core.mandato (pessoa_id, cargo_id, circunscricao_id, inicio, fim, partido_id) VALUES "
+            "(:p, (SELECT id FROM ref.cargo WHERE codigo = 'PRESIDENTE'), "
+            "(SELECT id FROM ref.circunscricao WHERE tipo = 'BR'), :i, :f, "
+            "(SELECT id FROM core.partido WHERE sigla = :partido LIMIT 1)) RETURNING id"
+        ),
+        {"p": pessoa, "i": inicio, "f": fim, "partido": partido},
+    ).scalar()
+    db.execute(
+        text("INSERT INTO core.mandato_presidencial (mandato_id, slug, rotulo) VALUES (:m, :s, :r)"),
+        {"m": mandato, "s": slug, "r": rotulo},
+    )
+    return mandato
+
+
+def observar_serie(db, codigo, referencia, valor):
+    """Grava uma observação de `eco.observacao` para a série do catálogo."""
+    db.execute(
+        text(
+            "INSERT INTO eco.observacao (serie_id, referencia, valor) "
+            "VALUES ((SELECT id FROM eco.serie WHERE codigo = :c), :r, :v)"
+        ),
+        {"c": codigo, "r": referencia, "v": valor},
+    )
 
 
 def write_json(directory, name, payload):

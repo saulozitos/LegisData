@@ -32,6 +32,28 @@ def _fmt(valor, formato: str, sufixo: str = "") -> str:
     return format(valor, formato) + sufixo
 
 
+def series_mensais(series: Dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """
+    Séries do BCB em formato longo (`serie`, `data`, `valor`), uma linha por mês, a partir de 1995-01-01.
+
+    Série diária ou com vários pontos no mês fica com o último valor do mês. Série vazia não gera linha: o carregador
+    não apaga o que já está no banco quando a fonte não respondeu.
+    """
+    partes = []
+    for codigo, df in series.items():
+        if df is None or df.empty:
+            continue
+        mensal = df[df["data"] >= "1995-01-01"].sort_values("data").copy()
+        mensal["data"] = mensal["data"].dt.to_period("M").dt.to_timestamp()
+        mensal = mensal.groupby("data", as_index=False).last()
+        mensal["serie"] = codigo
+        mensal["data"] = mensal["data"].dt.strftime("%Y-%m-%d")
+        partes.append(mensal[["serie", "data", "valor"]])
+    if not partes:
+        return pd.DataFrame(columns=["serie", "data", "valor"])
+    return pd.concat(partes, ignore_index=True)
+
+
 class PresidentsEconomicSyncPipeline:
     """Executa a extração, alinhamento e cruzamento dos dados de presidentes e macroeconomia."""
 
@@ -46,11 +68,11 @@ class PresidentsEconomicSyncPipeline:
 
     def run(self, use_cache: bool = True) -> Dict[str, Any]:
         logger.info("=" * 70)
-        logger.info("INICIANDO PIPELINE: PRESIDENTES E INDICADORES MACROECONÔMICOS (1992 - PRESENTE)")
+        logger.info("INICIANDO PIPELINE: PRESIDENTES E INDICADORES MACROECONÔMICOS (1995 - PRESENTE)")
         logger.info("=" * 70)
 
         # 1. Obter catálogo histórico de presidentes
-        logger.info("Passo 1/5: Extraindo lista histórica de presidentes (Itamar Franco -> Presente)...")
+        logger.info("Passo 1/5: Extraindo lista histórica de presidentes (Fernando Henrique Cardoso -> Presente)...")
         presidents = self.presidents_extractor.get_presidents()
         logger.info(f"-> {len(presidents)} mandatos presidenciais mapeados com sucesso.")
 
@@ -87,9 +109,10 @@ class PresidentsEconomicSyncPipeline:
         salario_min_df = self.bcb_extractor.fetch_serie_dataframe("salario_minimo_nominal", use_cache=use_cache)
         logger.info(f"-> Salário Mínimo: {len(salario_min_df)} registros obtidos.")
 
-        # Ibovespa Fechamento Anual (Série 7 BCB / B3)
-        ibovespa_df = self.bcb_extractor.fetch_ibovespa_annual_closing()
-        logger.info(f"-> Ibovespa Fechamento Anual: {len(ibovespa_df)} anos registrados.")
+        # Meta Selic (432) e desocupação PNAD Contínua (24369): só entram nas séries mensais do banco
+        selic_df = self.bcb_extractor.fetch_serie_dataframe("selic_meta_ano", use_cache=use_cache)
+        desocupacao_df = self.bcb_extractor.fetch_serie_dataframe("desemprego_pnad", use_cache=use_cache)
+        logger.info(f"-> Selic meta: {len(selic_df)} registros; desocupação PNADC: {len(desocupacao_df)} registros.")
 
         # 2.1 Extrair indicadores socioambientais expandidos
         logger.info("-> Extraindo dados de desemprego (IBGE), desmatamento (INPE/PRODES) e fome...")
@@ -129,7 +152,7 @@ class PresidentsEconomicSyncPipeline:
             feminicide_dict=feminicide_dict,
         )
 
-        logger.info("Passo 4/5: Construindo série histórica macroeconômica anual consolidada (1993 a presente)...")
+        logger.info("Passo 4/5: Construindo série histórica macroeconômica anual consolidada (1995 a presente)...")
         annual_summary_df = self.normalizer.build_annual_summaries(
             ipca_df=ipca_df,
             pib_anual_df=pib_anual_df,
@@ -137,7 +160,6 @@ class PresidentsEconomicSyncPipeline:
             salario_min_df=salario_min_df,
             divida_df=divida_df,
             presidents=presidents,
-            ibovespa_df=ibovespa_df,
             unemployment_dict=unemployment_dict,
             deforestation_dict=deforestation_dict,
             food_insecurity_dict=food_insecurity_dict,
@@ -164,6 +186,18 @@ class PresidentsEconomicSyncPipeline:
 
         atomic_write_text(PROCESSED_DATA_DIR / "resumo_macroeconomico_anual.csv", annual_summary_df.to_csv(index=False))
         atomic_write_text(PROCESSED_DATA_DIR / "ipca_mensal_historico.csv", ipca_df.to_csv(index=False))
+        atomic_write_text(
+            PROCESSED_DATA_DIR / "bcb_series_mensais.csv",
+            series_mensais(
+                {
+                    "CAMBIO_MENSAL": cambio_df,
+                    "DIVIDA_LIQUIDA_PIB_MENSAL": divida_df,
+                    "SALARIO_MINIMO_MENSAL": salario_min_df,
+                    "SELIC_META": selic_df,
+                    "DESEMPREGO_PNADC_MENSAL": desocupacao_df,
+                }
+            ).to_csv(index=False),
+        )
 
         logger.info(f"Arquivos gerados com sucesso em {PROCESSED_DATA_DIR}")
 
@@ -180,7 +214,7 @@ class PresidentsEconomicSyncPipeline:
     def _print_terminal_dashboard(self, mandates_summary: List[Dict[str, Any]]) -> None:
         """Gera um painel comparativo elegante no terminal."""
         print("\n" + "=" * 115)
-        print("          PAINEL ANALÍTICO COMPARATIVO: GOVERNOS E INDICADORES ECONÔMICOS (1992 - PRESENTE)")
+        print("          PAINEL ANALÍTICO COMPARATIVO: GOVERNOS E INDICADORES ECONÔMICOS (1995 - PRESENTE)")
         print("=" * 115)
         header = f"{'PRESIDENTE':<26} | {'PARTIDO':<6} | {'PERÍODO':<11} | {'INFLAÇÃO IPCA':<15} | {'PIB MÉD/ANO':<12} | {'CÂMBIO (FIM)':<12} | {'SAL. MÍN (USD)'}"
         print(header)
@@ -211,10 +245,6 @@ class PresidentsEconomicSyncPipeline:
             )
 
         print("-" * 115)
-        print("* Nota: No governo Itamar Franco, a inflação pré-Real atingiu patamar hiperinflacionário de 4 dígitos;")
-        print(
-            "        o valor exibido refere-se à inflação acumulada desde o lançamento do Real (01/07/1994) até o fim do mandato."
-        )
         print("=" * 115 + "\n")
 
 

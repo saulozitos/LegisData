@@ -292,7 +292,7 @@ def root():
         "status": "online",
         "service": settings.PROJECT_NAME,
         "docs_url": None if settings.is_production else "/docs",
-        "periodo_coberto": "Governo Itamar Franco (1992) ao Governo Atual",
+        "periodo_coberto": "Governo Fernando Henrique Cardoso (1995) ao Governo Atual",
     }
 
 

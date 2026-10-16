@@ -2,40 +2,53 @@ import uuid
 from datetime import date
 
 import pytest
-from app.models import MandateIndicator, PresidentialMandate
+from app.services.executivo_service import acumulado_12_meses
+from sqlalchemy import text
+
+from .conftest import criar_mandato_presidencial, observar_serie
 
 BASE = "/api/v1/executivo"
 
 
+def _uid(db, mandato_id):
+    return str(db.execute(text("SELECT uid FROM core.mandato WHERE id = :m"), {"m": mandato_id}).scalar())
+
+
 @pytest.fixture()
 def mandates(db):
-    antigo = PresidentialMandate(nome="Antigo", inicio=date(2011, 1, 1), fim=date(2015, 1, 1), partido="XX")
-    atual = PresidentialMandate(
-        nome="Atual", inicio=date(2023, 1, 1), fim=None, partido="PT", foto_url="/presidents/x.jpg"
-    )
-    vazio = PresidentialMandate(nome="Sem indicadores", inicio=date(2030, 1, 1), fim=None, partido="YY")
-    db.add_all([antigo, atual, vazio])
-    db.flush()
-
-    def add(mandate, key, when, value):
-        db.add(MandateIndicator(mandate_id=mandate.id, chave_indicador=key, valor=value, data_medicao=when))
-
-    # IPCA: 4.0 -> 6.0 (variação +2.0 pp), min 3.0, max 6.0
-    add(atual, "inflacao_ipca", date(2023, 1, 1), 4.0)
-    add(atual, "inflacao_ipca", date(2023, 2, 1), 3.0)
-    add(atual, "inflacao_ipca", date(2023, 3, 1), 6.0)
-    # Emendas acumuladas no ano: vale o MAIOR valor de cada ano (dezembro), somados entre anos
-    add(atual, "emendas_bilhoes", date(2023, 6, 1), 10.0)
-    add(atual, "emendas_bilhoes", date(2023, 12, 1), 20.0)
-    add(atual, "emendas_bilhoes", date(2024, 12, 1), 30.0)
+    antigo = criar_mandato_presidencial(db, "Antigo", date(2011, 1, 1), date(2015, 1, 1), "antigo-2011", "A 1", "PT")
+    atual = criar_mandato_presidencial(db, "Atual", date(2023, 1, 1), None, "atual-2023", None, "PT")
+    vazio = criar_mandato_presidencial(db, "Sem indicadores", date(2030, 1, 1), None, "vazio-2030")
+    # IPCA mensal de 2022-01 a 2023-04; a taxa do mês sobe em 2023, então o acumulado em 12 meses também sobe
+    for i in range(16):
+        ano, mes = 2022 + i // 12, i % 12 + 1
+        observar_serie(db, "IPCA_MENSAL", date(ano, mes, 1), 0.5 if i < 12 else 1.0)
+    observar_serie(db, "DESEMPREGO_PNADC_MENSAL", date(2023, 1, 1), 8.0)
+    observar_serie(db, "DESEMPREGO_PNADC_MENSAL", date(2023, 2, 1), 9.0)
+    observar_serie(db, "CAMBIO_MENSAL", date(2023, 1, 1), 5.0)
+    observar_serie(db, "SELIC_META", date(2023, 1, 1), 13.75)
     db.commit()
-    return {"antigo": antigo, "atual": atual, "vazio": vazio}
+    return {"antigo": _uid(db, antigo), "atual": _uid(db, atual), "vazio": _uid(db, vazio)}
+
+
+def test_acumulado_12_meses_exige_os_onze_meses_anteriores():
+    serie = [(date(2022, m, 1), 1.0) for m in range(1, 13)] + [(date(2023, 1, 1), 2.0)]
+    resultado = dict(acumulado_12_meses(serie))
+    assert date(2022, 11, 1) not in resultado  # só 11 meses de histórico
+    assert resultado[date(2022, 12, 1)] == pytest.approx((1.01**12 - 1) * 100, abs=1e-3)
+    assert resultado[date(2023, 1, 1)] == pytest.approx((1.01**11 * 1.02 - 1) * 100, abs=1e-3)
+
+
+def test_acumulado_12_meses_nao_atravessa_buraco_na_serie():
+    serie = [(date(2022, m, 1), 1.0) for m in range(1, 13) if m != 6] + [(date(2023, 1, 1), 1.0)]
+    assert acumulado_12_meses(serie) == []
 
 
 def test_list_mandates_is_ordered_by_start_date(client, mandates):
     response = client.get(f"{BASE}/mandates")
     assert response.status_code == 200
-    assert [m["nome"] for m in response.json()] == ["Antigo", "Atual", "Sem indicadores"]
+    assert [m["nome"] for m in response.json()] == ["Antigo (A 1)", "Atual", "Sem indicadores"]
+    assert [m["id"] for m in response.json()] == [mandates["antigo"], mandates["atual"], mandates["vazio"]]
 
 
 def test_list_mandates_does_not_ship_the_monthly_series(client, mandates):
@@ -47,41 +60,34 @@ def test_list_mandates_empty_database(client):
     assert client.get(f"{BASE}/mandates").json() == []
 
 
-def test_summary_computes_stats_and_variation(client, mandates):
-    response = client.get(f"{BASE}/mandates/{mandates['atual'].id}/summary")
-    assert response.status_code == 200
-    body = response.json()
-    assert body["nome"] == "Atual" and body["fim"] is None and body["foto_url"] == "/presidents/x.jpg"
+def test_summary_computes_stats_from_official_series(client, mandates):
+    body = client.get(f"{BASE}/mandates/{mandates['atual']}/summary").json()
+    assert body["nome"] == "Atual" and body["fim"] is None and body["partido"] == "PT"
     ipca = body["kpis"]["inflacao_ipca"]
-    assert ipca["primeiro"] == 4.0 and ipca["ultimo"] == 6.0
-    assert ipca["minimo"] == 3.0 and ipca["maximo"] == 6.0
-    assert ipca["media"] == pytest.approx(4.33)
-    assert ipca["variacao_pp"] == 2.0
-    assert body["total_meses"] == 3
+    # jan/2023: fev-dez/2022 a 0,5% (11 meses) e jan/2023 a 1,0%; abr/2023: mai-dez/2022 (8 meses) a 0,5% e 4 a 1,0%
+    assert ipca["primeiro"] == pytest.approx((1.005**11 * 1.01 - 1) * 100, abs=0.01)
+    assert ipca["ultimo"] == pytest.approx((1.005**8 * 1.01**4 - 1) * 100, abs=0.01)
+    assert ipca["variacao_pp"] == pytest.approx(round(ipca["ultimo"] - ipca["primeiro"], 2), abs=0.01)
+    assert ipca["minimo"] == ipca["primeiro"] and ipca["maximo"] == ipca["ultimo"]
+    assert body["kpis"]["desemprego_pnad"] == {
+        "primeiro": 8.0,
+        "ultimo": 9.0,
+        "minimo": 8.0,
+        "maximo": 9.0,
+        "media": 8.5,
+    }
+    assert body["kpis"]["selic_meta"]["primeiro"] == 13.75 and body["kpis"]["cambio_usd_brl"]["media"] == 5.0
+    assert body["total_meses"] == 4  # IPCA 12 meses só existe de 2022-12 em diante; 4 meses caem em 2023
 
 
-def test_summary_emendas_total_uses_max_of_each_year(client, mandates):
-    body = client.get(f"{BASE}/mandates/{mandates['atual'].id}/summary").json()
-    assert body["kpis"]["emendas_bilhoes"]["total_acumulado"] == 50.0  # 20 (2023) + 30 (2024)
+def test_summary_does_not_invent_indicators_without_source(client, mandates):
+    kpis = client.get(f"{BASE}/mandates/{mandates['atual']}/summary").json()["kpis"]
+    assert "aprovacao_popular" not in kpis and "emendas_bilhoes" not in kpis
 
 
 def test_summary_of_mandate_without_indicators_is_empty_not_an_error(client, mandates):
-    body = client.get(f"{BASE}/mandates/{mandates['vazio'].id}/summary").json()
-    assert body["kpis"] == {}
-    assert body["total_meses"] == 0
-
-
-def test_summary_with_only_ipca_has_no_emendas_total(client, db, mandates):
-    mandate = mandates["antigo"]
-    db.add(
-        MandateIndicator(
-            mandate_id=mandate.id, chave_indicador="inflacao_ipca", valor=5.0, data_medicao=date(2012, 1, 1)
-        )
-    )
-    db.commit()
-    body = client.get(f"{BASE}/mandates/{mandate.id}/summary").json()
-    assert body["kpis"]["inflacao_ipca"]["variacao_pp"] == 0.0
-    assert "emendas_bilhoes" not in body["kpis"]
+    body = client.get(f"{BASE}/mandates/{mandates['vazio']}/summary").json()
+    assert body["kpis"] == {} and body["total_meses"] == 0
 
 
 def test_summary_unknown_mandate_is_404(client, mandates):
@@ -94,16 +100,16 @@ def test_invalid_uuid_is_422(client, suffix):
 
 
 def test_indicators_group_values_by_date(client, mandates):
-    rows = client.get(f"{BASE}/mandates/{mandates['atual'].id}/indicators").json()
-    first = rows[0]
-    assert first == {"data": "2023-01-01", "inflacao_ipca": 4.0}
+    rows = client.get(f"{BASE}/mandates/{mandates['atual']}/indicators").json()
     assert [row["data"] for row in rows] == sorted(row["data"] for row in rows)
-    june = next(row for row in rows if row["data"] == "2023-06-01")
-    assert june["emendas_bilhoes"] == 10.0
+    january = next(row for row in rows if row["data"] == "2023-01-01")
+    assert set(january) == {"data", "inflacao_ipca", "desemprego_pnad", "cambio_usd_brl", "selic_meta"}
+    february = next(row for row in rows if row["data"] == "2023-02-01")
+    assert "cambio_usd_brl" not in february  # mês sem observação não traz a chave
 
 
 def test_indicators_empty_series_and_unknown_mandate(client, mandates):
-    assert client.get(f"{BASE}/mandates/{mandates['vazio'].id}/indicators").json() == []
+    assert client.get(f"{BASE}/mandates/{mandates['vazio']}/indicators").json() == []
     assert client.get(f"{BASE}/mandates/{uuid.uuid4()}/indicators").status_code == 404
 
 
@@ -112,7 +118,20 @@ def test_get_all_mandates_iple(client):
     assert res.status_code == 200
     data = res.json()
     assert isinstance(data, list)
-    assert len(data) >= 10
+    ids = [m["mandato_id"] for m in data]
+    # FHC 1 e 2, Lula 1 a 3, Dilma 1 e 2, Temer e Bolsonaro; a janela começa em 1995, sem Itamar Franco
+    assert ids == [
+        "fhc-1995",
+        "fhc-1999",
+        "lula-2003",
+        "lula-2007",
+        "dilma-2011",
+        "dilma-2015",
+        "temer-2016",
+        "bolsonaro-2019",
+        "lula-2023",
+    ]
+    assert "itamar-franco-1992" not in ids
     first = data[0]
     assert "mandato_id" in first
     assert "indicadores_base" in first

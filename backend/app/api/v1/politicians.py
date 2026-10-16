@@ -29,7 +29,8 @@ from app.models.leg import Autoria, Proposicao, Votacao, Voto
 from app.services.basometro import calcular_basometro
 from app.services.ialp_pesos import carregar_pesos_ialp
 from app.services.ialp_pontos import pontos_ialp_pessoa
-from app.services.presidential_service import get_all_presidents, get_mandate_date_range, get_president_by_reference
+from app.services.presidencia_service import listar_presidentes, periodo_do_mandato, presidente_por_referencia
+from app.services.resumo_votos_service import resumo_votos as resumo_votos_do_parlamentar
 from app.services.roi_cidadao import METODOLOGIA as ROI_METODOLOGIA
 from app.services.roi_cidadao import PISO_DE_PONTOS, calcular_roi
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -243,10 +244,10 @@ def _load_json_list_or_404(filename: str, detail: str) -> Any:
 @router.get("/presidents", response_model=List[Dict[str, Any]])
 def get_historical_presidents(db: Session = Depends(get_db)):
     """
-    Retorna a lista canônica unificada de presidentes históricos desde 1994, com fotos oficiais,
+    Retorna a lista canônica unificada de presidentes históricos desde 1995, com fotos oficiais,
     partidos, períodos de mandato, vices e ministros da Fazenda/Economia.
     """
-    presidents = get_all_presidents(db)
+    presidents = listar_presidentes(db)
     if not presidents:
         raise HTTPException(status_code=404, detail="Dados de presidentes ainda não processados.")
     return presidents
@@ -255,7 +256,7 @@ def get_historical_presidents(db: Session = Depends(get_db)):
 @router.get("/presidents/{mandate_id}")
 def get_president_by_mandate(mandate_id: str, db: Session = Depends(get_db)):
     """Retorna detalhes específicos de um mandato presidencial unificado."""
-    pres = get_president_by_reference(mandate_id, db)
+    pres = presidente_por_referencia(db, mandate_id)
     if not pres:
         raise HTTPException(status_code=404, detail=f"Mandato '{mandate_id}' não encontrado.")
     return pres
@@ -340,7 +341,7 @@ def search_politicians(
             )
         )
         if mandate_id and mandate_id.strip():
-            date_range = get_mandate_date_range(mandate_id.strip(), db)
+            date_range = periodo_do_mandato(db, mandate_id.strip())
             if date_range:
                 m_start, m_end = date_range
                 mandate_clause = and_(
@@ -373,7 +374,7 @@ def search_politicians(
         )
 
     if mandate_id and mandate_id.strip():
-        date_range = get_mandate_date_range(mandate_id.strip(), db)
+        date_range = periodo_do_mandato(db, mandate_id.strip())
         if date_range:
             m_start, m_end = date_range
             mandate_active_subq = db.query(Mandate.politician_id).filter(
@@ -1410,6 +1411,8 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             }
         )
 
+    resumo_votos = resumo_votos_do_parlamentar(db, pessoa_param)
+
     # Basômetro: alinhamento à orientação do governo em cada votação nominal (sem baseline inventado).
     basometro = calcular_basometro(db, pessoa_id, partido_atual_sigla, votos_sim_total, votos_nao_total)
 
@@ -1810,6 +1813,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         "materias_propostas": materias_propostas,
         "votacoes_principais": votos_nominais,
         "historico_votos": historico_votos,
+        "resumo_votos": resumo_votos,
         "alinhamento_tematico": alinhamento_tematico_list,
         "assiduidade": {
             "total_sessoes": total_sessoes,

@@ -105,11 +105,11 @@ def test_api_exposes_no_write_routes(plain_client):
     assert methods <= {"get"}
 
 
-def test_rate_limit_returns_429_with_retry_after(plain_client, data_dir, monkeypatch):
+def test_rate_limit_returns_429_with_retry_after(plain_client, monkeypatch):
     monkeypatch.setattr(settings, "RATE_LIMIT_PER_MINUTE", 2)
-    url = f"{settings.API_V1_STR}/politicians/presidents"
-    assert plain_client.get(url).status_code == 404  # sem dados: 404 legítimo, não 500
-    assert plain_client.get(url).status_code == 404
+    url = f"{settings.API_V1_STR}/openapi.json"  # rota sem banco: o limite conta qualquer requisição da API
+    assert plain_client.get(url).status_code == 200
+    assert plain_client.get(url).status_code == 200
     blocked = plain_client.get(url)
     assert blocked.status_code == 429
     assert blocked.headers["retry-after"] == "60"
@@ -118,15 +118,15 @@ def test_rate_limit_returns_429_with_retry_after(plain_client, data_dir, monkeyp
     assert plain_client.get("/").status_code == 200
 
 
-def test_rate_limit_ignores_forwarded_header_unless_trusted(plain_client, data_dir, monkeypatch):
+def test_rate_limit_ignores_forwarded_header_unless_trusted(plain_client, monkeypatch):
     monkeypatch.setattr(settings, "RATE_LIMIT_PER_MINUTE", 1)
-    url = f"{settings.API_V1_STR}/politicians/presidents"
-    assert plain_client.get(url, headers={"X-Forwarded-For": "1.1.1.1"}).status_code == 404
+    url = f"{settings.API_V1_STR}/openapi.json"
+    assert plain_client.get(url, headers={"X-Forwarded-For": "1.1.1.1"}).status_code == 200
     # Sem proxy confiável, trocar o cabeçalho não burla o limite
     assert plain_client.get(url, headers={"X-Forwarded-For": "2.2.2.2"}).status_code == 429
 
     monkeypatch.setattr(settings, "TRUST_PROXY_HEADERS", True)
-    assert plain_client.get(url, headers={"X-Forwarded-For": "3.3.3.3, 10.0.0.1"}).status_code == 404
+    assert plain_client.get(url, headers={"X-Forwarded-For": "3.3.3.3, 10.0.0.1"}).status_code == 200
     assert plain_client.get(url, headers={"X-Forwarded-For": "3.3.3.3"}).status_code == 429
 
 
