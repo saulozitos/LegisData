@@ -2,6 +2,7 @@
 # O frontend fala com o backend pela rede interna (backend:8000) e o backend com o banco (postgres:5432).
 # Para desenvolvimento local (acesso do host ao Postgres e à API em loopback) use também
 # docker-compose.dev.yml:  docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Deploy automático: scripts/deploy/deploy.sh (timer do systemd) troca as imagens por IMAGE_TAG=<sha curto da main>.
 # Imagens fixadas em tag minor; a renovação (inclusive de digest) é feita pelo Dependabot (.github/dependabot.yml).
 services:
   postgres:
@@ -31,7 +32,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: ghcr.io/saulozitos/legisdata-backend:latest
+    image: ghcr.io/saulozitos/legisdata-backend:${IMAGE_TAG:-latest}
     container_name: politica_api
     restart: unless-stopped
     depends_on:
@@ -70,7 +71,7 @@ services:
       dockerfile: Dockerfile
       args:
         INTERNAL_BACKEND_URL: ${INTERNAL_BACKEND_URL:-http://backend:8000}
-    image: ghcr.io/saulozitos/legisdata-frontend:latest
+    image: ghcr.io/saulozitos/legisdata-frontend:${IMAGE_TAG:-latest}
     container_name: politica_frontend
     restart: unless-stopped
     depends_on:
@@ -98,19 +99,6 @@ services:
         limits:
           cpus: "1.0"
           memory: 768m
-
-  watchtower:
-    image: containrrr/watchtower:1.7.1
-    container_name: politica_watchtower
-    restart: unless-stopped
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - WATCHTOWER_POLL_INTERVAL=120
-      - WATCHTOWER_CLEANUP=true
-      - WATCHTOWER_INCLUDE_STOPPED=false
-      - WATCHTOWER_REVIVE_STOPPED=false
-    command: politica_frontend politica_api
 
 volumes:
   postgres_data:

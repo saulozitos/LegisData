@@ -1,0 +1,11 @@
+[Unit]
+Description=LegisData - verifica a main a cada 2 minutos
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=15s
+Unit=legisdata-deploy.service
+
+[Install]
+WantedBy=timers.target

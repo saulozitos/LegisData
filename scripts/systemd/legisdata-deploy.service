@@ -1,0 +1,13 @@
+[Unit]
+Description=LegisData - deploy automático da main (backup, migrações, carga e troca das imagens)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+# Serviço do USUÁRIO (systemctl --user), sem sudo. O caminho do projeto no servidor NÃO fica no repositório: ele vem do
+# arquivo ~/.legisdata-deploy/ambiente (LEGISDATA_DIR=...), criado na instalação (docs/DEPLOY_AUTOMATICO.md).
+Type=oneshot
+EnvironmentFile=%h/.legisdata-deploy/ambiente
+# Executa a cópia instalada (o próprio script a atualiza depois de cada deploy bem-sucedido)
+ExecStart=%h/.legisdata-deploy/deploy.sh
+TimeoutStartSec=30min
