@@ -84,3 +84,5 @@ etl/data/raw/camara_historico/
 
 # Relatórios de revisão locais
 output/
+
+.xerj-data/*
