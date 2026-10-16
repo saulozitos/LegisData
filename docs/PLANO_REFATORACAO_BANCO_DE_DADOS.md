@@ -29,8 +29,26 @@ Este documento é um plano, não uma implementação. Nenhuma tabela ou código 
 | 1 | Alembic, Postgres nos testes, schemas `ref/core/etl/param`, ponte legado→core, `/parties` | PR #36 |
 | 2 | Schema `leg` (proposição, autoria, votação unificada, voto, orientação, presença particionada), ponte legado→leg, pesos do IPPM em `param`, IPPM e linha do tempo da bancada lendo `core`/`leg` | Em validação (branch `refactor/db-entrega-2-legislativo`, empilhada sobre a Entrega 1) |
 | 2b | Cobertura: status real, todas as proposições desde 1995, autores sem pessoa, IPPM por período e cadeiras de todos os períodos (Câmara) | Em validação (branch `refactor/db-entrega-2b-cobertura`) |
-| 2c | Endpoints de `legislative.py` (proposições, votos, deliberações, calendário, explorer, ranking de autores, rede de coautoria, produtividade), proposições e votos do dossiê em `politicians.py`, Basômetro e `legislative_scoring.py` passam a ler `leg`/`core`; identificadores públicos são os `uid`. A rede de coautoria ignora proposições com mais de 40 autores (assinaturas em massa) e `sync_proposition_authors` deixou de existir (a autoria vem da ponte e do ETL em lote) | Em validação |
-| 3 | Economia e Executivo, corte em 1995, remoção de `seed_executivo.py`, novo ETL | A fazer |
+| 2c | Endpoints de `legislative.py` (proposições, votos, deliberações, calendário, explorer, ranking de autores, rede de coautoria, produtividade), proposições e votos do dossiê em `politicians.py`, Basômetro e `legislative_scoring.py` passam a ler `leg`/`core`; identificadores públicos são os `uid`. A rede de coautoria ignora proposições com mais de 40 autores (assinaturas em massa) e `sync_proposition_authors` deixou de existir (a autoria vem da ponte e do ETL em lote) | Entregue (PR #39) |
+| 3a | Economia e Executivo (Fase 6): schema `eco`, mandatos presidenciais em `core`, corte em 1995, remoção de `seed_executivo.py` e de toda leitura de arquivo pela API | Em andamento (branch `refactor/db-entrega-3a-economia`) |
+| 3b | Dados curados do Executivo e do Congresso (IPLE, composição, salário parlamentar, PNAD), repasses e eleições por UF em `eco`, cron das séries | A fazer |
+| 3c | Finanças e fiscalização (Fase 5), novo ETL e limpeza do legado | A fazer |
+
+### Entrega 3a — economia e Executivo no banco (2026-10-16)
+
+**O que foi construído**
+- Schema `eco`: `eco.serie` (catálogo com fonte de `etl.fonte`, unidade, periodicidade e abrangência) e `eco.observacao` (um valor por série, período e UF; valor desconhecido não é gravado e `referencia >= 1995-01-01` é restrição da tabela). 28 séries, todas de BCB/SGS, IBGE/SIDRA, INPE/PRODES ou IPEA/Atlas da Violência. Visão `eco.vw_resumo_anual` com as colunas que a API já devolvia.
+- Mandatos presidenciais em `core`: `core.mandato_presidencial` (identificador público `slug`, rótulo "Lula 2", vice, como o mandato começou e situação), `core.marco_governo` e `core.mandato.papel` (papel de quem foi nomeado). Foto da pessoa em `core.midia`. O nome da pessoa deixou de carregar o rótulo do mandato.
+- Carga: `etl/pipelines/economia_loader.py` (séries) e `presidencia_loader.py` (catálogo curado de presidentes), pela etapa `--load-economia` de `run_etl.py`. O `--economic` passou a gravar também `bcb_series_mensais.csv` (câmbio, dívida, salário mínimo, Selic e desocupação mensais).
+- Serviços novos: `economia_service` (resumo anual e IPCA mensal), `mandato_economia_service` (indicadores de cada mandato, com os mesmos resultados do JSON antigo, conferidos mandato a mandato), `presidencia_service`, `executivo_service`, `eco_dados`. `economic.py` e `executivo.py` viraram rotas finas; `analytics.py` (`mandates-performance`, `compare-mandates`, `federal-transfers`, `social-classes`) e `politicians.py` (`/presidents`) leem do banco.
+- Corte em 1995 (D8): Itamar Franco sai de `core`, do legado, do catálogo, da composição do Congresso, do IPLE e do frontend; as séries econômicas, o IPCA mensal e o resumo anual começam em 1995.
+- `seed_executivo.py`, os modelos `PresidentialMandate` e `MandateIndicator` e as tabelas `public.presidential_mandates` e `public.mandate_indicators` foram removidos (migration 0027).
+
+**Reconciliação com o legado**: `GET /economic/annual-summary` e a matriz de `mandates-performance` saem idênticos aos arquivos antigos em todos os anos e mandatos (tolerância de 0,2%). A única diferença é 2026 (e o mandato Lula 3), porque o IPCA mensal avançou um mês desde que o arquivo antigo foi gerado.
+
+**Decisões aplicadas (D7)**: saíram por falta de fonte oficial rastreável a aprovação popular e as emendas mensais do painel do Executivo, o Ibovespa (Yahoo/tabela digitada) e o feminicídio. O painel mostra inflação (IPCA em 12 meses), desemprego (PNAD Contínua, desde 2012), câmbio e Selic meta.
+
+**Fica para a Entrega 3b**: `wage-disparity` (`salario_vs_inflacao.json`, com o salário parlamentar digitado), `congress-composition` e a composição do IPLE (`composicao_congresso.json` e `DADOS_HISTORICOS_EXECUTIVO`, ambos curados à mão), faixas da PNAD (`pnad_faixas_salario_minimo.json`), repasses e eleições presidenciais por UF direto das tabelas `eco` e a atualização diária das séries no cron. Só então `grep load_json_cached backend/app` fica vazio nesses módulos; CEAP e emendas seguem para a Fase 5.
 
 ### Entrega 2b — cobertura de proposições e de cadeiras (2026-10-15)
 

@@ -191,9 +191,11 @@ make run-load-db
 ```
 *O pipeline executará as migrações, ingerindo séries históricas, parlamentares, cota CEAP, emendas, processos e doações do TSE.*
 
-Cargas complementares de assiduidade e remuneração oficiais:
+Cargas complementares de assiduidade e remuneração oficiais, e das séries econômicas e dos mandatos presidenciais
+(`eco.observacao`, `core.mandato_presidencial`):
 ```bash
 python etl/run_etl.py --load-presenca
+python etl/run_etl.py --load-economia
 ```
 
 ### Passo 5: Iniciar o Backend (FastAPI)
@@ -250,7 +252,7 @@ Você também pode executar as validações de forma granular:
 | `GET` | `/api/v1/emendas/resumo` | Visão macro das emendas: totais pagos/empenhados, divisão por tipo de autor e áreas |
 | `GET` | `/api/v1/emendas/localidade/{localidade}` | Consulta territorial de emendas por município ou UF de destino |
 | `GET` | `/api/v1/emendas/autor/{autor}` | Consulta de emendas por deputado, senador, comissão, bancada estadual ou relator |
-| `GET` | `/api/v1/economic/annual-summary` | Séries macroeconômicas oficiais (PIB, IPCA, Dólar, Selic, Salário Mínimo) |
+| `GET` | `/api/v1/economic/annual-summary` | Séries macroeconômicas oficiais desde 1995 (PIB, IPCA, Dólar, Salário Mínimo, Dívida) |
 | `GET` | `/api/v1/analytics/mandates-performance` | Desempenho consolidado por mandato presidencial |
 | `GET` | `/api/v1/analytics/compare-mandates` | Comparação normalizada de mandatos presidenciais ($T_0 \dots T_n$) |
 | `GET` | `/api/v1/analytics/social-classes` | Distribuição de classes por salário mínimo baseada em microdados da PNAD Contínua |
