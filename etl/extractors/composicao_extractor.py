@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from etl.config import PROCESSED_DATA_DIR
 from etl.utils.io_utils import atomic_write_json
+from etl.utils.names import chave_sigla
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("ComposicaoExtractor")
@@ -541,7 +542,8 @@ NOTA_VERIFICACAO = (
 
 
 def _norm(partido: str) -> str:
-    return str(partido).strip().upper()
+    """Chave de comparação da sigla ('PCdoB' da curadoria e 'PC DO B' do TSE são o mesmo partido)."""
+    return chave_sigla(str(partido))
 
 
 def _bancada_ordenada(contagem: Dict[str, int]) -> List[Dict[str, Any]]:

@@ -18,7 +18,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from etl.config import PROCESSED_DATA_DIR
-from etl.pipelines.loader_helpers import inteiro, texto
+from etl.pipelines.loader_helpers import (  # noqa: F401 - bancadas_da_casa e os conversores seguem acessíveis daqui
+    bancadas_da_casa,
+    inteiro,
+    texto,
+    validar_soma_das_bancadas,
+)
 from etl.utils.bootstrap import ensure_backend_on_path
 from etl.utils.datafiles import load_json
 
@@ -30,37 +35,6 @@ from sqlalchemy.engine import Engine  # noqa: E402
 logger = logging.getLogger("ComposicaoLoader")
 
 CASAS = {"camara": "CAMARA_DOS_DEPUTADOS", "senado": "SENADO_FEDERAL"}
-ALINHAMENTOS = {"BASE_GOVERNO", "INDEPENDENTE_CENTRO", "OPOSICAO", "NAO_CLASSIFICADO"}
-
-
-def bancadas_da_casa(casa: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Une as bancadas exibidas (`cadeiras`) e as eleitas segundo o TSE (`cadeiras_tse`) por partido."""
-    por_partido: Dict[str, Dict[str, Any]] = {}
-    for b in (x for x in casa.get("bancadas") or [] if isinstance(x, dict)):
-        sigla = texto(b.get("partido"))
-        if not sigla:
-            continue
-        alinhamento = texto(b.get("alinhamento")) or "NAO_CLASSIFICADO"
-        por_partido[sigla] = {
-            "sigla": sigla,
-            "cadeiras": inteiro(b.get("cadeiras")),
-            "cadeiras_tse": None,
-            "alinhamento": alinhamento if alinhamento in ALINHAMENTOS else "NAO_CLASSIFICADO",
-            "cor_hex": texto(b.get("cor_hex")),
-        }
-    for b in (x for x in casa.get("bancadas_eleitas_tse") or [] if isinstance(x, dict)):
-        sigla = texto(b.get("partido"))
-        if not sigla:
-            continue
-        linha = por_partido.setdefault(
-            sigla, {"sigla": sigla, "cadeiras": None, "cadeiras_tse": None, "alinhamento": None, "cor_hex": None}
-        )
-        linha["cadeiras_tse"] = inteiro(b.get("cadeiras"))
-    linhas = [b for b in por_partido.values() if b["cadeiras"] is not None or b["cadeiras_tse"] is not None]
-    # a ordem da curadoria (desempates entre partidos de mesmo tamanho) é preservada
-    for ordem, linha in enumerate(linhas):
-        linha["ordem"] = ordem
-    return linhas
 
 
 def ler_producao(caminho: Path) -> List[Dict[str, str]]:
@@ -91,10 +65,12 @@ def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, 
 
         # A curadoria é a fonte completa: mandato ou Casa que saiu do arquivo (ou ficou sem total) também sai do banco
         for slug, mandato_id in mandatos.items():
-            dados = composicao.get(slug) or {}
+            dados = composicao.get(slug)
+            dados = dados if isinstance(dados, dict) else {}
             contagem["mandatos"] += 1 if slug in composicao else 0
             for chave, codigo in CASAS.items():
-                casa = dados.get(chave) or {}
+                casa = dados.get(chave)
+                casa = casa if isinstance(casa, dict) else {}
                 if casa.get("total_cadeiras"):
                     _gravar_casa(conn, mandato_id, casas[codigo], dados, casa, contagem)
                 else:
@@ -135,7 +111,9 @@ def _gravar_producao(
     conn: Any, mandatos: Dict[str, int], producao: List[Dict[str, str]], contagem: Dict[str, int]
 ) -> None:
     """Grava a produção do CSV e remove a dos mandatos que saíram dele (o banco espelha o arquivo)."""
-    linhas = [(mandatos[linha["mandato_slug"]], _linha_de_producao(linha)) for linha in producao]  # valida tudo antes
+    linhas = [
+        (mandatos[texto(linha["mandato_slug"])], _linha_de_producao(linha)) for linha in producao
+    ]  # valida tudo antes
     if linhas:
         conn.execute(
             text("DELETE FROM leg.producao_executivo WHERE mandato_id <> ALL(CAST(:ids AS bigint[]))"),
@@ -176,6 +154,7 @@ def _apagar_casa(conn: Any, mandato_id: int, casa_id: int) -> None:
 def _gravar_casa(
     conn: Any, mandato_id: int, casa_id: int, mandato: Dict[str, Any], casa: Dict[str, Any], contagem: Dict[str, int]
 ) -> None:
+    validar_soma_das_bancadas(bancadas_da_casa(casa), int(casa["total_cadeiras"]), f"{mandato.get('slug', mandato_id)}")
     _apagar_casa(conn, mandato_id, casa_id)
     _gravar_composicao(conn, mandato_id, casa_id, mandato, casa)
     _gravar_bancadas(conn, mandato_id, casa_id, casa, contagem)
@@ -183,7 +162,8 @@ def _gravar_casa(
 
 
 def _gravar_composicao(conn: Any, mandato_id: int, casa_id: int, mandato: Dict[str, Any], casa: Dict[str, Any]) -> None:
-    verificacao = casa.get("verificacao_tse") or {}
+    verificacao = casa.get("verificacao_tse")
+    verificacao = verificacao if isinstance(verificacao, dict) else {}
     origem = "TSE" if str(casa.get("bancadas_origem") or "").upper().startswith("TSE") else "CURADORIA"
     conn.execute(
         text(
@@ -242,7 +222,7 @@ def _gravar_bancadas(conn: Any, mandato_id: int, casa_id: int, casa: Dict[str, A
 def _gravar_presidentes(
     conn: Any, mandato_id: int, casa_id: int, casa: Dict[str, Any], contagem: Dict[str, int]
 ) -> None:
-    for ordem, p in enumerate(casa.get("presidentes") or []):
+    for ordem, p in enumerate(x for x in casa.get("presidentes") or [] if isinstance(x, dict)):
         nome = texto(p.get("nome"))
         rotulo = texto(p.get("periodo"))
         if nome is None or rotulo is None:

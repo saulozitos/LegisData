@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from app.core.errors import ErroDeDominio
 from app.models.leg import Casa, Proposicao, Votacao
+from app.services.bancadas_service import CASAS
 from app.services.economia_service import dominantes_por_ano
 from app.services.periodos import nome_do_mandato
 from app.services.placar import contagens_por_votacao, placar_para_tela, placares_das_votacoes, sessao_principal
@@ -22,7 +23,7 @@ _SERIES_SQL = text(
 
 # Votação do reajuste do salário mínimo no Plenário da Câmara (Lei 14.663/2023), localizada pela proposição.
 MPV_SALARIO = ("MPV", 1172, 2023)
-CASA_CAMARA = "CAMARA_DOS_DEPUTADOS"
+CASA_CAMARA = CASAS["camara"]
 
 
 def _crescimento(final: float, inicial: float) -> float:
@@ -134,6 +135,7 @@ def votacao_salario_minimo(db: Session) -> Dict[str, Any]:
         {
             "data_votacao": sessao.data_hora.date().isoformat(),
             "placar": placar_para_tela(placares[sessao.id]),
+            "ementa": proposicao.ementa or base["ementa"],
             "dados_indisponiveis": False,
             "fonte": "API Dados Abertos da Câmara (votos nominais)",
         }

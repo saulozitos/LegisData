@@ -46,18 +46,24 @@ def valor_opcional(valor: Any) -> Optional[float]:
     return None if valor is None else float(valor)
 
 
+def mandato_em_curso(fim: Optional[date], hoje: Optional[date] = None) -> bool:
+    """Mandato sem data de fim ou cujo fim previsto (a posse do sucessor) ainda não chegou."""
+    return fim is None or fim > (hoje or date.today())
+
+
 def ultimo_ano_do_mandato(fim: Optional[date]) -> Optional[int]:
     """
-    Último ano em que o mandato vigora. O fim é exclusivo quando coincide com a posse do sucessor em 1º de janeiro
-    (o mandato que termina em 01/01/AAAA não vai até AAAA); um mandato que termina no meio do ano (impeachment,
-    renúncia) vigora até o próprio ano do fim. `None` para mandato em curso.
+    Último ano em que o mandato vigora. O fim é exclusivo quando coincide com a posse do sucessor nos primeiros dias de
+    janeiro (1º de janeiro; 5 de janeiro a partir da EC 111/2021): o mandato que termina em 01/01/AAAA não vai até AAAA. Um
+    mandato que termina depois disso (impeachment, renúncia) vigora até o próprio ano do fim. `None` sem data de fim.
     """
     if fim is None:
         return None
-    return (fim - timedelta(days=1)).year
+    return fim.year - 1 if fim.month == 1 and fim.day <= 7 else fim.year
 
 
-def rotulo_do_periodo(inicio: date, fim: Optional[date]) -> str:
-    """'2023 - Presente', '1995 - 1998' (fim em 1º/jan do sucessor) ou '2015 - 2016' (fim em 31/08/2016)."""
-    ultimo = ultimo_ano_do_mandato(fim)
-    return f"{inicio.year} - {ultimo if ultimo is not None else 'Presente'}"
+def rotulo_do_periodo(inicio: date, fim: Optional[date], hoje: Optional[date] = None) -> str:
+    """'2023 - Presente' (em curso), '1995 - 1998' (fim em 1º/jan do sucessor) ou '2015 - 2016' (fim em 31/08/2016)."""
+    if mandato_em_curso(fim, hoje):
+        return f"{inicio.year} - Presente"
+    return f"{inicio.year} - {ultimo_ano_do_mandato(fim)}"

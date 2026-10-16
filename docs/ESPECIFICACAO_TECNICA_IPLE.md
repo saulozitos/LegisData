@@ -77,20 +77,21 @@ Para enriquecer a análise via **QCA (Qualitative Comparative Analysis)**, o sis
 
 ---
 
-## 6. Resultados Históricos Consolidados (Nova República 1992 - Presente)
+## 6. Resultados Históricos Consolidados (Nova República, janela de dados a partir de 1995)
+
+Tabela gerada da API (`GET /api/v1/executivo/iple`) com a carga atual de `leg.producao_executivo`, `leg.bancada_mandato` e `core.partido_posicao_ideologica`. "Indisponível" significa que o mandato não tem bancadas carregadas para aquela variável (nunca é zero). Os períodos seguem a regra da seção 8.
 
 | Mandato | Presidente | Período | TS | TMV | IPLE Score | NEP ($X_2$) | IPP ($X_3$) | Classificação QCA |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| `itamar-franco-1992` | Itamar Franco | 1992-1995 | 88.2% | 84.4% | **0.863** | 8.42 | 2.90 | Executivo Forte / Poderoso |
-| `fhc-1995` | Fernando Henrique Cardoso 1 | 1995-1999 | 90.9% | 89.8% | **0.904** | 8.14 | 3.03 | Executivo Forte / Poderoso |
-| `fhc-1999` | Fernando Henrique Cardoso 2 | 1999-2003 | 86.8% | 75.1% | **0.810** | 7.12 | 2.94 | Executivo Forte / Poderoso |
-| `lula-2003` | Luiz Inácio Lula da Silva 1 | 2003-2007 | 87.2% | 81.3% | **0.842** | 8.52 | 4.02 | Executivo Forte / Poderoso |
-| `lula-2007` | Luiz Inácio Lula da Silva 2 | 2007-2011 | 91.4% | 90.4% | **0.909** | 9.33 | 3.82 | Executivo Forte / Poderoso |
-| `dilma-2011` | Dilma Rousseff 1 | 2011-2015 | 86.8% | 71.5% | **0.792** | 10.74 | 3.91 | Executivo Forte / Poderoso |
-| `dilma-2015` | Dilma Rousseff 2 | 2015-2016 | 61.1% | 42.2% | **0.516** | 13.56 | 4.88 | Executivo Fraco (Impeachment) |
-| `temer-2016` | Michel Temer | 2016-2019 | 80.0% | 72.2% | **0.761** | 14.12 | 3.10 | Executivo Fraco / Desafiado |
-| `bolsonaro-2019` | Jair Bolsonaro | 2019-2023 | 74.0% | 62.7% | **0.683** | 16.41 | 4.40 | Executivo Fraco / Desafiado |
-| `lula-2023` | Luiz Inácio Lula da Silva 3 | 2023-2027 | 82.1% | 68.8% | **0.755** | 9.93 | 4.55 | Executivo Fraco / Desafiado |
+| `fhc-1995` | Fernando Henrique Cardoso (FHC 1) | 1995 - 1998 | 90.9% | 89.8% | **0.904** | 8.14 | 3.03 | Executivo Forte / Poderoso |
+| `fhc-1999` | Fernando Henrique Cardoso (FHC 2) | 1999 - 2002 | 83.1% | 78.8% | **0.810** | indisponível | indisponível | Executivo Forte / Poderoso |
+| `lula-2003` | Lula (Lula 1) | 2003 - 2006 | 87.2% | 81.2% | **0.842** | 8.52 | 4.02 | Executivo Forte / Poderoso |
+| `lula-2007` | Lula (Lula 2) | 2007 - 2010 | 91.6% | 90.2% | **0.909** | 9.29 | 3.82 | Executivo Forte / Poderoso |
+| `dilma-2011` | Dilma Rousseff (Dilma 1) | 2011 - 2014 | 84.5% | 73.8% | **0.792** | 10.43 | 4.00 | Executivo Forte / Poderoso |
+| `dilma-2015` | Dilma Rousseff (Dilma 2) | 2015 - 2016 | 57.1% | 46.2% | **0.516** | 13.33 | 3.47 | Executivo Fraco |
+| `temer-2016` | Michel Temer | 2016 - 2018 | 81.1% | 71.0% | **0.761** | 13.33 | 3.53 | Executivo Fraco |
+| `bolsonaro-2019` | Jair Bolsonaro | 2019 - 2022 | 74.0% | 62.7% | **0.683** | 16.41 | 4.40 | Executivo Fraco |
+| `lula-2023` | Lula (Lula 3) | 2023 - Presente | 82.1% | 68.8% | **0.754** | 9.93 | 4.55 | Executivo Fraco |
 
 ---
 

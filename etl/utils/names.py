@@ -39,6 +39,11 @@ def strip_accents(text: str) -> str:
     return nfkd.encode("ASCII", "ignore").decode("utf-8")
 
 
+def chave_sigla(sigla: Optional[str]) -> str:
+    """Chave de comparação de siglas de partido: sem acento, sem espaço, maiúsculas ('PC do B', 'PCdoB' e 'PC DO B')."""
+    return strip_accents(sigla or "").replace(" ", "").upper()
+
+
 def normalize_name_tokens(text: Optional[str]) -> str:
     """Remove acentos, siglas entre parênteses/colchetes, títulos honoríficos e pontuação."""
     if not text:

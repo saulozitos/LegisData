@@ -544,7 +544,13 @@ export interface ChamberComposition {
   total_cadeiras: number;
   presidentes: LeaderProfile[];
   bancadas: PartySeat[];
+  /** Bancadas eleitas segundo o TSE (conferência com a curadoria); só nos mandatos com esse dado */
+  bancadas_eleitas_tse?: Array<{ partido: string; cadeiras: number; percentual: number }>;
+  bancadas_origem?: string;
+  verificacao_tse?: Record<string, unknown>;
   governabilidade: {
+    /** IPLE do mandato nesta Casa (null quando o mandato não tem produção do Executivo carregada) */
+    iple?: IpleData | null;
     // Sem nenhuma bancada classificada (base/centro/oposição), tudo vem null; maioria null = indeterminada
     base_aliada_cadeiras: number | null;
     base_aliada_pct: number | null;
@@ -1238,7 +1244,7 @@ export interface ClassesSociaisResponse {
   anos_disponiveis?: number[];
   fonte: string;
   resumo_populacional: {
-    maioria_populacao_acumulada_d_e_pct: number;
+    maioria_populacao_acumulada_d_e_pct: number | null;
     texto_educativo: string | null;
   };
   classes: ClasseSocialItem[];

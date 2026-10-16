@@ -223,36 +223,12 @@ def _load_economia():
     ensure_backend_on_path()
     from app.core.database import engine
 
-    from etl.pipelines.composicao_loader import carregar as carregar_composicao
-    from etl.pipelines.economia_loader import carregar as carregar_series
-    from etl.pipelines.pnad_loader import carregar as carregar_pnad
-    from etl.pipelines.presidencia_loader import carregar as carregar_presidencia
+    from etl.pipelines.carga_economica import CARGAS, carregar_tudo
 
-    # Cada carga é independente: uma curadoria com problema não impede as demais; os erros são relatados no fim
-    # (chave, nome exibido, função, chave da carga de que depende): a composição só existe sobre os mandatos
-    # presidenciais carregados
-    cargas = (
-        ("series", "Séries (eco.observacao)", carregar_series, None),
-        ("presidencia", "Mandatos presidenciais", carregar_presidencia, None),
-        ("composicao", "Composição do Congresso e produção do Executivo", carregar_composicao, "presidencia"),
-        ("pnad", "PNAD (classes sociais)", carregar_pnad, None),
-    )
-    nomes = {chave: nome for chave, nome, _, _ in cargas}
-    falhas = []
-    falharam = set()
-    for chave, nome, carregar, depende_de in cargas:
-        if depende_de in falharam:
-            falhas.append(f"{nome}: não executada porque '{nomes[depende_de]}' falhou")
-            falharam.add(chave)
-            continue
-        try:
-            print(f"    {nome}:", carregar(engine))
-        except Exception as exc:  # noqa: BLE001 - isolada de propósito; relatada abaixo
-            logger.error("Carga '%s' falhou: %s", nome, exc, exc_info=True)
-            falhas.append(f"{nome}: {exc}")
-            falharam.add(chave)
-    if falhas:
-        raise RuntimeError("; ".join(falhas))
+    resultados = carregar_tudo(engine)
+    nomes = {chave: nome for chave, nome, _, _ in CARGAS}
+    for chave, resultado in resultados.items():
+        print(f"    {nomes[chave]}:", resultado)
 
 
 def _load_presenca_remuneracao():

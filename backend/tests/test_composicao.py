@@ -5,12 +5,13 @@ from datetime import date
 
 import pytest
 from app.core.errors import ErroDeDominio
+from app.core.names import chave_sigla
 from app.services import bancadas_service, iple_service
 from app.services.party_productivity_service import get_party_bloc_alignments
-from app.services.periodos import rotulo_do_periodo
+from app.services.periodos import mandato_em_curso, rotulo_do_periodo
 from sqlalchemy import text
 
-from .conftest import criar_mandato_presidencial
+from .conftest import criar_mandato_presidencial, observar_serie
 
 BASE = "/api/v1/analytics"
 IPLE = "/api/v1/executivo/iple"
@@ -483,3 +484,161 @@ def test_proposicao_apresentada_no_dia_do_inicio_do_mandato_entra_na_contagem(db
     db.commit()
     base = iple_service.get_mandate_iple(db, "lula-2023")["indicadores_base"]
     assert (base["proposicoes_executivo_total"], base["proposicoes_executivo_aprovadas"]) == (120, 90)
+
+
+# ── rotas que embutem o IPLE ───────────────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def dois_mandatos(db):
+    """a-2011 com produção do Executivo; b-2015 sem produção."""
+    a = criar_mandato_presidencial(db, "Alfa", date(2011, 1, 1), date(2015, 1, 1), "a-2011")
+    criar_mandato_presidencial(db, "Beta", date(2015, 1, 1), date(2019, 1, 1), "b-2015")
+    _producao(db, a)
+    _composicao(db, a, "CAMARA_DOS_DEPUTADOS", 100, [(s, c, al, cor, None) for s, c, al, cor in BANCADAS])
+    _escala(db)
+    observar_serie(db, "IPCA_MENSAL", date(2012, 1, 1), 0.5)
+    db.commit()
+
+
+def test_mandates_performance_traz_o_iple_de_cada_mandato_pelo_slug(client, dois_mandatos):
+    corpo = {m["id_mandato"]: m for m in client.get(f"{BASE}/mandates-performance").json()}
+    iple = corpo["a-2011"]["iple"]
+    assert iple["mandato_id"] == "a-2011" and iple["indicadores_base"]["iple_score"] == 0.75
+    assert iple["variaveis_contextuais"]["tamanho_oposicao_x1"] == 0.4
+    assert corpo["b-2015"]["iple"] is None  # mandato sem produção do Executivo: nada inventado
+
+
+def test_compare_mandates_traz_o_iple_de_cada_lado(client, dois_mandatos):
+    corpo = client.get(f"{BASE}/compare-mandates", params={"mandate1": "a-2011", "mandate2": "b-2015"}).json()
+    assert corpo["mandate1"]["iple"]["indicadores_base"]["taxa_sucesso_ts"] == 0.8
+    assert corpo["mandate2"]["iple"] is None
+
+
+def test_resumo_do_mandato_executivo_traz_o_iple_pelo_slug(client, db, dois_mandatos):
+    uid = str(
+        db.execute(
+            text(
+                "SELECT m.uid FROM core.mandato m JOIN core.mandato_presidencial mp ON mp.mandato_id = m.id "
+                "WHERE mp.slug = 'a-2011'"
+            )
+        ).scalar()
+    )
+    corpo = client.get(f"/api/v1/executivo/mandates/{uid}/summary").json()
+    assert corpo["iple"]["mandato_id"] == "a-2011" and corpo["iple"]["indicadores_base"]["iple_score"] == 0.75
+
+
+# ── mandato em curso com fim previsto ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_mandato_com_fim_previsto_no_futuro_e_tratado_como_em_curso(client, db):
+    fim = date(date.today().year + 1, 1, 1)
+    mid = criar_mandato_presidencial(db, "Atual", date(2023, 1, 1), fim, "atual-2023")
+    _producao(db, mid)
+    _proposicoes_executivo(db, 120, 90, date(2024, 1, 1), 1)
+    _proposicoes_executivo(db, 30, 30, fim, 900)  # apresentadas no dia da posse do sucessor: fora do mandato
+    db.commit()
+    dados = client.get(IPLE, params={"mandate_id": "atual-2023"}).json()
+    assert dados["periodo"] == "2023 - Presente"
+    assert (
+        dados["indicadores_base"]["proposicoes_executivo_total"],
+        dados["indicadores_base"]["proposicoes_executivo_aprovadas"],
+    ) == (120, 90)
+
+
+def test_mandato_encerrado_nao_usa_a_contagem_da_base(client, db):
+    mid = criar_mandato_presidencial(db, "Antigo", date(2019, 1, 1), date(2023, 1, 1), "antigo-2019")
+    _producao(db, mid)
+    _proposicoes_executivo(db, 500, 400, date(2020, 1, 1), 1)
+    db.commit()
+    base = client.get(IPLE, params={"mandate_id": "antigo-2019"}).json()["indicadores_base"]
+    assert base["proposicoes_executivo_total"] == 100  # encerrado: vale a curadoria
+
+
+def test_rotulo_do_periodo_com_posse_em_5_de_janeiro_e_mandato_em_curso():
+    assert rotulo_do_periodo(date(2023, 1, 1), date(2027, 1, 5), hoje=date(2030, 1, 1)) == "2023 - 2026"
+    assert rotulo_do_periodo(date(2023, 1, 1), date(2027, 1, 1), hoje=date(2026, 6, 1)) == "2023 - Presente"
+    assert mandato_em_curso(None) and mandato_em_curso(date(2999, 1, 1)) and not mandato_em_curso(date(2000, 1, 1))
+
+
+# ── siglas, ementa nula, base do TSE e CHECKs ──────────────────────────────────────────────────────────────────────
+
+
+def test_blocos_casam_a_sigla_sem_espaco_e_sem_caixa(db):
+    mid = criar_mandato_presidencial(db, "P", date(2023, 1, 1), None, "p-2023")
+    _composicao(db, mid, "CAMARA_DOS_DEPUTADOS", 100, [("PC do B", 100, "BASE_GOVERNO", None, None)])
+    db.commit()
+    blocos = get_party_bloc_alignments(db)
+    assert blocos[chave_sigla("PCdoB")] == blocos[chave_sigla("PC DO B")] == "BASE_GOVERNO"
+
+
+def test_proposicao_do_executivo_sem_ementa_conta_e_as_tres_palavras_simbolicas_nao(db, mandato):
+    base_sql = (
+        "INSERT INTO leg.proposicao (tipo_codigo, numero, ano, titulo, ementa, data_apresentacao, status_codigo, "
+        "iniciativa_executivo) VALUES ('PL', :n, 2024, 'PL', :e, DATE '2024-01-01', 'APROVADA_E_SANCIONADA', true)"
+    )
+    ementas = [None] * 120 + ["Denominar a ponte X", "Institui o Dia Nacional Y", "Homenageia a cidade Z"]
+    for i, ementa in enumerate(ementas):
+        db.execute(text(base_sql), {"n": i + 1, "e": ementa})
+    db.commit()
+    base = iple_service.get_mandate_iple(db, "lula-2023")["indicadores_base"]
+    assert base["proposicoes_executivo_total"] == 120  # sem ementa conta; as 3 simbólicas ficam de fora
+
+
+def test_percentual_das_bancadas_do_tse_usa_o_total_de_eleitos_do_tse(client, db):
+    mid = criar_mandato_presidencial(db, "P", date(2023, 1, 1), None, "p-2023")
+    _composicao(
+        db,
+        mid,
+        "CAMARA_DOS_DEPUTADOS",
+        100,
+        [("PL", 40, "OPOSICAO", "#111111", 49), ("PT", 60, "BASE_GOVERNO", "#222222", 49)],
+        status="total_inesperado",
+        total_tse=98,
+    )
+    db.commit()
+    cam = client.get(f"{BASE}/congress-composition", params={"mandate_id": "p-2023"}).json()["camara"]
+    assert [b["percentual"] for b in cam["bancadas_eleitas_tse"]] == [50.0, 50.0]  # 49 de 98, não de 100
+
+
+def test_check_de_bancada_exige_cadeiras_ou_cadeiras_tse(db, mandato):
+    from sqlalchemy.exc import IntegrityError
+
+    with pytest.raises(IntegrityError):
+        db.execute(
+            text(
+                "INSERT INTO leg.bancada_mandato (mandato_id, casa_id, partido_sigla, cadeiras, cadeiras_tse, ordem) "
+                "SELECT mandato_id, casa_id, 'SEM', NULL, NULL, 99 FROM leg.composicao_mandato LIMIT 1"
+            )
+        )
+    db.rollback()
+
+
+def test_check_de_bancada_com_cadeiras_exige_alinhamento(db, mandato):
+    from sqlalchemy.exc import IntegrityError
+
+    with pytest.raises(IntegrityError):
+        db.execute(
+            text(
+                "INSERT INTO leg.bancada_mandato (mandato_id, casa_id, partido_sigla, cadeiras, alinhamento, ordem) "
+                "SELECT mandato_id, casa_id, 'SEM', 5, NULL, 99 FROM leg.composicao_mandato LIMIT 1"
+            )
+        )
+    db.rollback()
+
+
+def test_checks_da_pnad_exigem_8_faixas_e_ano_a_partir_de_1995(db):
+    from sqlalchemy.exc import IntegrityError
+
+    with pytest.raises(IntegrityError):
+        db.execute(text("INSERT INTO eco.pnad_ano (ano, visita, salario_minimo_brl) VALUES (1990, 5, 100)"))
+    db.rollback()
+    db.execute(text("INSERT INTO eco.pnad_ano (ano, visita, salario_minimo_brl) VALUES (2024, 5, 100)"))
+    with pytest.raises(IntegrityError):
+        db.execute(
+            text(
+                "INSERT INTO eco.pnad_distribuicao (ano, escopo, distribuicao, percentual) "
+                "VALUES (2024, 'BR', 'domicilios_renda_total', ARRAY[1,2,3])"
+            )
+        )
+    db.rollback()

@@ -119,3 +119,8 @@ def test_catalogo_real_tem_legislatura_para_todos_os_mandatos():
     from etl.extractors.composicao_extractor import LEGISLATURA_POR_MANDATO
 
     assert set(COMPOSICAO_CONGRESSO_HISTORICO) <= set(LEGISLATURA_POR_MANDATO)
+
+
+def test_comparar_bancadas_ignora_espaco_e_caixa_da_sigla():
+    res = comparar_bancadas([{"partido": "PCdoB", "cadeiras": 10}], {"PC DO B": 10})
+    assert res["conferido"] is True and res["divergencias"] == []

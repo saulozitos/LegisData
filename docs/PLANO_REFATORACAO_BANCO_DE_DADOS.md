@@ -605,3 +605,11 @@ Fazer **por endpoint**, não de uma vez.
 4. **Entrega 4 (Fases 8 e 9):** corte completo da API, remoção do legado, endurecimento.
 
 Cada entrega termina com a CI verde, golden files reconciliados e um PR em português no padrão do repositório.
+
+### Deploy da Entrega 3b (passo manual único)
+
+O `deploy.sh` instalado no servidor é o da 3a e não conhece a carga da composição do Congresso e da PNAD. Antes de
+mesclar o PR da 3b, instale o script da branch no servidor (comandos em `docs/DEPLOY_AUTOMATICO.md`, seção "Deploy que
+traz a mudança da própria carga"). Sem isso, o deploy aplica as migrações 0028 a 0030 mas deixa `leg.composicao_mandato`,
+`leg.producao_executivo` e `eco.pnad_ano` vazias, e as rotas de composição, IPLE e classes sociais ficam sem dados até o
+próximo commit.

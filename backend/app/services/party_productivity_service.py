@@ -17,6 +17,7 @@ import logging
 from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.core.names import chave_sigla
 from app.models.analytics import LogExecucaoCron
 from app.models.politician import SituacaoMandatoEnum
 from app.services.party_catalog_service import DEFAULT_PARTY_COLOR
@@ -46,8 +47,8 @@ _BLOCOS_SQL = text(
 
 
 def get_party_bloc_alignments(db: Session) -> Dict[str, str]:
-    """Bloco de governo de cada partido na Câmara durante o mandato presidencial mais recente com classificação."""
-    return {sigla.upper(): alinhamento.upper() for sigla, alinhamento in db.execute(_BLOCOS_SQL)}
+    """Bloco de governo de cada partido (chave `chave_sigla`) na Câmara durante o mandato presidencial mais recente com classificação."""
+    return {chave_sigla(sigla): alinhamento.upper() for sigla, alinhamento in db.execute(_BLOCOS_SQL)}
 
 
 def sync_mandate_history(db: Session) -> int:
@@ -282,7 +283,7 @@ def calculate_party_ippm_ranking(
         nome = party["nome"]
         cor = party["cor_hex"] or DEFAULT_PARTY_COLOR
         espectro = party["espectro_politico"] or "CENTRO"
-        bloco_class = bloc_map.get(sigla, "INDEPENDENTE_CENTRO")
+        bloco_class = bloc_map.get(chave_sigla(sigla), "INDEPENDENTE_CENTRO")
 
         # Filtro de Espectro
         if clean_espectro != "ALL":

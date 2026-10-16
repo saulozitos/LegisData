@@ -3,6 +3,9 @@ from datetime import date
 from app.models import CargoPoliticoEnum, Mandate, PartyAffiliation, Politician, StatusMandatoEnum
 from app.services.core_sync import sync_legacy_to_core
 
+from .conftest import criar_mandato_presidencial
+from .test_composicao import _composicao
+
 
 def test_list_parties_counts_only_current_mandates(client, db, seed):
     sync_legacy_to_core(db)
@@ -148,7 +151,17 @@ def test_ippm_ranking_endpoint(client, seed):
         assert party_in_ranking["total_cadeiras_ativas"] >= 3
 
 
-def test_ippm_ranking_filters(client, seed):
+def test_ippm_ranking_filters(client, seed, db):
+    # O bloco vem da classificação da Câmara no mandato presidencial mais recente com bancadas classificadas
+    mandato = criar_mandato_presidencial(db, "Presidente", date(2023, 1, 1), None, "p-2023")
+    _composicao(
+        db,
+        mandato,
+        "CAMARA_DOS_DEPUTADOS",
+        100,
+        [("PT", 60, "BASE_GOVERNO", "#ef4444", None), ("PTB", 40, "OPOSICAO", "#64748b", None)],
+    )
+    db.commit()
     # Test filters by house, bloc, spectrum
     resp_camara = client.get("/api/v1/parties/ippm-ranking?casa=CAMARA&bloco=ALL&espectro=ALL")
     assert resp_camara.status_code == 200
@@ -156,8 +169,12 @@ def test_ippm_ranking_filters(client, seed):
 
     resp_bloco = client.get("/api/v1/parties/ippm-ranking?bloco=GOVERNO")
     assert resp_bloco.status_code == 200
-    for p in resp_bloco.json()["ranking"]:
-        assert p["bloco_politico"] == "BASE_GOVERNO"
+    governo = resp_bloco.json()["ranking"]
+    assert governo, "o filtro de bloco não pode devolver ranking vazio quando há bancadas classificadas"
+    assert {p["sigla"] for p in governo} == {"PT"}
+    assert all(p["bloco_politico"] == "BASE_GOVERNO" for p in governo)
+    oposicao = client.get("/api/v1/parties/ippm-ranking?bloco=OPOSICAO").json()["ranking"]
+    assert {p["sigla"] for p in oposicao} == {"PTB"}
 
     resp_espectro = client.get("/api/v1/parties/ippm-ranking?espectro=ESQUERDA")
     assert resp_espectro.status_code == 200

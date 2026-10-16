@@ -576,7 +576,7 @@ export default function ExecutivoPanel({
                     X₁: Tamanho da Oposição
                   </span>
                   <span className="text-[10px] text-slate-400">
-                    {p.iple.variaveis_contextuais.oposicao_cadeiras} de {p.iple.variaveis_contextuais.total_cadeiras} assentos
+                    {fmtNum(p.iple.variaveis_contextuais.oposicao_cadeiras, 0)} de {fmtNum(p.iple.variaveis_contextuais.total_cadeiras, 0)} assentos
                   </span>
                 </div>
                 <div className="text-right">

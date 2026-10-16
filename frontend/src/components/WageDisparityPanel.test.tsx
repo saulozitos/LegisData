@@ -113,6 +113,17 @@ describe('WageDisparityPanel', () => {
     expect(screen.getAllByText('—').length).toBe(3);
   });
 
+  it('votação sem data (indisponível na API) mostra "data indisponível"', async () => {
+    getWage.mockResolvedValue({
+      ...response,
+      votacao_salario_minimo: { ...response.votacao_salario_minimo, data_votacao: null, placar: null, dados_indisponiveis: true },
+    });
+    render(<WageDisparityPanel />);
+    await screen.findByText('MPV 1234/2024');
+    expect(screen.getByText(/data indisponível/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/NaN|null|undefined/);
+  });
+
   it('erro mostra alerta e retry recarrega', async () => {
     getWage.mockRejectedValueOnce(new Error('x')).mockResolvedValueOnce(response);
     render(<WageDisparityPanel />);

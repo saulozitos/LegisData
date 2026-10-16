@@ -43,35 +43,35 @@ def test_inteiro_e_texto_tratam_vazios():
 
 
 def test_pnad_percentual_exige_oito_faixas_numericas_finitas():
-    assert pnad.percentual_valido([1] * 8) == [1.0] * 8
+    assert pnad.percentual_valido([12.5] * 8) == [12.5] * 8
     for ruim in (
         None,
-        [1] * 7,
+        [12.5] * 7,
         "texto",
         [1, 2, 3, 4, 5, 6, 7, "x"],
-        [1] * 7 + [float("nan")],
-        [1] * 7 + [float("inf")],
+        [12.5] * 7 + [float("nan")],
+        [12.5] * 7 + [float("inf")],
     ):
         assert pnad.percentual_valido(ruim) is None
 
 
 def _ano_basico(**mudancas):
-    nacional = {c: {"percentual": [1] * 8} for c in ("domicilios_renda_total", "pessoas_renda_domiciliar")}
+    nacional = {c: {"percentual": [12.5] * 8} for c in ("domicilios_renda_total", "pessoas_renda_domiciliar")}
     return {"visita": 5, "salario_minimo_brl": 1000, "nacional": nacional, **mudancas}
 
 
 def test_pnad_ano_so_vale_com_chave_visita_salario_e_as_duas_distribuicoes():
-    assert pnad.ano_valido("2024", _ano_basico())
-    assert not pnad.ano_valido("2024", _ano_basico(salario_minimo_brl=0))
-    assert not pnad.ano_valido("2024", _ano_basico(salario_minimo_brl=-1))
-    assert not pnad.ano_valido("2024", _ano_basico(salario_minimo_brl="abc"))
-    assert not pnad.ano_valido("2024", _ano_basico(salario_minimo_brl=float("inf")))
-    assert not pnad.ano_valido("2024", _ano_basico(nacional={}))
-    assert not pnad.ano_valido("2024", None)
-    assert not pnad.ano_valido("1900", _ano_basico())  # antes da janela de 1995
-    assert not pnad.ano_valido("abc", _ano_basico())
-    assert not pnad.ano_valido("2024", _ano_basico(visita=None))  # visita não é presumida
-    assert not pnad.ano_valido("2024", _ano_basico(visita=9))
+    assert pnad.ano_pnad_valido("2024", _ano_basico())
+    assert not pnad.ano_pnad_valido("2024", _ano_basico(salario_minimo_brl=0))
+    assert not pnad.ano_pnad_valido("2024", _ano_basico(salario_minimo_brl=-1))
+    assert not pnad.ano_pnad_valido("2024", _ano_basico(salario_minimo_brl="abc"))
+    assert not pnad.ano_pnad_valido("2024", _ano_basico(salario_minimo_brl=float("inf")))
+    assert not pnad.ano_pnad_valido("2024", _ano_basico(nacional={}))
+    assert not pnad.ano_pnad_valido("2024", None)
+    assert not pnad.ano_pnad_valido("1900", _ano_basico())  # antes da janela de 1995
+    assert not pnad.ano_pnad_valido("abc", _ano_basico())
+    assert not pnad.ano_pnad_valido("2024", _ano_basico(visita=None))  # visita não é presumida
+    assert not pnad.ano_pnad_valido("2024", _ano_basico(visita=9))
 
 
 def test_subsidio_exige_norma_valor_e_ano_dentro_da_janela():
@@ -497,3 +497,66 @@ def test_curadoria_real_carrega_nos_nove_mandatos_e_e_idempotente(pg_engine):
         assert _contagens(pg_engine) == contagens
     finally:
         _limpar(pg_engine)
+
+
+# ── siglas, soma, slug e presidentes ───────────────────────────────────────────────────────────────────────────────
+
+
+def test_curadoria_e_tse_com_grafias_diferentes_da_sigla_viram_uma_so_bancada():
+    casa = {
+        "bancadas": [{"partido": "PCdoB", "cadeiras": 10, "alinhamento": "OPOSICAO"}],
+        "bancadas_eleitas_tse": [{"partido": "PC DO B", "cadeiras": 9}, {"partido": "SD", "cadeiras": 3}],
+    }
+    linhas = comp.bancadas_da_casa(casa)
+    assert [(b["sigla"], b["cadeiras"], b["cadeiras_tse"]) for b in linhas] == [("PCdoB", 10, 9), ("SD", None, 3)]
+
+
+def test_bancadas_que_somam_mais_que_o_total_abortam_a_carga_sem_gravar(pg_engine, mandato, tmp_path):
+    estourada = copy.deepcopy(COMPOSICAO)
+    estourada["x-2023"]["camara"]["total_cadeiras"] = 50  # a bancada de 99 passa do total
+    _arquivos(tmp_path, estourada, PRODUCAO)
+    with pytest.raises(ValueError, match="somam 99 cadeiras, mais que o total"):
+        comp.carregar(pg_engine, tmp_path)
+    assert _contagens(pg_engine)["composicao_mandato"] == 0
+
+
+@pytest.mark.parametrize("slug, esperado", [("y-1999", "y-1999"), ("", r"\(sem slug\)")])
+def test_producao_com_slug_desconhecido_ou_vazio_aborta_sem_gravar(pg_engine, mandato, tmp_path, slug, esperado):
+    _arquivos(tmp_path, COMPOSICAO, PRODUCAO + [[slug, 1, 1, 0, 0, 0, 1, 1, "Curadoria"]])
+    with pytest.raises(RuntimeError, match=esperado):
+        comp.carregar(pg_engine, tmp_path)
+    assert _contagens(pg_engine)["composicao_mandato"] == 0
+
+
+def test_slug_da_producao_com_espaco_nas_pontas_e_normalizado(pg_engine, mandato, tmp_path):
+    _arquivos(tmp_path, COMPOSICAO, [[" x-2023 ", 10, 8, 4, 3, 1, 121, 513, "Curadoria"]])
+    comp.carregar(pg_engine, tmp_path)
+    assert _contagens(pg_engine)["producao_executivo"] == 1
+
+
+def test_presidente_sem_partido_recarregado_nao_duplica_e_sem_periodo_e_ignorado(pg_engine, mandato, tmp_path):
+    composicao = copy.deepcopy(COMPOSICAO)
+    composicao["x-2023"]["camara"]["presidentes"] = [
+        {"nome": "Sem Partido", "periodo": "2023 - 2025"},
+        {"nome": "Sem Periodo", "partido": "PP"},
+        "texto solto",
+    ]
+    _arquivos(tmp_path, composicao, PRODUCAO)
+    comp.carregar(pg_engine, tmp_path)
+    comp.carregar(pg_engine, tmp_path)
+    contagens = _contagens(pg_engine)
+    assert contagens["presidencia_casa"] == 1 and contagens["presidencia_casa_mandato"] == 1
+
+
+def test_pnad_percentual_que_nao_soma_cem_e_invalido():
+    assert pnad.percentual_valido([10.0] * 8) is None  # soma 80
+    assert pnad.percentual_valido([12.4] * 8) == [12.4] * 8  # 99,2: dentro da folga de arredondamento
+
+
+def test_pnad_metodologia_com_valor_nulo_nao_grava_a_string_none(pnad_limpo, tmp_path):
+    (tmp_path / "pnad_faixas_salario_minimo.json").write_text(
+        json.dumps({"anos": {"2024": _ano_pnad()}, "metodologia": {"a": None, "b": "  ", "c": "texto"}})
+    )
+    pnad.carregar(pnad_limpo, tmp_path)
+    with pnad_limpo.connect() as conn:
+        assert conn.execute(text("SELECT array_agg(chave) FROM eco.pnad_metodologia")).scalar() == ["c"]

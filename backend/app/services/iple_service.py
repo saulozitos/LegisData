@@ -13,13 +13,13 @@ Implementação matemática e metodológica rigorosa conforme a Especificação 
 """
 
 import logging
-import unicodedata
 from typing import Any, Dict, Iterable, List, Optional
 
 from app.core.errors import ErroDeDominio
+from app.core.names import chave_sigla
 from app.models.leg import Proposicao
 from app.services import bancadas_service
-from app.services.periodos import nome_do_mandato, rotulo_do_periodo
+from app.services.periodos import mandato_em_curso, nome_do_mandato, rotulo_do_periodo
 from sqlalchemy import func, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -184,12 +184,6 @@ _ESCALA_SQL = text(
 _PALAVRAS_SIMBOLICAS = ("denominar", "dia nacional", "homenageia")
 
 
-def chave_sigla(sigla: str) -> str:
-    """Chave de comparação de siglas: sem acento, sem espaço, maiúsculas ('PC do B' e 'PCdoB' são o mesmo partido)."""
-    sem_acento = unicodedata.normalize("NFKD", sigla).encode("ascii", "ignore").decode()
-    return sem_acento.replace(" ", "").upper()
-
-
 def escala_ideologica(db: Session) -> Dict[str, float]:
     """Escala 1 (esquerda) a 10 (direita) por partido, da tabela `core.partido_posicao_ideologica`."""
     return {chave_sigla(sigla): float(valor) for sigla, valor in db.execute(_ESCALA_SQL)}
@@ -202,11 +196,13 @@ def producoes(db: Session, slug: Optional[str] = None) -> List[Dict[str, Any]]:
 
 def _contagem_com_proposicoes_reais(db: Session, raw: Dict[str, Any]) -> Dict[str, int]:
     """
-    Proposições do Executivo e aprovadas: a curadoria, ou a contagem real da base quando esta a supera (mandato em
-    curso, sem `fim`). Falha de consulta não derruba o IPLE: usa um savepoint e fica com a curadoria.
+    Proposições do Executivo e aprovadas: a curadoria, ou a contagem real da base quando esta tem mais proposições
+    (mandato em curso: sem `fim` ou com fim ainda no futuro). Total e aprovadas vêm sempre da mesma fonte, para o TS
+    não misturar numerador de uma com denominador de outra. Falha de consulta não derruba o IPLE: usa um savepoint e
+    fica com a curadoria.
     """
     contagem = {"total": raw["proposicoes_executivo"], "aprovadas": raw["proposicoes_aprovadas"]}
-    if raw["fim"] is not None:
+    if not mandato_em_curso(raw["fim"]):
         return contagem
     try:
         with db.begin_nested():
@@ -214,11 +210,14 @@ def _contagem_com_proposicoes_reais(db: Session, raw: Dict[str, Any]) -> Dict[st
             base = db.query(Proposicao).filter(
                 Proposicao.iniciativa_executivo.is_(True), Proposicao.data_apresentacao >= raw["inicio"]
             )
+            if raw["fim"] is not None:
+                base = base.filter(Proposicao.data_apresentacao < raw["fim"])
             for palavra in _PALAVRAS_SIMBOLICAS:
                 base = base.filter(~func.coalesce(func.lower(Proposicao.ementa), "").contains(palavra))
             total = base.count()
             aprovadas = base.filter(Proposicao.status_codigo.in_(STATUS_APROVADA)).count()
-        contagem = {"total": max(contagem["total"], total), "aprovadas": max(contagem["aprovadas"], aprovadas)}
+        if total > contagem["total"]:
+            contagem = {"total": total, "aprovadas": aprovadas}
     except SQLAlchemyError as exc:
         logger.warning("Falha ao contar proposições do Executivo para o IPLE; usando a curadoria: %s", exc)
     return contagem
@@ -317,6 +316,6 @@ def get_mandate_iple(db: Session, mandate_id: str, casa: str = "camara") -> Opti
 
 
 def get_all_mandates_iple(db: Session) -> List[Dict[str, Any]]:
-    """IPLE (Câmara) de todos os mandatos com produção do Executivo carregada; a escala ideológica é lida uma vez."""
+    """IPLE (Câmara) de todos os mandatos com produção do Executivo carregada (a escala ideológica é lida uma só vez)."""
     escala = escala_ideologica(db)
     return [iple_das_casas(db, raw, escala, casas=("camara",))["camara"] for raw in producoes(db)]

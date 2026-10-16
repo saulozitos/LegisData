@@ -183,7 +183,7 @@ def get_mandates_economic_performance(db: Session = Depends(get_db)):
     data = matriz_de_mandatos(db)
     if not data:
         raise HTTPException(status_code=404, detail="Matriz de mandatos não encontrada. Execute o ETL.")
-    iple_por_mandato = {i["mandato_id"]: i for i in get_all_mandates_iple(db)}  # uma leitura para todos os mandatos
+    iple_por_mandato = {i["mandato_id"]: i for i in get_all_mandates_iple(db)}  # a escala ideológica é lida uma só vez
     return [
         {
             **m,

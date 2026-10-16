@@ -20,6 +20,9 @@ DRY_RUN=0
 log() { printf '%s [deploy] %s\n' "$(date '+%F %T')" "$*"; }
 
 mkdir -p "$ESTADO_DIR" "$BACKUP_DIR"
+# Os dumps têm o banco inteiro: só o dono lê (inclusive os de execuções anteriores).
+chmod 700 "$BACKUP_DIR"
+chmod 600 "$BACKUP_DIR"/legisdata_*.dump 2>/dev/null || true
 # Depois de se reexecutar (abaixo) o lock já está aberto no descritor 9, herdado do processo anterior.
 if [[ -z "${_LEGISDATA_DEPLOY_REEXEC:-}" ]]; then
   exec 9>"$ESTADO_DIR/deploy.lock"
@@ -28,7 +31,8 @@ fi
 
 cd "$RAIZ"
 git fetch -q origin main
-ALVO="$(git rev-parse origin/main)"
+# Numa reexecução o alvo é o da primeira execução: o script e o commit implantado não podem divergir.
+ALVO="${_LEGISDATA_DEPLOY_ALVO:-$(git rev-parse origin/main)}"
 TAG="${ALVO:0:7}"
 ATUAL="$(cat "$ESTADO_DIR/ultimo_sha" 2>/dev/null || true)"
 if [[ "$ATUAL" == "$ALVO" ]]; then
@@ -54,7 +58,7 @@ if [[ -z "${_LEGISDATA_DEPLOY_REEXEC:-}" ]] && git cat-file -e "$ALVO:scripts/de
   elif ! cmp -s "$ESTADO_DIR/deploy.sh.novo" "$ESTADO_DIR/deploy.sh"; then
     chmod 755 "$ESTADO_DIR/deploy.sh.novo" && mv "$ESTADO_DIR/deploy.sh.novo" "$ESTADO_DIR/deploy.sh"
     log "script de deploy atualizado para o da main; reexecutando"
-    _LEGISDATA_DEPLOY_REEXEC=1 exec "$ESTADO_DIR/deploy.sh" "$@"
+    _LEGISDATA_DEPLOY_REEXEC=1 _LEGISDATA_DEPLOY_ALVO="$ALVO" exec "$ESTADO_DIR/deploy.sh" "$@"
   fi
   rm -f "$ESTADO_DIR/deploy.sh.novo"
 fi
@@ -76,8 +80,9 @@ else
   DUMP="$BACKUP_DIR/legisdata_${TAG}_$(date +%Y%m%d_%H%M%S).dump"
   # O dump só ganha o nome definitivo depois de terminar bem; um pg_dump interrompido nunca vira "backup bom".
   rm -f "$BACKUP_DIR"/*.dump.parcial
-  umask 077
-  if ! docker exec politica_postgres pg_dump -U "$PG_USER" -d "$PG_DB" -Fc >"$DUMP.parcial" || [[ ! -s "$DUMP.parcial" ]]; then
+  # umask só neste subshell: o resto do script (git merge, arquivos do checkout) mantém as permissões normais
+  if ! (umask 077 && docker exec politica_postgres pg_dump -U "$PG_USER" -d "$PG_DB" -Fc >"$DUMP.parcial") ||
+    [[ ! -s "$DUMP.parcial" ]]; then
     log "backup falhou ou veio vazio, abortando"
     rm -f "$DUMP.parcial"
     exit 1
@@ -97,31 +102,32 @@ if ! git diff --quiet -- etl/data/processed || [[ -n "$(git ls-files --others --
   git checkout -q -- etl/data/processed
   git clean -fdq -- etl/data/processed
 fi
-git merge --ff-only -q origin/main
+git merge --ff-only -q "$ALVO"
 
+# A URL do banco (com a senha) vai por arquivo de ambiente 600, nunca na linha de comando (visível em `ps`)
 URL_BANCO="postgresql+psycopg2://${PG_USER}:${POSTGRES_PASSWORD}@postgres:5432/${PG_DB}"
+ENV_BANCO="$(mktemp)"
+trap 'rm -f "$ENV_BANCO"' EXIT
+chmod 600 "$ENV_BANCO"
+printf 'ALEMBIC_DATABASE_URL=%s\nDATABASE_URL=%s\nPOSTGRES_PASSWORD=%s\n' "$URL_BANCO" "$URL_BANCO" "$POSTGRES_PASSWORD" >"$ENV_BANCO"
 um_comando() { # roda um comando Python no contêiner da imagem nova, na rede do compose
-  docker run --rm --network "$REDE" -e ENVIRONMENT=production -e POSTGRES_PASSWORD -e DB_SSLMODE=disable \
-    -e ALEMBIC_DATABASE_URL="$URL_BANCO" -e DATABASE_URL="$URL_BANCO" -e PYTHONPATH=/repo/backend:/repo \
-    -v "$RAIZ:/repo:ro" -w /app "$REGISTRO/legisdata-backend:$TAG" "$@" 9>&-
+  docker run --rm --network "$REDE" --env-file "$ENV_BANCO" -e ENVIRONMENT=production -e DB_SSLMODE=disable \
+    -e PYTHONPATH=/repo/backend:/repo -v "$RAIZ:/repo:ro" -w /app "$REGISTRO/legisdata-backend:$TAG" "$@" 9>&-
 }
 
-# 3. migrações e 4. carga das séries econômicas (idempotentes)
+# 3. migrações e 4. carga das séries econômicas e da curadoria (idempotentes)
 log "migrações"
-docker run --rm --network "$REDE" -e ENVIRONMENT=production -e POSTGRES_PASSWORD -e DB_SSLMODE=disable \
-  -e ALEMBIC_DATABASE_URL="$URL_BANCO" -e DATABASE_URL="$URL_BANCO" "$REGISTRO/legisdata-backend:$TAG" alembic upgrade head 9>&-
+docker run --rm --network "$REDE" --env-file "$ENV_BANCO" -e ENVIRONMENT=production -e DB_SSLMODE=disable \
+  "$REGISTRO/legisdata-backend:$TAG" alembic upgrade head 9>&-
 # Só depois que o schema `eco` existe (a migração 0025 em diante) e o código da carga está no checkout.
 TEM_ECO="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select to_regclass('eco.observacao') is not null")"
-if [[ "$TEM_ECO" == "t" && -f "$RAIZ/etl/pipelines/economia_loader.py" ]]; then
+if [[ "$TEM_ECO" == "t" && -f "$RAIZ/etl/pipelines/carga_economica.py" ]]; then
   log "carga de séries, mandatos, composição do Congresso e PNAD"
   um_comando python -c "
 from app.core.database import engine
-from etl.pipelines.economia_loader import carregar as series
-from etl.pipelines.presidencia_loader import carregar as presidentes
-from etl.pipelines.composicao_loader import carregar as composicao
-from etl.pipelines.pnad_loader import carregar as pnad
-print('séries:', len(series(engine)), 'presidentes:', presidentes(engine))
-print('composição:', composicao(engine), 'pnad:', pnad(engine))
+from etl.pipelines.carga_economica import carregar_tudo
+for chave, resultado in carregar_tudo(engine).items():
+    print(chave, resultado)
 "
 fi
 

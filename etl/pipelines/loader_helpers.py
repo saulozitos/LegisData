@@ -3,16 +3,18 @@ Funções puras da carga (sem acesso a banco): conversões, classificação, res
 Separadas do `db_loader` para poderem ser testadas sem Postgres e reutilizadas pelos scripts de saneamento.
 """
 
+import math
 import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pandas as pd
 
 from etl.utils.names import (
     NON_PERSON_AUTHORS,
     build_unique_name_map,
+    chave_sigla,
     first_signatory,
     normalize_name_tokens,
 )
@@ -253,3 +255,121 @@ class AuthorResolver:
         if len(toks) >= 2 and toks in self.token_sets:
             return self.token_sets[toks]
         return None
+
+
+# ── composição do Congresso ──────────────────────────────────────────────────────────────────────────────────────
+ALINHAMENTOS = {"BASE_GOVERNO", "INDEPENDENTE_CENTRO", "OPOSICAO", "NAO_CLASSIFICADO"}
+
+
+def bancadas_da_casa(casa: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Une as bancadas exibidas (`cadeiras`) e as eleitas segundo o TSE (`cadeiras_tse`) por partido. A união usa a chave
+    normalizada da sigla ('PCdoB' da curadoria e 'PC DO B' do TSE são o mesmo partido); a sigla gravada é a da curadoria.
+    """
+    por_partido: Dict[str, Dict[str, Any]] = {}
+    for b in (x for x in casa.get("bancadas") or [] if isinstance(x, dict)):
+        sigla = texto(b.get("partido"))
+        if not sigla:
+            continue
+        alinhamento = texto(b.get("alinhamento")) or "NAO_CLASSIFICADO"
+        por_partido[chave_sigla(sigla)] = {
+            "sigla": sigla,
+            "cadeiras": inteiro(b.get("cadeiras")),
+            "cadeiras_tse": None,
+            "alinhamento": alinhamento if alinhamento in ALINHAMENTOS else "NAO_CLASSIFICADO",
+            "cor_hex": texto(b.get("cor_hex")),
+        }
+    for b in (x for x in casa.get("bancadas_eleitas_tse") or [] if isinstance(x, dict)):
+        sigla = texto(b.get("partido"))
+        if not sigla:
+            continue
+        linha = por_partido.setdefault(
+            chave_sigla(sigla),
+            {"sigla": sigla, "cadeiras": None, "cadeiras_tse": None, "alinhamento": None, "cor_hex": None},
+        )
+        linha["cadeiras_tse"] = inteiro(b.get("cadeiras"))
+    linhas = [b for b in por_partido.values() if b["cadeiras"] is not None or b["cadeiras_tse"] is not None]
+    # a ordem da curadoria (desempates entre partidos de mesmo tamanho) é preservada
+    for ordem, linha in enumerate(linhas):
+        linha["ordem"] = ordem
+    return linhas
+
+
+def validar_soma_das_bancadas(bancadas: List[Dict[str, Any]], total: int, rotulo: str) -> None:
+    """A soma das cadeiras exibidas não pode passar do total da Casa (a menos seria só parte sem classificação)."""
+    soma = sum(b["cadeiras"] or 0 for b in bancadas)
+    if soma > total:
+        raise ValueError(f"Composição de '{rotulo}': as bancadas somam {soma} cadeiras, mais que o total ({total})")
+
+
+# ── PNAD ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+DISTRIBUICOES_PNAD = (
+    "domicilios_renda_total",
+    "pessoas_renda_domiciliar",
+    "pessoas_renda_per_capita",
+    "ocupados_renda_trabalho",
+)
+N_FAIXAS_PNAD = 8
+SOMA_PERCENTUAL_TOLERANCIA = 1.0  # pontos percentuais de folga para o arredondamento
+
+
+def percentual_valido(valor: Any) -> Optional[List[float]]:
+    """Lista de 8 percentuais numéricos e finitos que somam cerca de 100; qualquer outra coisa é None."""
+    if not isinstance(valor, list) or len(valor) != N_FAIXAS_PNAD:
+        return None
+    try:
+        numeros = [float(v) for v in valor]
+    except (TypeError, ValueError):
+        return None
+    if not all(math.isfinite(n) for n in numeros):
+        return None
+    return numeros if abs(sum(numeros) - 100.0) <= SOMA_PERCENTUAL_TOLERANCIA else None
+
+
+def ano_pnad_valido(ano: Any, entrada: Any) -> bool:
+    """
+    O ano só entra com chave entre 1995 e 2100, visita (1 a 5), salário mínimo positivo e as duas distribuições usadas
+    nas classes (domicílios e pessoas). Nada é presumido: sem visita no arquivo, o ano é pulado.
+    """
+    if inteiro_em(ano, 1995, 2100) is None or not isinstance(entrada, dict):
+        return False
+    if inteiro_em(entrada.get("visita"), 1, 5) is None:
+        return False
+    try:
+        salario = float(entrada.get("salario_minimo_brl"))
+    except (TypeError, ValueError):
+        return False
+    if not (math.isfinite(salario) and salario > 0):
+        return False
+    nacional = entrada.get("nacional")
+    if not isinstance(nacional, dict):
+        return False
+    return all(
+        isinstance(nacional.get(c), dict) and percentual_valido(nacional[c].get("percentual")) is not None
+        for c in ("domicilios_renda_total", "pessoas_renda_domiciliar")
+    )
+
+
+def linhas_pnad_do_ano(entrada: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Uma linha por escopo (BR ou UF) e distribuição com percentuais válidos."""
+    escopos = {"BR": entrada.get("nacional") or {}}
+    uf_do_ano = entrada.get("uf")
+    for uf, dados in uf_do_ano.items() if isinstance(uf_do_ano, dict) else []:
+        escopos[str(uf).upper()] = dados or {}
+    linhas = []
+    for escopo, dados in escopos.items():
+        for distribuicao in DISTRIBUICOES_PNAD:
+            info = dados.get(distribuicao) if isinstance(dados, dict) else None
+            percentual = percentual_valido(info.get("percentual")) if isinstance(info, dict) else None
+            if percentual is None:
+                continue
+            linhas.append(
+                {
+                    "escopo": escopo,
+                    "distribuicao": distribuicao,
+                    "total": info.get("total_estimado"),
+                    "media": info.get("media_nominal_brl"),
+                    "percentual": percentual,
+                }
+            )
+    return linhas

@@ -265,8 +265,52 @@ def test_classe_com_faixa_fora_do_intervalo_e_barrada_pelo_banco(db):
     db.rollback()
 
 
-def test_sem_classe_de_base_o_resumo_nao_mostra_zero_nem_texto(client, db, pnad):
+@pytest.fixture()
+def classes_de_base_sem_teto(db):
+    """Tira o teto das classes de base; restaura o cadastro original (carga da migração) ao fim, passe ou falhe."""
+    original = db.execute(text("SELECT ordem, max_sm FROM eco.classe_social WHERE max_sm IS NOT NULL")).all()
     db.execute(text("UPDATE eco.classe_social SET max_sm = 100 WHERE max_sm IS NOT NULL AND max_sm <= 4"))
     db.commit()
+    yield
+    for ordem, max_sm in original:
+        db.execute(text("UPDATE eco.classe_social SET max_sm = :m WHERE ordem = :o"), {"m": max_sm, "o": ordem})
+    db.commit()
+
+
+def test_sem_classe_de_base_o_resumo_nao_mostra_zero_nem_texto(client, pnad, classes_de_base_sem_teto):
     resumo = client.get(f"{BASE}/social-classes").json()["resumo_populacional"]
     assert resumo["maioria_populacao_acumulada_d_e_pct"] is None and resumo["texto_educativo"] is None
+
+
+def test_o_cadastro_das_classes_foi_restaurado_depois_do_teste_anterior(client, pnad):
+    resumo = client.get(f"{BASE}/social-classes").json()["resumo_populacional"]
+    assert (
+        resumo["maioria_populacao_acumulada_d_e_pct"] == 73.0
+    )  # D 33 + E 40 de novo (não depende da ordem dos testes)
+
+
+def test_placar_do_salario_minimo_e_o_da_sessao_principal_da_camara_e_nao_do_senado(client, db, salarios):
+    camara = db.execute(text("SELECT id FROM ref.casa_legislativa WHERE codigo = 'CAMARA_DOS_DEPUTADOS'")).scalar()
+    senado = db.execute(text("SELECT id FROM ref.casa_legislativa WHERE codigo = 'SENADO_FEDERAL'")).scalar()
+    votacao_camara = _votacao_mpv(db, sim=5, nao=2, abst=1)
+    prop = db.execute(text("SELECT proposicao_id FROM leg.votacao WHERE id = :v"), {"v": votacao_camara}).scalar()
+    for casa, data, sim in ((senado, "2023-08-30 15:00+00", 30), (camara, "2023-08-22 15:00+00", 1)):
+        votacao = db.execute(
+            text(
+                "INSERT INTO leg.votacao (proposicao_id, casa_id, data_hora, tipo_deliberacao, aprovada) VALUES "
+                "(:p, :c, CAST(:d AS timestamptz), 'NOMINAL', true) RETURNING id"
+            ),
+            {"p": prop, "c": casa, "d": data},
+        ).scalar()
+        for i in range(sim):
+            pessoa = db.execute(
+                text("INSERT INTO core.pessoa (nome_exibicao) VALUES (:n) RETURNING id"), {"n": f"X{casa}{data}{i}"}
+            ).scalar()
+            db.execute(
+                text("INSERT INTO leg.voto (votacao_id, pessoa_id, opcao_codigo) VALUES (:v, :p, 'SIM')"),
+                {"v": votacao, "p": pessoa},
+            )
+    db.commit()
+    votacao = client.get(f"{BASE}/wage-disparity").json()["votacao_salario_minimo"]
+    # a sessão da Câmara com mais quórum (8 votos) vale; a do Senado (30) e a destaque de 1 voto ficam de fora
+    assert votacao["data_votacao"] == "2023-08-23" and votacao["placar"]["SIM"] == 5 and votacao["placar"]["TOTAL"] == 8

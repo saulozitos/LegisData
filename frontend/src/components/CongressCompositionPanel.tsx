@@ -107,12 +107,51 @@ export default function CongressCompositionPanel({
   if (composition.error) return <ErrorState onRetry={composition.retry} />;
   if (!data) return <EmptyState title="Composição do Congresso indisponível" />;
 
+  const seletorDeCasa = (
+    <div className="flex items-center bg-slate-950 p-1.5 rounded-2xl border border-slate-800 self-start md:self-auto">
+      <button
+        type="button"
+        aria-pressed={activeHouse === "camara"}
+        onClick={() => {
+          setActiveHouse("camara");
+          setSelectedParty(null);
+        }}
+        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+          activeHouse === "camara"
+            ? "bg-cyan-500 text-slate-950 shadow-md"
+            : "text-slate-400 hover:text-slate-200"
+        }`}
+      >
+        Câmara dos Deputados
+      </button>
+      <button
+        type="button"
+        aria-pressed={activeHouse === "senado"}
+        onClick={() => {
+          setActiveHouse("senado");
+          setSelectedParty(null);
+        }}
+        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+          activeHouse === "senado"
+            ? "bg-cyan-500 text-slate-950 shadow-md"
+            : "text-slate-400 hover:text-slate-200"
+        }`}
+      >
+        Senado Federal
+      </button>
+    </div>
+  );
+
   const currentHouse = activeHouse === "camara" ? data.camara : data.senado;
   if (!currentHouse) {
+    // Mantém o seletor: quem escolheu uma Casa sem dados precisa poder voltar para a outra
     return (
-      <EmptyState
-        title={`Composição ${activeHouse === "camara" ? "da Câmara" : "do Senado"} indisponível para este mandato`}
-      />
+      <div className="space-y-4">
+        {seletorDeCasa}
+        <EmptyState
+          title={`Composição ${activeHouse === "camara" ? "da Câmara" : "do Senado"} indisponível para este mandato`}
+        />
+      </div>
     );
   }
   const totalSeats = currentHouse.total_cadeiras;
@@ -125,7 +164,7 @@ export default function CongressCompositionPanel({
   // Sem bancadas classificadas (base/centro/oposição) a API devolve null: nunca exibir como zero ou como "não atingiu"
   const classificada = isNum(governabilidade.oposicao_cadeiras);
   const semClassificar = governabilidade.nao_classificadas_cadeiras ?? 0;
-  const iple = ((governabilidade as Record<string, unknown>)?.iple as IpleData | undefined) ?? data?.iple;
+  const iple: IpleData | null | undefined = governabilidade.iple ?? data?.iple;
 
   return (
     <div className="space-y-6">
@@ -147,38 +186,7 @@ export default function CongressCompositionPanel({
           </div>
 
           {/* Seletor Câmara / Senado */}
-          <div className="flex items-center bg-slate-950 p-1.5 rounded-2xl border border-slate-800 self-start md:self-auto">
-            <button
-              type="button"
-              aria-pressed={activeHouse === "camara"}
-              onClick={() => {
-                setActiveHouse("camara");
-                setSelectedParty(null);
-              }}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                activeHouse === "camara"
-                  ? "bg-cyan-500 text-slate-950 shadow-md"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              Câmara dos Deputados
-            </button>
-            <button
-              type="button"
-              aria-pressed={activeHouse === "senado"}
-              onClick={() => {
-                setActiveHouse("senado");
-                setSelectedParty(null);
-              }}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                activeHouse === "senado"
-                  ? "bg-cyan-500 text-slate-950 shadow-md"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              Senado Federal
-            </button>
-          </div>
+          {seletorDeCasa}
         </div>
 
         {data?.dados_incompletos && (
@@ -196,15 +204,15 @@ export default function CongressCompositionPanel({
             <div className="flex items-center gap-3">
               <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" aria-hidden="true" />
-                Base ({fmtNum(governabilidade.base_aliada_cadeiras, 0)} cad. • {fmtNum(governabilidade.base_aliada_pct)}%)
+                Base ({fmtNum(governabilidade.base_aliada_cadeiras, 0)} cad. • {fmtPct(governabilidade.base_aliada_pct)})
               </span>
               <span className="flex items-center gap-1.5 text-amber-400 font-bold">
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-500" aria-hidden="true" />
-                Centro ({fmtNum(governabilidade.centro_cadeiras, 0)} cad. • {fmtNum(governabilidade.centro_pct)}%)
+                Centro ({fmtNum(governabilidade.centro_cadeiras, 0)} cad. • {fmtPct(governabilidade.centro_pct)})
               </span>
               <span className="flex items-center gap-1.5 text-rose-400 font-bold">
                 <span className="w-2.5 h-2.5 rounded-full bg-rose-500" aria-hidden="true" />
-                Oposição ({fmtNum(governabilidade.oposicao_cadeiras, 0)} cad. • {fmtNum(governabilidade.oposicao_pct)}%)
+                Oposição ({fmtNum(governabilidade.oposicao_cadeiras, 0)} cad. • {fmtPct(governabilidade.oposicao_pct)})
               </span>
             </div>
           </div>
