@@ -60,7 +60,7 @@ def test_csv_loader_caches_dataframes(tmp_path):
         # sem data de fim: até o último ano da série
         ({"data_inicio": "2023-01-01", "data_fim": None}, 2026, (2023, 2026)),
         # série anterior ao início dos dados é recortada em min_year
-        ({"data_inicio": "1992-10-02", "data_fim": "1995-01-01"}, 2026, (1993, 1994)),
+        ({"data_inicio": "1992-10-02", "data_fim": "1999-01-01"}, 2026, (1995, 1998)),
     ],
 )
 def test_mandate_year_range(mandate, last_year, expected):

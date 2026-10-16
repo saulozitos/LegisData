@@ -1,41 +1,16 @@
 from datetime import date
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 
-class MandateIndicatorBase(BaseModel):
-    chave_indicador: str
-    valor: float
-    data_medicao: date
+class PresidentialMandateListItem(BaseModel):
+    """Mandato presidencial da listagem; os indicadores mensais vêm de `/mandates/{id}/indicators`."""
 
-
-class MandateIndicatorResponse(MandateIndicatorBase):
     id: UUID
-    mandate_id: UUID
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class PresidentialMandateBase(BaseModel):
     nome: str
     inicio: date
     fim: Optional[date] = None
     partido: str
     foto_url: Optional[str] = None
-
-
-class PresidentialMandateListItem(PresidentialMandateBase):
-    """Item de listagem: sem as séries mensais (use /mandates/{id}/indicators para os dados do gráfico)."""
-
-    id: UUID
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class PresidentialMandateResponse(PresidentialMandateBase):
-    id: UUID
-    indicadores: List[MandateIndicatorResponse] = []
-
-    model_config = ConfigDict(from_attributes=True)

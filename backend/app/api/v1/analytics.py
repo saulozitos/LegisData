@@ -4,7 +4,7 @@ from datetime import date
 from typing import Any, Dict, List, Optional
 
 from app.core.config import PROCESSED_DATA_DIR
-from app.core.data_files import FIRST_SERIES_YEAR, load_csv_cached, load_json_cached, mandate_year_range
+from app.core.data_files import FIRST_SERIES_YEAR, load_json_cached, mandate_year_range
 from app.core.database import get_db
 from app.models import (
     AnnualSocialIndicator,
@@ -22,9 +22,12 @@ from app.schemas.analytics import (
     FederalTransfersResponse,
     WageDisparityResponse,
 )
+from app.services.eco_dados import macro_por_ano, seguranca_por_ano, sociais_por_ano
 from app.services.iple_service import get_mandate_iple
+from app.services.mandato_economia_service import matriz_de_mandatos
+from app.services.presidencia_service import presidente_por_referencia
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
 router = APIRouter()
@@ -177,14 +180,15 @@ def _calculate_mandate_prosperity_score(m: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @router.get("/mandates-performance", response_model=List[Dict[str, Any]])
-def get_mandates_economic_performance():
+def get_mandates_economic_performance(db: Session = Depends(get_db)):
     """
     Retorna a matriz de performance econômica cruzando cada mandato presidencial
     com inflação acumulada, crescimento real do PIB, variação cambial, evolução do salário mínimo,
     Score de Prosperidade e Índice de Poder Legislativo do Executivo (IPLE).
     """
-    data = _load_or_404("indicadores_por_mandato.json", "Matriz de mandatos não encontrada. Execute o ETL.")
-    # Cópia rasa por item: o JSON em cache é compartilhado e não pode ser modificado
+    data = matriz_de_mandatos(db)
+    if not data:
+        raise HTTPException(status_code=404, detail="Matriz de mandatos não encontrada. Execute o ETL.")
     return [
         {
             **m,
@@ -203,6 +207,7 @@ def _sum_by(rows: List[Dict[str, Any]], key: str = "valor_pago_brl") -> float:
 def compare_mandates(
     mandate1: str = Query(..., description="ID do primeiro mandato a confrontar (ex: fhc-1995)"),
     mandate2: str = Query(..., description="ID do segundo mandato a confrontar (ex: lula-2003)"),
+    db: Session = Depends(get_db),
 ):
     """
     Confronto direto e analítico de dois mandatos presidenciais com:
@@ -213,7 +218,9 @@ def compare_mandates(
     - Distribuição de Verbas e Repasses Federais por Estados e Áreas Temáticas (Saúde, Educação, Infraestrutura, Segurança).
     Deltas sem os dois lados disponíveis são devolvidos como null.
     """
-    mandates_list = _load_or_404("indicadores_por_mandato.json", "Dados de mandatos não encontrados.")
+    mandates_list = matriz_de_mandatos(db)
+    if not mandates_list:
+        raise HTTPException(status_code=404, detail="Dados de mandatos não encontrados.")
 
     m1 = next((m for m in mandates_list if m.get("id_mandato") == mandate1), None)
     m2 = next((m for m in mandates_list if m.get("id_mandato") == mandate2), None)
@@ -225,14 +232,21 @@ def compare_mandates(
         )
 
     # Carregar dados macroeconômicos anuais para trajetória
-    macro_dict: Dict[int, Dict[str, Any]] = {}
-    df_macro = load_csv_cached(DATA_DIR / "resumo_macroeconomico_anual.csv")
-    if df_macro is not None and "ano" in df_macro.columns:
-        macro_dict = df_macro.set_index("ano").to_dict(orient="index")
-
-    sociais_map = {item["ano"]: item for item in (load_json_cached(DATA_DIR / "indicadores_sociais_anuais.json") or [])}
-    seg_map = {item["ano"]: item for item in (load_json_cached(DATA_DIR / "seguranca_publica_historico.json") or [])}
-    repasses_list = load_json_cached(DATA_DIR / "repasses_federais_uf.json") or []
+    macro_dict = macro_por_ano(db)
+    sociais_map = sociais_por_ano(db)
+    seg_map = seguranca_por_ano(db)
+    repasses_list: List[Dict[str, Any]] = [
+        {
+            "mandato_id_ref": r.mandate_id_ref,
+            "uf": r.uf,
+            "estado_nome": r.estado_nome,
+            "regiao": r.regiao,
+            "area_tematica": r.area_tematica,
+            "valor_pago_brl": float(r.valor_pago_brl or 0),
+            "valor_per_capita_brl": float(r.valor_per_capita_brl or 0),
+        }
+        for r in db.query(FederalTransferByState).all()
+    ]
 
     # Anos cobertos por cada mandato
     years1 = _get_mandate_years(m1)
@@ -663,20 +677,6 @@ def get_congress_composition(mandate_id: str = Query("lula-2023", description="I
     return composicoes[mandate_id]
 
 
-def _transfer_item_from_row(r: Dict[str, Any]) -> Dict[str, Any]:
-    pop = r.get("populacao_estimada")
-    vpc = r.get("valor_per_capita_brl")
-    return {
-        "uf": r["uf"],
-        "estado_nome": r["estado_nome"],
-        "regiao": r["regiao"],
-        "area_tematica": r["area_tematica"],
-        "valor_pago_brl": float(r["valor_pago_brl"]),
-        "populacao_estimada": int(pop) if pop is not None else None,
-        "valor_per_capita_brl": float(vpc) if vpc is not None else None,
-    }
-
-
 def _cobertura_repasses(linhas: List[tuple]) -> Dict[str, Any]:
     """Resume o período realmente coberto pelos repasses (o portal só publica a partir de 2014-01)."""
     inicios = [i for i, _f, _m, _p in linhas if i]
@@ -717,45 +717,29 @@ def get_federal_transfers(
     Retorna a execução orçamentária e repasses federais por Estado (UF) no mandato:
     - Grandes áreas: Saúde, Educação, Infraestrutura e Segurança Pública
     - Totais gerais, agregados por região e valores per capita
-    A fonte é o banco quando houver dados do mandato; o arquivo do ETL só é usado se o banco não tiver o mandato
-    (nunca se mistura as duas fontes por causa de um filtro de área sem resultado).
+    Mandato sem repasses carregados devolve a lista vazia.
     """
-    known_mandates = load_json_cached(DATA_DIR / "indicadores_por_mandato.json")
-    if known_mandates is not None and not any(m.get("id_mandato") == mandate_id for m in known_mandates):
+    if presidente_por_referencia(db, mandate_id) is None:
         raise HTTPException(status_code=404, detail=f"Mandato '{mandate_id}' não encontrado.")
 
-    base = db.query(FederalTransferByState).filter(FederalTransferByState.mandate_id_ref == mandate_id)
-    if base.first() is not None:
-        query = base
-        if area and area.strip():
-            escaped = area.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            query = query.filter(FederalTransferByState.area_tematica.ilike(f"%{escaped}%", escape="\\"))
-        rows = query.order_by(FederalTransferByState.uf, FederalTransferByState.area_tematica).all()
-        items = [
-            {
-                "uf": r.uf,
-                "estado_nome": r.estado_nome,
-                "regiao": r.regiao,
-                "area_tematica": r.area_tematica,
-                "valor_pago_brl": float(r.valor_pago_brl),
-                "populacao_estimada": r.populacao_estimada or 0,
-                "valor_per_capita_brl": float(r.valor_per_capita_brl or 0.0),
-            }
-            for r in rows
-        ]
-        cobertura = _cobertura_repasses([(r.periodo_inicio, r.periodo_fim, r.meses_cobertos, r.parcial) for r in rows])
-    else:
-        all_data = load_json_cached(DATA_DIR / "repasses_federais_uf.json") or []
-        filtered = [r for r in all_data if r.get("mandato_id_ref") == mandate_id]
-        if area and area.strip():
-            filtered = [r for r in filtered if area.strip().lower() in r.get("area_tematica", "").lower()]
-        items = [_transfer_item_from_row(r) for r in filtered]
-        cobertura = _cobertura_repasses(
-            [
-                (r.get("periodo_inicio"), r.get("periodo_fim"), r.get("meses_cobertos"), r.get("parcial"))
-                for r in filtered
-            ]
-        )
+    query = db.query(FederalTransferByState).filter(FederalTransferByState.mandate_id_ref == mandate_id)
+    if area and area.strip():
+        escaped = area.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.filter(FederalTransferByState.area_tematica.ilike(f"%{escaped}%", escape="\\"))
+    rows = query.order_by(FederalTransferByState.uf, FederalTransferByState.area_tematica).all()
+    items: List[Dict[str, Any]] = [
+        {
+            "uf": r.uf,
+            "estado_nome": r.estado_nome,
+            "regiao": r.regiao,
+            "area_tematica": r.area_tematica,
+            "valor_pago_brl": float(r.valor_pago_brl),
+            "populacao_estimada": r.populacao_estimada or 0,
+            "valor_per_capita_brl": float(r.valor_per_capita_brl or 0.0),
+        }
+        for r in rows
+    ]
+    cobertura = _cobertura_repasses([(r.periodo_inicio, r.periodo_fim, r.meses_cobertos, r.parcial) for r in rows])
 
     total_brl = sum(i["valor_pago_brl"] for i in items)
     areas_sum: Dict[str, float] = {}
@@ -811,7 +795,7 @@ def get_social_indicators(db: Session = Depends(get_db)):
             for r in records
         ]
 
-    return load_json_cached(DATA_DIR / "indicadores_sociais_anuais.json") or []
+    return []
 
 
 # Distribuição de referência das classes (estimativa fixa; não é calculada a partir de microdados da PNAD)
@@ -873,16 +857,16 @@ def _format_brl(value: float) -> str:
     return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def _latest_minimum_wage() -> Optional[Dict[str, float]]:
-    """Último salário mínimo nominal da série oficial do ETL (ano e valor)."""
-    df = load_csv_cached(DATA_DIR / "resumo_macroeconomico_anual.csv")
-    if df is None or "salario_minimo" not in df.columns or "ano" not in df.columns:
-        return None
-    valid = df.dropna(subset=["salario_minimo"])
-    if valid.empty:
-        return None
-    last = valid.sort_values("ano").iloc[-1]
-    return {"ano": int(last["ano"]), "valor": float(last["salario_minimo"])}
+def _latest_minimum_wage(db: Session) -> Optional[Dict[str, float]]:
+    """Último salário mínimo nominal da série oficial (ano e valor)."""
+    row = db.execute(
+        text(
+            "SELECT extract(year FROM o.referencia)::int AS ano, o.valor FROM eco.observacao o "
+            "JOIN eco.serie s ON s.id = o.serie_id WHERE s.codigo = 'SALARIO_MINIMO' "
+            "ORDER BY o.referencia DESC LIMIT 1"
+        )
+    ).first()
+    return {"ano": row[0], "valor": float(row[1])} if row else None
 
 
 PNAD_FILE = "pnad_faixas_salario_minimo.json"
@@ -1017,6 +1001,7 @@ def get_social_classes_distribution(
         None,
         description="Ano da PNAD Contínua (padrão: o mais recente disponível). Ignorado sem microdados processados.",
     ),
+    db: Session = Depends(get_db),
 ):
     """
     Retorna a divisão de classes sociais no Brasil por faixas de salários mínimos.
@@ -1038,7 +1023,7 @@ def get_social_classes_distribution(
     if ano is not None:
         raise HTTPException(status_code=404, detail="Microdados da PNAD ainda não processados (rode o ETL --pnad).")
 
-    wage = _latest_minimum_wage()
+    wage = _latest_minimum_wage(db)
     sm_ref = wage["valor"] if wage else None
 
     classes = []

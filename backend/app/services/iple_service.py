@@ -198,20 +198,9 @@ def calibrate_crisp_set(ts: float, tmv: float, iple: float, x1: float, x2: float
     }
 
 
-# Base Curada Oficial de Produção do Executivo e Vetos Presidenciais (1992 - 2026)
+# Base Curada Oficial de Produção do Executivo e Vetos Presidenciais (1995 - 2026)
 # Fontes: SICON, SEPAR (Secretaria de Assuntos Parlamentares da Presidência), OLB e Anais do Congresso
 DADOS_HISTORICOS_EXECUTIVO: Dict[str, Dict[str, Any]] = {
-    "itamar-franco-1992": {
-        "presidente": "Itamar Franco",
-        "periodo": "1992 - 1995",
-        "p_exec": 152,
-        "p_exec_aprov": 134,
-        "v_total_apreciados": 45,
-        "v_mantidos": 38,
-        "v_pendentes": 0,
-        "oposicao_cadeiras_camara": 54,
-        "total_cadeiras_camara": 503,
-    },
     "fhc-1995": {
         "presidente": "Fernando Henrique Cardoso (FHC 1)",
         "periodo": "1995 - 1999",

@@ -19,7 +19,7 @@ from app.models import (
 )
 from sqlalchemy import text
 
-from .conftest import write_json
+from .conftest import criar_mandato_presidencial, write_json
 
 BASE = "/api/v1/politicians"
 
@@ -100,14 +100,29 @@ def test_processed_files_with_unexpected_shape_are_ignored(data_dir):
 # ---------------------------------------------------------------------------
 # /presidents
 # ---------------------------------------------------------------------------
-def test_presidents_list_and_detail(client, data_dir):
-    write_json(data_dir, "presidentes_historico.json", [{"id_referencia": "lula-2003", "nome_eleitoral": "Lula"}])
-    assert client.get(f"{BASE}/presidents").json() == [{"id_referencia": "lula-2003", "nome_eleitoral": "Lula"}]
-    assert client.get(f"{BASE}/presidents/lula-2003").json()["nome_eleitoral"] == "Lula"
+def test_presidents_list_and_detail(client, db):
+    mandato = criar_mandato_presidencial(db, "Lula", date(2003, 1, 1), date(2007, 1, 1), "lula-2003", "Lula 1")
+    db.execute(
+        text(
+            "UPDATE core.mandato_presidencial SET vice_texto = 'José Alencar', status = 'CONCLUIDO' WHERE mandato_id = :m"
+        ),
+        {"m": mandato},
+    )
+    db.execute(
+        text("INSERT INTO core.marco_governo (mandato_id, ordem, texto) VALUES (:m, 1, 'Marco')"), {"m": mandato}
+    )
+    db.commit()
+    lista = client.get(f"{BASE}/presidents").json()
+    assert [p["id_referencia"] for p in lista] == ["lula-2003"]
+    detalhe = client.get(f"{BASE}/presidents/lula-2003").json()
+    assert detalhe["nome_eleitoral"] == "Lula (Lula 1)" and detalhe["vice_presidente"] == "José Alencar"
+    assert detalhe["marcos_economicos"] == ["Marco"] and detalhe["cpf"] is None
+    assert client.get(f"{BASE}/presidents/{detalhe['db_id']}").json()["id_referencia"] == "lula-2003"
     assert client.get(f"{BASE}/presidents/ninguem").status_code == 404
+    assert client.get(f"{BASE}/presidents/../etc").status_code == 404
 
 
-def test_presidents_without_dataset_is_404(client, data_dir):
+def test_presidents_without_dataset_is_404(client):
     assert client.get(f"{BASE}/presidents").status_code == 404
     assert client.get(f"{BASE}/presidents/lula-2003").status_code == 404
 
@@ -480,3 +495,14 @@ def test_search_politicians_filters_active_by_presidential_mandate(client, seed,
     assert resp.status_code == 200
     ids = [p["id"] for p in resp.json()["politicos"]]
     assert str(seed.fulano.id) in ids
+
+
+def test_search_politicians_uses_the_period_of_the_presidential_mandate_from_the_database(client, seed, db):
+    criar_mandato_presidencial(db, "Presidente Antigo", date(2000, 1, 1), date(2004, 1, 1), "antigo-2000")
+    criar_mandato_presidencial(db, "Presidente Atual", date(2023, 1, 1), None, "atual-2023")
+    db.commit()
+    # ninguém do seed tinha mandato entre 2000 e 2004; todos os atuais tinham em 2023
+    assert client.get(BASE, params={"mandate_id": "antigo-2000"}).json()["politicos"] == []
+    assert str(seed.fulano.id) in [
+        p["id"] for p in client.get(BASE, params={"mandate_id": "atual-2023"}).json()["politicos"]
+    ]
