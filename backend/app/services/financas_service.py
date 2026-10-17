@@ -52,18 +52,17 @@ def _total_notas(db: Session, ids: Sequence[int]) -> Optional[int]:
     Quantidade de notas da CEAP. É None (desconhecida) quando alguma das pessoas com despesa não tem linha de resumo:
     somar só as que têm mostraria uma contagem parcial ao lado de um gasto completo.
     """
-    com_despesa: Any
-    com_resumo: Any
+    sem_resumo: Any
     total: Any
-    com_despesa, com_resumo, total = db.execute(
+    sem_resumo, total = db.execute(
         text(
-            "SELECT (SELECT count(DISTINCT pessoa_id) FROM fin.despesa_cota WHERE pessoa_id = ANY(:ids)), "
-            "(SELECT count(*) FROM fin.despesa_cota_resumo WHERE pessoa_id = ANY(:ids)), "
+            "SELECT (SELECT count(DISTINCT d.pessoa_id) FROM fin.despesa_cota d WHERE d.pessoa_id = ANY(:ids) "
+            "AND NOT EXISTS (SELECT 1 FROM fin.despesa_cota_resumo r WHERE r.pessoa_id = d.pessoa_id)), "
             "(SELECT sum(total_notas) FROM fin.despesa_cota_resumo WHERE pessoa_id = ANY(:ids))"
         ),
         {"ids": list(ids)},
     ).one()
-    return None if total is None or com_resumo < com_despesa else int(total)
+    return None if total is None or sem_resumo else int(total)
 
 
 # ── CEAP ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -161,10 +160,10 @@ def ceap_por_ano_e_tipo(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
 # ── Emendas ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 _AGRUPAMENTOS = {
     "localidade": "SELECT localidade_destino AS chave, sum(valor_pago) AS total FROM fin.emenda "
-    "WHERE pessoa_id = ANY(:ids) GROUP BY 1 ORDER BY total DESC, 1",
+    "WHERE pessoa_id = ANY(:ids) GROUP BY 1 ORDER BY total DESC, 1 LIMIT 20",
     "tipo": "SELECT tipo_emenda AS chave, sum(valor_pago) AS total FROM fin.emenda "
     "WHERE pessoa_id = ANY(:ids) GROUP BY 1 ORDER BY total DESC, 1",
-    "area": "SELECT coalesce(funcao, 'Outras Funções') AS chave, sum(valor_pago) AS total FROM fin.emenda "
+    "area": "SELECT coalesce(funcao, 'Outros') AS chave, sum(valor_pago) AS total FROM fin.emenda "
     "WHERE pessoa_id = ANY(:ids) GROUP BY 1 ORDER BY total DESC, 1",
 }
 

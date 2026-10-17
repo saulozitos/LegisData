@@ -26,6 +26,12 @@ export default function CeapTab({ dossier }: CeapTabProps) {
       />
     );
   }
+  const anos = (dossier.custos_ceap.gastos_por_ano ?? []).map((g) => g.ano);
+  const periodo = anos.length
+    ? Math.min(...anos) === Math.max(...anos)
+      ? `${Math.min(...anos)}`
+      : `${Math.min(...anos)}–${Math.max(...anos)}`
+    : null;
   return (
             <div className="space-y-6">
               {/* Header do Painel CEAP */}
@@ -45,9 +51,11 @@ export default function CeapTab({ dossier }: CeapTabProps) {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-mono text-amber-300 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full font-bold">
-                      Legislatura 2023–2026
-                    </span>
+                    {periodo && (
+                      <span className="text-[11px] font-mono text-amber-300 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full font-bold">
+                        Gastos de {periodo}
+                      </span>
+                    )}
                     {dossier?.custos_ceap?.total_notas != null && (
                       <span className="text-[11px] font-mono text-slate-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
                         {dossier.custos_ceap.total_notas} comprovantes fiscais

@@ -24,8 +24,9 @@ from etl.pipelines.financas_loader import (
     DOACOES_ARQUIVO,
     EMENDAS_ARQUIVO,
     REMUNERACAO_ARQUIVO,
+    ler_emenda,
 )
-from etl.pipelines.loader_helpers import decimal_de, inteiro_em
+from etl.pipelines.loader_helpers import LIMITE_REMUNERACAO, LIMITE_TSE, decimal_de, inteiro_em
 from etl.utils.bootstrap import ensure_backend_on_path
 from etl.utils.datafiles import load_json
 from etl.utils.provenance import is_trusted
@@ -57,15 +58,12 @@ def totais_ceap_do_arquivo(ceap: Any) -> Dict[int, Decimal]:
 
 def totais_emendas_do_arquivo(emendas: Any) -> Dict[int, Dict[str, Decimal]]:
     totais: Dict[int, Dict[str, Decimal]] = defaultdict(lambda: {"empenhado": Decimal(0), "pago": Decimal(0)})
-    for emenda in emendas if isinstance(emendas, list) else []:
-        if not isinstance(emenda, dict) or not is_trusted(emenda):
+    for bruta in emendas if isinstance(emendas, list) else []:
+        lida, _motivo = ler_emenda(bruta)  # a mesma regra de elegibilidade do loader
+        if lida is None:
             continue
-        ano, empenhado = inteiro_em(emenda.get("ano"), 1995, 2100), decimal_de(emenda.get("valor_empenhado"))
-        pago = decimal_de(emenda.get("valor_pago"))
-        if ano is None or empenhado is None or pago is None:  # o loader também deixa de fora emenda sem os dois valores
-            continue
-        totais[ano]["empenhado"] += empenhado
-        totais[ano]["pago"] += pago
+        totais[lida["ano"]]["empenhado"] += lida["empenhado"]
+        totais[lida["ano"]]["pago"] += lida["pago"]
     return totais
 
 
@@ -75,7 +73,7 @@ def totais_remuneracao_do_arquivo(corpo: Any) -> Dict[int, Decimal]:
     for r in registros if isinstance(registros, list) else []:
         if not isinstance(r, dict):
             continue
-        _soma(totais, inteiro_em(r.get("ano"), 1995, 2100), decimal_de(r.get("salario_bruto")))
+        _soma(totais, inteiro_em(r.get("ano"), 1995, 2100), decimal_de(r.get("salario_bruto"), LIMITE_REMUNERACAO))
     return totais
 
 
@@ -87,7 +85,7 @@ def totais_doacoes_do_arquivo(prestacoes: Any) -> Dict[int, Decimal]:
         ano = inteiro_em(item.get("ano_eleicao"), 1995, 2100)
         doadores = item.get("doadores")
         for doador in doadores if isinstance(doadores, list) else []:
-            _soma(totais, ano, decimal_de(doador.get("valor_doado")) if isinstance(doador, dict) else None)
+            _soma(totais, ano, decimal_de(doador.get("valor_doado"), LIMITE_TSE) if isinstance(doador, dict) else None)
     return totais
 
 

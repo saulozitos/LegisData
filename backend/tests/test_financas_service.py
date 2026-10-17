@@ -99,7 +99,7 @@ def test_emendas_sem_funcao_agrupam_em_outras_funcoes_e_a_lista_respeita_o_limit
     resumo = fs.emendas_do_parlamentar(db, [pessoa])
     assert resumo["total_emendas"] == 3 and len(resumo["lista_emendas"]) == 2
     assert resumo["lista_emendas"][0]["valor_pago"] == 30.0  # maior pago primeiro
-    assert resumo["distribuicao_por_area"][0]["area"] == "Outras Funções"
+    assert resumo["distribuicao_por_area"][0]["area"] == "Outros"
     assert len(fs.emendas_detalhadas(db, [pessoa])["emendas"]) == 1
     assert fs.emendas_do_parlamentar(db, []) is None
 

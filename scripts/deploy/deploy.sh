@@ -128,7 +128,8 @@ if [[ "$TEM_ECO" == "t" && -f "$RAIZ/etl/pipelines/carga_economica.py" ]]; then
   um_comando python -c "
 from app.core.database import engine
 from etl.pipelines.carga_economica import carregar_tudo
-for chave, resultado in carregar_tudo(engine).items():
+# finanças é tolerada: se falhar (ex.: proteção contra encolhimento), a API nova segue com o que já está em fin
+for chave, resultado in carregar_tudo(engine, toleradas=('financas',)).items():
     print(chave, resultado)
 "
 fi

@@ -70,3 +70,9 @@ def test_deploy_descarta_saidas_do_cron_antes_do_merge_e_carrega_tudo_pela_carga
     assert re.search(r"^from etl\.pipelines\.carga_economica import carregar_tudo", carga, re.MULTILINE)
     assert _posicao(texto, r"alembic upgrade head") < _posicao(texto, r"^\s*um_comando python -c ")
     assert _posicao(texto, r"^\s*um_comando python -c ") < _posicao(texto, r"^docker compose up ")
+
+
+def test_deploy_repassa_a_liberacao_de_encolhimento_vazia_por_padrao_e_tolera_so_as_financas():
+    texto = (RAIZ / "scripts" / "deploy" / "deploy.sh").read_text(encoding="utf-8")
+    assert '-e LEGISDATA_ACEITAR_ENCOLHIMENTO="${LEGISDATA_ACEITAR_ENCOLHIMENTO:-}"' in texto
+    assert "toleradas=('financas',)" in texto

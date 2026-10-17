@@ -35,8 +35,17 @@ CARGAS: Tuple[Tuple[str, str, str, Optional[str]], ...] = (
 )
 
 
-def carregar_tudo(engine: Engine, chaves: Optional[Iterable[str]] = None) -> Dict[str, Any]:
-    """Executa as cargas (todas, ou só as `chaves`) e devolve o resultado de cada uma; levanta RuntimeError no fim."""
+def carregar_tudo(
+    engine: Engine, chaves: Optional[Iterable[str]] = None, toleradas: Iterable[str] = ()
+) -> Dict[str, Any]:
+    """
+    Executa as cargas (todas, ou só as `chaves`) e devolve o resultado de cada uma; levanta RuntimeError no fim.
+
+    Uma carga em `toleradas` que falha não levanta: o erro é registrado no log e devolvido como `{"erro": ...}` no
+    resultado dela. O deploy usa isso para as finanças: a API nova continua servindo o que já está em `fin` em vez de
+    deixar o checkout no compose novo com os contêineres antigos no ar.
+    """
+    aceitas = set(toleradas)
     escolhidas = set(chaves) if chaves is not None else None
     nomes = {chave: nome for chave, nome, _, _ in CARGAS}
     resultados: Dict[str, Any] = {}
@@ -54,6 +63,9 @@ def carregar_tudo(engine: Engine, chaves: Optional[Iterable[str]] = None) -> Dic
             logger.info("%s: %s", nome, resultados[chave])
         except Exception as exc:  # noqa: BLE001 - isolada de propósito; relatada abaixo
             logger.error("Carga '%s' falhou: %s", nome, exc, exc_info=True)
+            if chave in aceitas:
+                resultados[chave] = {"erro": str(exc)}
+                continue
             falhas.append(f"{nome}: {exc}")
             falharam.add(chave)
     if falhas:

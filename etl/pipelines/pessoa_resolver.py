@@ -116,6 +116,10 @@ class ResolvedorDePessoas:
         for nome in nomes:
             candidatos = self._candidatos(nome)
             if len(candidatos) == 1:
+                # Nome único vale mesmo que os mandatos cadastrados sejam de outros anos: o cadastro de mandatos do Senado
+                # anterior a 2023 está incompleto, e exigir mandato no ano desligaria cerca de 1.000 emendas de
+                # parlamentares reais (Otto Alencar, Cid Gomes, Flávio Bolsonaro...). O risco oposto (um autor atual
+                # fora do cadastro com o mesmo nome de um ex-parlamentar) está anotado no plano.
                 return Resolucao(next(iter(candidatos)), "IDENTIFICADO")
             if len(candidatos) > 1:
                 ambiguo = True

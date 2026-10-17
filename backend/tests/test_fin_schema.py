@@ -126,3 +126,50 @@ def test_ano_mes_e_quantidades_tem_limites(db, pessoa):
 def test_busca_de_texto_ignora_acento_e_caixa(db):
     assert db.execute(text("SELECT ref.contem_texto('São Paulo (UF)', 'SAO paulo')")).scalar() is True
     assert db.execute(text("SELECT ref.contem_texto('Bahia', 'minas')")).scalar() is False
+
+
+def test_tipo_e_situacao_do_autor_so_aceitam_os_valores_do_enum(db):
+    _viola(db, lambda: _emenda(db, tipo_autor="OUTRO"), "emenda_tipo_autor_check")
+    _viola(db, lambda: _emenda(db, autor_situacao="TALVEZ"), "emenda_autor_situacao_check")
+
+
+def test_ano_minimo_de_emenda_doacao_e_patrimonio(db, pessoa):
+    _viola(db, lambda: _emenda(db, ano=1994), "emenda_ano_check")
+    _viola(
+        db,
+        lambda: inserir_fin(
+            db,
+            "doacao_campanha",
+            pessoa_id=pessoa,
+            ano_eleicao=1994,
+            doador_nome="D",
+            valor=1,
+            fonte_id=fonte_id(db, "TSE"),
+        ),
+        "doacao_campanha_ano_eleicao_check",
+    )
+    _viola(
+        db,
+        lambda: inserir_fin(
+            db,
+            "declaracao_patrimonio",
+            pessoa_id=pessoa,
+            ano_eleicao=1994,
+            valor_declarado=1,
+            fonte_id=fonte_id(db, "TSE"),
+        ),
+        "declaracao_patrimonio_ano_eleicao_check",
+    )
+
+
+def test_uf_da_emenda_tem_de_existir_em_ref_uf(db):
+    _viola(db, lambda: _emenda(db, uf="XX"), "fk|foreign key|violates")
+    _emenda(db, uf="SP")
+
+
+def test_nao_se_apaga_pessoa_com_emenda_identificada(db, pessoa):
+    _emenda(db, autor_situacao="IDENTIFICADO", pessoa_id=pessoa)
+    db.commit()
+    _viola(
+        db, lambda: db.execute(text("DELETE FROM core.pessoa WHERE id = :p"), {"p": pessoa}), "emenda_pessoa_id_fkey"
+    )

@@ -33,3 +33,23 @@ def test_a_composicao_depende_dos_mandatos_e_as_demais_seguem(chamadas, monkeypa
         carga_economica.carregar_tudo(object())
     assert "sem presidentes" in str(erro.value) and "Composição do Congresso" in str(erro.value)
     assert chamadas == ["series", "pnad", "financas"]
+
+
+def test_carga_tolerada_que_falha_nao_levanta_e_devolve_o_erro(chamadas, monkeypatch):
+    def quebra(engine):
+        raise RuntimeError("tabela encolheria")
+
+    monkeypatch.setattr("etl.pipelines.financas_loader.carregar", quebra)
+    resultados = carga_economica.carregar_tudo(object(), toleradas=("financas",))
+    assert resultados["financas"] == {"erro": "tabela encolheria"} and chamadas[-1] == "pnad"
+    with pytest.raises(RuntimeError, match="tabela encolheria"):  # sem tolerância, o erro sobe como sempre
+        carga_economica.carregar_tudo(object())
+
+
+def test_carga_nao_tolerada_continua_levantando_mesmo_com_financas_tolerada(chamadas, monkeypatch):
+    def quebra(engine):
+        raise RuntimeError("sem séries")
+
+    monkeypatch.setattr("etl.pipelines.economia_loader.carregar", quebra)
+    with pytest.raises(RuntimeError, match="sem séries"):
+        carga_economica.carregar_tudo(object(), toleradas=("financas",))

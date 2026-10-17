@@ -184,16 +184,21 @@ def test_dossier_does_not_expose_politician_cpf(client, seed):
     assert "12345678901" not in client.get(f"{BASE}/{seed.fulano.id}").text
 
 
-def test_dossier_never_exposes_a_cpf(client, seed, financas):
-    """Fornecedor só aparece com CNPJ; o CPF do doador chega mascarado do TSE e nunca em claro."""
+def test_dossier_exposes_only_cnpj_and_masked_cpf(client, seed, financas):
+    """Fornecedor só aparece com CNPJ formatado; o documento do doador chega mascarado (a proteção contra CPF fica no
+    ETL e no CHECK da tabela, testados em test_fin_schema e test_financas_loader)."""
     body = client.get(f"{BASE}/{seed.fulano.id}").json()
     assert body["custos_ceap"]["maiores_fornecedores"][0]["cnpj_cpf"] == "12.345.678/0001-99"
     donor = body["financiamento_campanha"]["top_doadores"][0]
     assert donor["cpf_cnpj_doador"] == "***.654.321-**"
     assert body["indices_inteligencia"]["concentracao_ceap"]["cnpj_maior_fornecedor"] == "12.345.678/0001-99"
-    for sub in ("ceap", "doacoes"):
-        raw = client.get(f"{BASE}/{seed.fulano.id}/{sub}").text
-        assert "98765432100" not in raw and "123.456.789-01" not in raw
+    ceap = client.get(
+        f"{BASE}/{seed.fulano.id}/ceap"
+    ).json()  # só totais por ano e tipo: nenhum documento de fornecedor
+    assert (
+        ceap["despesas"] == [{"ano": 2024, "tipo": "Combustível", "valor": 150.0}] and "cnpj" not in str(ceap).lower()
+    )
+    assert "***.654.321-**" in client.get(f"{BASE}/{seed.fulano.id}/doacoes").text
 
 
 def test_dossier_missing_data_is_null_never_invented(client, seed):

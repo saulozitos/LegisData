@@ -57,7 +57,7 @@ Este documento é um plano, não uma implementação. Nenhuma tabela ou código 
 5. Rotas que liam arquivo (`/analytics/social-indicators`, `/analytics/federal-transfers`) devolvem lista vazia quando a tabela não foi carregada, em vez de cair no arquivo.
 6. Teste a 0026 numa cópia do banco de produção antes: o `DELETE` em `public.politicos` supõe que só `public.mandatos` aponta para o político.
 
-**Fica para a Entrega 3b**: `wage-disparity` (`salario_vs_inflacao.json`, com o salário parlamentar digitado), `congress-composition` e a composição do IPLE (`composicao_congresso.json` e `DADOS_HISTORICOS_EXECUTIVO`, ambos curados à mão), faixas da PNAD (`pnad_faixas_salario_minimo.json`), repasses e eleições presidenciais por UF direto das tabelas `eco` e a atualização diária das séries no cron. Só então `grep load_json_cached backend/app` fica vazio nesses módulos; CEAP e emendas seguem para a Fase 5.
+**Fica para a Entrega 3b**: `wage-disparity` (`salario_vs_inflacao.json`, com o salário parlamentar digitado), `congress-composition` e a composição do IPLE (`composicao_congresso.json` e `DADOS_HISTORICOS_EXECUTIVO`, ambos curados à mão), faixas da PNAD (`pnad_faixas_salario_minimo.json`), repasses e eleições presidenciais por UF direto das tabelas `eco` e a atualização diária das séries no cron. Só então `load_json_cached` ficou sem uso nesses módulos; CEAP e emendas foram para a Fase 5 e saíram na Entrega 3c (o `grep` já não encontra nada).
 
 ### Entrega 3b — dados curados do Executivo e do Congresso no banco (2026-10-16)
 
@@ -89,6 +89,10 @@ Este documento é um plano, não uma implementação. Nenhuma tabela ou código 
 - CPF: `nome_do_fornecedor` e o nome do doador perdem qualquer sequência de 10 ou 11 dígitos, juntos ou separados por ponto, hífen, barra, vírgula, sublinhado ou espaço (o CNPJ formatado é preservado); `documento_do_doador` só devolve CNPJ no formato canônico (14 dígitos ou `NN.NNN.NNN/NNNN-NN`) ou a máscara exata `***.NNN.NNN-**` (CPF completo ou de 10 dígitos é mascarado, qualquer outro formato vira nulo, nunca texto cru) e o CHECK da tabela exige o mesmo formato. Valores monetários de 10^12 em diante, `NaN` e `Infinity` são tratados como inválidos para não estourar as colunas `numeric`.
 - Busca pública de emendas: o termo precisa de 2 a 100 caracteres (`400` abaixo e `422` acima), e a comparação sem acento nem caixa fica na função SQL `ref.contem_texto`. Os `id` de `fin.doacao_campanha` e da CEAP são efêmeros (as tabelas são recriadas a cada carga); só o `uid` da emenda é estável entre cargas.
 - Cada carga que atualiza só o `fin` não passa pelo cron diário: depois de qualquer extração manual (`--camara`, `--ceap`, `sync_ceap_emendas`) é preciso rodar `run_etl --load-economia` para o banco refletir o arquivo. Os loaders legados (`--load-db`, `--load-presenca`) continuam gravando em `public.*`, que a API já não lê; ficam até a Fase 9.
+
+**Resolução por nome com ano:** nome com candidato único vale mesmo que os mandatos cadastrados da pessoa sejam de outros anos. Foi medido: exigir mandato no ano desligaria 1.074 emendas (de 50.100 identificadas para 49.026), todas de parlamentares reais (Otto Alencar, Cid Gomes, Chico D'Angelo, Flávio Bolsonaro...) cujo mandato de Senado anterior a 2023 não está em `core.mandato`. O risco oposto (um autor atual que ainda não está no cadastro com o mesmo nome de um ex-parlamentar) fica aceito e deve cair com o cadastro completo de mandatos do Senado. O `ano` da emenda é o do Portal da Transparência (ano da LOA), usado como proxy do ano da autoria; homônimos com mandatos consecutivos podem ser atribuídos ao sucessor quando a autoria foi no ano anterior (risco aceito e raro).
+
+**Pontos para a Fase 9 e para a unificação de pessoas:** o resolvedor (`pessoa_resolver`) e `financas_service.pessoas_do_parlamentar` ainda usam `public.politicos` (`camaraId`/`senadoId` e o `uid`) para juntar o cadastro do legado ao que tem identificador; ao remover o legado, a unificação de pessoas precisa estar feita (e `fin.emenda.pessoa_id` é `ON DELETE RESTRICT`: religue as emendas à pessoa canônica antes de apagar a duplicada). Enquanto o legado existe, `--load-db` e `--load-presenca` ainda gravam CEAP, emendas e remuneração em `public.*`, que a API já não lê; a fonte do dossiê é só `fin`, carregado por `--load-economia`. `fin.remuneracao.cota_ceap`, `auxilio_moradia` e `outros_beneficios` ficam nulas até haver fonte oficial mensal. `UF_POR_NOME` (ETL) e `_ESTADOS_MAP` (API) são cópias independentes do mesmo mapa; o campo `uf` das emendas já vem classificado pela carga.
 
 **Ao aplicar esta branch num banco que já rodou a 0031 antiga:** a 0031 foi editada antes de qualquer deploy (ela não está em `main`), então bancos de desenvolvimento precisam ser recriados com `alembic downgrade 0030 && alembic upgrade head` e a carga rodada de novo (`run_etl --load-economia`).
 
@@ -543,7 +547,7 @@ Estimativas de tamanho: **P** (≤ 3 dias), **M** (1–2 semanas), **G** (> 2 se
 | 6.3 | Indicadores sociais por ano e UF, resultados de eleições presidenciais, repasses federais, segurança pública: tabelas `eco.*`/`fin.*` carregadas do ETL. |
 | 6.4 | Aposentar `seed_executivo.py`. Cada indicador exibido tem série com fonte; os sem fonte oficial são removidos da interface ou rotulados como "pesquisa privada" com citação. |
 
-**Pronto quando:** `economic.py` e `analytics.py` não abrem mais nenhum arquivo em `DATA_DIR`; `grep load_json_cached backend/app` não retorna nada.
+**Pronto quando:** `economic.py` e `analytics.py` não abrem mais nenhum arquivo em `DATA_DIR`; `grep load_json_cached backend/app` não retorna nada (atendido na Entrega 3c).
 
 ### Fase 7 — Novo ETL (G)
 

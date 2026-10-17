@@ -10,7 +10,11 @@ da fonte fica em `autor_texto`, nunca se força o vínculo com outra pessoa).
   máscara de CPF do TSE (`***.NNN.NNN-**`).
 - `fin.emenda`: uma linha por emenda, localidade e função, com o tipo de autor já classificado. O código pode faltar
   (a fonte publica emendas de comissão de 2019 "sem informação"); o valor entra do mesmo jeito, para o total bater.
-- `fin.remuneracao`: folha mensal do parlamentar; campo que a fonte não informa fica nulo (nunca zero).
+- `fin.remuneracao`: folha mensal do parlamentar; campo que a fonte não informa fica nulo (nunca zero). `cota_ceap`,
+  `auxilio_moradia` e `outros_beneficios` existem para quando houver fonte oficial mensal; a carga atual só traz o bruto e
+  o líquido, então essas três ficam nulas e o dossiê as mostra como indisponíveis.
+- `fin.emenda.pessoa_id` usa `ON DELETE RESTRICT`: emenda identificada exige a pessoa (CHECK), então a unificação de
+  pessoas duplicadas precisa religar as emendas à pessoa canônica antes de apagar a duplicada.
 - `fin.declaracao_patrimonio`, `fin.doacao_campanha` e `fin.certidao`: dados do TSE.
 
 Cada linha aponta para `etl.fonte` (decisão D7). Os dados começam em 1995 (decisão D8). A carga vem do ETL, que lê os
@@ -91,7 +95,7 @@ def upgrade() -> None:
         CREATE TABLE fin.emenda (
             id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             uid uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),
-            pessoa_id bigint REFERENCES core.pessoa(id) ON DELETE SET NULL,
+            pessoa_id bigint REFERENCES core.pessoa(id) ON DELETE RESTRICT,
             autor_texto text NOT NULL,
             autor_codigo text,
             tipo_autor text NOT NULL

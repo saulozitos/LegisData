@@ -1977,7 +1977,7 @@ export interface EmendasLocalidadeResponse {
     quantidade: number;
   }>;
   emendas: Array<{
-    codigo_emenda: string;
+    codigo_emenda: string | null;
     ano: number;
     area_tematica: string;
     area_rotulo: string;
@@ -1985,7 +1985,6 @@ export interface EmendasLocalidadeResponse {
     valor_reservado_empenhado: number;
     valor_entregue_pago: number;
     estagio: string;
-    tipo_recurso: string;
     autor: {
       tipo_autor: string;
       categoria: string;
@@ -2022,7 +2021,7 @@ export interface EmendasAutorResponse {
     quantidade: number;
   }>;
   emendas: Array<{
-    codigo_emenda: string;
+    codigo_emenda: string | null;
     ano: number;
     localidade_destino: string;
     area_tematica: string;

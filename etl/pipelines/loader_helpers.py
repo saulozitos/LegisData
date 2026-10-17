@@ -5,6 +5,7 @@ Separadas do `db_loader` para poderem ser testadas sem Postgres e reutilizadas p
 
 import math
 import re
+import unicodedata
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -29,14 +30,22 @@ SEM_PARTIDO = "S.PART."
 
 def texto(valor: Any) -> Optional[str]:
     """Texto sem espaços nas pontas; vazio ou None viram None."""
-    limpo = str(valor).strip() if valor is not None else ""
+    if valor is None or not isinstance(valor, (str, int, float)):  # dict/list não viram texto (nem a sua repr)
+        return None
+    if isinstance(valor, float) and valor != valor:
+        return None
+    limpo = str(valor).strip()
     return limpo or None
 
 
 def inteiro(valor: Any) -> Optional[int]:
-    """Inteiro ou None para vazio e para o que não converte."""
+    """Inteiro ou None para vazio, bool, número com parte fracionária e o que não converte."""
+    if valor is None or valor == "" or isinstance(valor, bool):
+        return None
     try:
-        return None if valor is None or valor == "" else int(valor)
+        if isinstance(valor, float) and not valor.is_integer():
+            return None
+        return int(valor)
     except (TypeError, ValueError, OverflowError):
         return None
 
@@ -81,14 +90,17 @@ def _dec(value: Any) -> Optional[Decimal]:
     return numero if numero.is_finite() else None
 
 
-# A maior coluna monetária do schema fin é numeric(16,2); abaixo de 10**12 cabe em todas (CEAP e doações são 14 e 15).
-VALOR_MAXIMO = Decimal(10) ** 12
+# Limites (exclusivos) das colunas monetárias do schema fin: numeric(P,2) comporta valores abaixo de 10**(P-2).
+LIMITE_CEAP = Decimal(10) ** 12  # numeric(14,2)
+LIMITE_EMENDA = Decimal(10) ** 14  # numeric(16,2)
+LIMITE_REMUNERACAO = Decimal(10) ** 10  # numeric(12,2)
+LIMITE_TSE = Decimal(10) ** 13  # numeric(15,2)
 
 
-def decimal_de(value: Any) -> Optional[Decimal]:
-    """Decimal finito e dentro da faixa das colunas monetárias do banco; qualquer outra coisa vira None."""
+def decimal_de(value: Any, limite: Decimal = LIMITE_CEAP) -> Optional[Decimal]:
+    """Decimal finito e dentro da faixa da coluna (`limite`, exclusivo); qualquer outra coisa vira None."""
     numero = _dec(value)
-    return numero if numero is not None and abs(numero) < VALOR_MAXIMO else None
+    return numero if numero is not None and abs(numero) < limite else None
 
 
 def _texto_ou_none(value: Any) -> Optional[str]:
@@ -418,18 +430,19 @@ UF_POR_NOME = {
 }
 _UFS = frozenset(UF_POR_NOME.values())
 # CPF solto no nome (MEI vem como "NOME 061.507.955-12" ou "NOME 06507955124"): 10 ou 11 dígitos, juntos ou separados por
-# ponto, hífen, barra, vírgula, sublinhado ou espaço. O CNPJ formatado vem primeiro na alternância para não ser lido
+# até 3 caracteres entre ponto, hífen, barra, vírgula, sublinhado e espaço (por exemplo " - "). Dígitos de outros alfabetos
+# e de largura total viram ASCII antes (`_ascii`). O CNPJ formatado vem primeiro na alternância para não ser lido
 # como um CPF parcial; CNPJ sem pontuação (14 dígitos) nunca casa porque a sequência exige 10 ou 11 no total.
 _SEQUENCIA_CPF = re.compile(
     r"(?<![0-9])(?P<cnpj>[0-9]{2}\.[0-9]{3}\.[0-9]{3}/[0-9]{4}-[0-9]{2})(?![0-9])"
-    r"|(?<![0-9])(?:[0-9][\s.\-/_,]?){9,10}[0-9](?![0-9])"
+    r"|(?<![0-9])(?:[0-9][\s.\-/_,]{0,3}){9,10}[0-9](?![0-9])"
 )
 _MASCARA_CPF = re.compile(r"^\*{3}\.\d{3}\.\d{3}-\*{2}$")
 TIPOS_DE_AUTOR_INSTITUCIONAL = ("BANCADA_ESTADUAL", "COMISSAO_INSTITUCIONAL", "RELATOR_GERAL")
 
 
 def so_digitos(valor: Any) -> str:
-    return re.sub(r"[^0-9]", "", str(valor)) if valor is not None else ""
+    return re.sub(r"[^0-9]", "", _ascii(valor)) if valor is not None else ""
 
 
 def cnpj_do_fornecedor(valor: Any) -> Optional[str]:
@@ -443,6 +456,12 @@ def cnpj_do_fornecedor(valor: Any) -> Optional[str]:
     return digitos
 
 
+def _ascii(valor: Any) -> str:
+    """Texto com qualquer dígito Unicode (árabe-índico, largura total...) trocado pelo dígito ASCII equivalente."""
+    normal = unicodedata.normalize("NFKC", str(valor or ""))
+    return "".join(str(unicodedata.decimal(c)) if unicodedata.decimal(c, None) is not None else c for c in normal)
+
+
 def _sem_cpf(achado: "re.Match[str]") -> str:
     trecho = achado.group(0)
     return trecho if achado.group("cnpj") or len(so_digitos(trecho)) not in (10, 11) else " "
@@ -450,13 +469,13 @@ def _sem_cpf(achado: "re.Match[str]") -> str:
 
 def nome_do_fornecedor(valor: Any) -> str:
     """Nome do fornecedor sem CPF embutido (MEI aparece como 'NOME 06507955124' na fonte); vazio vira o rótulo padrão."""
-    limpo = " ".join(_SEQUENCIA_CPF.sub(_sem_cpf, str(valor or "")).split())
+    limpo = " ".join(_SEQUENCIA_CPF.sub(_sem_cpf, _ascii(valor)).split())
     return limpo or "Fornecedor não identificado"
 
 
 def nome_sem_cpf(valor: Any) -> Optional[str]:
     """Nome de pessoa ou empresa sem CPF embutido; None quando não sobra nada."""
-    limpo = " ".join(_SEQUENCIA_CPF.sub(_sem_cpf, str(valor or "")).split())
+    limpo = " ".join(_SEQUENCIA_CPF.sub(_sem_cpf, _ascii(valor)).split())
     return limpo or None
 
 

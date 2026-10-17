@@ -21,6 +21,9 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from etl.config import PROCESSED_DATA_DIR
 from etl.pipelines.loader_helpers import (
+    LIMITE_EMENDA,
+    LIMITE_REMUNERACAO,
+    LIMITE_TSE,
     cnpj_do_fornecedor,
     decimal_de,
     documento_do_doador,
@@ -123,10 +126,19 @@ def linhas_da_ceap(
     despesas: List[Dict[str, Any]] = []
     fornecedores: List[Dict[str, Any]] = []
     resumos: List[Dict[str, Any]] = []
-    contagem = {"parlamentares": 0, "sem_pessoa": 0, "sem_proveniencia": 0, "sem_detalhe_por_ano": 0}
+    contagem = {
+        "parlamentares": 0,
+        "sem_pessoa": 0,
+        "sem_identificador": 0,
+        "sem_proveniencia": 0,
+        "sem_detalhe_por_ano": 0,
+    }
     for chave, dados in ceap.items():
         if not isinstance(dados, dict) or not is_trusted(dados):
             contagem["sem_proveniencia"] += 1
+            continue
+        if not (dados.get("camara_id") or dados.get("senado_id")):
+            contagem["sem_identificador"] += 1  # sem id não há como saber a fonte (Câmara ou Senado)
             continue
         pessoa = resolvedor.resolver(dados).pessoa_id
         if pessoa is None:
@@ -136,7 +148,7 @@ def linhas_da_ceap(
         if not isinstance(por_ano_tipo, dict) or not por_ano_tipo:
             contagem["sem_detalhe_por_ano"] += 1
             continue
-        # a origem é o identificador que o registro carrega: nenhum registro do arquivo traz os dois
+        # a origem é o identificador que o registro carrega (nenhum registro do arquivo traz os dois)
         fonte_id = fontes[FONTE_CEAP_CAMARA if dados.get("camara_id") else FONTE_CEAP_SENADO]
         contagem["parlamentares"] += 1
         totais: Dict[Tuple[int, str], Decimal] = defaultdict(Decimal)
@@ -151,7 +163,7 @@ def linhas_da_ceap(
             {"p": pessoa, "ano": ano, "tipo": tipo, "valor": valor, "f": fonte_id}
             for (ano, tipo), valor in totais.items()
         ]
-        agrupados: Dict[Tuple[str, Optional[str]], List[Any]] = {}
+        agrupados: Dict[Tuple[str, Optional[str]], List[Any]] = {}  # chave -> [valor, notas, nome, maior valor, cnpj]
         lista_fornecedores = dados.get("fornecedores")
         for item in (lista_fornecedores if isinstance(lista_fornecedores, dict) else {}).values():
             if not isinstance(item, dict):
@@ -160,12 +172,16 @@ def linhas_da_ceap(
             if valor_dec is None:
                 continue
             nome, cnpj = nome_do_fornecedor(item.get("nome")), cnpj_do_fornecedor(item.get("cnpj_cpf"))
-            acumulado = agrupados.setdefault((nome, cnpj), [Decimal(0), 0])
+            # o mesmo CNPJ com grafias diferentes é um fornecedor só (fica o nome de maior valor); sem CNPJ, vale o nome
+            chave = ("cnpj", cnpj) if cnpj else ("nome", nome)
+            acumulado = agrupados.setdefault(chave, [Decimal(0), 0, nome, valor_dec, cnpj])
             acumulado[0] += valor_dec
             acumulado[1] += max(inteiro(item.get("notas")) or 0, 0)
+            if valor_dec > acumulado[3]:
+                acumulado[2], acumulado[3] = nome, valor_dec
         fornecedores += [
             {"p": pessoa, "nome": nome, "cnpj": cnpj, "valor": valor, "notas": notas, "f": fonte_id}
-            for (nome, cnpj), (valor, notas) in agrupados.items()
+            for valor, notas, nome, _maior, cnpj in agrupados.values()
         ]
         notas = inteiro(dados.get("total_notas"))
         if notas is not None and notas >= 0:  # quantidade desconhecida não vira zero: sem linha de resumo
@@ -258,6 +274,34 @@ ON CONFLICT (autor_texto, codigo_emenda, ano, tipo_emenda, localidade_destino, f
 """
 
 
+def ler_emenda(emenda: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Campos de uma emenda do arquivo, ou (None, motivo) quando ela não entra: "sem_proveniencia" ou "invalidas".
+    É a regra única de elegibilidade: a reconciliação usa esta mesma função para somar o que o arquivo deveria ter no banco.
+    """
+    if not isinstance(emenda, dict) or not is_trusted(emenda):
+        return None, "sem_proveniencia"
+    ano = inteiro_em(emenda.get("ano"), 1995, 2100)
+    tipo_emenda, autor = texto(emenda.get("tipo_emenda")), texto(emenda.get("politician_name"))
+    local = texto(emenda.get("localidade_destino"))
+    empenhado = decimal_de(emenda.get("valor_empenhado"), LIMITE_EMENDA)
+    pago = decimal_de(emenda.get("valor_pago"), LIMITE_EMENDA)
+    # valor pago desconhecido não vira zero: a emenda sem os dois valores fica de fora e é contada
+    if ano is None or not (tipo_emenda and autor and local) or empenhado is None or pago is None:
+        return None, "invalidas"
+    return {
+        "ano": ano,
+        "codigo": texto(emenda.get("codigo_emenda")),
+        "tipo_emenda": tipo_emenda,
+        "autor": autor,
+        "local": local,
+        "funcao": texto(emenda.get("funcao")),
+        "cod_autor": texto(emenda.get("autor_codigo")),
+        "empenhado": empenhado,
+        "pago": pago,
+    }, None
+
+
 def linhas_das_emendas(
     emendas: List[Any], resolvedor: ResolvedorDePessoas, fonte_id: int
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
@@ -271,46 +315,39 @@ def linhas_das_emendas(
         "chave_repetida": 0,
     }
     unicas: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
-    for emenda in emendas:
-        if not isinstance(emenda, dict) or not is_trusted(emenda):
-            contagem["sem_proveniencia"] += 1
+    for bruta in emendas:
+        lida, motivo = ler_emenda(bruta)
+        if lida is None:
+            contagem[str(motivo)] += 1
             continue
-        ano = inteiro_em(emenda.get("ano"), 1995, 2100)
-        codigo, tipo_emenda = texto(emenda.get("codigo_emenda")), texto(emenda.get("tipo_emenda"))
-        autor, local = texto(emenda.get("politician_name")), texto(emenda.get("localidade_destino"))
-        empenhado, pago = decimal_de(emenda.get("valor_empenhado")), decimal_de(emenda.get("valor_pago"))
-        # valor pago desconhecido não vira zero: a emenda sem os dois valores fica de fora e é contada
-        if ano is None or not (tipo_emenda and autor and local) or empenhado is None or pago is None:
-            contagem["invalidas"] += 1
-            continue
-        tipo_autor = tipo_do_autor(autor, tipo_emenda)
+        autor, ano = lida["autor"], lida["ano"]
+        tipo_autor = tipo_do_autor(autor, lida["tipo_emenda"])
         if tipo_autor == "INDIVIDUAL":
             resolucao = resolvedor.por_nome([autor], ano)
             situacao, pessoa = resolucao.situacao, resolucao.pessoa_id
         else:
             situacao, pessoa = "INSTITUCIONAL", None
-        funcao = texto(emenda.get("funcao"))
         linha = {
             "p": pessoa,
             "autor": autor,
-            "cod_autor": texto(emenda.get("autor_codigo")),
+            "cod_autor": lida["cod_autor"],
             "tipo_autor": tipo_autor,
             "situacao": situacao,
             "ano": ano,
-            "codigo": codigo,
-            "tipo_emenda": tipo_emenda,
-            "empenhado": empenhado,
-            "pago": pago,
-            "local": local,
-            "uf": uf_da_localidade(local),
-            "funcao": funcao,
+            "codigo": lida["codigo"],
+            "tipo_emenda": lida["tipo_emenda"],
+            "empenhado": lida["empenhado"],
+            "pago": lida["pago"],
+            "local": lida["local"],
+            "uf": uf_da_localidade(lida["local"]),
+            "funcao": lida["funcao"],
             "f": fonte_id,
         }
-        chave = (autor, codigo, ano, tipo_emenda, local, funcao)
+        chave = (autor, lida["codigo"], ano, lida["tipo_emenda"], lida["local"], lida["funcao"])
         if chave in unicas:  # linhas distintas da fonte com a mesma chave: somam, para o total bater com o arquivo
             contagem["chave_repetida"] += 1
-            unicas[chave]["empenhado"] += empenhado
-            unicas[chave]["pago"] += pago
+            unicas[chave]["empenhado"] += lida["empenhado"]
+            unicas[chave]["pago"] += lida["pago"]
         else:
             contagem[situacao] += 1
             unicas[chave] = linha
@@ -344,7 +381,7 @@ def linhas_da_remuneracao(
             contagem["invalidas"] += 1
             continue
         ano, mes = inteiro_em(registro.get("ano"), 1995, 2100), inteiro_em(registro.get("mes"), 1, 12)
-        bruto = decimal_de(registro.get("salario_bruto"))
+        bruto = decimal_de(registro.get("salario_bruto"), LIMITE_REMUNERACAO)
         if ano is None or mes is None or bruto is None:
             contagem["invalidas"] += 1
             continue
@@ -357,7 +394,7 @@ def linhas_da_remuneracao(
             "ano": ano,
             "mes": mes,
             "bruto": bruto,
-            "liquido": decimal_de(registro.get("salario_liquido")),
+            "liquido": decimal_de(registro.get("salario_liquido"), LIMITE_REMUNERACAO),
             "f": fonte_id,
         }
     return list(unicas.values()), contagem
@@ -396,7 +433,9 @@ def carregar_patrimonio(conn: Connection, processed_dir: Path) -> Dict[str, int]
         if not isinstance(item, dict) or not is_trusted(item):
             contagem["sem_proveniencia"] += 1
             continue
-        ano, valor = inteiro_em(item.get("ano_eleicao"), 1995, 2100), decimal_de(item.get("valor_declarado_brl"))
+        ano, valor = inteiro_em(item.get("ano_eleicao"), 1995, 2100), decimal_de(
+            item.get("valor_declarado_brl"), LIMITE_TSE
+        )
         if ano is None or valor is None:
             contagem["invalidas"] += 1
             continue
@@ -448,7 +487,7 @@ def carregar_doacoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
             continue
         linhas = []
         for doador in item["doadores"]:
-            valor = decimal_de(doador.get("valor_doado")) if isinstance(doador, dict) else None
+            valor = decimal_de(doador.get("valor_doado"), LIMITE_TSE) if isinstance(doador, dict) else None
             if valor is None:
                 continue
             linhas.append(

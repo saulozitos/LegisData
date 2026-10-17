@@ -8,6 +8,7 @@ from sqlalchemy import text
 
 from etl.pipelines import financas_loader as fin
 from etl.pipelines.loader_helpers import (
+    LIMITE_REMUNERACAO,
     cnpj_do_fornecedor,
     decimal_de,
     documento_do_doador,
@@ -248,6 +249,7 @@ def test_ceap_ignora_registro_sem_proveniencia_ou_sem_detalhe_por_ano(pg_engine,
     with pg_engine.begin() as conn:
         resultado = fin.carregar_ceap(conn, tmp_path)
     assert resultado["despesas"] == 0 and _contar(pg_engine, "despesa_cota") == 0
+    assert resultado["sem_proveniencia"] == 1 and resultado["sem_detalhe_por_ano"] == 1
 
 
 def test_arquivo_sem_registro_utilizavel_nao_apaga_o_que_ja_esta_no_banco(pg_engine, banco, tmp_path):
@@ -836,7 +838,7 @@ def test_limite_exato_da_protecao_metade_passa_e_menos_que_a_metade_aborta(
 ):
     monkeypatch.delenv(fin.VARIAVEL_ACEITAR_ENCOLHIMENTO, raising=False)
     _rodar(pg_engine, carga, tmp_path, _arquivo_com(carga, 20))
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match="nada foi alterado"):
         _rodar(pg_engine, carga, tmp_path, _arquivo_com(carga, 9))
     _rodar(pg_engine, carga, tmp_path, _arquivo_com(carga, 10))  # exatamente 50%
     assert _total_da_carga(pg_engine, carga) == 10
@@ -852,14 +854,14 @@ def test_tabela_com_menos_linhas_que_o_minimo_nao_dispara_a_protecao(pg_engine, 
 def test_o_minimo_exato_ja_dispara_a_protecao(pg_engine, banco, tmp_path, monkeypatch):
     monkeypatch.delenv(fin.VARIAVEL_ACEITAR_ENCOLHIMENTO, raising=False)
     _rodar(pg_engine, "emendas", tmp_path, _arquivo_com("emendas", fin.MINIMO_PARA_GUARDA))
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match="nada foi alterado"):
         _rodar(pg_engine, "emendas", tmp_path, _arquivo_com("emendas", 1))
 
 
 def test_a_protecao_so_libera_com_o_valor_exato_1(pg_engine, banco, tmp_path, monkeypatch):
     _rodar(pg_engine, "emendas", tmp_path, _arquivo_com("emendas", 20))
     monkeypatch.setenv(fin.VARIAVEL_ACEITAR_ENCOLHIMENTO, "true")
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match="nada foi alterado"):
         _rodar(pg_engine, "emendas", tmp_path, _arquivo_com("emendas", 2))
 
 
@@ -952,3 +954,209 @@ def test_valor_pago_zero_e_total_de_notas_zero_sao_dados_validos_e_entram(pg_eng
     with pg_engine.connect() as conn:
         assert conn.execute(text("SELECT valor_pago FROM fin.emenda")).scalar() == Decimal(0)
         assert conn.execute(text("SELECT total_notas FROM fin.despesa_cota_resumo")).scalar() == 0
+
+
+# ── revisão final: CPF, faixas das colunas, resolvedor e reconciliação ─────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "nome",
+    [
+        "JOAO 061.507.955 - 12",  # separador com espaços dos dois lados
+        "JOAO 061 . 507 . 955 - 12",
+        "JOAO ٠٦٥٠٧٩٥٥١٢٤",  # dígitos árabes-índicos
+        "JOAO ０６５０７９５５１２４",  # largura total
+        "JOAO 6507955124",
+    ],
+)
+def test_cpf_nao_sobrevive_em_nenhuma_grafia_do_nome(nome):
+    assert nome_do_fornecedor(nome) == "JOAO" and nome_sem_cpf(nome) == "JOAO"
+
+
+def test_texto_nao_grava_a_repr_de_dict_ou_lista_e_inteiro_nao_trunca_nem_aceita_bool():
+    from etl.pipelines.loader_helpers import inteiro, texto
+
+    assert texto({"a": 1}) is None and texto([1]) is None and texto(float("nan")) is None and texto(" x ") == "x"
+    assert inteiro(True) is None and inteiro(2019.9) is None and inteiro(2019.0) == 2019 and inteiro("12") == 12
+
+
+def test_decimal_de_respeita_o_limite_de_cada_coluna():
+    assert decimal_de("999999999.99", LIMITE_REMUNERACAO) == Decimal("999999999.99")
+    assert decimal_de("10000000000", LIMITE_REMUNERACAO) is None  # 10**10 já não cabe em numeric(12,2)
+    assert decimal_de("10000000000") == Decimal(10) ** 10  # mas cabe nas colunas de 14 dígitos
+
+
+def test_remuneracao_com_salario_que_estoura_a_coluna_e_contada_e_nao_derruba_a_carga(pg_engine, banco, tmp_path):
+    registros = [
+        {"camara_id": 100, "ano": 2024, "mes": 1, "salario_bruto": 5e10},
+        {"camara_id": 100, "ano": 2024, "mes": 2, "salario_bruto": 100, "salario_liquido": 5e10},
+        {"camara_id": 100, "ano": 2024, "mes": 3, "salario_bruto": 100},
+    ]
+    _gravar(tmp_path, fin.REMUNERACAO_ARQUIVO, _oficial(registros=registros))
+    with pg_engine.begin() as conn:
+        resultado = fin.carregar_remuneracao(conn, tmp_path)
+    assert resultado["invalidas"] == 1 and resultado["meses"] == 2
+    with pg_engine.connect() as conn:
+        # o líquido fora da faixa vira desconhecido (nulo), nunca zero nem erro
+        assert conn.execute(text("SELECT salario_liquido FROM fin.remuneracao WHERE mes = 2")).scalar() is None
+
+
+def test_resolvedor_aceita_nome_unico_mesmo_com_mandatos_so_em_outros_anos(pg_engine, banco):
+    # o cadastro de mandatos do Senado anterior a 2023 é incompleto: senador real com mandato cadastrado só depois
+    with pg_engine.begin() as conn:
+        senador = _pessoa(conn, "Otto Alencar Teste", mandato=("2023-02-01", None))
+    with pg_engine.connect() as conn:
+        resolvedor = ResolvedorDePessoas(conn)
+        assert resolvedor.por_nome(["Otto Alencar Teste"], 2020).pessoa_id == senador
+        assert resolvedor.por_nome(["Otto Alencar Teste"]).pessoa_id == senador
+
+
+def test_resolvedor_nao_escolhe_quando_dois_homonimos_tinham_mandato_no_mesmo_ano(pg_engine, banco):
+    with pg_engine.begin() as conn:
+        _pessoa(conn, "Dario Pai", mandato=("2019-02-01", "2023-01-31"))
+        _pessoa(conn, "Dario Pai", mandato=("2023-02-01", None))
+    with pg_engine.connect() as conn:
+        resolvedor = ResolvedorDePessoas(conn)
+        assert (
+            resolvedor.por_nome(["Dario Pai"], 2023).situacao == "HOMONIMO_NAO_DESAMBIGUADO"
+        )  # transição de legislatura
+        assert resolvedor.por_nome(["Dario Pai"], 2022).situacao == "IDENTIFICADO"
+        assert resolvedor.por_nome(["Dario Pai"], 2024).situacao == "IDENTIFICADO"
+
+
+def test_fronteiras_do_mandato_dentro_do_ano(pg_engine, banco):
+    with pg_engine.begin() as conn:
+        a = _pessoa(conn, "Eva Fim", mandato=("2010-01-01", "2020-12-31"))
+        _pessoa(conn, "Eva Fim", mandato=("2021-01-01", "2022-06-30"))
+    with pg_engine.connect() as conn:
+        resolvedor = ResolvedorDePessoas(conn)
+        assert resolvedor.por_nome(["Eva Fim"], 2020).pessoa_id == a  # termina em 31/12: ainda conta
+        assert resolvedor.por_nome(["Eva Fim"], 2021).pessoa_id != a  # começa em 01/01 do outro
+
+
+def test_resolvedor_junta_o_cadastro_do_legado_ao_que_tem_identificador(pg_engine, banco):
+    with pg_engine.begin() as conn:
+        legado = _pessoa(conn, "Gemeo Legado")
+        canonica = _pessoa(conn, "Gemeo Legado", camara_id=600, mandato=("2023-02-01", None))
+        uid = conn.execute(text("SELECT uid FROM core.pessoa WHERE id = :p"), {"p": legado}).scalar()
+        conn.execute(
+            text(
+                'INSERT INTO public.politicos (id, "nomeCivil", "nomeEleitoral", "camaraId") '
+                "VALUES (:u, 'Gemeo Legado', 'Gemeo Legado', 600)"
+            ),
+            {"u": uid},
+        )
+    try:
+        with pg_engine.connect() as conn:
+            resolvedor = ResolvedorDePessoas(conn)
+            # os dois cadastros contam como uma pessoa: sem homônimo, e o dado vai para o que tem identificador
+            assert resolvedor.por_nome(["Gemeo Legado"], 2024).pessoa_id == canonica
+            assert resolvedor.por_nome(["Gemeo Legado"]).situacao == "IDENTIFICADO"
+    finally:
+        with pg_engine.begin() as conn:
+            conn.execute(text("DELETE FROM public.politicos WHERE id = :u"), {"u": uid})
+
+
+def test_cada_carga_grava_a_fonte_certa(pg_engine, banco, tmp_path):
+    _carga_com_dado_bom(tmp_path)
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"A": _ceap(), "S": _ceap(camara_id=None, senado_id=200, nome="BETO")})
+    with pg_engine.begin() as conn:
+        for funcao in FUNCAO_DA_CARGA.values():
+            funcao(conn, tmp_path)
+    esperado = {
+        "despesa_cota": {"CAMARA_CSV", "SENADO_API"},
+        "emenda": {"PORTAL_TRANSPARENCIA"},
+        "remuneracao": {"CAMARA_PORTAL"},
+        "declaracao_patrimonio": {"TSE"},
+        "doacao_campanha": {"TSE"},
+        "certidao": {"TSE"},
+    }
+    with pg_engine.connect() as conn:
+        for tabela, fontes in esperado.items():
+            achadas = set(
+                conn.execute(
+                    text(f"SELECT DISTINCT f.codigo FROM fin.{tabela} t JOIN etl.fonte f ON f.id = t.fonte_id")
+                ).scalars()
+            )
+            assert achadas == fontes, tabela
+
+
+def test_ceap_sem_nenhum_identificador_e_contada_e_nao_grava(pg_engine, banco, tmp_path):
+    _gravar(
+        tmp_path, fin.CEAP_ARQUIVO, {"A": _ceap(), "LIDERANCA": _ceap(camara_id=None, senado_id=None, nome="ANA SOUZA")}
+    )
+    with pg_engine.begin() as conn:
+        resultado = fin.carregar_ceap(conn, tmp_path)
+    assert resultado["sem_identificador"] == 1 and resultado["parlamentares"] == 1
+
+
+def test_fornecedor_com_o_mesmo_cnpj_e_grafias_diferentes_vira_um_so(pg_engine, banco, tmp_path):
+    forn = {
+        "A": {"nome": "POSTO SOL LTDA", "cnpj_cpf": "02.558.157/0001-62", "total": 100.0, "notas": 2},
+        "B": {"nome": "POSTO SOL", "cnpj_cpf": "02.558.157/0001-62", "total": 30.0, "notas": 1},
+    }
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"A": _ceap(fornecedores=forn)})
+    with pg_engine.begin() as conn:
+        fin.carregar_ceap(conn, tmp_path)
+    with pg_engine.connect() as conn:
+        assert [
+            tuple(r) for r in conn.execute(text("SELECT nome, valor_total, notas FROM fin.despesa_cota_fornecedor"))
+        ] == [("POSTO SOL LTDA", Decimal("130.00"), 3)]
+
+
+def test_recarga_de_emenda_sem_codigo_e_sem_funcao_nao_duplica_e_mantem_o_uid(pg_engine, banco, tmp_path):
+    relator = _emenda(
+        None, "RELATOR GERAL", tipo_emenda="Emenda de Relator", localidade_destino="Nacional", funcao=None
+    )
+    _gravar(tmp_path, fin.EMENDAS_ARQUIVO, [relator])
+    uids = []
+    for _ in range(2):
+        with pg_engine.begin() as conn:
+            fin.carregar_emendas(conn, tmp_path)
+        with pg_engine.connect() as conn:
+            uids.append(conn.execute(text("SELECT uid FROM fin.emenda")).scalars().all())
+    assert len(uids[0]) == 1 and uids[0] == uids[1]
+
+
+def test_emenda_identificada_vira_homonimo_na_recarga_sem_violar_o_check(pg_engine, banco, tmp_path):
+    _gravar(tmp_path, fin.EMENDAS_ARQUIVO, [_emenda("1", "Zeca Dois", ano=2024)])
+    with pg_engine.begin() as conn:
+        unico = _pessoa(conn, "Zeca Dois")
+        fin.carregar_emendas(conn, tmp_path)
+    with pg_engine.connect() as conn:
+        assert tuple(conn.execute(text("SELECT autor_situacao, pessoa_id FROM fin.emenda")).one()) == (
+            "IDENTIFICADO",
+            unico,
+        )
+    with pg_engine.begin() as conn:
+        _pessoa(conn, "Zeca Dois")  # aparece um homônimo, sem mandato: ninguém se distingue
+        fin.carregar_emendas(conn, tmp_path)
+    with pg_engine.connect() as conn:
+        assert tuple(conn.execute(text("SELECT autor_situacao, pessoa_id FROM fin.emenda")).one()) == (
+            "HOMONIMO_NAO_DESAMBIGUADO",
+            None,
+        )
+
+
+def test_reconciliacao_usa_a_mesma_elegibilidade_do_loader(pg_engine, banco, tmp_path):
+    from etl.scripts import reconciliar_financas as rec
+
+    sem_tipo = _emenda("9", "Ana Souza", tipo_emenda=None)  # o loader descarta; a reconciliação não pode contar
+    _gravar(tmp_path, fin.EMENDAS_ARQUIVO, [_emenda("1", "Ana Souza"), sem_tipo])
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {})
+    _gravar(tmp_path, fin.REMUNERACAO_ARQUIVO, _oficial(registros=[]))
+    _gravar(tmp_path, fin.DOACOES_ARQUIVO, [])
+    with pg_engine.begin() as conn:
+        fin.carregar_emendas(conn, tmp_path)
+    with pg_engine.connect() as conn:
+        relatorio = rec.reconciliar(conn, tmp_path)
+    assert rec.divergencias(relatorio) == []
+    assert relatorio["emendas_empenhado"][0]["arquivo"] == Decimal("1000.00")
+
+
+def test_toda_uf_do_etl_existe_em_ref_uf(pg_engine):
+    from etl.pipelines.loader_helpers import UF_POR_NOME
+
+    with pg_engine.connect() as conn:
+        siglas = set(conn.execute(text("SELECT sigla FROM ref.uf")).scalars())
+    assert set(UF_POR_NOME.values()) <= siglas

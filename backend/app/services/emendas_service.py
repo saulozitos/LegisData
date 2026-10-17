@@ -9,6 +9,7 @@ import unicodedata
 from typing import Any, Dict, List
 
 from app.core.errors import ErroDeDominio
+from app.core.numeros import pct
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -190,10 +191,6 @@ def _area(area: str) -> Dict[str, str]:
     return DICIONARIO_ORCAMENTO["areas_tematicas"].get(area, {"icone": "🏛️", "rotulo": area})
 
 
-def _taxa(pago: float, empenhado: float) -> float:
-    return round(pago / empenhado * 100.0, 1) if empenhado > 0 else 0.0
-
-
 def _por_area(linhas: List[Any]) -> List[Dict[str, Any]]:
     return [
         {
@@ -257,7 +254,7 @@ def resumo(db: Session) -> Dict[str, Any]:
             "total_emendas": int(total.n),
             "total_reservado_empenhado_brl": round(empenhado, 2),
             "total_entregue_pago_brl": round(pago, 2),
-            "taxa_execucao_pago_pct": _taxa(pago, empenhado),
+            "taxa_execucao_pago_pct": pct(pago, empenhado),
         },
         "por_tipo_autor": por_tipo_autor,
         "por_area_tematica": _por_area(areas),
@@ -276,6 +273,8 @@ def resumo(db: Session) -> Dict[str, Any]:
 def por_localidade(db: Session, localidade: str, limite: int) -> Dict[str, Any]:
     """Emendas destinadas a uma cidade ou estado (busca por trecho do nome, sem acento nem caixa)."""
     termo = localidade.strip()
+    if "\x00" in termo:
+        raise ErroDeDominio(400, "A localidade contém caractere inválido.")
     if len(termo) < TAMANHO_MINIMO_DA_BUSCA:
         raise ErroDeDominio(400, "Informe ao menos 2 caracteres da localidade.")
     total = db.execute(
@@ -311,7 +310,7 @@ def por_localidade(db: Session, localidade: str, limite: int) -> Dict[str, Any]:
         "total_emendas_encontradas": int(total.n),
         "total_reservado_empenhado_brl": round(empenhado, 2),
         "total_entregue_pago_brl": round(pago, 2),
-        "taxa_execucao_pct": _taxa(pago, empenhado),
+        "taxa_execucao_pct": pct(pago, empenhado),
         "divisao_por_area": _por_area(areas),
         "emendas": [
             {
@@ -323,9 +322,6 @@ def por_localidade(db: Session, localidade: str, limite: int) -> Dict[str, Any]:
                 "valor_reservado_empenhado": float(r.valor_empenhado),
                 "valor_entregue_pago": float(r.valor_pago),
                 "estagio": "Dinheiro Entregue" if r.valor_pago > 0 else "Dinheiro Reservado",
-                "tipo_recurso": (
-                    "Obras e Equipamentos" if "Investimento" in r.tipo_emenda else "Dinheiro para o dia a dia"
-                ),
                 "autor": perfil_do_autor(r.autor_texto, r.tipo_autor),
             }
             for r in linhas
@@ -337,6 +333,8 @@ def por_localidade(db: Session, localidade: str, limite: int) -> Dict[str, Any]:
 def por_autor(db: Session, autor: str, limite: int) -> Dict[str, Any]:
     """Emendas de um autor (parlamentar, comissão ou bancada), pelo trecho do nome ou pelo código do autor."""
     termo = autor.strip()
+    if "\x00" in termo:
+        raise ErroDeDominio(400, "O autor contém caractere inválido.")
     if len(termo) < TAMANHO_MINIMO_DA_BUSCA:
         raise ErroDeDominio(400, "Informe ao menos 2 caracteres do autor.")
     total = db.execute(
@@ -386,7 +384,7 @@ def por_autor(db: Session, autor: str, limite: int) -> Dict[str, Any]:
         "total_emendas_enviadas": int(total.n),
         "total_reservado_empenhado_brl": round(empenhado, 2),
         "total_entregue_pago_brl": round(pago, 2),
-        "taxa_execucao_pct": _taxa(pago, empenhado),
+        "taxa_execucao_pct": pct(pago, empenhado),
         "top_destinos": [
             {
                 "localidade": r.localidade,

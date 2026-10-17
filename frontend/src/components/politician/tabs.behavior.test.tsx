@@ -198,6 +198,21 @@ describe('CeapTab', () => {
     expect(document.body.textContent).not.toMatch(/comprovantes fiscais/);
   });
 
+  it('o período do selo vem dos anos que existem nos dados', () => {
+    const d = fullDossier();
+    render(<CeapTab dossier={d} />);
+    const anos = d.custos_ceap.gastos_por_ano.map((g) => g.ano);
+    expect(screen.getByText(`Gastos de ${Math.min(...anos)}–${Math.max(...anos)}`)).toBeInTheDocument();
+  });
+
+  it('sem gasto por ano não mostra selo de período nem a tabela anual', () => {
+    const d = fullDossier();
+    d.custos_ceap.gastos_por_ano = [];
+    render(<CeapTab dossier={d} />);
+    expect(screen.queryByText(/^Gastos de /)).not.toBeInTheDocument();
+    expect(screen.queryByText('Gasto da cota por ano')).not.toBeInTheDocument();
+  });
+
   it('total de notas igual a zero é dado válido e aparece', () => {
     const d = fullDossier();
     d.custos_ceap.total_notas = 0;

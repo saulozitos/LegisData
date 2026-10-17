@@ -95,7 +95,6 @@ const mockLocalidade: api.EmendasLocalidadeResponse = {
       valor_reservado_empenhado: 199989.69,
       valor_entregue_pago: 7497.0,
       estagio: "Dinheiro Entregue",
-      tipo_recurso: "Custeio",
       autor: {
         tipo_autor: "INDIVIDUAL",
         categoria: "Parlamentar Individual",

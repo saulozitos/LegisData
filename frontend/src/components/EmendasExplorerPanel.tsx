@@ -73,7 +73,7 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
   const autorQuery = useApi(
     `emendas:autor:${debouncedAutor}`,
     (signal) => getEmendasPorAutor(debouncedAutor, 50, signal),
-    debouncedAutor.length >= TERMO_MINIMO && activeTab === "institucional"
+    Boolean(debouncedAutor) && activeTab === "institucional"
   );
 
   if (resumoQuery.loading && !resumoQuery.data) {
@@ -636,12 +636,7 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
           </div>
 
           {/* Resultado da Consulta Institucional */}
-          {debouncedAutor.length < TERMO_MINIMO ? (
-            <EmptyState
-              title="Digite ao menos 2 letras"
-              message="Informe o nome do autor, da bancada ou da comissão que você procura."
-            />
-          ) : autorQuery.loading ? (
+          {autorQuery.loading ? (
             <LoadingState label={`Consultando emendas do autor institucional "${debouncedAutor}"...`} />
           ) : autorQuery.error ? (
             <ErrorState

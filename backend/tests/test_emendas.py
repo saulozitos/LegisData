@@ -122,7 +122,9 @@ def test_get_emendas_por_localidade_uf(client, emendas):
     assert data["total_emendas_encontradas"] == 3  # as duas do Abel e a da comissão; "BAHIA (UF)" não casa
     assert data["total_reservado_empenhado_brl"] == 3000.0
     assert len(data["emendas"]) == 3
-    assert data["emendas"][0]["estagio"] == "Dinheiro Entregue"  # ordem: ano mais recente, depois maior valor pago
+    # ordem: ano mais recente, depois maior valor pago (o Abel de 2023 tem pago 0 e vem por último)
+    assert [e["codigo_emenda"] for e in data["emendas"]][-1] == "2"
+    assert data["emendas"][0]["estagio"] == "Dinheiro Entregue"
 
 
 def test_get_emendas_por_localidade_inexistente_retorna_404(client, emendas):
@@ -214,3 +216,31 @@ def test_busca_publica_rejeita_termo_curto_ou_longo_demais(client, emendas, rota
 def test_busca_ignora_acento_e_caixa(client, emendas):
     assert client.get(f"{BASE}/autor/abel mesquita").json()["total_emendas_enviadas"] == 2
     assert client.get(f"{BASE}/localidade/belo horizonte").json()["total_emendas_encontradas"] == 3
+
+
+def test_limite_da_lista_nao_altera_os_totais(client, emendas):
+    data = client.get(f"{BASE}/localidade/MG?limit=1").json()
+    assert data["total_emendas_encontradas"] == 3 and data["total_reservado_empenhado_brl"] == 3000.0
+    assert len(data["emendas"]) == 1
+    por_autor = client.get(f"{BASE}/autor/abel?limit=1").json()
+    assert por_autor["total_emendas_enviadas"] == 2 and len(por_autor["emendas"]) == 1
+
+
+def test_busca_acha_sem_acento_o_que_esta_acentuado_e_vice_versa(client, db):
+    _emenda(db, "JOSÉ ÁVILA", "INDIVIDUAL", codigo_emenda="1", localidade_destino="SÃO PAULO (UF)", uf="SP")
+    _emenda(db, "JOSE AVILA FILHO", "INDIVIDUAL", codigo_emenda="2", localidade_destino="SAO PAULO - SP", uf="SP")
+    db.commit()
+    assert client.get(f"{BASE}/autor/jose avila").json()["total_emendas_enviadas"] == 2
+    assert client.get(f"{BASE}/autor/JOSÉ ÁVILA").json()["total_emendas_enviadas"] == 2
+    assert client.get(f"{BASE}/localidade/sao paulo").json()["total_emendas_encontradas"] == 2
+    assert client.get(f"{BASE}/localidade/são paulo").json()["total_emendas_encontradas"] == 2
+
+
+@pytest.mark.parametrize("rota", ["localidade", "autor"])
+def test_termo_com_caractere_nulo_e_rejeitado_sem_erro_de_servidor(client, emendas, rota):
+    assert client.get(f"{BASE}/{rota}/ab%00cd").status_code == 400
+
+
+def test_a_resposta_nao_traz_classificacao_de_recurso_inventada(client, emendas):
+    emenda = client.get(f"{BASE}/localidade/MG").json()["emendas"][0]
+    assert "tipo_recurso" not in emenda
