@@ -205,6 +205,14 @@ describe('CeapTab', () => {
     expect(screen.getByText(`Gastos de ${Math.min(...anos)}–${Math.max(...anos)}`)).toBeInTheDocument();
   });
 
+  it('com um único ano o selo mostra só esse ano, sem intervalo', () => {
+    const d = fullDossier();
+    d.custos_ceap.gastos_por_ano = [{ ano: 2024, total_gasto: 100 }];
+    render(<CeapTab dossier={d} />);
+    expect(screen.getByText('Gastos de 2024')).toBeInTheDocument();
+    expect(screen.queryByText(/Gastos de 2024–/)).not.toBeInTheDocument();
+  });
+
   it('sem gasto por ano não mostra selo de período nem a tabela anual', () => {
     const d = fullDossier();
     d.custos_ceap.gastos_por_ano = [];

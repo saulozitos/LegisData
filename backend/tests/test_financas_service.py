@@ -154,3 +154,53 @@ def test_ceap_ordena_o_detalhe_por_ano_depois_por_valor(db, pessoa):
     db.commit()
     # Z antes de A só se a ordem for por valor (a ordem alfabética colocaria A primeiro)
     assert [d["tipo"] for d in fs.ceap_por_ano_e_tipo(db, [pessoa])["despesas"]] == ["Z", "A"]
+
+
+def test_ceap_junta_o_mesmo_cnpj_com_grafias_diferentes_num_fornecedor_so(db, pessoa):
+    inserir_fin(db, "despesa_cota", pessoa_id=pessoa, ano=2024, tipo_despesa="T", valor_liquido=1000)
+    for nome, valor in (("POSTO SOL LTDA", 300), ("POSTO SOL", 200)):
+        inserir_fin(
+            db,
+            "despesa_cota_fornecedor",
+            pessoa_id=pessoa,
+            nome=nome,
+            cnpj="02558157000162",
+            valor_total=valor,
+            notas=2,
+        )
+    inserir_fin(db, "despesa_cota_fornecedor", pessoa_id=pessoa, nome="SEM CNPJ", cnpj=None, valor_total=400, notas=1)
+    db.commit()
+    forn = fs.custos_ceap(db, [pessoa])["maiores_fornecedores"]
+    assert [(f["nome_fornecedor"], f["total_recebido"], f["num_notas"]) for f in forn] == [
+        ("POSTO SOL LTDA", 500.0, 4),  # nome de maior valor, soma e notas das duas grafias
+        ("SEM CNPJ", 400.0, 1),
+    ]
+    assert forn[0]["cnpj_cpf"] == "02.558.157/0001-62"
+
+
+def test_remuneracao_devolve_so_os_ultimos_12_meses_do_mais_recente_para_o_mais_antigo(db, pessoa):
+    for mes in range(1, 13):
+        for ano in (2023, 2024):
+            inserir_fin(db, "remuneracao", pessoa_id=pessoa, ano=ano, mes=mes, salario_bruto=1000 + mes)
+    db.commit()
+    historico = fs.remuneracao(db, [pessoa])["historico"]
+    assert len(historico) == 12
+    assert (historico[0]["ano"], historico[0]["mes"]) == (2024, 12) and (
+        historico[-1]["ano"],
+        historico[-1]["mes"],
+    ) == (
+        2024,
+        1,
+    )
+
+
+def test_resumo_das_doacoes_soma_tudo_mas_lista_so_os_cinco_maiores_com_a_participacao_de_cada_um():
+    doacoes = [
+        {"nome_doador": f"D{i}", "cpf_cnpj_doador": None, "valor_doado": float(valor), "tipo_receita": None}
+        for i, valor in enumerate((50, 20, 10, 10, 5, 3, 2))
+    ]
+    resumo = fs.resumo_das_doacoes(doacoes)
+    assert resumo["total"] == 100.0 and resumo["quantidade"] == 7
+    assert [d["nome_doador"] for d in resumo["top_5"]] == ["D0", "D1", "D2", "D3", "D4"]
+    assert resumo["top_5"][0]["percentual"] == 50.0
+    assert fs.resumo_das_doacoes([]) == {"total": 0.0, "quantidade": 0, "top_5": []}

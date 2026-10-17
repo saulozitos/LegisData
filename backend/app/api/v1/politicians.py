@@ -1128,24 +1128,14 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
 
     # K. Financiamento de Campanha (Doações Eleitorais TSE) — o CPF de doador pessoa física já vem mascarado do TSE
     doacoes_db = financas_service.doacoes_de_campanha(db, pessoas)
-    total_doado = float(sum(d["valor_doado"] for d in doacoes_db))
-    top_5_doadores = [
-        {
-            "nome_doador": d["nome_doador"],
-            "cpf_cnpj_doador": d["cpf_cnpj_doador"],
-            "valor_doado": d["valor_doado"],
-            "tipo_receita": d["tipo_receita"],
-            "percentual": _pct(d["valor_doado"], total_doado),
-        }
-        for d in doacoes_db[:5]
-    ]
+    resumo_doacoes = financas_service.resumo_das_doacoes(doacoes_db)
 
     financiamento_campanha = {
         "possui_dados": len(doacoes_db) > 0,
         "ano_eleicao": doacoes_db[0]["ano_eleicao"] if doacoes_db else None,
-        "total_arrecadado": round(total_doado, 2),
-        "total_doadores": len(doacoes_db),
-        "top_doadores": top_5_doadores,
+        "total_arrecadado": resumo_doacoes["total"],
+        "total_doadores": resumo_doacoes["quantidade"],
+        "top_doadores": resumo_doacoes["top_5"],
         "todas_doacoes": doacoes_db,
     }
 
@@ -1435,21 +1425,12 @@ def get_politician_doacoes(politician_id: str, db: Session = Depends(get_db)):
     """Retorna as doações e financiamento eleitoral de campanha (TSE)."""
     pol = _resolve_politician(db, politician_id)
     doacoes = financas_service.doacoes_de_campanha(db, _pessoas_financas(db, pol))
-    total_doado = float(sum(d["valor_doado"] for d in doacoes))
+    resumo = financas_service.resumo_das_doacoes(doacoes)
     return {
         "politico_id": str(pol.id),
         "nome": pol.electoral_name,
-        "total_arrecadado": round(total_doado, 2),
-        "total_doadores": len(doacoes),
-        "top_5": [
-            {
-                "nome_doador": d["nome_doador"],
-                "cpf_cnpj_doador": d["cpf_cnpj_doador"],
-                "valor_doado": d["valor_doado"],
-                "tipo_receita": d["tipo_receita"],
-                "percentual": _pct(d["valor_doado"], total_doado),
-            }
-            for d in doacoes[:5]
-        ],
+        "total_arrecadado": resumo["total"],
+        "total_doadores": resumo["quantidade"],
+        "top_5": resumo["top_5"],
         "doacoes": doacoes,
     }

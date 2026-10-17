@@ -24,9 +24,11 @@ from etl.pipelines.financas_loader import (
     DOACOES_ARQUIVO,
     EMENDAS_ARQUIVO,
     REMUNERACAO_ARQUIVO,
+    ler_doacoes,
     ler_emenda,
+    ler_remuneracao,
+    valores_da_ceap,
 )
-from etl.pipelines.loader_helpers import LIMITE_REMUNERACAO, LIMITE_TSE, decimal_de, inteiro_em
 from etl.utils.bootstrap import ensure_backend_on_path
 from etl.utils.datafiles import load_json
 from etl.utils.provenance import is_trusted
@@ -39,20 +41,13 @@ from sqlalchemy.engine import Connection  # noqa: E402
 CENTAVO = Decimal("0.01")
 
 
-def _soma(destino: Dict[int, Decimal], ano: Optional[int], valor: Optional[Decimal]) -> None:
-    if ano is not None and valor is not None:
-        destino[ano] += valor
-
-
 def totais_ceap_do_arquivo(ceap: Any) -> Dict[int, Decimal]:
     totais: Dict[int, Decimal] = defaultdict(Decimal)
     for dados in ceap.values() if isinstance(ceap, dict) else []:
         if not isinstance(dados, dict) or not is_trusted(dados):
             continue
-        por_ano_tipo = dados.get("por_ano_tipo")
-        for ano, tipos in (por_ano_tipo if isinstance(por_ano_tipo, dict) else {}).items():
-            for valor in (tipos if isinstance(tipos, dict) else {}).values():
-                _soma(totais, inteiro_em(ano, 1995, 2100), decimal_de(valor))
+        for (ano, _tipo), valor in valores_da_ceap(dados).items():  # a mesma regra do loader
+            totais[ano] += valor
     return totais
 
 
@@ -69,23 +64,22 @@ def totais_emendas_do_arquivo(emendas: Any) -> Dict[int, Dict[str, Decimal]]:
 
 def totais_remuneracao_do_arquivo(corpo: Any) -> Dict[int, Decimal]:
     totais: Dict[int, Decimal] = defaultdict(Decimal)
-    registros = corpo.get("registros") if isinstance(corpo, dict) else None
-    for r in registros if isinstance(registros, list) else []:
-        if not isinstance(r, dict):
-            continue
-        _soma(totais, inteiro_em(r.get("ano"), 1995, 2100), decimal_de(r.get("salario_bruto"), LIMITE_REMUNERACAO))
+    if not isinstance(corpo, dict) or not is_trusted(corpo):  # o loader pula o arquivo inteiro sem proveniência
+        return totais
+    registros = corpo.get("registros")
+    for registro in registros if isinstance(registros, list) else []:
+        lido, _motivo = ler_remuneracao(registro)  # a mesma regra do loader (inclui o mês entre 1 e 12)
+        if lido is not None:
+            totais[lido["ano"]] += lido["bruto"]
     return totais
 
 
 def totais_doacoes_do_arquivo(prestacoes: Any) -> Dict[int, Decimal]:
     totais: Dict[int, Decimal] = defaultdict(Decimal)
     for item in prestacoes if isinstance(prestacoes, list) else []:
-        if not isinstance(item, dict) or not is_trusted(item):
-            continue
-        ano = inteiro_em(item.get("ano_eleicao"), 1995, 2100)
-        doadores = item.get("doadores")
-        for doador in doadores if isinstance(doadores, list) else []:
-            _soma(totais, ano, decimal_de(doador.get("valor_doado"), LIMITE_TSE) if isinstance(doador, dict) else None)
+        ano, doadores, _motivo = ler_doacoes(item)  # a mesma regra do loader
+        if ano is not None:
+            totais[ano] += sum((d["valor"] for d in doadores), Decimal(0))
     return totais
 
 

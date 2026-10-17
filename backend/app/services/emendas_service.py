@@ -5,10 +5,10 @@ Os totais e as quebras (tipo de autor, área, ano, UF) são calculados no banco 
 detalhada é limitada. O tipo de autor e a UF de destino já vêm classificados pela carga do ETL.
 """
 
-import unicodedata
 from typing import Any, Dict, List
 
 from app.core.errors import ErroDeDominio
+from app.core.names import strip_accents
 from app.core.numeros import pct
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -106,10 +106,6 @@ _ESTADOS_MAP = {
 }
 
 
-def _strip_accents(text: str) -> str:
-    return "".join(c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn").upper()
-
-
 def _extrair_uf_bancada(nome_limpo: str) -> str:
     # do nome mais longo para o mais curto: "PARANA" e "PARAIBA" contêm "PARA", "MATO GROSSO DO SUL" contém "MATO GROSSO"
     for estado, uf in sorted(_ESTADOS_MAP.items(), key=lambda par: -len(par[0])):
@@ -143,7 +139,7 @@ def _traduzir_comissao(nome_limpo: str) -> str:
 
 def perfil_do_autor(autor_nome: str, tipo_autor: str) -> Dict[str, Any]:
     """Descrição humanizada do autor, a partir do tipo que o ETL gravou em `fin.emenda.tipo_autor`."""
-    norm = _strip_accents(autor_nome or "")
+    norm = strip_accents(autor_nome or "").upper()
     if tipo_autor == "BANCADA_ESTADUAL":
         uf = _extrair_uf_bancada(norm)
         return {

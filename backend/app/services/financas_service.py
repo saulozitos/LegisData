@@ -90,8 +90,9 @@ def custos_ceap(db: Session, pessoas: Sequence[int]) -> Optional[Dict[str, Any]]
     ).all()
     fornecedores = db.execute(
         text(
-            "SELECT nome, cnpj, sum(valor_total) AS total, sum(notas) AS notas FROM fin.despesa_cota_fornecedor "
-            "WHERE pessoa_id = ANY(:ids) GROUP BY nome, cnpj ORDER BY total DESC, nome LIMIT 10"
+            "SELECT (array_agg(nome ORDER BY valor_total DESC, nome))[1] AS nome, max(cnpj) AS cnpj, "
+            "sum(valor_total) AS total, sum(notas) AS notas FROM fin.despesa_cota_fornecedor "
+            "WHERE pessoa_id = ANY(:ids) GROUP BY coalesce(cnpj, nome) ORDER BY total DESC, nome LIMIT 10"
         ),
         {"ids": ids},
     ).all()
@@ -381,6 +382,25 @@ def doacoes_de_campanha(db: Session, pessoas: Sequence[int]) -> List[Dict[str, A
         }
         for r in linhas
     ]
+
+
+def resumo_das_doacoes(doacoes: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    """Total, quantidade e os 5 maiores doadores (com a participação de cada um) de uma lista já ordenada por valor."""
+    total = float(sum(d["valor_doado"] for d in doacoes))
+    return {
+        "total": round(total, 2),
+        "quantidade": len(doacoes),
+        "top_5": [
+            {
+                "nome_doador": d["nome_doador"],
+                "cpf_cnpj_doador": d["cpf_cnpj_doador"],
+                "valor_doado": d["valor_doado"],
+                "tipo_receita": d["tipo_receita"],
+                "percentual": _pct(d["valor_doado"], total),
+            }
+            for d in doacoes[:5]
+        ],
+    }
 
 
 @dataclass(frozen=True)

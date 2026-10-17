@@ -21,6 +21,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from etl.config import PROCESSED_DATA_DIR
 from etl.pipelines.loader_helpers import (
+    ANO_MAXIMO,
+    ANO_MINIMO,
     LIMITE_EMENDA,
     LIMITE_REMUNERACAO,
     LIMITE_TSE,
@@ -32,6 +34,7 @@ from etl.pipelines.loader_helpers import (
     nome_do_fornecedor,
     nome_sem_cpf,
     texto,
+    texto_sem_cpf,
     tipo_do_autor,
     uf_da_localidade,
 )
@@ -74,6 +77,8 @@ _CONTAGENS = {
     "fin.declaracao_patrimonio": "SELECT count(*) FROM fin.declaracao_patrimonio",
     "fin.doacao_campanha": "SELECT count(*) FROM fin.doacao_campanha",
     "fin.certidao": "SELECT count(*) FROM fin.certidao",
+    "fin.despesa_cota_fornecedor": "SELECT count(*) FROM fin.despesa_cota_fornecedor",
+    "fin.despesa_cota_resumo": "SELECT count(*) FROM fin.despesa_cota_resumo",
 }
 
 
@@ -119,6 +124,20 @@ def _inserir(conn: Connection, sql: str, linhas: List[Dict[str, Any]]) -> None:
 
 
 # ── CEAP ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
+def valores_da_ceap(dados: Dict[str, Any]) -> Dict[Tuple[int, str], Decimal]:
+    """Total por (ano, tipo de despesa) de um parlamentar do arquivo. A reconciliação usa a mesma regra do loader."""
+    totais: Dict[Tuple[int, str], Decimal] = defaultdict(Decimal)
+    por_ano_tipo = dados.get("por_ano_tipo")
+    for ano, tipos in (por_ano_tipo if isinstance(por_ano_tipo, dict) else {}).items():
+        ano_ok = inteiro_em(ano, ANO_MINIMO, ANO_MAXIMO)
+        for tipo, valor in (tipos if isinstance(tipos, dict) else {}).items():
+            valor_dec = decimal_de(valor)
+            nome_tipo = texto(tipo)
+            if ano_ok is not None and valor_dec is not None and nome_tipo:
+                totais[(ano_ok, nome_tipo)] += valor_dec
+    return totais
+
+
 def linhas_da_ceap(
     ceap: Dict[str, Any], resolvedor: ResolvedorDePessoas, fontes: Dict[str, int]
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, int]]:
@@ -151,17 +170,9 @@ def linhas_da_ceap(
         # a origem é o identificador que o registro carrega (nenhum registro do arquivo traz os dois)
         fonte_id = fontes[FONTE_CEAP_CAMARA if dados.get("camara_id") else FONTE_CEAP_SENADO]
         contagem["parlamentares"] += 1
-        totais: Dict[Tuple[int, str], Decimal] = defaultdict(Decimal)
-        for ano, tipos in por_ano_tipo.items():
-            ano_ok = inteiro_em(ano, 1995, 2100)
-            for tipo, valor in (tipos if isinstance(tipos, dict) else {}).items():
-                valor_dec = decimal_de(valor)
-                nome_tipo = texto(tipo)
-                if ano_ok is not None and valor_dec is not None and nome_tipo:
-                    totais[(ano_ok, nome_tipo)] += valor_dec
         despesas += [
             {"p": pessoa, "ano": ano, "tipo": tipo, "valor": valor, "f": fonte_id}
-            for (ano, tipo), valor in totais.items()
+            for (ano, tipo), valor in valores_da_ceap(dados).items()
         ]
         agrupados: Dict[Tuple[str, Optional[str]], List[Any]] = {}  # chave -> [valor, notas, nome, maior valor, cnpj]
         lista_fornecedores = dados.get("fornecedores")
@@ -184,9 +195,18 @@ def linhas_da_ceap(
             for valor, notas, nome, _maior, cnpj in agrupados.values()
         ]
         notas = inteiro(dados.get("total_notas"))
-        if notas is not None and notas >= 0:  # quantidade desconhecida não vira zero: sem linha de resumo
-            resumos.append({"p": pessoa, "notas": notas, "f": fonte_id})
+        # quantidade desconhecida não vira zero: a linha com `notas` None só marca a pessoa para `_resumos_completos`
+        resumos.append({"p": pessoa, "notas": notas if notas is not None and notas >= 0 else None, "f": fonte_id})
     return despesas, fornecedores, resumos, contagem
+
+
+def _resumos_completos(resumos: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Resumos de quem tem a quantidade de notas conhecida em TODAS as entradas (Câmara e Senado) que somaram gasto. Uma
+    contagem parcial ao lado do gasto completo enganaria, então a pessoa fica sem resumo. Devolve também quantas ficaram.
+    """
+    incompletas = {r["p"] for r in resumos if r["notas"] is None}
+    return [r for r in resumos if r["p"] not in incompletas and r["notas"] is not None], len(incompletas)
 
 
 def carregar_ceap(conn: Connection, processed_dir: Path) -> Dict[str, int]:
@@ -201,13 +221,17 @@ def carregar_ceap(conn: Connection, processed_dir: Path) -> Dict[str, int]:
     # deixa uma linha por chave em cada tabela e a guarda de encolhimento olha o tamanho final.
     despesas, repetidas = _somar(despesas, ("p", "ano", "tipo"), ("valor",))
     fornecedores, _ = _somar(fornecedores, ("p", "nome", "cnpj"), ("valor", "notas"))
-    resumos, _ = _somar(resumos, ("p",), ("notas",))
+    completos, resumo_incompleto = _resumos_completos(resumos)
+    resumos, _ = _somar(completos, ("p",), ("notas",))
     if repetidas:
         logger.warning(
             "CEAP: %d linhas repetidas na mesma fonte (variantes do nome); ficou a de maior valor.", repetidas
         )
     contagem["mesma_fonte_repetida"] = repetidas
+    contagem["resumo_incompleto"] = resumo_incompleto
     _protege_contra_encolhimento(conn, "fin.despesa_cota", len(despesas))
+    _protege_contra_encolhimento(conn, "fin.despesa_cota_fornecedor", len(fornecedores))
+    _protege_contra_encolhimento(conn, "fin.despesa_cota_resumo", len(resumos))
     conn.execute(text("DELETE FROM fin.despesa_cota"))
     conn.execute(text("DELETE FROM fin.despesa_cota_fornecedor"))
     conn.execute(text("DELETE FROM fin.despesa_cota_resumo"))
@@ -281,7 +305,7 @@ def ler_emenda(emenda: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """
     if not isinstance(emenda, dict) or not is_trusted(emenda):
         return None, "sem_proveniencia"
-    ano = inteiro_em(emenda.get("ano"), 1995, 2100)
+    ano = inteiro_em(emenda.get("ano"), ANO_MINIMO, ANO_MAXIMO)
     tipo_emenda, autor = texto(emenda.get("tipo_emenda")), texto(emenda.get("politician_name"))
     local = texto(emenda.get("localidade_destino"))
     empenhado = decimal_de(emenda.get("valor_empenhado"), LIMITE_EMENDA)
@@ -370,33 +394,45 @@ def carregar_emendas(conn: Connection, processed_dir: Path) -> Dict[str, int]:
 
 
 # ── Remuneração ──────────────────────────────────────────────────────────────────────────────────────────────────────
+def ler_remuneracao(registro: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Campos de um mês de remuneração, ou (None, "invalidas"). Regra única de elegibilidade (loader e reconciliação)."""
+    if not isinstance(registro, dict):
+        return None, "invalidas"
+    ano, mes = inteiro_em(registro.get("ano"), ANO_MINIMO, ANO_MAXIMO), inteiro_em(registro.get("mes"), 1, 12)
+    bruto = decimal_de(registro.get("salario_bruto"), LIMITE_REMUNERACAO)
+    if ano is None or mes is None or bruto is None:
+        return None, "invalidas"
+    return {
+        "ano": ano,
+        "mes": mes,
+        "bruto": bruto,
+        "liquido": decimal_de(registro.get("salario_liquido"), LIMITE_REMUNERACAO),
+    }, None
+
+
 def linhas_da_remuneracao(
     corpo: Dict[str, Any], resolvedor: ResolvedorDePessoas, fonte_id: int
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
-    contagem = {"sem_pessoa": 0, "invalidas": 0}
+    contagem = {"sem_pessoa": 0, "invalidas": 0, "repetidas": 0}
     unicas: Dict[Tuple[int, int, int], Dict[str, Any]] = {}
     registros = corpo.get("registros")
     for registro in registros if isinstance(registros, list) else []:
-        if not isinstance(registro, dict):
-            contagem["invalidas"] += 1
-            continue
-        ano, mes = inteiro_em(registro.get("ano"), 1995, 2100), inteiro_em(registro.get("mes"), 1, 12)
-        bruto = decimal_de(registro.get("salario_bruto"), LIMITE_REMUNERACAO)
-        if ano is None or mes is None or bruto is None:
-            contagem["invalidas"] += 1
+        lido, motivo = ler_remuneracao(registro)
+        if lido is None:
+            contagem[str(motivo)] += 1
             continue
         pessoa = resolvedor.por_identificador(camara_id=registro.get("camara_id"))
         if pessoa is None:
             contagem["sem_pessoa"] += 1
             continue
-        unicas[(pessoa, ano, mes)] = {
-            "p": pessoa,
-            "ano": ano,
-            "mes": mes,
-            "bruto": bruto,
-            "liquido": decimal_de(registro.get("salario_liquido"), LIMITE_REMUNERACAO),
-            "f": fonte_id,
-        }
+        chave = (pessoa, lido["ano"], lido["mes"])
+        linha = {"p": pessoa, **lido, "f": fonte_id}
+        anterior = unicas.get(chave)
+        if anterior is not None:  # duas folhas no mesmo mês: vale a de maior bruto, não a última do arquivo
+            contagem["repetidas"] += 1
+            if anterior["bruto"] >= linha["bruto"]:
+                continue
+        unicas[chave] = linha
     return list(unicas.values()), contagem
 
 
@@ -422,20 +458,17 @@ def carregar_remuneracao(conn: Connection, processed_dir: Path) -> Dict[str, int
 
 
 # ── TSE: patrimônio, doações e certidões ─────────────────────────────────────────────────────────────────────────────
-def carregar_patrimonio(conn: Connection, processed_dir: Path) -> Dict[str, int]:
-    declaracoes = _arquivo(processed_dir, PATRIMONIO_ARQUIVO)
-    if not isinstance(declaracoes, list):
-        return {"arquivo_ausente": 1}
-    resolvedor, fonte_id = ResolvedorDePessoas(conn), _fontes(conn)[FONTE_TSE]
+def linhas_do_patrimonio(
+    declaracoes: List[Any], resolvedor: ResolvedorDePessoas, fonte_id: int
+) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    contagem = {"sem_pessoa": 0, "sem_proveniencia": 0, "invalidas": 0, "repetidas": 0}
     unicas: Dict[Tuple[int, int], Dict[str, Any]] = {}
-    contagem = {"sem_pessoa": 0, "sem_proveniencia": 0, "invalidas": 0}
     for item in declaracoes:
         if not isinstance(item, dict) or not is_trusted(item):
             contagem["sem_proveniencia"] += 1
             continue
-        ano, valor = inteiro_em(item.get("ano_eleicao"), 1995, 2100), decimal_de(
-            item.get("valor_declarado_brl"), LIMITE_TSE
-        )
+        ano = inteiro_em(item.get("ano_eleicao"), ANO_MINIMO, ANO_MAXIMO)
+        valor = decimal_de(item.get("valor_declarado_brl"), LIMITE_TSE)
         if ano is None or valor is None:
             contagem["invalidas"] += 1
             continue
@@ -444,63 +477,84 @@ def carregar_patrimonio(conn: Connection, processed_dir: Path) -> Dict[str, int]
             contagem["sem_pessoa"] += 1
             continue
         quantidade = inteiro(item.get("quantidade_bens"))
-        unicas[(pessoa, ano)] = {
+        linha = {
             "p": pessoa,
             "ano": ano,
             "valor": valor,
             "qtd": quantidade if quantidade is not None and quantidade >= 0 else None,
-            "det": texto(item.get("detalhes_bens")),
+            "det": texto_sem_cpf(item.get("detalhes_bens")),
             "f": fonte_id,
         }
-    if not unicas:
+        anterior = unicas.get((pessoa, ano))
+        if anterior is not None:  # duas declarações do mesmo ano: vale a de maior valor, não a última do arquivo
+            contagem["repetidas"] += 1
+            if anterior["valor"] >= valor:
+                continue
+        unicas[(pessoa, ano)] = linha
+    return list(unicas.values()), contagem
+
+
+def carregar_patrimonio(conn: Connection, processed_dir: Path) -> Dict[str, int]:
+    declaracoes = _arquivo(processed_dir, PATRIMONIO_ARQUIVO)
+    if not isinstance(declaracoes, list):
+        return {"arquivo_ausente": 1}
+    linhas, contagem = linhas_do_patrimonio(declaracoes, ResolvedorDePessoas(conn), _fontes(conn)[FONTE_TSE])
+    if not linhas:
         logger.warning("Patrimônio sem nenhum registro utilizável (%s); o banco não foi alterado.", contagem)
         return {**contagem, "declaracoes": 0}
-    _protege_contra_encolhimento(conn, "fin.declaracao_patrimonio", len(unicas))
+    _protege_contra_encolhimento(conn, "fin.declaracao_patrimonio", len(linhas))
     conn.execute(text("DELETE FROM fin.declaracao_patrimonio"))
     _inserir(
         conn,
         "INSERT INTO fin.declaracao_patrimonio (pessoa_id, ano_eleicao, valor_declarado, quantidade_bens, detalhes, "
         "fonte_id) VALUES (:p, :ano, :valor, :qtd, :det, :f)",
-        list(unicas.values()),
+        linhas,
     )
-    return {**contagem, "declaracoes": len(unicas)}
+    return {**contagem, "declaracoes": len(linhas)}
 
 
-def carregar_doacoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
-    prestacoes = _arquivo(processed_dir, DOACOES_ARQUIVO)
-    if not isinstance(prestacoes, list):
-        return {"arquivo_ausente": 1}
-    resolvedor, fonte_id = ResolvedorDePessoas(conn), _fontes(conn)[FONTE_TSE]
+def ler_doacoes(item: Any) -> Tuple[Optional[int], List[Dict[str, Any]], Optional[str]]:
+    """
+    (ano, linhas de doador, motivo) de uma prestação do arquivo. Sem ano ou sem lista de doadores o motivo é "invalidas";
+    sem proveniência, "sem_proveniencia". Regra única de elegibilidade (loader e reconciliação).
+    """
+    if not isinstance(item, dict) or not is_trusted(item):
+        return None, [], "sem_proveniencia"
+    ano = inteiro_em(item.get("ano_eleicao"), ANO_MINIMO, ANO_MAXIMO)
+    if ano is None or not isinstance(item.get("doadores"), list):
+        return None, [], "invalidas"
+    linhas = []
+    for doador in item["doadores"]:
+        valor = decimal_de(doador.get("valor_doado"), LIMITE_TSE) if isinstance(doador, dict) else None
+        if valor is None:
+            continue
+        linhas.append(
+            {
+                "ano": ano,
+                "nome": nome_sem_cpf(doador.get("nome_doador")) or "Doador não identificado",
+                "doc": documento_do_doador(doador.get("cpf_cnpj_doador")),
+                "valor": valor,
+                "tipo": texto(doador.get("tipo_receita")),
+            }
+        )
+    return ano, linhas, None
+
+
+def linhas_das_doacoes(
+    prestacoes: List[Any], resolvedor: ResolvedorDePessoas, fonte_id: int
+) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     por_prestacao: Dict[Tuple[int, int], List[Dict[str, Any]]] = {}
     contagem = {"sem_pessoa": 0, "sem_proveniencia": 0, "invalidas": 0, "prestacao_descartada": 0}
     for item in prestacoes:
-        if not isinstance(item, dict) or not is_trusted(item):
-            contagem["sem_proveniencia"] += 1
-            continue
-        ano = inteiro_em(item.get("ano_eleicao"), 1995, 2100)
-        if ano is None or not isinstance(item.get("doadores"), list):
-            contagem["invalidas"] += 1
+        ano, doadores, motivo = ler_doacoes(item)
+        if ano is None:
+            contagem[str(motivo)] += 1
             continue
         pessoa = resolvedor.resolver(item).pessoa_id
         if pessoa is None:
             contagem["sem_pessoa"] += 1
             continue
-        linhas = []
-        for doador in item["doadores"]:
-            valor = decimal_de(doador.get("valor_doado"), LIMITE_TSE) if isinstance(doador, dict) else None
-            if valor is None:
-                continue
-            linhas.append(
-                {
-                    "p": pessoa,
-                    "ano": ano,
-                    "nome": nome_sem_cpf(doador.get("nome_doador")) or "Doador não identificado",
-                    "doc": documento_do_doador(doador.get("cpf_cnpj_doador")),
-                    "valor": valor,
-                    "tipo": texto(doador.get("tipo_receita")),
-                    "f": fonte_id,
-                }
-            )
+        linhas = [{"p": pessoa, "f": fonte_id, **doador} for doador in doadores]
         anteriores = por_prestacao.get((pessoa, ano))
         if anteriores is None:
             por_prestacao[(pessoa, ano)] = linhas
@@ -509,28 +563,34 @@ def carregar_doacoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
         contagem["prestacao_descartada"] += 1
         if (len(linhas), sum(x["valor"] for x in linhas)) > (len(anteriores), sum(x["valor"] for x in anteriores)):
             por_prestacao[(pessoa, ano)] = linhas
-    linhas_todas = [linha for linhas in por_prestacao.values() for linha in linhas]
-    if not linhas_todas:
+    contagem["prestacoes"] = len(por_prestacao)
+    return [linha for linhas in por_prestacao.values() for linha in linhas], contagem
+
+
+def carregar_doacoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
+    prestacoes = _arquivo(processed_dir, DOACOES_ARQUIVO)
+    if not isinstance(prestacoes, list):
+        return {"arquivo_ausente": 1}
+    linhas, contagem = linhas_das_doacoes(prestacoes, ResolvedorDePessoas(conn), _fontes(conn)[FONTE_TSE])
+    if not linhas:
         logger.warning("Doações sem nenhuma linha utilizável (%s); o banco não foi alterado.", contagem)
         return {**contagem, "linhas": 0}
-    _protege_contra_encolhimento(conn, "fin.doacao_campanha", len(linhas_todas))
+    _protege_contra_encolhimento(conn, "fin.doacao_campanha", len(linhas))
     conn.execute(text("DELETE FROM fin.doacao_campanha"))
     _inserir(
         conn,
         "INSERT INTO fin.doacao_campanha (pessoa_id, ano_eleicao, doador_nome, doador_documento, valor, tipo_receita, "
         "fonte_id) VALUES (:p, :ano, :nome, :doc, :valor, :tipo, :f)",
-        linhas_todas,
+        linhas,
     )
-    return {**contagem, "prestacoes": len(por_prestacao), "linhas": len(linhas_todas)}
+    return {**contagem, "linhas": len(linhas)}
 
 
-def carregar_certidoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
-    ocorrencias = _arquivo(processed_dir, CERTIDOES_ARQUIVO)
-    if not isinstance(ocorrencias, list):
-        return {"arquivo_ausente": 1}
-    resolvedor, fonte_id = ResolvedorDePessoas(conn), _fontes(conn)[FONTE_TSE]
+def linhas_das_certidoes(
+    ocorrencias: List[Any], resolvedor: ResolvedorDePessoas, fonte_id: int
+) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    contagem = {"sem_pessoa": 0, "sem_proveniencia": 0, "invalidas": 0, "repetidas": 0}
     unicas: Dict[Tuple[int, str, str], Dict[str, Any]] = {}
-    contagem = {"sem_pessoa": 0, "sem_proveniencia": 0, "invalidas": 0}
     for item in ocorrencias:
         if not isinstance(item, dict) or not is_trusted(item):
             contagem["sem_proveniencia"] += 1
@@ -547,27 +607,41 @@ def carregar_certidoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
         if pessoa is None:
             contagem["sem_pessoa"] += 1
             continue
-        unicas[(pessoa, orgao, tipo)] = {
+        linha = {
             "p": pessoa,
             "orgao": orgao,
             "tipo": tipo,
             "situacao": situacao,
-            "det": texto(item.get("detalhes")),
+            "det": texto_sem_cpf(item.get("detalhes")),
             "proc": texto(item.get("numero_processo")),
             "f": fonte_id,
         }
-    if not unicas:
+        anterior = unicas.get((pessoa, orgao, tipo))
+        if anterior is not None:  # mesma (pessoa, órgão, tipo): critério fixo, não a ordem do arquivo
+            contagem["repetidas"] += 1
+            if (anterior["situacao"], anterior["det"] or "") >= (situacao, linha["det"] or ""):
+                continue
+        unicas[(pessoa, orgao, tipo)] = linha
+    return list(unicas.values()), contagem
+
+
+def carregar_certidoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
+    ocorrencias = _arquivo(processed_dir, CERTIDOES_ARQUIVO)
+    if not isinstance(ocorrencias, list):
+        return {"arquivo_ausente": 1}
+    linhas, contagem = linhas_das_certidoes(ocorrencias, ResolvedorDePessoas(conn), _fontes(conn)[FONTE_TSE])
+    if not linhas:
         logger.warning("Certidões sem nenhum registro utilizável (%s); o banco não foi alterado.", contagem)
         return {**contagem, "certidoes": 0}
-    _protege_contra_encolhimento(conn, "fin.certidao", len(unicas))
+    _protege_contra_encolhimento(conn, "fin.certidao", len(linhas))
     conn.execute(text("DELETE FROM fin.certidao"))
     _inserir(
         conn,
         "INSERT INTO fin.certidao (pessoa_id, orgao, tipo, situacao, detalhes, numero_processo, fonte_id) "
         "VALUES (:p, :orgao, :tipo, :situacao, :det, :proc, :f)",
-        list(unicas.values()),
+        linhas,
     )
-    return {**contagem, "certidoes": len(unicas)}
+    return {**contagem, "certidoes": len(linhas)}
 
 
 CARGAS: Tuple[Tuple[str, Callable[[Connection, Path], Dict[str, int]]], ...] = (

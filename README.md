@@ -246,7 +246,7 @@ Você também pode executar as validações de forma granular:
 | `GET` | `/api/v1/politicians` | Listagem e busca de políticos (filtro por mandato presidencial `mandate_id`, cargo, partido, UF) |
 | `GET` | `/api/v1/politicians/{id}` | Dossiê completo: perfil, Basômetro real, relevância legislativa e assiduidade |
 | `GET` | `/api/v1/politicians/{id}/doacoes` | Prestações de contas eleitorais e Top Doadores oficiais (TSE) |
-| `GET` | `/api/v1/politicians/{id}/ceap` | Cota parlamentar: despesas por categoria e fornecedores contratados |
+| `GET` | `/api/v1/politicians/{id}/ceap` | Cota parlamentar: totais por ano e tipo de despesa (sem a lista nota a nota) |
 | `GET` | `/api/v1/politicians/{id}/emendas` | Emendas parlamentares individuais vinculadas |
 | `GET` | `/api/v1/politicians/{id}/certidoes` | Certidões judiciais cíveis e criminais enriquecidas via DataJud / CNJ |
 | `GET` | `/api/v1/emendas/resumo` | Visão macro das emendas: totais pagos/empenhados, divisão por tipo de autor e áreas |

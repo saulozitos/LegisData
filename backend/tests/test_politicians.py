@@ -10,6 +10,7 @@ from app.models import (
     ProcessoJudicial,
     TipoPresencaEnum,
 )
+from app.services import financas_service
 from sqlalchemy import text
 
 from .conftest import criar_mandato_presidencial, fonte_id, inserir_fin, pessoa_do
@@ -383,6 +384,19 @@ def test_certidoes_with_real_values_are_passed_through(client, db, seed):
 
 
 def test_remuneration_summary_uses_latest_year_with_data(client, db, seed):
+    inserir_fin(  # um ano anterior com valores bem diferentes: não pode entrar nos totais do ano de referência
+        db,
+        "remuneracao",
+        pessoa_id=pessoa_do(db, seed.fulano),
+        ano=2023,
+        mes=12,
+        salario_bruto=1000,
+        salario_liquido=900,
+        cota_ceap=7000,
+        auxilio_moradia=111,
+        outros_beneficios=222,
+        fonte_id=fonte_id(db, "CAMARA_PORTAL"),
+    )
     for month, ceap in ((1, 100), (2, 300)):
         inserir_fin(
             db,
@@ -403,6 +417,9 @@ def test_remuneration_summary_uses_latest_year_with_data(client, db, seed):
     assert summary["salario_bruto_atual"] == 40000.0
     assert summary["media_ceap_mensal"] == 200.0
     assert summary["total_ceap_2023"] == 400.0 and summary["total_beneficios_2023"] == 30.0
+    assert summary["total_bruto_2023"] == 80000.0  # só 2024; os 1.000 de 2023 ficam de fora
+    acumulado = financas_service.remuneracao(db, [pessoa_do(db, seed.fulano)])["acumulado"]
+    assert acumulado == 81000.0  # o acumulado, sim, soma todos os anos
 
 
 def test_attendance_rate_is_computed_from_real_records(client, db, seed):

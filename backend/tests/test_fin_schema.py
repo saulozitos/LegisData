@@ -36,7 +36,9 @@ def test_cnpj_do_fornecedor_exige_14_digitos(db, pessoa):
     colunas = dict(pessoa_id=pessoa, nome="X", valor_total=1, notas=1)
     inserir_fin(db, "despesa_cota_fornecedor", cnpj="02558157000162", **colunas)
     _viola(
-        db, lambda: inserir_fin(db, "despesa_cota_fornecedor", cnpj="12345678901", **{**colunas, "nome": "Y"}), "cnpj"
+        db,
+        lambda: inserir_fin(db, "despesa_cota_fornecedor", cnpj="12345678901", **{**colunas, "nome": "Y"}),
+        "despesa_cota_fornecedor_cnpj_check",
     )
 
 
@@ -51,7 +53,7 @@ def test_cnpj_do_fornecedor_exige_14_digitos(db, pessoa):
         ("123.456.789-01", False),
         ("123456789**", False),
         ("***.060.603-12", False),
-        ("6507955124", False),
+        ("9876543200", False),
     ],
 )
 def test_documento_do_doador_so_aceita_cnpj_ou_mascara_de_cpf(db, pessoa, documento, aceito):
@@ -163,7 +165,7 @@ def test_ano_minimo_de_emenda_doacao_e_patrimonio(db, pessoa):
 
 
 def test_uf_da_emenda_tem_de_existir_em_ref_uf(db):
-    _viola(db, lambda: _emenda(db, uf="XX"), "fk|foreign key|violates")
+    _viola(db, lambda: _emenda(db, uf="XX"), "emenda_uf_fkey")
     _emenda(db, uf="SP")
 
 

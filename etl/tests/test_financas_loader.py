@@ -2,6 +2,7 @@
 
 import json
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import text
@@ -14,6 +15,7 @@ from etl.pipelines.loader_helpers import (
     documento_do_doador,
     nome_do_fornecedor,
     nome_sem_cpf,
+    texto_sem_cpf,
     tipo_do_autor,
     uf_da_localidade,
 )
@@ -25,19 +27,19 @@ from etl.pipelines.pessoa_resolver import ResolvedorDePessoas
 def test_cnpj_do_fornecedor_so_aceita_14_digitos_e_nunca_cpf():
     assert cnpj_do_fornecedor("27.456.163/0001-30") == "27456163000130"
     assert cnpj_do_fornecedor("274.561.630/0013-0") == "27456163000130"  # formatação torta da fonte
-    assert cnpj_do_fornecedor("065.079.551-24") is None  # CPF: D3
+    assert cnpj_do_fornecedor("098.765.432-00") is None  # CPF: D3
     assert cnpj_do_fornecedor("000.000.000/0000-1") is None  # enchimento de "CELULAR FUNCIONAL"
     assert cnpj_do_fornecedor("123") is None and cnpj_do_fornecedor(None) is None
 
 
 def test_nome_do_fornecedor_tira_cpf_embutido_e_nunca_devolve_vazio():
-    assert nome_do_fornecedor("BRUNO DE SOUZA 06507955124") == "BRUNO DE SOUZA"
+    assert nome_do_fornecedor("BRUNO DE SOUZA 09876543200") == "BRUNO DE SOUZA"
     assert nome_do_fornecedor("EMPRESA 123 LTDA") == "EMPRESA 123 LTDA"  # número curto não é CPF
-    assert nome_do_fornecedor("06507955124") == "Fornecedor não identificado"
+    assert nome_do_fornecedor("09876543200") == "Fornecedor não identificado"
     # CPF com pontuação ou espaços também sai (decisão D3)
-    assert nome_do_fornecedor("JOAO 061.507.955-12") == "JOAO"
-    assert nome_do_fornecedor("MEI 061 507 955 12") == "MEI"
-    assert nome_do_fornecedor("MEI 061.507.95512 ME") == "MEI ME"
+    assert nome_do_fornecedor("JOAO 012.345.678-00") == "JOAO"
+    assert nome_do_fornecedor("MEI 012 345 678 00") == "MEI"
+    assert nome_do_fornecedor("MEI 012.345.67800 ME") == "MEI ME"
     assert nome_do_fornecedor("EMPRESA 12.345.678/0001-95") == "EMPRESA 12.345.678/0001-95"  # CNPJ não é CPF
     assert nome_do_fornecedor(None) == "Fornecedor não identificado"
 
@@ -45,11 +47,11 @@ def test_nome_do_fornecedor_tira_cpf_embutido_e_nunca_devolve_vazio():
 @pytest.mark.parametrize(
     "nome",
     [
-        "MEI 6507955124",  # CPF que perdeu o zero à esquerda
-        "MEI 065-079-551-24",
-        "MEI 065/079/551-24",
-        "MEI 065_079_551_24",
-        "MEI 065,079,551-24",
+        "MEI 9876543200",  # CPF que perdeu o zero à esquerda
+        "MEI 098-765-432-00",
+        "MEI 098/765/432-00",
+        "MEI 098_765_432_00",
+        "MEI 098,765,432-00",
     ],
 )
 def test_nome_do_fornecedor_tira_cpf_com_qualquer_separador(nome):
@@ -60,11 +62,11 @@ def test_nome_do_fornecedor_tira_cpf_com_qualquer_separador(nome):
 def test_nome_do_fornecedor_preserva_cnpj_e_anos_no_nome():
     assert nome_do_fornecedor("LOJA 2020 2021 2022") == "LOJA 2020 2021 2022"
     assert nome_do_fornecedor("X 12345678901234") == "X 12345678901234"
-    assert nome_do_fornecedor("A 12.345.678/0001-95 MEI 065.079.551-24") == "A 12.345.678/0001-95 MEI"
+    assert nome_do_fornecedor("A 12.345.678/0001-95 MEI 098.765.432-00") == "A 12.345.678/0001-95 MEI"
 
 
 def test_nome_sem_cpf_devolve_none_quando_so_havia_cpf():
-    assert nome_sem_cpf("065.079.551-24") is None and nome_sem_cpf("Maria 06507955124") == "Maria"
+    assert nome_sem_cpf("098.765.432-00") is None and nome_sem_cpf("Maria 09876543200") == "Maria"
     assert nome_sem_cpf(None) is None
 
 
@@ -75,7 +77,7 @@ def test_documento_do_doador_mascara_cpf_completo_e_preserva_cnpj_e_mascara_da_f
     assert documento_do_doador("00.887.169/0001-05") == "00.887.169/0001-05"
     assert documento_do_doador("  ") is None
     # formatos fora do padrão nunca passam crus: CPF que perdeu o zero é mascarado, máscara parcial e lixo viram None
-    assert documento_do_doador("6507955124") == "***.079.551-**"
+    assert documento_do_doador("9876543200") == "***.765.432-**"
     assert documento_do_doador("123456789**") is None
     assert documento_do_doador("***.060.603-12") is None
     assert documento_do_doador("12345") is None
@@ -86,7 +88,7 @@ def test_documento_do_doador_mascara_cpf_completo_e_preserva_cnpj_e_mascara_da_f
         "12345678/0001-95",
         "12.345.678/000195",
         "00 887 169/0001-05",
-        "٠٦٥٠٧٩٥٥١٢٤",
+        "٠٩٨٧٦٥٤٣٢٠٠",
     ):
         assert documento_do_doador(estranho) is None
 
@@ -222,7 +224,7 @@ def _ceap(**mudancas):
         por_ano_tipo={"2023": {"TELEFONIA": 100.5, "PASSAGEM": 200.0}, "2024": {"TELEFONIA": 50.0}},
         fornecedores={
             "VIVO": {"nome": "VIVO", "cnpj_cpf": "02.558.157/0001-62", "total": 150.5, "notas": 3},
-            "MEI 06507955124": {"nome": "MEI 06507955124", "cnpj_cpf": "065.079.551-24", "total": 10.0, "notas": 1},
+            "MEI 09876543200": {"nome": "MEI 09876543200", "cnpj_cpf": "098.765.432-00", "total": 10.0, "notas": 1},
         },
     )
     return {**base, **mudancas}
@@ -614,7 +616,7 @@ def test_doacoes_no_empate_de_linhas_vale_a_prestacao_de_maior_valor(pg_engine, 
 
 
 def test_doador_com_cpf_no_nome_nao_grava_o_cpf(pg_engine, banco, tmp_path):
-    doadores = [{"nome_doador": "MEI JOAO 061.507.955-12", "cpf_cnpj_doador": "123456789**", "valor_doado": 5}]
+    doadores = [{"nome_doador": "MEI JOAO 012.345.678-00", "cpf_cnpj_doador": "123456789**", "valor_doado": 5}]
     _gravar(tmp_path, fin.DOACOES_ARQUIVO, [_oficial(camara_id=100, ano_eleicao=2022, doadores=doadores)])
     with pg_engine.begin() as conn:
         fin.carregar_doacoes(conn, tmp_path)
@@ -962,11 +964,11 @@ def test_valor_pago_zero_e_total_de_notas_zero_sao_dados_validos_e_entram(pg_eng
 @pytest.mark.parametrize(
     "nome",
     [
-        "JOAO 061.507.955 - 12",  # separador com espaços dos dois lados
-        "JOAO 061 . 507 . 955 - 12",
-        "JOAO ٠٦٥٠٧٩٥٥١٢٤",  # dígitos árabes-índicos
-        "JOAO ０６５０７９５５１２４",  # largura total
-        "JOAO 6507955124",
+        "JOAO 012.345.678 - 00",  # separador com espaços dos dois lados
+        "JOAO 012 . 345 . 678 - 00",
+        "JOAO ٠٩٨٧٦٥٤٣٢٠٠",  # dígitos árabes-índicos
+        "JOAO ０９８７６５４３２００",  # largura total
+        "JOAO 9876543200",
     ],
 )
 def test_cpf_nao_sobrevive_em_nenhuma_grafia_do_nome(nome):
@@ -1160,3 +1162,156 @@ def test_toda_uf_do_etl_existe_em_ref_uf(pg_engine):
     with pg_engine.connect() as conn:
         siglas = set(conn.execute(text("SELECT sigla FROM ref.uf")).scalars())
     assert set(UF_POR_NOME.values()) <= siglas
+
+
+# ── revisão final: texto livre sem CPF, resumo parcial, repetidas, guarda nas tabelas-irmãs da CEAP ─────────────────
+
+
+class _SempreAPessoa:
+    """Resolvedor sem banco: todo registro é da pessoa 1."""
+
+    def resolver(self, item, ano=None):
+        return SimpleNamespace(pessoa_id=1)
+
+    def por_identificador(self, camara_id=None, senado_id=None):
+        return 1
+
+
+def test_texto_livre_perde_o_cpf_mas_mantem_valores_em_reais_e_cnpj():
+    assert texto_sem_cpf("Credito a Fulano 012.345.678-00 de R$ 5.000,00") == "Credito a Fulano de R$ 5.000,00"
+    assert texto_sem_cpf("CPF 09876543200 ok") == "CPF ok"
+    assert texto_sem_cpf("Casa avaliada em R$ 1.234.567,89") == "Casa avaliada em R$ 1.234.567,89"
+    assert texto_sem_cpf("Apartamento R$ 12345678900") == "Apartamento R$ 12345678900"  # valor, não documento
+    assert texto_sem_cpf("Empresa 12.345.678/0001-95") == "Empresa 12.345.678/0001-95"
+    assert texto_sem_cpf("٠١٢٣٤٥٦٧٨٠٠ fim") == "fim"  # dígitos árabe-índicos
+    assert texto_sem_cpf("   ") is None and texto_sem_cpf(None) is None and texto_sem_cpf("09876543200") is None
+
+
+def test_detalhes_de_patrimonio_e_certidao_nao_levam_cpf_para_o_banco():
+    patrimonio, _ = fin.linhas_do_patrimonio(
+        [_oficial(camara_id=1, ano_eleicao=2022, valor_declarado_brl=10, detalhes_bens="Credito de 012.345.678-00")],
+        _SempreAPessoa(),
+        1,
+    )
+    certidoes, _ = fin.linhas_das_certidoes(
+        [_oficial(camara_id=1, orgao="TSE", tipo_certidao="T", status_ficha="ok", detalhes="Réu 09876543200")],
+        _SempreAPessoa(),
+        1,
+    )
+    assert patrimonio[0]["det"] == "Credito de" and certidoes[0]["det"] == "Réu"
+
+
+def test_ceap_com_quantidade_de_notas_desconhecida_em_uma_das_fontes_fica_sem_resumo():
+    entradas = {
+        "CAMARA": _ceap(camara_id=100, total_notas=500),
+        "SENADO": _ceap(camara_id=None, senado_id=7, total_notas=None),
+    }
+    _despesas, _fornecedores, resumos, _contagem = fin.linhas_da_ceap(
+        entradas, _SempreAPessoa(), {"CAMARA_CSV": 1, "SENADO_API": 2}
+    )
+    completos, incompletas = fin._resumos_completos(resumos)
+    assert completos == [] and incompletas == 1  # a contagem parcial (500) não aparece ao lado do gasto completo
+    # as duas conhecidas continuam somando
+    entradas["SENADO"]["total_notas"] = 20
+    _d, _f, resumos, _c = fin.linhas_da_ceap(entradas, _SempreAPessoa(), {"CAMARA_CSV": 1, "SENADO_API": 2})
+    completos, incompletas = fin._resumos_completos(resumos)
+    assert incompletas == 0 and fin._somar(completos, ("p",), ("notas",))[0][0]["notas"] == 520
+
+
+def test_remuneracao_repetida_no_mesmo_mes_fica_com_o_maior_bruto_e_e_contada():
+    corpo = _oficial(
+        registros=[
+            {"camara_id": 1, "ano": 2024, "mes": 1, "salario_bruto": 100},
+            {"camara_id": 1, "ano": 2024, "mes": 1, "salario_bruto": 300},
+            {"camara_id": 1, "ano": 2024, "mes": 1, "salario_bruto": 200},
+            {"camara_id": 1, "ano": 2024, "mes": 13, "salario_bruto": 5},
+        ]
+    )
+    linhas, contagem = fin.linhas_da_remuneracao(corpo, _SempreAPessoa(), 1)
+    assert [x["bruto"] for x in linhas] == [300] and contagem["repetidas"] == 2 and contagem["invalidas"] == 1
+
+
+def test_patrimonio_e_certidao_repetidos_seguem_um_criterio_fixo_e_sao_contados():
+    declaracoes = [
+        _oficial(camara_id=1, ano_eleicao=2022, valor_declarado_brl=v) for v in (500, 900, 100)
+    ]  # a última do arquivo NÃO é a escolhida
+    linhas, contagem = fin.linhas_do_patrimonio(declaracoes, _SempreAPessoa(), 1)
+    assert [x["valor"] for x in linhas] == [900] and contagem["repetidas"] == 2
+    ocorrencias = [
+        _oficial(camara_id=1, orgao="TSE", tipo_certidao="T", status_ficha=s)
+        for s in ("deferido", "indeferido", "apto")
+    ]
+    certidoes, contagem = fin.linhas_das_certidoes(ocorrencias, _SempreAPessoa(), 1)
+    assert [c["situacao"] for c in certidoes] == ["indeferido"] and contagem["repetidas"] == 2
+    ocorrencias.reverse()  # a ordem do arquivo não muda o resultado
+    assert [c["situacao"] for c in fin.linhas_das_certidoes(ocorrencias, _SempreAPessoa(), 1)[0]] == ["indeferido"]
+
+
+def test_remuneracao_sem_pessoa_e_contada():
+    corpo = _oficial(registros=[{"camara_id": 1, "ano": 2024, "mes": 1, "salario_bruto": 10}])
+
+    class _Ninguem(_SempreAPessoa):
+        def por_identificador(self, camara_id=None, senado_id=None):
+            return None
+
+    linhas, contagem = fin.linhas_da_remuneracao(corpo, _Ninguem(), 1)
+    assert linhas == [] and contagem["sem_pessoa"] == 1
+
+
+def test_reconciliacao_usa_as_mesmas_regras_do_loader_para_remuneracao_ceap_e_doacoes():
+    from etl.scripts import reconciliar_financas as rec
+
+    corpo = _oficial(
+        registros=[
+            {"camara_id": 1, "ano": 2024, "mes": 1, "salario_bruto": 100},
+            {"camara_id": 1, "ano": 2024, "mes": 13, "salario_bruto": 999},  # mês inválido: o loader descarta
+        ]
+    )
+    assert dict(rec.totais_remuneracao_do_arquivo(corpo)) == {2024: Decimal(100)}
+    assert dict(rec.totais_remuneracao_do_arquivo({**corpo, "is_synthetic": True})) == {}  # sem proveniência
+    ceap = {"A": _ceap(por_ano_tipo={"2024": {"": 7.0, "TELEFONIA": 3.0}})}  # tipo vazio: o loader descarta
+    assert dict(rec.totais_ceap_do_arquivo(ceap)) == {2024: Decimal(3)}
+    prestacoes = [_oficial(ano_eleicao=2022, doadores=[{"nome_doador": "A", "valor_doado": 5}, "lixo"])]
+    assert dict(rec.totais_doacoes_do_arquivo(prestacoes)) == {2022: Decimal(5)}
+
+
+@pytest.mark.parametrize("tabela", ["despesa_cota_fornecedor", "despesa_cota_resumo"])
+def test_ceap_que_esvaziaria_fornecedores_ou_resumo_aborta_sem_alterar_o_banco(
+    pg_engine, banco, tmp_path, monkeypatch, tabela
+):
+    monkeypatch.delenv(fin.VARIAVEL_ACEITAR_ENCOLHIMENTO, raising=False)
+
+    def arquivo(n_fornecedores, com_resumo):
+        entradas = {}
+        for i in range(12):
+            entradas[f"P{i}"] = _ceap(
+                nome=f"P{i}",
+                camara_id=1000 + i,
+                total_notas=3 if com_resumo else None,
+                por_ano_tipo={"2023": {"T": 1.0}},
+                fornecedores={
+                    f"F{j}": {"nome": f"F{i}-{j}", "cnpj_cpf": None, "total": 1.0, "notas": 1}
+                    for j in range(n_fornecedores)
+                },
+            )
+        return entradas
+
+    with pg_engine.begin() as conn:
+        for i in range(12):
+            _pessoa(conn, f"P{i}", camara_id=1000 + i)
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, arquivo(2, True))
+    with pg_engine.begin() as conn:
+        fin.carregar_ceap(conn, tmp_path)
+    antes = _contar(pg_engine, tabela)
+    assert antes == (24 if tabela == "despesa_cota_fornecedor" else 12)
+
+    # as despesas continuam 12, mas a fonte deixou de trazer fornecedores (ou o total de notas)
+    _gravar(
+        tmp_path,
+        fin.CEAP_ARQUIVO,
+        arquivo(0 if tabela == "despesa_cota_fornecedor" else 2, tabela != "despesa_cota_resumo"),
+    )
+    with pytest.raises(RuntimeError, match=f"fin.{tabela}.*nada foi alterado"):
+        with pg_engine.begin() as conn:
+            fin.carregar_ceap(conn, tmp_path)
+    assert _contar(pg_engine, tabela) == antes

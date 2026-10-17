@@ -91,6 +91,9 @@ def _dec(value: Any) -> Optional[Decimal]:
 
 
 # Limites (exclusivos) das colunas monetárias do schema fin: numeric(P,2) comporta valores abaixo de 10**(P-2).
+# Janela de anos aceita nas cargas (decisão D8: começa em 1995; o teto barra ano digitado errado)
+ANO_MINIMO = 1995
+ANO_MAXIMO = 2100
 LIMITE_CEAP = Decimal(10) ** 12  # numeric(14,2)
 LIMITE_EMENDA = Decimal(10) ** 14  # numeric(16,2)
 LIMITE_REMUNERACAO = Decimal(10) ** 10  # numeric(12,2)
@@ -429,7 +432,7 @@ UF_POR_NOME = {
     "TOCANTINS": "TO",
 }
 _UFS = frozenset(UF_POR_NOME.values())
-# CPF solto no nome (MEI vem como "NOME 061.507.955-12" ou "NOME 06507955124"): 10 ou 11 dígitos, juntos ou separados por
+# CPF solto no nome (MEI vem como "NOME 012.345.678-00" ou "NOME 09876543200"): 10 ou 11 dígitos, juntos ou separados por
 # até 3 caracteres entre ponto, hífen, barra, vírgula, sublinhado e espaço (por exemplo " - "). Dígitos de outros alfabetos
 # e de largura total viram ASCII antes (`_ascii`). O CNPJ formatado vem primeiro na alternância para não ser lido
 # como um CPF parcial; CNPJ sem pontuação (14 dígitos) nunca casa porque a sequência exige 10 ou 11 no total.
@@ -468,7 +471,7 @@ def _sem_cpf(achado: "re.Match[str]") -> str:
 
 
 def nome_do_fornecedor(valor: Any) -> str:
-    """Nome do fornecedor sem CPF embutido (MEI aparece como 'NOME 06507955124' na fonte); vazio vira o rótulo padrão."""
+    """Nome do fornecedor sem CPF embutido (MEI aparece como 'NOME 09876543200' na fonte); vazio vira o rótulo padrão."""
     limpo = " ".join(_SEQUENCIA_CPF.sub(_sem_cpf, _ascii(valor)).split())
     return limpo or "Fornecedor não identificado"
 
@@ -476,6 +479,26 @@ def nome_do_fornecedor(valor: Any) -> str:
 def nome_sem_cpf(valor: Any) -> Optional[str]:
     """Nome de pessoa ou empresa sem CPF embutido; None quando não sobra nada."""
     limpo = " ".join(_SEQUENCIA_CPF.sub(_sem_cpf, _ascii(valor)).split())
+    return limpo or None
+
+
+# CPF em texto livre (descrição de bens, detalhes de certidão): só o formato com pontuação e as 11 posições seguidas, para
+# não cortar valores em reais ("R$ 1.234.567,89" tem vírgula; "R$ 12345678900" é precedido do símbolo da moeda).
+_CPF_EM_TEXTO = re.compile(
+    r"(?P<moeda>R\$\s*)?(?<![0-9.,\-])(?:[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}|[0-9]{11})(?![0-9.,\-]*[0-9])"
+)
+
+
+def _tira_cpf_do_texto(achado: "re.Match[str]") -> str:
+    return achado.group(0) if achado.group("moeda") else " "
+
+
+def texto_sem_cpf(valor: Any) -> Optional[str]:
+    """Texto livre da fonte sem CPF embutido (decisão D3); None quando não sobra nada."""
+    bruto = texto(valor)
+    if bruto is None:
+        return None
+    limpo = " ".join(_CPF_EM_TEXTO.sub(_tira_cpf_do_texto, _ascii(bruto)).split())
     return limpo or None
 
 

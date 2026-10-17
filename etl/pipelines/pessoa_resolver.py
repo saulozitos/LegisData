@@ -133,4 +133,7 @@ class ResolvedorDePessoas:
         achado = self.por_identificador(item.get("camara_id"), item.get("senado_id"))
         if achado is not None:
             return Resolucao(achado, "IDENTIFICADO")
+        # Identificador que o cadastro não conhece cai no nome, mesmo que o candidato tenha OUTRO identificador do mesmo
+        # tipo (comportamento fixado em teste). O risco é o mesmo da regra de nome único, anotado no plano: um parlamentar
+        # fora do cadastro com o nome de outro herdaria os dados dele.
         return self.por_nome([item.get("nome_civil"), item.get("nome_eleitoral"), item.get("nome")], ano)
