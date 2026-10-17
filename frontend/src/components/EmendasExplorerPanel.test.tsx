@@ -219,4 +219,19 @@ describe("EmendasExplorerPanel", () => {
     expect(await screen.findByText(/Recurso da CMO/i)).toBeInTheDocument();
     expect(screen.getByText(/Emendas deste Autor \(1\)/i)).toBeInTheDocument();
   });
+
+  it("termo com menos de 2 letras não consulta a API e pede mais letras", async () => {
+    vi.mocked(api.getEmendasResumo).mockResolvedValue(mockResumo);
+    vi.mocked(api.getEmendasPorLocalidade).mockResolvedValue(mockLocalidade);
+
+    render(<EmendasExplorerPanel />);
+    await screen.findByText(/Explorador Nacional de Emendas Orçamentárias/i);
+    fireEvent.click(screen.getByRole("button", { name: /Busca por Cidade\/UF/i }));
+    await screen.findByText("Carlos Sampaio");
+    vi.mocked(api.getEmendasPorLocalidade).mockClear();
+
+    fireEvent.change(screen.getByLabelText(/Pesquisar por município ou estado/i), { target: { value: "C" } });
+    expect(await screen.findByText(/Digite ao menos 2 letras/i)).toBeInTheDocument();
+    expect(api.getEmendasPorLocalidade).not.toHaveBeenCalled();
+  });
 });

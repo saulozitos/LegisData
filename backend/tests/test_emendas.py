@@ -122,7 +122,7 @@ def test_get_emendas_por_localidade_uf(client, emendas):
     assert data["total_emendas_encontradas"] == 3  # as duas do Abel e a da comissão; "BAHIA (UF)" não casa
     assert data["total_reservado_empenhado_brl"] == 3000.0
     assert len(data["emendas"]) == 3
-    assert data["emendas"][0]["estagio"] in ("Dinheiro Entregue", "Dinheiro Reservado")
+    assert data["emendas"][0]["estagio"] == "Dinheiro Entregue"  # ordem: ano mais recente, depois maior valor pago
 
 
 def test_get_emendas_por_localidade_inexistente_retorna_404(client, emendas):
@@ -167,4 +167,50 @@ def test_busca_vazia_retorna_400(client, emendas, rota):
 
 
 def test_localidade_trata_curinga_de_like_como_texto(client, emendas):
-    assert client.get(f"{BASE}/localidade/%25").status_code == 404
+    assert client.get(f"{BASE}/localidade/%25%25").status_code == 404
+
+
+@pytest.mark.parametrize(
+    "autor,uf",
+    [
+        ("BANCADA DO PARANA", "PR"),  # não é PA, que está contido em PARANA
+        ("BANCADA DA PARAIBA", "PB"),
+        ("BANCADA MATO GROSSO DO SUL", "MS"),  # não é MT
+        ("BANCADA DE MATO GROSSO", "MT"),
+        ("BANCADA DO PARA", "PA"),
+        ("BANCADA SEM ESTADO", "NACIONAL"),
+    ],
+)
+def test_uf_da_bancada_prefere_o_nome_de_estado_mais_longo(autor, uf):
+    assert perfil_do_autor(autor, "BANCADA_ESTADUAL")["uf_referencia"] == uf
+
+
+def test_busca_ampla_por_autor_monta_o_perfil_de_uma_unica_emenda(client, db):
+    # a bancada entra primeiro (menor id): o perfil tem de vir da maior em valor pago, não da primeira por id
+    _emenda(
+        db,
+        "BANCADA DE SAO PAULO SILVA",
+        "BANCADA_ESTADUAL",
+        codigo_emenda="2",
+        tipo_emenda="Emenda de Bancada",
+        valor_pago=10,
+    )
+    _emenda(db, "ANA SILVA", "INDIVIDUAL", codigo_emenda="1", valor_pago=900)
+    db.commit()
+    data = client.get(f"{BASE}/autor/silva").json()
+    assert data["total_emendas_enviadas"] == 2
+    # o perfil é o da emenda de maior valor pago (Ana, individual), não o nome de uma e o tipo de outra
+    assert data["perfil_autor"]["tipo_autor"] == "INDIVIDUAL"
+    assert data["perfil_autor"]["nome_tecnico"] == "ANA SILVA"
+
+
+@pytest.mark.parametrize("rota", ["localidade", "autor"])
+def test_busca_publica_rejeita_termo_curto_ou_longo_demais(client, emendas, rota):
+    assert client.get(f"{BASE}/{rota}/a").status_code == 400
+    assert client.get(f"{BASE}/{rota}/{'x' * 101}").status_code == 422
+    assert client.get(f"{BASE}/{rota}/xx").status_code == 404
+
+
+def test_busca_ignora_acento_e_caixa(client, emendas):
+    assert client.get(f"{BASE}/autor/abel mesquita").json()["total_emendas_enviadas"] == 2
+    assert client.get(f"{BASE}/localidade/belo horizonte").json()["total_emendas_encontradas"] == 3

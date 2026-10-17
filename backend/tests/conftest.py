@@ -1,6 +1,5 @@
 """Fixtures compartilhadas: Postgres de teste, override único de get_db e diretório de dados isolado."""
 
-import json
 import os
 import uuid
 from datetime import date, datetime, timezone
@@ -192,16 +191,18 @@ def observar_serie(db, codigo, referencia, valor):
     )
 
 
-def write_json(directory, name, payload):
-    path = directory / name
-    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-    return path
-
-
 def write_text(directory, name, content):
     path = directory / name
     path.write_text(content, encoding="utf-8")
     return path
+
+
+@pytest.fixture()
+def pessoa(db):
+    """Uma pessoa em `core.pessoa` (id), para os testes do schema `fin`."""
+    pid = db.execute(text("INSERT INTO core.pessoa (nome_exibicao) VALUES ('Ana') RETURNING id")).scalar_one()
+    db.commit()
+    return pid
 
 
 def pessoa_do(db, politico):

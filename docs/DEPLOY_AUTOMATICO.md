@@ -86,3 +86,9 @@ bash -n ~/.legisdata-deploy/deploy.sh && echo ok
 
 Depois do merge o deploy roda com o script novo, que dali em diante se atualiza sozinho a cada deploy. Se esquecer o
 passo, rode `make run-load-economia` no servidor depois do deploy, ou o `python -c` do passo 4 do script.
+
+## Rollback da Entrega 3c (a API deixou de montar `etl/data`)
+
+O `git merge` do deploy traz o `docker-compose.yml` novo antes da verificação de saúde. Se a verificação falhar na 3c, o rollback sobe a imagem anterior (3b) com o compose novo, que não monta mais `./etl/data` no contêiner da API. A imagem da 3b lê CEAP e emendas desses arquivos, então as rotas `/emendas/*` e a CEAP do dossiê respondem vazias, sem erro 5xx. Nesse caso, corrija para frente (o `fin` já está carregado) ou recoloque temporariamente o volume `./etl/data:/etl_data:ro` no compose.
+
+Uma carga de finanças que falha (JSON malformado, tabela que encolheria a menos da metade) aborta o deploy antes de trocar a imagem, e o site continua na versão anterior. Para aceitar uma redução legítima, rode o deploy uma única vez com a variável na linha de comando (`LEGISDATA_ACEITAR_ENCOLHIMENTO=1 ~/.legisdata-deploy/deploy.sh`); o script a repassa à carga. Nunca a deixe exportada no ambiente do timer nem em arquivo de ambiente: ela desliga a proteção das seis tabelas.

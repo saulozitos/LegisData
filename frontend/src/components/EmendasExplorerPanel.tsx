@@ -40,6 +40,9 @@ const AUTORES_SUGESTOES = [
   { id: "COMISSAO DE EDUCACAO", label: "Comissão de Educação", icone: GraduationCap, cor: "border-blue-500/40 text-blue-300 bg-blue-500/10" },
 ];
 
+// a API exige ao menos 2 caracteres (um termo curto casaria quase tudo)
+const TERMO_MINIMO = 2;
+
 const LOCALIDADES_SUGESTOES = [
   "Campinas", "Recife", "Salvador", "Belo Horizonte", "Curitiba", "Manaus", "PA", "MA", "AL"
 ];
@@ -64,13 +67,13 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
   const localidadeQuery = useApi(
     `emendas:loc:${debouncedLocalidade}`,
     (signal) => getEmendasPorLocalidade(debouncedLocalidade, 50, signal),
-    Boolean(debouncedLocalidade) && activeTab === "localidade"
+    debouncedLocalidade.length >= TERMO_MINIMO && activeTab === "localidade"
   );
 
   const autorQuery = useApi(
     `emendas:autor:${debouncedAutor}`,
     (signal) => getEmendasPorAutor(debouncedAutor, 50, signal),
-    Boolean(debouncedAutor) && activeTab === "institucional"
+    debouncedAutor.length >= TERMO_MINIMO && activeTab === "institucional"
   );
 
   if (resumoQuery.loading && !resumoQuery.data) {
@@ -455,7 +458,12 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
           </div>
 
           {/* Resultado da Busca Territorial */}
-          {localidadeQuery.loading ? (
+          {debouncedLocalidade.length < TERMO_MINIMO ? (
+            <EmptyState
+              title="Digite ao menos 2 letras"
+              message="Informe o nome de um município ou a sigla do estado (ex: SP, MG, Recife)."
+            />
+          ) : localidadeQuery.loading ? (
             <LoadingState label={`Buscando emendas destinadas a "${debouncedLocalidade}"...`} />
           ) : localidadeQuery.error ? (
             <ErrorState
@@ -628,7 +636,12 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
           </div>
 
           {/* Resultado da Consulta Institucional */}
-          {autorQuery.loading ? (
+          {debouncedAutor.length < TERMO_MINIMO ? (
+            <EmptyState
+              title="Digite ao menos 2 letras"
+              message="Informe o nome do autor, da bancada ou da comissão que você procura."
+            />
+          ) : autorQuery.loading ? (
             <LoadingState label={`Consultando emendas do autor institucional "${debouncedAutor}"...`} />
           ) : autorQuery.error ? (
             <ErrorState

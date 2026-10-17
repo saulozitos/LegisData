@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional
 
 from app.core.database import get_db
 from app.core.links import url_oficial_proposicao
+from app.core.numeros import opt_float as _opt_float
+from app.core.numeros import pct as _pct
 from app.core.query_utils import ALL_KEYWORDS, BRT, contains
 from app.models import (
     CargoPoliticoEnum,
@@ -99,11 +101,6 @@ def _pessoas_financas(db: Session, pol: Politician) -> List[int]:
     return financas_service.pessoas_do_parlamentar(db, pol.id, pol.camara_id, pol.senado_id)
 
 
-def _opt_float(valor: Any) -> Optional[float]:
-    """float(valor) preservando None (dado não informado pela fonte)."""
-    return None if valor is None else float(valor)
-
-
 _UNIDADE_ASSIDUIDADE = {
     CasaLegislativaEnum.CAMARA_DOS_DEPUTADOS.value: "dia com sessão deliberativa",
     CasaLegislativaEnum.SENADO_FEDERAL.value: "dia com votação nominal em plenário",
@@ -152,10 +149,6 @@ def _to_brt(dt: Optional[datetime]) -> Optional[datetime]:
     if dt.tzinfo is None:
         return dt
     return dt.astimezone(BRT)
-
-
-def _pct(part: float, total: float) -> float:
-    return round((part / total) * 100, 1) if total > 0 else 0.0
 
 
 @router.get("/presidents", response_model=List[Dict[str, Any]])
@@ -1367,7 +1360,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
                 "media_ceap_mensal": media_ceap,
                 "ano_referencia": ano_remuneracao,
                 # Chaves *_2023 mantidas por compatibilidade: refletem o ano em "ano_referencia"
-                "total_bruto_2023": float(total_bruto_ano),
+                "total_bruto_2023": _opt_float(total_bruto_ano),
                 "total_ceap_2023": _opt_float(total_ceap_ano),
                 "total_beneficios_2023": _opt_float(total_beneficios_ano),
             },

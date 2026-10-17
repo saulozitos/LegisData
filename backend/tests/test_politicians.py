@@ -271,7 +271,8 @@ def test_dossier_for_politician_without_any_data_has_empty_sections(client, db, 
     db.commit()
     body = client.get(f"{BASE}/{novo.id}").json()
     assert body["perfil"]["cargo_atual"] == "PARLAMENTAR" and body["trajetoria_mandatos"] == []
-    assert body["custos_ceap"]["possui_dados"] is False
+    assert body["custos_ceap"]["possui_dados"] is False and body["custos_ceap"]["total_notas"] is None
+    assert body["remuneracao"]["resumo"]["total_bruto_2023"] is None  # sem folha registrada o total é desconhecido
     assert body["emendas_parlamentares"]["possui_dados"] is False
     assert body["financiamento_campanha"]["possui_dados"] is False
     assert body["materias_propostas"] == [] and body["votacoes_principais"] == []

@@ -12,7 +12,7 @@ from typing import Any, Dict
 
 from app.core.database import get_db
 from app.services import emendas_service
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.orm import Session
 
 router = APIRouter()
@@ -26,7 +26,7 @@ def get_emendas_resumo(db: Session = Depends(get_db)) -> Dict[str, Any]:
 
 @router.get("/localidade/{localidade}")
 def get_emendas_por_localidade(
-    localidade: str,
+    localidade: str = Path(..., max_length=100, description="Trecho do nome da cidade ou UF"),
     limit: int = Query(50, ge=1, le=200, description="Quantidade máxima de emendas na lista detalhada"),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
@@ -36,7 +36,7 @@ def get_emendas_por_localidade(
 
 @router.get("/autor/{autor}")
 def get_emendas_por_autor(
-    autor: str,
+    autor: str = Path(..., max_length=100, description="Trecho do nome do autor ou código do autor"),
     limit: int = Query(50, ge=1, le=200, description="Quantidade máxima de emendas na lista detalhada"),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:

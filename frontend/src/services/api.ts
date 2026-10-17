@@ -927,7 +927,7 @@ export interface CeapGastoAno {
 export interface CustosCeapData {
   possui_dados: boolean;
   gasto_total_recente: number;
-  total_notas: number;
+  total_notas: number | null;
   gastos_por_tipo: CeapGastoTipo[];
   maiores_fornecedores: CeapFornecedor[];
   gastos_por_ano: CeapGastoAno[];

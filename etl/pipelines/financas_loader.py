@@ -7,11 +7,13 @@ Seis cargas independentes, todas idempotentes e ligadas a `core.pessoa` pelo `Re
   natural (o `uid` público não muda entre cargas); o que saiu da fonte sai da tabela;
 - remuneração (`remuneracao_parlamentares.json`), patrimônio, doações de campanha e situação de registro do TSE.
 
-Só entram registros com proveniência oficial (`fonte` presente e `is_synthetic` falso). Um arquivo ausente ou sem nenhum
-registro utilizável nunca apaga o que já está no banco. Cada carga é uma transação: ou grava inteira ou não grava.
+Só entram registros com proveniência oficial (`fonte` presente e `is_synthetic` falso). Um arquivo ausente, sem nenhum
+registro utilizável ou que reduziria a tabela a menos da metade (arquivo truncado, resolvedor degradado) nunca apaga o
+que já está no banco. Cada carga é uma transação: ou grava inteira ou não grava.
 """
 
 import logging
+import os
 from collections import defaultdict
 from decimal import Decimal
 from pathlib import Path
@@ -19,12 +21,13 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from etl.config import PROCESSED_DATA_DIR
 from etl.pipelines.loader_helpers import (
-    _dec,
     cnpj_do_fornecedor,
+    decimal_de,
     documento_do_doador,
     inteiro,
     inteiro_em,
     nome_do_fornecedor,
+    nome_sem_cpf,
     texto,
     tipo_do_autor,
     uf_da_localidade,
@@ -55,6 +58,40 @@ FONTE_REMUNERACAO = "CAMARA_PORTAL"
 FONTE_TSE = "TSE"
 
 LOTE = 5000
+
+# Proteção contra encolhimento: se a tabela já tem ao menos MINIMO_PARA_GUARDA linhas e a carga traria menos que
+# FRACAO_MINIMA delas, a carga aborta sem alterar o banco. LEGISDATA_ACEITAR_ENCOLHIMENTO=1 libera uma redução legítima.
+MINIMO_PARA_GUARDA = 10
+FRACAO_MINIMA = 0.5
+VARIAVEL_ACEITAR_ENCOLHIMENTO = "LEGISDATA_ACEITAR_ENCOLHIMENTO"
+_CONTAGENS = {
+    "fin.despesa_cota": "SELECT count(*) FROM fin.despesa_cota",
+    "fin.emenda": "SELECT count(*) FROM fin.emenda",
+    "fin.remuneracao": "SELECT count(*) FROM fin.remuneracao",
+    "fin.declaracao_patrimonio": "SELECT count(*) FROM fin.declaracao_patrimonio",
+    "fin.doacao_campanha": "SELECT count(*) FROM fin.doacao_campanha",
+    "fin.certidao": "SELECT count(*) FROM fin.certidao",
+}
+
+
+def _protege_contra_encolhimento(conn: Connection, tabela: str, novas: int) -> None:
+    """Levanta RuntimeError (sem tocar no banco) se a carga reduziria `tabela` a menos de FRACAO_MINIMA do que existe."""
+    existentes = int(conn.execute(text(_CONTAGENS[tabela])).scalar() or 0)
+    if existentes < MINIMO_PARA_GUARDA or novas >= existentes * FRACAO_MINIMA:
+        return
+    if os.environ.get(VARIAVEL_ACEITAR_ENCOLHIMENTO) == "1":
+        logger.warning(
+            "%s: %d -> %d linhas (encolhimento aceito por %s).",
+            tabela,
+            existentes,
+            novas,
+            VARIAVEL_ACEITAR_ENCOLHIMENTO,
+        )
+        return
+    raise RuntimeError(
+        f"{tabela}: a carga traria {novas} linhas e o banco tem {existentes}; nada foi alterado. "
+        f"Se a redução é legítima, rode de novo com {VARIAVEL_ACEITAR_ENCOLHIMENTO}=1."
+    )
 
 
 def _lotes(linhas: List[Dict[str, Any]]) -> Iterable[List[Dict[str, Any]]]:
@@ -99,13 +136,14 @@ def linhas_da_ceap(
         if not isinstance(por_ano_tipo, dict) or not por_ano_tipo:
             contagem["sem_detalhe_por_ano"] += 1
             continue
-        fonte_id = fontes[FONTE_CEAP_SENADO if dados.get("senado_id") else FONTE_CEAP_CAMARA]
+        # a origem é o identificador que o registro carrega: nenhum registro do arquivo traz os dois
+        fonte_id = fontes[FONTE_CEAP_CAMARA if dados.get("camara_id") else FONTE_CEAP_SENADO]
         contagem["parlamentares"] += 1
         totais: Dict[Tuple[int, str], Decimal] = defaultdict(Decimal)
         for ano, tipos in por_ano_tipo.items():
             ano_ok = inteiro_em(ano, 1995, 2100)
             for tipo, valor in (tipos if isinstance(tipos, dict) else {}).items():
-                valor_dec = _dec(valor)
+                valor_dec = decimal_de(valor)
                 nome_tipo = texto(tipo)
                 if ano_ok is not None and valor_dec is not None and nome_tipo:
                     totais[(ano_ok, nome_tipo)] += valor_dec
@@ -114,8 +152,11 @@ def linhas_da_ceap(
             for (ano, tipo), valor in totais.items()
         ]
         agrupados: Dict[Tuple[str, Optional[str]], List[Any]] = {}
-        for item in (dados.get("fornecedores") or {}).values():
-            valor_dec = _dec(item.get("total"))
+        lista_fornecedores = dados.get("fornecedores")
+        for item in (lista_fornecedores if isinstance(lista_fornecedores, dict) else {}).values():
+            if not isinstance(item, dict):
+                continue
+            valor_dec = decimal_de(item.get("total"))
             if valor_dec is None:
                 continue
             nome, cnpj = nome_do_fornecedor(item.get("nome")), cnpj_do_fornecedor(item.get("cnpj_cpf"))
@@ -126,7 +167,9 @@ def linhas_da_ceap(
             {"p": pessoa, "nome": nome, "cnpj": cnpj, "valor": valor, "notas": notas, "f": fonte_id}
             for (nome, cnpj), (valor, notas) in agrupados.items()
         ]
-        resumos.append({"p": pessoa, "notas": max(inteiro(dados.get("total_notas")) or 0, 0), "f": fonte_id})
+        notas = inteiro(dados.get("total_notas"))
+        if notas is not None and notas >= 0:  # quantidade desconhecida não vira zero: sem linha de resumo
+            resumos.append({"p": pessoa, "notas": notas, "f": fonte_id})
     return despesas, fornecedores, resumos, contagem
 
 
@@ -138,14 +181,20 @@ def carregar_ceap(conn: Connection, processed_dir: Path) -> Dict[str, int]:
     if not despesas:
         logger.warning("CEAP sem nenhum registro utilizável (%s); o banco não foi alterado.", contagem)
         return {**contagem, "despesas": 0}
-    # Duas entradas do arquivo podem resolver para a mesma pessoa (Câmara e Senado): a soma já está em `despesas`
-    # por (pessoa, ano, tipo); aqui as demais tabelas também passam a ter uma linha por chave.
+    # Duas entradas do arquivo podem resolver para a mesma pessoa (Câmara e Senado, ou variantes do nome): `_somar`
+    # deixa uma linha por chave em cada tabela e a guarda de encolhimento olha o tamanho final.
+    despesas, repetidas = _somar(despesas, ("p", "ano", "tipo"), ("valor",))
+    fornecedores, _ = _somar(fornecedores, ("p", "nome", "cnpj"), ("valor", "notas"))
+    resumos, _ = _somar(resumos, ("p",), ("notas",))
+    if repetidas:
+        logger.warning(
+            "CEAP: %d linhas repetidas na mesma fonte (variantes do nome); ficou a de maior valor.", repetidas
+        )
+    contagem["mesma_fonte_repetida"] = repetidas
+    _protege_contra_encolhimento(conn, "fin.despesa_cota", len(despesas))
     conn.execute(text("DELETE FROM fin.despesa_cota"))
     conn.execute(text("DELETE FROM fin.despesa_cota_fornecedor"))
     conn.execute(text("DELETE FROM fin.despesa_cota_resumo"))
-    despesas = _somar(despesas, ("p", "ano", "tipo"), ("valor",))
-    fornecedores = _somar(fornecedores, ("p", "nome", "cnpj"), ("valor", "notas"))
-    resumos = _somar(resumos, ("p",), ("notas",))
     _inserir(
         conn,
         "INSERT INTO fin.despesa_cota (pessoa_id, ano, tipo_despesa, valor_liquido, fonte_id) "
@@ -166,17 +215,33 @@ def carregar_ceap(conn: Connection, processed_dir: Path) -> Dict[str, int]:
     return {**contagem, "despesas": len(despesas), "fornecedores": len(fornecedores)}
 
 
-def _somar(linhas: List[Dict[str, Any]], chave: Tuple[str, ...], somas: Tuple[str, ...]) -> List[Dict[str, Any]]:
-    """Junta linhas de mesma chave somando os campos numéricos (a primeira linha define os demais campos)."""
-    unicas: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
+def _somar(
+    linhas: List[Dict[str, Any]], chave: Tuple[str, ...], somas: Tuple[str, ...]
+) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Junta linhas de mesma chave e devolve também quantas linhas repetiram a chave na MESMA fonte. Dentro de uma fonte
+    a repetição é o mesmo dado sob outra grafia do nome, então fica a linha de maior valor; entre fontes diferentes
+    (Câmara e Senado) os campos numéricos se somam. A primeira linha define os demais campos.
+    """
+    por_fonte: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
+    repetidas = 0
     for linha in linhas:
-        k = tuple(linha[c] for c in chave)
+        k = (tuple(linha[c] for c in chave), linha["f"])
+        atual = por_fonte.get(k)
+        if atual is None:
+            por_fonte[k] = dict(linha)
+            continue
+        repetidas += 1
+        if linha[somas[0]] > atual[somas[0]]:
+            por_fonte[k] = dict(linha)
+    unicas: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
+    for (k, _fonte), linha in por_fonte.items():
         if k in unicas:
             for campo in somas:
                 unicas[k][campo] += linha[campo]
         else:
             unicas[k] = dict(linha)
-    return list(unicas.values())
+    return list(unicas.values()), repetidas
 
 
 # ── Emendas ──────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -203,6 +268,7 @@ def linhas_das_emendas(
         "INSTITUCIONAL": 0,
         "sem_proveniencia": 0,
         "invalidas": 0,
+        "chave_repetida": 0,
     }
     unicas: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
     for emenda in emendas:
@@ -212,8 +278,9 @@ def linhas_das_emendas(
         ano = inteiro_em(emenda.get("ano"), 1995, 2100)
         codigo, tipo_emenda = texto(emenda.get("codigo_emenda")), texto(emenda.get("tipo_emenda"))
         autor, local = texto(emenda.get("politician_name")), texto(emenda.get("localidade_destino"))
-        empenhado, pago = _dec(emenda.get("valor_empenhado")), _dec(emenda.get("valor_pago")) or Decimal(0)
-        if ano is None or not (tipo_emenda and autor and local) or empenhado is None:
+        empenhado, pago = decimal_de(emenda.get("valor_empenhado")), decimal_de(emenda.get("valor_pago"))
+        # valor pago desconhecido não vira zero: a emenda sem os dois valores fica de fora e é contada
+        if ano is None or not (tipo_emenda and autor and local) or empenhado is None or pago is None:
             contagem["invalidas"] += 1
             continue
         tipo_autor = tipo_do_autor(autor, tipo_emenda)
@@ -222,7 +289,6 @@ def linhas_das_emendas(
             situacao, pessoa = resolucao.situacao, resolucao.pessoa_id
         else:
             situacao, pessoa = "INSTITUCIONAL", None
-        contagem[situacao] += 1
         funcao = texto(emenda.get("funcao"))
         linha = {
             "p": pessoa,
@@ -240,7 +306,14 @@ def linhas_das_emendas(
             "funcao": funcao,
             "f": fonte_id,
         }
-        unicas[(autor, codigo, ano, tipo_emenda, local, funcao)] = linha  # a última ocorrência vale, como no upsert
+        chave = (autor, codigo, ano, tipo_emenda, local, funcao)
+        if chave in unicas:  # linhas distintas da fonte com a mesma chave: somam, para o total bater com o arquivo
+            contagem["chave_repetida"] += 1
+            unicas[chave]["empenhado"] += empenhado
+            unicas[chave]["pago"] += pago
+        else:
+            contagem[situacao] += 1
+            unicas[chave] = linha
     return list(unicas.values()), contagem
 
 
@@ -252,6 +325,7 @@ def carregar_emendas(conn: Connection, processed_dir: Path) -> Dict[str, int]:
     if not linhas:
         logger.warning("Emendas sem nenhum registro utilizável (%s); o banco não foi alterado.", contagem)
         return {**contagem, "emendas": 0}
+    _protege_contra_encolhimento(conn, "fin.emenda", len(linhas))
     inicio = conn.execute(text("SELECT now()")).scalar()  # fixo na transação: toda linha tocada recebe este instante
     _inserir(conn, SQL_EMENDA, linhas)
     removidas = conn.execute(text("DELETE FROM fin.emenda WHERE atualizado_em < :t"), {"t": inicio}).rowcount
@@ -264,9 +338,13 @@ def linhas_da_remuneracao(
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     contagem = {"sem_pessoa": 0, "invalidas": 0}
     unicas: Dict[Tuple[int, int, int], Dict[str, Any]] = {}
-    for registro in corpo.get("registros") or []:
+    registros = corpo.get("registros")
+    for registro in registros if isinstance(registros, list) else []:
+        if not isinstance(registro, dict):
+            contagem["invalidas"] += 1
+            continue
         ano, mes = inteiro_em(registro.get("ano"), 1995, 2100), inteiro_em(registro.get("mes"), 1, 12)
-        bruto = _dec(registro.get("salario_bruto"))
+        bruto = decimal_de(registro.get("salario_bruto"))
         if ano is None or mes is None or bruto is None:
             contagem["invalidas"] += 1
             continue
@@ -279,7 +357,7 @@ def linhas_da_remuneracao(
             "ano": ano,
             "mes": mes,
             "bruto": bruto,
-            "liquido": _dec(registro.get("salario_liquido")),
+            "liquido": decimal_de(registro.get("salario_liquido")),
             "f": fonte_id,
         }
     return list(unicas.values()), contagem
@@ -295,6 +373,7 @@ def carregar_remuneracao(conn: Connection, processed_dir: Path) -> Dict[str, int
     if not linhas:
         logger.warning("Remuneração sem nenhum registro utilizável (%s); o banco não foi alterado.", contagem)
         return {**contagem, "meses": 0}
+    _protege_contra_encolhimento(conn, "fin.remuneracao", len(linhas))
     conn.execute(text("DELETE FROM fin.remuneracao"))
     _inserir(
         conn,
@@ -317,7 +396,7 @@ def carregar_patrimonio(conn: Connection, processed_dir: Path) -> Dict[str, int]
         if not isinstance(item, dict) or not is_trusted(item):
             contagem["sem_proveniencia"] += 1
             continue
-        ano, valor = inteiro_em(item.get("ano_eleicao"), 1995, 2100), _dec(item.get("valor_declarado_brl"))
+        ano, valor = inteiro_em(item.get("ano_eleicao"), 1995, 2100), decimal_de(item.get("valor_declarado_brl"))
         if ano is None or valor is None:
             contagem["invalidas"] += 1
             continue
@@ -337,6 +416,7 @@ def carregar_patrimonio(conn: Connection, processed_dir: Path) -> Dict[str, int]
     if not unicas:
         logger.warning("Patrimônio sem nenhum registro utilizável (%s); o banco não foi alterado.", contagem)
         return {**contagem, "declaracoes": 0}
+    _protege_contra_encolhimento(conn, "fin.declaracao_patrimonio", len(unicas))
     conn.execute(text("DELETE FROM fin.declaracao_patrimonio"))
     _inserir(
         conn,
@@ -353,7 +433,7 @@ def carregar_doacoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
         return {"arquivo_ausente": 1}
     resolvedor, fonte_id = ResolvedorDePessoas(conn), _fontes(conn)[FONTE_TSE]
     por_prestacao: Dict[Tuple[int, int], List[Dict[str, Any]]] = {}
-    contagem = {"sem_pessoa": 0, "sem_proveniencia": 0, "invalidas": 0}
+    contagem = {"sem_pessoa": 0, "sem_proveniencia": 0, "invalidas": 0, "prestacao_descartada": 0}
     for item in prestacoes:
         if not isinstance(item, dict) or not is_trusted(item):
             contagem["sem_proveniencia"] += 1
@@ -368,25 +448,33 @@ def carregar_doacoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
             continue
         linhas = []
         for doador in item["doadores"]:
-            valor = _dec(doador.get("valor_doado")) if isinstance(doador, dict) else None
+            valor = decimal_de(doador.get("valor_doado")) if isinstance(doador, dict) else None
             if valor is None:
                 continue
             linhas.append(
                 {
                     "p": pessoa,
                     "ano": ano,
-                    "nome": texto(doador.get("nome_doador")) or "Doador não identificado",
+                    "nome": nome_sem_cpf(doador.get("nome_doador")) or "Doador não identificado",
                     "doc": documento_do_doador(doador.get("cpf_cnpj_doador")),
                     "valor": valor,
                     "tipo": texto(doador.get("tipo_receita")),
                     "f": fonte_id,
                 }
             )
-        por_prestacao[(pessoa, ano)] = linhas  # a última prestação do arquivo vale para a (pessoa, ano)
+        anteriores = por_prestacao.get((pessoa, ano))
+        if anteriores is None:
+            por_prestacao[(pessoa, ano)] = linhas
+            continue
+        # a prestação mais completa (mais linhas e, no empate, maior valor) vale para a (pessoa, ano); a outra é contada
+        contagem["prestacao_descartada"] += 1
+        if (len(linhas), sum(x["valor"] for x in linhas)) > (len(anteriores), sum(x["valor"] for x in anteriores)):
+            por_prestacao[(pessoa, ano)] = linhas
     linhas_todas = [linha for linhas in por_prestacao.values() for linha in linhas]
-    if not por_prestacao:
-        logger.warning("Doações sem nenhuma prestação utilizável (%s); o banco não foi alterado.", contagem)
+    if not linhas_todas:
+        logger.warning("Doações sem nenhuma linha utilizável (%s); o banco não foi alterado.", contagem)
         return {**contagem, "linhas": 0}
+    _protege_contra_encolhimento(conn, "fin.doacao_campanha", len(linhas_todas))
     conn.execute(text("DELETE FROM fin.doacao_campanha"))
     _inserir(
         conn,
@@ -432,6 +520,7 @@ def carregar_certidoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
     if not unicas:
         logger.warning("Certidões sem nenhum registro utilizável (%s); o banco não foi alterado.", contagem)
         return {**contagem, "certidoes": 0}
+    _protege_contra_encolhimento(conn, "fin.certidao", len(unicas))
     conn.execute(text("DELETE FROM fin.certidao"))
     _inserir(
         conn,

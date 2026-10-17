@@ -14,6 +14,7 @@ identificador). Os dois contam como UMA pessoa e o dado é gravado no cadastro c
 alcança pelo `camara_id`/`senado_id`. Homônimos de verdade têm identificadores diferentes e continuam separados.
 """
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
@@ -45,7 +46,7 @@ class ResolvedorDePessoas:
             text("SELECT tipo, valor, pessoa_id FROM core.pessoa_identificador WHERE tipo = ANY(:tipos)"),
             {"tipos": list(IDENTIFICADORES)},
         ):
-            if str(valor).isdigit():
+            if re.fullmatch(r"[0-9]+", str(valor)):
                 self._por_identificador[(tipo, int(valor))] = pessoa_id
 
         # Cadastro do legado sem identificador -> cadastro com o identificador que o legado conhece (se existir)
@@ -81,7 +82,7 @@ class ResolvedorDePessoas:
         for tipo, valor in (("CAMARA_ID", camara_id), ("SENADO_ID", senado_id)):
             try:
                 achado = self._por_identificador.get((tipo, int(valor))) if valor not in (None, "") else None
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 achado = None
             if achado is not None:
                 return achado

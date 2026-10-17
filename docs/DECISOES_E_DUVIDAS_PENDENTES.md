@@ -32,3 +32,11 @@ Data do registro: 2026-10-13.
 - **Opções de Decisão para o Usuário**:
   1. *(Recomendado)* **Manter local na máquina de desenvolvimento e servidor de produção**: O pipeline de ETL possui scripts inteligentes e idempotentes (`download_presenca_camara.py`, `remuneracao_extractor.py`, `run_etl.py`) que baixam e processam sob demanda com cache local.
   2. **Repositório Git Submodule / LFS**: Criar um repositório Git dedicado apenas para armazenar os arquivos `.json.gz` e `.zip` consolidados, adicionando-o como submódulo opcional no repositório principal.
+
+---
+
+## 4. Lista de notas fiscais da CEAP no dossiê (Entrega 3c)
+
+- **Contexto**: o ETL publica a CEAP como total por parlamentar, ano e tipo de despesa, mais os 15 maiores fornecedores. O dossiê mostrava esses totais anuais na tabela "Últimos Comprovantes Fiscais", como se fossem notas, e o link para o documento oficial da nota nunca existiu de fato nos dados atuais. A tabela virou "Gasto da cota por ano".
+- **Consequência**: o cidadão não vê mais nota por nota nem abre o documento no portal da Câmara.
+- **Opção para decidir**: baixar os cerca de 4 milhões de documentos desde 2009 (CSV anual da Câmara) para uma tabela `fin.despesa_cota_documento` com a URL do portal. Custa armazenamento e uma carga maior; entrega rastreabilidade por nota. Fica pendente da sua decisão.

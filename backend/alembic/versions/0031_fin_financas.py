@@ -6,7 +6,8 @@ da fonte fica em `autor_texto`, nunca se força o vínculo com outra pessoa).
 
 - `fin.despesa_cota`: CEAP por pessoa, ano e tipo de despesa (total real; estorno entra negativo).
 - `fin.despesa_cota_fornecedor` e `fin.despesa_cota_resumo`: maiores fornecedores e quantidade de notas por pessoa.
-  CPF de fornecedor nunca é gravado: só CNPJ (14 dígitos) (decisão D3).
+  CPF de fornecedor nunca é gravado: só CNPJ (14 dígitos) (decisão D3). O documento do doador só aceita CNPJ ou a
+  máscara de CPF do TSE (`***.NNN.NNN-**`).
 - `fin.emenda`: uma linha por emenda, localidade e função, com o tipo de autor já classificado. O código pode faltar
   (a fonte publica emendas de comissão de 2019 "sem informação"); o valor entra do mesmo jeito, para o total bater.
 - `fin.remuneracao`: folha mensal do parlamentar; campo que a fonte não informa fica nulo (nunca zero).
@@ -112,12 +113,19 @@ def upgrade() -> None:
         )
         """
     )
+    # busca por trecho do nome, sem acento nem caixa: a regra fica num lugar só para as consultas da API
+    op.execute(
+        """
+        CREATE FUNCTION ref.contem_texto(texto text, trecho text) RETURNS boolean
+        LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT AS $$
+            SELECT strpos(ref.normalizar_texto(texto), ref.normalizar_texto(trecho)) > 0
+        $$
+        """
+    )
     op.execute("CREATE INDEX ix_emenda_pessoa ON fin.emenda (pessoa_id) WHERE pessoa_id IS NOT NULL")
     op.execute("CREATE INDEX ix_emenda_ano ON fin.emenda (ano)")
     op.execute("CREATE INDEX ix_emenda_uf ON fin.emenda (uf)")
     op.execute("CREATE INDEX ix_emenda_autor_codigo ON fin.emenda (autor_codigo)")
-    op.execute("CREATE INDEX ix_emenda_autor_texto ON fin.emenda (ref.normalizar_texto(autor_texto))")
-    op.execute("CREATE INDEX ix_emenda_localidade ON fin.emenda (ref.normalizar_texto(localidade_destino))")
 
     op.execute(
         """
@@ -162,7 +170,11 @@ def upgrade() -> None:
             pessoa_id bigint NOT NULL REFERENCES core.pessoa(id) ON DELETE CASCADE,
             ano_eleicao smallint NOT NULL CHECK (ano_eleicao >= 1995),
             doador_nome text NOT NULL,
-            doador_documento text CHECK (doador_documento IS NULL OR doador_documento !~ '^[0-9]{11}$'),
+            doador_documento text CHECK (
+                doador_documento IS NULL
+                OR doador_documento ~ '^[*]{3}[.][0-9]{3}[.][0-9]{3}-[*]{2}$'
+                OR doador_documento ~ '^([0-9]{14}|[0-9]{2}[.][0-9]{3}[.][0-9]{3}/[0-9]{4}-[0-9]{2})$'
+            ),
             valor numeric(15,2) NOT NULL,
             tipo_receita text,
             fonte_id smallint NOT NULL REFERENCES etl.fonte(id),
@@ -191,6 +203,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute("DROP FUNCTION IF EXISTS ref.contem_texto(text, text)")
     for tabela in TABELAS:
         op.execute(f"DROP TABLE fin.{tabela}")
     op.execute("DROP SCHEMA fin")

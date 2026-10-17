@@ -12,6 +12,9 @@ from app.core.errors import ErroDeDominio
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+# Termo de busca curto casa quase tudo e obriga a varrer a tabela inteira; o limite superior fica na rota.
+TAMANHO_MINIMO_DA_BUSCA = 2
+
 DICIONARIO_ORCAMENTO = {
     "termos": {
         "custeio": {
@@ -107,7 +110,8 @@ def _strip_accents(text: str) -> str:
 
 
 def _extrair_uf_bancada(nome_limpo: str) -> str:
-    for estado, uf in _ESTADOS_MAP.items():
+    # do nome mais longo para o mais curto: "PARANA" e "PARAIBA" contêm "PARA", "MATO GROSSO DO SUL" contém "MATO GROSSO"
+    for estado, uf in sorted(_ESTADOS_MAP.items(), key=lambda par: -len(par[0])):
         if estado in nome_limpo:
             return uf
     return "NACIONAL"
@@ -272,12 +276,12 @@ def resumo(db: Session) -> Dict[str, Any]:
 def por_localidade(db: Session, localidade: str, limite: int) -> Dict[str, Any]:
     """Emendas destinadas a uma cidade ou estado (busca por trecho do nome, sem acento nem caixa)."""
     termo = localidade.strip()
-    if not termo:
-        raise ErroDeDominio(400, "Localidade não pode ser vazia.")
+    if len(termo) < TAMANHO_MINIMO_DA_BUSCA:
+        raise ErroDeDominio(400, "Informe ao menos 2 caracteres da localidade.")
     total = db.execute(
         text(
             "SELECT count(*) AS n, sum(valor_empenhado) AS emp, sum(valor_pago) AS pago FROM fin.emenda "
-            "WHERE strpos(ref.normalizar_texto(localidade_destino), ref.normalizar_texto(:termo)) > 0"
+            "WHERE ref.contem_texto(localidade_destino, :termo)"
         ),
         {"termo": termo},
     ).one()
@@ -288,7 +292,7 @@ def por_localidade(db: Session, localidade: str, limite: int) -> Dict[str, Any]:
         text(
             "SELECT coalesce(funcao, 'Outros') AS area, sum(valor_empenhado) AS empenhado, sum(valor_pago) AS pago, "
             "count(*) AS quantidade FROM fin.emenda "
-            "WHERE strpos(ref.normalizar_texto(localidade_destino), ref.normalizar_texto(:termo)) > 0 "
+            "WHERE ref.contem_texto(localidade_destino, :termo) "
             "GROUP BY 1 ORDER BY pago DESC, 1"
         ),
         {"termo": termo},
@@ -297,7 +301,7 @@ def por_localidade(db: Session, localidade: str, limite: int) -> Dict[str, Any]:
         text(
             "SELECT codigo_emenda, ano, coalesce(funcao, 'Outros') AS area, tipo_emenda, valor_empenhado, valor_pago, "
             "autor_texto, tipo_autor FROM fin.emenda "
-            "WHERE strpos(ref.normalizar_texto(localidade_destino), ref.normalizar_texto(:termo)) > 0 "
+            "WHERE ref.contem_texto(localidade_destino, :termo) "
             "ORDER BY ano DESC, valor_pago DESC, id LIMIT :limite"
         ),
         {"termo": termo, "limite": limite},
@@ -333,13 +337,12 @@ def por_localidade(db: Session, localidade: str, limite: int) -> Dict[str, Any]:
 def por_autor(db: Session, autor: str, limite: int) -> Dict[str, Any]:
     """Emendas de um autor (parlamentar, comissão ou bancada), pelo trecho do nome ou pelo código do autor."""
     termo = autor.strip()
-    if not termo:
-        raise ErroDeDominio(400, "Autor não pode ser vazio.")
+    if len(termo) < TAMANHO_MINIMO_DA_BUSCA:
+        raise ErroDeDominio(400, "Informe ao menos 2 caracteres do autor.")
     total = db.execute(
         text(
-            "SELECT count(*) AS n, sum(valor_empenhado) AS emp, sum(valor_pago) AS pago, min(autor_texto) AS autor, "
-            "min(tipo_autor) AS tipo_autor FROM fin.emenda "
-            "WHERE (strpos(ref.normalizar_texto(autor_texto), ref.normalizar_texto(:termo)) > 0 "
+            "SELECT count(*) AS n, sum(valor_empenhado) AS emp, sum(valor_pago) AS pago FROM fin.emenda "
+            "WHERE (ref.contem_texto(autor_texto, :termo) "
             "OR autor_codigo = :termo)"
         ),
         {"termo": termo},
@@ -351,7 +354,7 @@ def por_autor(db: Session, autor: str, limite: int) -> Dict[str, Any]:
         text(
             "SELECT localidade_destino AS localidade, sum(valor_empenhado) AS total_empenhado, "
             "sum(valor_pago) AS total_pago, count(*) AS quantidade FROM fin.emenda "
-            "WHERE (strpos(ref.normalizar_texto(autor_texto), ref.normalizar_texto(:termo)) > 0 "
+            "WHERE (ref.contem_texto(autor_texto, :termo) "
             "OR autor_codigo = :termo) GROUP BY 1 ORDER BY total_pago DESC, 1 LIMIT 10"
         ),
         {"termo": termo},
@@ -360,7 +363,7 @@ def por_autor(db: Session, autor: str, limite: int) -> Dict[str, Any]:
         text(
             "SELECT coalesce(funcao, 'Outros') AS area, sum(valor_empenhado) AS empenhado, sum(valor_pago) AS pago, "
             "count(*) AS quantidade FROM fin.emenda "
-            "WHERE (strpos(ref.normalizar_texto(autor_texto), ref.normalizar_texto(:termo)) > 0 "
+            "WHERE (ref.contem_texto(autor_texto, :termo) "
             "OR autor_codigo = :termo) GROUP BY 1 ORDER BY pago DESC, 1"
         ),
         {"termo": termo},
@@ -368,15 +371,18 @@ def por_autor(db: Session, autor: str, limite: int) -> Dict[str, Any]:
     linhas = db.execute(
         text(
             "SELECT codigo_emenda, ano, localidade_destino, coalesce(funcao, 'Outros') AS area, valor_empenhado, "
-            "valor_pago FROM fin.emenda "
-            "WHERE (strpos(ref.normalizar_texto(autor_texto), ref.normalizar_texto(:termo)) > 0 "
+            "valor_pago, autor_texto, tipo_autor FROM fin.emenda "
+            "WHERE (ref.contem_texto(autor_texto, :termo) "
             "OR autor_codigo = :termo) ORDER BY ano DESC, valor_pago DESC, id LIMIT :limite"
         ),
         {"termo": termo, "limite": limite},
     ).all()
+    if not linhas:  # uma carga confirmada entre as duas consultas esvaziou o resultado
+        raise ErroDeDominio(404, f"Nenhuma emenda encontrada para o autor '{autor}'.")
     return {
         "autor_pesquisado": autor,
-        "perfil_autor": perfil_do_autor(total.autor, total.tipo_autor),
+        # nome e tipo vêm da mesma emenda (a de maior valor pago no ano mais recente), nunca de linhas diferentes
+        "perfil_autor": perfil_do_autor(linhas[0].autor_texto, linhas[0].tipo_autor),
         "total_emendas_enviadas": int(total.n),
         "total_reservado_empenhado_brl": round(empenhado, 2),
         "total_entregue_pago_brl": round(pago, 2),

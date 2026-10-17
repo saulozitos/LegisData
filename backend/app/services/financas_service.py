@@ -13,19 +13,14 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence
 
+from app.core.numeros import opt_float as _opt_float
+from app.core.numeros import pct as _pct
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 MAX_EMENDAS_LISTADAS = 500
+MAX_EMENDAS_DETALHADAS = 2000
 MAX_DESPESAS_LISTADAS = 2000
-
-
-def _pct(parte: float, total: float) -> float:
-    return round(parte / total * 100.0, 1) if total else 0.0
-
-
-def _opt_float(valor: Any) -> Optional[float]:
-    return None if valor is None else float(valor)
 
 
 def formatar_cnpj(cnpj: Optional[str]) -> Optional[str]:
@@ -52,6 +47,25 @@ def pessoas_do_parlamentar(db: Session, uid: Any, camara_id: Optional[int], sena
     return [r[0] for r in linhas]
 
 
+def _total_notas(db: Session, ids: Sequence[int]) -> Optional[int]:
+    """
+    Quantidade de notas da CEAP. É None (desconhecida) quando alguma das pessoas com despesa não tem linha de resumo:
+    somar só as que têm mostraria uma contagem parcial ao lado de um gasto completo.
+    """
+    com_despesa: Any
+    com_resumo: Any
+    total: Any
+    com_despesa, com_resumo, total = db.execute(
+        text(
+            "SELECT (SELECT count(DISTINCT pessoa_id) FROM fin.despesa_cota WHERE pessoa_id = ANY(:ids)), "
+            "(SELECT count(*) FROM fin.despesa_cota_resumo WHERE pessoa_id = ANY(:ids)), "
+            "(SELECT sum(total_notas) FROM fin.despesa_cota_resumo WHERE pessoa_id = ANY(:ids))"
+        ),
+        {"ids": list(ids)},
+    ).one()
+    return None if total is None or com_resumo < com_despesa else int(total)
+
+
 # ── CEAP ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
 def custos_ceap(db: Session, pessoas: Sequence[int]) -> Optional[Dict[str, Any]]:
     """Resumo da CEAP: total, notas, gasto por tipo e por ano e maiores fornecedores. None se não há dado."""
@@ -75,10 +89,6 @@ def custos_ceap(db: Session, pessoas: Sequence[int]) -> Optional[Dict[str, Any]]
         ),
         {"ids": ids},
     ).all()
-    notas = db.execute(
-        text("SELECT coalesce(sum(total_notas), 0) FROM fin.despesa_cota_resumo WHERE pessoa_id = ANY(:ids)"),
-        {"ids": ids},
-    ).scalar()
     fornecedores = db.execute(
         text(
             "SELECT nome, cnpj, sum(valor_total) AS total, sum(notas) AS notas FROM fin.despesa_cota_fornecedor "
@@ -89,7 +99,7 @@ def custos_ceap(db: Session, pessoas: Sequence[int]) -> Optional[Dict[str, Any]]
     return {
         "possui_dados": True,
         "gasto_total_recente": round(total, 2),
-        "total_notas": int(notas or 0),
+        "total_notas": _total_notas(db, ids),  # sem linha de resumo a quantidade é desconhecida
         "gastos_por_tipo": [
             {
                 "tipo_despesa": r.tipo_despesa,
@@ -114,7 +124,7 @@ def custos_ceap(db: Session, pessoas: Sequence[int]) -> Optional[Dict[str, Any]]
 VAZIO_CEAP: Dict[str, Any] = {
     "possui_dados": False,
     "gasto_total_recente": 0.0,
-    "total_notas": 0,
+    "total_notas": None,
     "gastos_por_tipo": [],
     "gastos_por_ano": [],
     "maiores_fornecedores": [],
@@ -136,10 +146,14 @@ def ceap_por_ano_e_tipo(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
         if ids
         else []
     )
-    resumo = custos_ceap(db, ids) if ids else None
+    total = None
+    if ids:
+        total = db.execute(
+            text("SELECT sum(valor_liquido) FROM fin.despesa_cota WHERE pessoa_id = ANY(:ids)"), {"ids": ids}
+        ).scalar()
     return {
-        "total_gasto": resumo["gasto_total_recente"] if resumo else 0.0,
-        "total_notas": resumo["total_notas"] if resumo else 0,
+        "total_gasto": round(float(total), 2) if total is not None else 0.0,
+        "total_notas": _total_notas(db, ids) if ids else None,
         "despesas": [{"ano": r.ano, "tipo": r.tipo_despesa, "valor": round(float(r.valor), 2)} for r in linhas],
     }
 
@@ -241,7 +255,7 @@ def emendas_detalhadas(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
             "SELECT ano, codigo_emenda, tipo_emenda, valor_empenhado, valor_pago, localidade_destino, funcao "
             "FROM fin.emenda WHERE pessoa_id = ANY(:ids) ORDER BY ano DESC, valor_pago DESC, id LIMIT :limite"
         ),
-        {"ids": ids, "limite": MAX_DESPESAS_LISTADAS},
+        {"ids": ids, "limite": MAX_EMENDAS_DETALHADAS},
     ).all()
     return {
         "total_empenhado": float(empenhado),
@@ -291,7 +305,7 @@ def remuneracao(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
         for r in meses
     ]
     ano = meses[0].ano if meses else None
-    total_bruto_ano = Decimal("0.00")
+    total_bruto_ano: Optional[Decimal] = None  # sem remuneração registrada o total é desconhecido, não zero
     total_ceap_ano: Optional[Decimal] = None
     total_beneficios_ano: Optional[Decimal] = None
     media_ceap: Optional[float] = None

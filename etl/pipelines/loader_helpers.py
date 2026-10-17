@@ -75,9 +75,20 @@ def _dec(value: Any) -> Optional[Decimal]:
     if isinstance(value, str) and not value.strip():
         return None
     try:
-        return Decimal(str(value))
+        numero = Decimal(str(value))
     except InvalidOperation:
         return None
+    return numero if numero.is_finite() else None
+
+
+# A maior coluna monetária do schema fin é numeric(16,2); abaixo de 10**12 cabe em todas (CEAP e doações são 14 e 15).
+VALOR_MAXIMO = Decimal(10) ** 12
+
+
+def decimal_de(value: Any) -> Optional[Decimal]:
+    """Decimal finito e dentro da faixa das colunas monetárias do banco; qualquer outra coisa vira None."""
+    numero = _dec(value)
+    return numero if numero is not None and abs(numero) < VALOR_MAXIMO else None
 
 
 def _texto_ou_none(value: Any) -> Optional[str]:
@@ -406,12 +417,19 @@ UF_POR_NOME = {
     "TOCANTINS": "TO",
 }
 _UFS = frozenset(UF_POR_NOME.values())
-_SEQUENCIA_CPF = re.compile(r"(?<!\d)\d{11}(?!\d)")
+# CPF solto no nome (MEI vem como "NOME 061.507.955-12" ou "NOME 06507955124"): 10 ou 11 dígitos, juntos ou separados por
+# ponto, hífen, barra, vírgula, sublinhado ou espaço. O CNPJ formatado vem primeiro na alternância para não ser lido
+# como um CPF parcial; CNPJ sem pontuação (14 dígitos) nunca casa porque a sequência exige 10 ou 11 no total.
+_SEQUENCIA_CPF = re.compile(
+    r"(?<![0-9])(?P<cnpj>[0-9]{2}\.[0-9]{3}\.[0-9]{3}/[0-9]{4}-[0-9]{2})(?![0-9])"
+    r"|(?<![0-9])(?:[0-9][\s.\-/_,]?){9,10}[0-9](?![0-9])"
+)
+_MASCARA_CPF = re.compile(r"^\*{3}\.\d{3}\.\d{3}-\*{2}$")
 TIPOS_DE_AUTOR_INSTITUCIONAL = ("BANCADA_ESTADUAL", "COMISSAO_INSTITUCIONAL", "RELATOR_GERAL")
 
 
 def so_digitos(valor: Any) -> str:
-    return re.sub(r"\D", "", str(valor)) if valor is not None else ""
+    return re.sub(r"[^0-9]", "", str(valor)) if valor is not None else ""
 
 
 def cnpj_do_fornecedor(valor: Any) -> Optional[str]:
@@ -425,26 +443,45 @@ def cnpj_do_fornecedor(valor: Any) -> Optional[str]:
     return digitos
 
 
+def _sem_cpf(achado: "re.Match[str]") -> str:
+    trecho = achado.group(0)
+    return trecho if achado.group("cnpj") or len(so_digitos(trecho)) not in (10, 11) else " "
+
+
 def nome_do_fornecedor(valor: Any) -> str:
     """Nome do fornecedor sem CPF embutido (MEI aparece como 'NOME 06507955124' na fonte); vazio vira o rótulo padrão."""
-    limpo = " ".join(_SEQUENCIA_CPF.sub(" ", str(valor or "")).split())
+    limpo = " ".join(_SEQUENCIA_CPF.sub(_sem_cpf, str(valor or "")).split())
     return limpo or "Fornecedor não identificado"
+
+
+def nome_sem_cpf(valor: Any) -> Optional[str]:
+    """Nome de pessoa ou empresa sem CPF embutido; None quando não sobra nada."""
+    limpo = " ".join(_SEQUENCIA_CPF.sub(_sem_cpf, str(valor or "")).split())
+    return limpo or None
+
+
+_CNPJ_CANONICO = re.compile(r"(?:[0-9]{14}|[0-9]{2}\.[0-9]{3}\.[0-9]{3}/[0-9]{4}-[0-9]{2})")
 
 
 def documento_do_doador(valor: Any) -> Optional[str]:
     """
-    Documento do doador como o TSE publica: CNPJ inteiro e CPF já mascarado ('***.060.603-**'). Um CPF completo
-    (11 dígitos sem máscara) é mascarado aqui, para nunca ser gravado.
+    Documento do doador como o TSE publica: CNPJ inteiro (14 dígitos, sem pontuação ou no formato NN.NNN.NNN/NNNN-NN)
+    ou CPF já mascarado ('***.060.603-**'). CPF completo (11 dígitos, ou 10 quando perdeu o zero à esquerda) é mascarado
+    aqui. Qualquer outro formato, inclusive máscara parcial e CNPJ com pontuação fora do padrão, vira None: CPF nunca é
+    gravado (decisão D3) e o texto cru nunca passa adiante.
     """
     bruto = texto(valor)
     if bruto is None:
         return None
-    if "*" in bruto:
+    if _MASCARA_CPF.fullmatch(bruto) or _CNPJ_CANONICO.fullmatch(bruto):
         return bruto
+    if "*" in bruto:
+        return None
     digitos = so_digitos(bruto)
-    if len(digitos) == 11:
+    if len(digitos) in (10, 11) and re.fullmatch(r"[0-9.\-\s]+", bruto):
+        digitos = digitos.zfill(11)
         return f"***.{digitos[3:6]}.{digitos[6:9]}-**"
-    return bruto
+    return None
 
 
 def tipo_do_autor(autor: Any, tipo_emenda: Any) -> str:

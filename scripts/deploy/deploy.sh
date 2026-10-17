@@ -111,7 +111,9 @@ trap 'rm -f "$ENV_BANCO"' EXIT
 chmod 600 "$ENV_BANCO"
 printf 'ALEMBIC_DATABASE_URL=%s\nDATABASE_URL=%s\nPOSTGRES_PASSWORD=%s\n' "$URL_BANCO" "$URL_BANCO" "$POSTGRES_PASSWORD" >"$ENV_BANCO"
 um_comando() { # roda um comando Python no contêiner da imagem nova, na rede do compose
+  # LEGISDATA_ACEITAR_ENCOLHIMENTO=1 libera, só nesta execução, uma carga de finanças que reduz uma tabela a menos da metade
   docker run --rm --network "$REDE" --env-file "$ENV_BANCO" -e ENVIRONMENT=production -e DB_SSLMODE=disable \
+    -e LEGISDATA_ACEITAR_ENCOLHIMENTO="${LEGISDATA_ACEITAR_ENCOLHIMENTO:-}" \
     -e PYTHONPATH=/repo/backend:/repo -v "$RAIZ:/repo:ro" -w /app "$REGISTRO/legisdata-backend:$TAG" "$@" 9>&-
 }
 

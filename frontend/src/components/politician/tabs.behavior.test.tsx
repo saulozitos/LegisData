@@ -190,6 +190,21 @@ describe('CeapTab', () => {
     expect(document.body.textContent).not.toMatch(/R\$ 0,00|0 comprovantes/);
   });
 
+  it('total de notas desconhecido não mostra contador (nunca "0 comprovantes")', () => {
+    const d = fullDossier();
+    d.custos_ceap.total_notas = null;
+    render(<CeapTab dossier={d} />);
+    expect(screen.getByText('Gasto da cota por ano')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/comprovantes fiscais/);
+  });
+
+  it('total de notas igual a zero é dado válido e aparece', () => {
+    const d = fullDossier();
+    d.custos_ceap.total_notas = 0;
+    render(<CeapTab dossier={d} />);
+    expect(screen.getByText('0 comprovantes fiscais')).toBeInTheDocument();
+  });
+
   it('média mensal ausente mostra "Indisponível"', () => {
     const d = fullDossier();
     d.remuneracao.resumo.media_ceap_mensal = null;

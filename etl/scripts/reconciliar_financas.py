@@ -25,7 +25,7 @@ from etl.pipelines.financas_loader import (
     EMENDAS_ARQUIVO,
     REMUNERACAO_ARQUIVO,
 )
-from etl.pipelines.loader_helpers import _dec, inteiro_em
+from etl.pipelines.loader_helpers import decimal_de, inteiro_em
 from etl.utils.bootstrap import ensure_backend_on_path
 from etl.utils.datafiles import load_json
 from etl.utils.provenance import is_trusted
@@ -48,9 +48,10 @@ def totais_ceap_do_arquivo(ceap: Any) -> Dict[int, Decimal]:
     for dados in ceap.values() if isinstance(ceap, dict) else []:
         if not isinstance(dados, dict) or not is_trusted(dados):
             continue
-        for ano, tipos in (dados.get("por_ano_tipo") or {}).items():
+        por_ano_tipo = dados.get("por_ano_tipo")
+        for ano, tipos in (por_ano_tipo if isinstance(por_ano_tipo, dict) else {}).items():
             for valor in (tipos if isinstance(tipos, dict) else {}).values():
-                _soma(totais, inteiro_em(ano, 1995, 2100), _dec(valor))
+                _soma(totais, inteiro_em(ano, 1995, 2100), decimal_de(valor))
     return totais
 
 
@@ -59,18 +60,22 @@ def totais_emendas_do_arquivo(emendas: Any) -> Dict[int, Dict[str, Decimal]]:
     for emenda in emendas if isinstance(emendas, list) else []:
         if not isinstance(emenda, dict) or not is_trusted(emenda):
             continue
-        ano, empenhado = inteiro_em(emenda.get("ano"), 1995, 2100), _dec(emenda.get("valor_empenhado"))
-        if ano is None or empenhado is None:
+        ano, empenhado = inteiro_em(emenda.get("ano"), 1995, 2100), decimal_de(emenda.get("valor_empenhado"))
+        pago = decimal_de(emenda.get("valor_pago"))
+        if ano is None or empenhado is None or pago is None:  # o loader também deixa de fora emenda sem os dois valores
             continue
         totais[ano]["empenhado"] += empenhado
-        totais[ano]["pago"] += _dec(emenda.get("valor_pago")) or Decimal(0)
+        totais[ano]["pago"] += pago
     return totais
 
 
 def totais_remuneracao_do_arquivo(corpo: Any) -> Dict[int, Decimal]:
     totais: Dict[int, Decimal] = defaultdict(Decimal)
-    for r in corpo.get("registros") or [] if isinstance(corpo, dict) else []:
-        _soma(totais, inteiro_em(r.get("ano"), 1995, 2100), _dec(r.get("salario_bruto")))
+    registros = corpo.get("registros") if isinstance(corpo, dict) else None
+    for r in registros if isinstance(registros, list) else []:
+        if not isinstance(r, dict):
+            continue
+        _soma(totais, inteiro_em(r.get("ano"), 1995, 2100), decimal_de(r.get("salario_bruto")))
     return totais
 
 
@@ -80,8 +85,9 @@ def totais_doacoes_do_arquivo(prestacoes: Any) -> Dict[int, Decimal]:
         if not isinstance(item, dict) or not is_trusted(item):
             continue
         ano = inteiro_em(item.get("ano_eleicao"), 1995, 2100)
-        for doador in item.get("doadores") or []:
-            _soma(totais, ano, _dec(doador.get("valor_doado")) if isinstance(doador, dict) else None)
+        doadores = item.get("doadores")
+        for doador in doadores if isinstance(doadores, list) else []:
+            _soma(totais, ano, decimal_de(doador.get("valor_doado")) if isinstance(doador, dict) else None)
     return totais
 
 
