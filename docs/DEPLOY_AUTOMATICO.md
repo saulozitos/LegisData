@@ -19,8 +19,9 @@ Todo commit que entra na `main` e passa no CI é implantado sozinho em https://l
       descarta essas saídas locais antes do merge (o próximo cron as gera de novo). Fora dessa pasta, mudança local
       continua impedindo o merge de propósito.
    3. `alembic upgrade head` num contêiner da imagem nova, na rede do compose.
-   4. Carga das séries econômicas, dos mandatos presidenciais, da composição do Congresso e da PNAD
-      (`economia_loader`, `presidencia_loader`, `composicao_loader`, `pnad_loader`), se o schema `eco` já existe.
+   4. Carga das séries econômicas, dos mandatos presidenciais, da composição do Congresso, da PNAD e das finanças
+      (CEAP, emendas, remuneração e dados do TSE) (`economia_loader`, `presidencia_loader`, `composicao_loader`,
+      `pnad_loader`, `financas_loader`), se o schema `eco` já existe.
       São idempotentes e rodam por `etl.pipelines.carga_economica.carregar_tudo` (a mesma função do
       `run_etl --load-economia`). Se um arquivo de curadoria estiver ausente ou citar um mandato que não existe no
       banco, a carga falha com as migrações já aplicadas e a imagem antiga ainda no ar (as tabelas novas são aditivas;

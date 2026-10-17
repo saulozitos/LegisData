@@ -1,5 +1,6 @@
 """
-Carga única dos dados econômicos e curados no Postgres: séries, mandatos presidenciais, composição do Congresso e PNAD.
+Carga única dos dados econômicos e curados no Postgres: séries, mandatos presidenciais, composição do Congresso, PNAD e finanças
+(CEAP, emendas, remuneração e dados do TSE).
 
 É o ponto de entrada de `run_etl --load-economia` e do deploy automático (e, com `chaves`, da atualização diária,
 que só recarrega séries e mandatos). As cargas são independentes: uma curadoria com problema não impede as demais, e os
@@ -30,6 +31,7 @@ CARGAS: Tuple[Tuple[str, str, str, Optional[str]], ...] = (
         "presidencia",
     ),
     ("pnad", "PNAD (classes sociais)", "etl.pipelines.pnad_loader", None),
+    ("financas", "Finanças (fin)", "etl.pipelines.financas_loader", None),
 )
 
 

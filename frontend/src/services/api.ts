@@ -919,15 +919,9 @@ export interface CeapFornecedor {
   num_notas: number;
 }
 
-export interface CeapDespesaRecente {
+export interface CeapGastoAno {
   ano: number;
-  mes: number | null;
-  tipo_despesa: string;
-  valor_liquido: number;
-  nome_fornecedor: string;
-  cnpj_cpf: string | null;
-  data_emissao: string | null;
-  documento_url: string | null;
+  total_gasto: number;
 }
 
 export interface CustosCeapData {
@@ -936,7 +930,7 @@ export interface CustosCeapData {
   total_notas: number;
   gastos_por_tipo: CeapGastoTipo[];
   maiores_fornecedores: CeapFornecedor[];
-  despesas_recentes: CeapDespesaRecente[];
+  gastos_por_ano: CeapGastoAno[];
 }
 
 export interface EmendaDestinoItem {

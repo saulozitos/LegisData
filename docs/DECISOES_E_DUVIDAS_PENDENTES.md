@@ -4,6 +4,8 @@ Este documento registra as decisões técnicas, regras de negócio e pontos meto
 
 Data do registro: 2026-10-13.
 
+**Atualização de 2026-10-16:** as decisões 1 e 2 foram aplicadas na Entrega 3c com a opção recomendada nas duas (autor sem correspondência mantém o nome oficial da fonte, sem `pessoa_id`; homônimos só são desfeitos pelo intervalo de mandato, e o restante fica como "não desambiguado"). Ver `fin.emenda.autor_situacao`.
+
 ---
 
 ## 1. Mapeamento de Autores Históricos das Emendas (102 Nomes Legados)

@@ -274,7 +274,7 @@ def montar_parser() -> argparse.ArgumentParser:
         ("camara-historico", "Histórico de mandatos dos deputados (posse, licença, suplência, partido) desde 1995"),
         ("load-db", "Carga e upsert no PostgreSQL"),
         ("load-presenca", "Carga de presença e remuneração oficiais no PostgreSQL"),
-        ("load-economia", "Carga das séries econômicas e sociais (eco) e dos metadados dos mandatos presidenciais"),
+        ("load-economia", "Carga das séries econômicas, mandatos, composição, PNAD (eco/leg) e finanças (fin)"),
         ("processos", "Carga do acervo manual de processos judiciais (exige --allow-unverified-legal)"),
     ]:
         p.add_argument(f"--{flag}", action="store_true", help=ajuda)

@@ -1,37 +1,43 @@
-"""Indicadores avançados do dossiê e endpoints de CEAP/emendas alimentados pelo arquivo do ETL."""
+"""Indicadores avançados do dossiê e endpoints de CEAP/emendas alimentados pelo schema `fin`."""
 
 from datetime import date
 
 import pytest
-from app.models import (
-    AttendanceRecord,
-    CasaLegislativaEnum,
-    PoliticianAssetDeclaration,
-    PoliticianRemuneration,
-    TipoPresencaEnum,
-)
+from app.models import AttendanceRecord, CasaLegislativaEnum, TipoPresencaEnum
 
-from .conftest import write_json
+from .conftest import fonte_id, inserir_fin, pessoa_do
 
 BASE = "/api/v1/politicians"
 
 
 def _add_remuneration(db, seed, months=2):
+    pessoa = pessoa_do(db, seed.fulano)
     for month in range(1, months + 1):
-        db.add(
-            PoliticianRemuneration(
-                politician_id=seed.fulano.id,
-                mandate_id=seed.mandate_fulano.id,
-                reference_year=2024,
-                reference_month=month,
-                gross_salary=40000,
-                net_salary=30000,
-                parliamentary_quota_ceap=100,
-                housing_allowance=0,
-                other_benefits=0,
-                data_source="Portal",
-            )
+        inserir_fin(
+            db,
+            "remuneracao",
+            pessoa_id=pessoa,
+            ano=2024,
+            mes=month,
+            salario_bruto=40000,
+            salario_liquido=30000,
+            cota_ceap=100,
+            auxilio_moradia=0,
+            outros_beneficios=0,
+            fonte_id=fonte_id(db, "CAMARA_PORTAL"),
         )
+
+
+def _declarar_patrimonio(db, politico, ano, valor, detalhes=None):
+    inserir_fin(
+        db,
+        "declaracao_patrimonio",
+        pessoa_id=pessoa_do(db, politico),
+        ano_eleicao=ano,
+        valor_declarado=valor,
+        detalhes=detalhes,
+        fonte_id=fonte_id(db, "TSE"),
+    )
 
 
 def _add_attendance(db, seed, present=3, absent=1):
@@ -60,7 +66,7 @@ def _add_attendance(db, seed, present=3, absent=1):
         day += 1
 
 
-def test_roi_is_only_computed_with_ceap_salary_and_attendance(client, db, seed):
+def test_roi_is_only_computed_with_ceap_salary_and_attendance(client, db, seed, financas):
     body = client.get(f"{BASE}/{seed.fulano.id}").json()["indices_inteligencia"]["roi_cidadao"]
     assert body["score"] is None and body["nota"] is None  # sem remuneração/presença: sem nota
 
@@ -77,14 +83,8 @@ def test_roi_is_only_computed_with_ceap_salary_and_attendance(client, db, seed):
 
 
 def test_patrimony_history_growth_and_compatibility(client, db, seed):
-    db.add_all(
-        [
-            PoliticianAssetDeclaration(politician_id=seed.fulano.id, election_year=2018, declared_value_brl=100000),
-            PoliticianAssetDeclaration(
-                politician_id=seed.fulano.id, election_year=2022, declared_value_brl=150000, asset_details="Imóvel"
-            ),
-        ]
-    )
+    _declarar_patrimonio(db, seed.fulano, 2018, 100000)
+    _declarar_patrimonio(db, seed.fulano, 2022, 150000, "Imóvel")
     db.commit()
     resumo = client.get(f"{BASE}/{seed.fulano.id}").json()["evolucao_patrimonial"]["resumo"]
     assert resumo["possui_dados"] is True and resumo["total_declaracoes"] == 2
@@ -99,54 +99,64 @@ def test_patrimony_history_growth_and_compatibility(client, db, seed):
 @pytest.mark.parametrize("final_value,expected", [(100100, "COMPATÍVEL"), (190000, "MODERADO"), (900000, "ATÍPICO")])
 def test_patrimony_compatibility_classification(client, db, seed, final_value, expected):
     _add_remuneration(db, seed, months=2)  # subsídios brutos registrados: 80.000
-    db.add_all(
-        [
-            PoliticianAssetDeclaration(politician_id=seed.fulano.id, election_year=2018, declared_value_brl=100000),
-            PoliticianAssetDeclaration(
-                politician_id=seed.fulano.id, election_year=2022, declared_value_brl=final_value
-            ),
-        ]
-    )
+    _declarar_patrimonio(db, seed.fulano, 2018, 100000)
+    _declarar_patrimonio(db, seed.fulano, 2022, final_value)
     db.commit()
     enrich = client.get(f"{BASE}/{seed.fulano.id}").json()["indices_inteligencia"]["enriquecimento_patrimonial"]
     assert enrich["compatibilidade"] == expected
 
 
-def test_ceap_endpoint_falls_back_to_etl_file_with_exact_name(client, seed, data_dir):
-    write_json(
-        data_dir,
-        "despesas_ceap_2019_2026.json",
-        {"BELTRANO": {"total_gasto": 900.0, "total_notas": 3, "por_ano": {"2023": 400, "2024": 500}}},
-    )
+def test_ceap_endpoint_totals_by_year_and_type_from_fin(client, db, seed):
+    pessoa = pessoa_do(db, seed.beltrano)
+    for ano, tipo, valor in ((2023, "Passagem", 400), (2024, "Passagem", 300), (2024, "Telefonia", 200)):
+        inserir_fin(db, "despesa_cota", pessoa_id=pessoa, ano=ano, tipo_despesa=tipo, valor_liquido=valor)
+    inserir_fin(db, "despesa_cota_resumo", pessoa_id=pessoa, total_notas=3)
+    db.commit()
     body = client.get(f"{BASE}/{seed.beltrano.id}/ceap").json()
     assert body["total_gasto"] == 900.0 and body["total_notas"] == 3
-    assert [d["ano"] for d in body["despesas"]] == [2024, 2023]
-    assert all(d["cnpj_cpf"] is None for d in body["despesas"])
+    assert [(d["ano"], d["tipo"], d["valor"]) for d in body["despesas"]] == [
+        (2024, "Passagem", 300.0),
+        (2024, "Telefonia", 200.0),
+        (2023, "Passagem", 400.0),
+    ]
 
 
-def test_ceap_endpoint_without_any_source_is_empty(client, seed, data_dir):
+def test_ceap_endpoint_without_any_data_is_empty(client, seed):
     body = client.get(f"{BASE}/{seed.lula_fonte.id}/ceap").json()
     assert body["total_gasto"] == 0.0 and body["despesas"] == []
 
 
-def test_emendas_endpoint_falls_back_to_etl_file(client, seed, data_dir):
-    write_json(
-        data_dir,
-        "emendas_parlamentares_2019_2026.json",
-        [
-            {"politician_name": "Beltrano", "ano": 2024, "valor_empenhado": 10, "valor_pago": 5, "codigo_emenda": "X1"},
-            {"politician_name": "Beltrano", "ano": 2023, "valor_empenhado": None, "valor_pago": None},
-            {"politician_name": "Mariana Beltrano", "ano": 2024, "valor_empenhado": 999, "valor_pago": 999},
-        ],
+def test_emendas_endpoint_lists_only_the_authors_emendas(client, db, seed):
+    base = dict(
+        autor_texto="BELTRANO",
+        tipo_autor="INDIVIDUAL",
+        autor_situacao="IDENTIFICADO",
+        tipo_emenda="INDIVIDUAL",
+        localidade_destino="RJ",
+        fonte_id=fonte_id(db, "PORTAL_TRANSPARENCIA"),
     )
+    pessoa = pessoa_do(db, seed.beltrano)
+    inserir_fin(db, "emenda", pessoa_id=pessoa, ano=2024, codigo_emenda="X1", valor_empenhado=10, valor_pago=5, **base)
+    inserir_fin(db, "emenda", pessoa_id=pessoa, ano=2023, codigo_emenda=None, valor_empenhado=20, valor_pago=0, **base)
+    inserir_fin(
+        db,
+        "emenda",
+        pessoa_id=pessoa_do(db, seed.lula_fonte),
+        ano=2024,
+        codigo_emenda="Y1",
+        valor_empenhado=999,
+        valor_pago=999,
+        **{**base, "autor_texto": "LULA DA FONTE"},
+    )
+    db.commit()
     body = client.get(f"{BASE}/{seed.beltrano.id}/emendas").json()
-    assert body["total_empenhado"] == 10.0 and body["total_pago"] == 5.0  # linha de outro nome não entra
-    assert len(body["emendas"]) == 2 and body["emendas"][0]["codigo"] == "X1"
+    assert body["total_empenhado"] == 30.0 and body["total_pago"] == 5.0  # a emenda de outro autor não entra
+    assert [e["codigo"] for e in body["emendas"]] == ["X1", None]
     dossier = client.get(f"{BASE}/{seed.beltrano.id}").json()["emendas_parlamentares"]
     assert dossier["possui_dados"] is True and dossier["total_emendas"] == 2
 
 
-def test_emendas_endpoint_without_any_source_is_empty(client, seed, data_dir):
+def test_emendas_endpoint_without_any_data_is_empty(client, seed):
     body = client.get(f"{BASE}/{seed.lula_fonte.id}/emendas").json()
     assert body["total_pago"] == 0.0 and body["emendas"] == []
 
@@ -176,23 +186,18 @@ def test_dossier_flags_truncated_proposition_list(client, db, seed, monkeypatch)
 
 def test_remuneration_fields_not_reported_by_the_source_are_null_not_zero(client, db, seed):
     """A fonte oficial só informa o bruto mensal (e o líquido do mês mais recente): o resto é null, nunca 0."""
-    db.add_all(
-        [
-            PoliticianRemuneration(
-                politician_id=seed.fulano.id,
-                mandate_id=seed.mandate_fulano.id,
-                reference_year=2024,
-                reference_month=month,
-                gross_salary=44008.52,
-                net_salary=27822.06 if month == 2 else None,
-                parliamentary_quota_ceap=None,
-                housing_allowance=None,
-                other_benefits=None,
-                data_source="Câmara dos Deputados - Portal da Transparência",
-            )
-            for month in (1, 2)
-        ]
-    )
+    pessoa = pessoa_do(db, seed.fulano)
+    for month in (1, 2):
+        inserir_fin(
+            db,
+            "remuneracao",
+            pessoa_id=pessoa,
+            ano=2024,
+            mes=month,
+            salario_bruto=44008.52,
+            salario_liquido=27822.06 if month == 2 else None,
+            fonte_id=fonte_id(db, "CAMARA_PORTAL"),
+        )
     db.commit()
     rem = client.get(f"{BASE}/{seed.fulano.id}").json()["remuneracao"]
     resumo = rem["resumo"]
@@ -207,16 +212,14 @@ def test_remuneration_fields_not_reported_by_the_source_are_null_not_zero(client
 
 
 def test_latest_month_without_net_salary_yields_null_current_net(client, db, seed):
-    db.add(
-        PoliticianRemuneration(
-            politician_id=seed.fulano.id,
-            mandate_id=seed.mandate_fulano.id,
-            reference_year=2024,
-            reference_month=3,
-            gross_salary=44008.52,
-            net_salary=None,
-            data_source="Portal",
-        )
+    inserir_fin(
+        db,
+        "remuneracao",
+        pessoa_id=pessoa_do(db, seed.fulano),
+        ano=2024,
+        mes=3,
+        salario_bruto=44008.52,
+        fonte_id=fonte_id(db, "CAMARA_PORTAL"),
     )
     db.commit()
     resumo = client.get(f"{BASE}/{seed.fulano.id}").json()["remuneracao"]["resumo"]

@@ -373,3 +373,102 @@ def linhas_pnad_do_ano(entrada: Dict[str, Any]) -> List[Dict[str, Any]]:
                 }
             )
     return linhas
+
+
+# ── Finanças (schema `fin`) ──────────────────────────────────────────────────────────────────────────────────────────
+UF_POR_NOME = {
+    "ACRE": "AC",
+    "ALAGOAS": "AL",
+    "AMAPA": "AP",
+    "AMAZONAS": "AM",
+    "BAHIA": "BA",
+    "CEARA": "CE",
+    "DISTRITO FEDERAL": "DF",
+    "ESPIRITO SANTO": "ES",
+    "GOIAS": "GO",
+    "MARANHAO": "MA",
+    "MATO GROSSO": "MT",
+    "MATO GROSSO DO SUL": "MS",
+    "MINAS GERAIS": "MG",
+    "PARA": "PA",
+    "PARAIBA": "PB",
+    "PARANA": "PR",
+    "PERNAMBUCO": "PE",
+    "PIAUI": "PI",
+    "RIO DE JANEIRO": "RJ",
+    "RIO GRANDE DO NORTE": "RN",
+    "RIO GRANDE DO SUL": "RS",
+    "RONDONIA": "RO",
+    "RORAIMA": "RR",
+    "SANTA CATARINA": "SC",
+    "SAO PAULO": "SP",
+    "SERGIPE": "SE",
+    "TOCANTINS": "TO",
+}
+_UFS = frozenset(UF_POR_NOME.values())
+_SEQUENCIA_CPF = re.compile(r"(?<!\d)\d{11}(?!\d)")
+TIPOS_DE_AUTOR_INSTITUCIONAL = ("BANCADA_ESTADUAL", "COMISSAO_INSTITUCIONAL", "RELATOR_GERAL")
+
+
+def so_digitos(valor: Any) -> str:
+    return re.sub(r"\D", "", str(valor)) if valor is not None else ""
+
+
+def cnpj_do_fornecedor(valor: Any) -> Optional[str]:
+    """
+    Os 14 dígitos de um CNPJ. CPF (11 dígitos), documento truncado e o CNPJ de enchimento que a Câmara usa para
+    lançamentos sem fornecedor ("CELULAR FUNCIONAL", "RAMAL") viram None: CPF nunca é gravado (decisão D3).
+    """
+    digitos = so_digitos(valor)
+    if len(digitos) != 14 or digitos[:12] == "0" * 12:
+        return None
+    return digitos
+
+
+def nome_do_fornecedor(valor: Any) -> str:
+    """Nome do fornecedor sem CPF embutido (MEI aparece como 'NOME 06507955124' na fonte); vazio vira o rótulo padrão."""
+    limpo = " ".join(_SEQUENCIA_CPF.sub(" ", str(valor or "")).split())
+    return limpo or "Fornecedor não identificado"
+
+
+def documento_do_doador(valor: Any) -> Optional[str]:
+    """
+    Documento do doador como o TSE publica: CNPJ inteiro e CPF já mascarado ('***.060.603-**'). Um CPF completo
+    (11 dígitos sem máscara) é mascarado aqui, para nunca ser gravado.
+    """
+    bruto = texto(valor)
+    if bruto is None:
+        return None
+    if "*" in bruto:
+        return bruto
+    digitos = so_digitos(bruto)
+    if len(digitos) == 11:
+        return f"***.{digitos[3:6]}.{digitos[6:9]}-**"
+    return bruto
+
+
+def tipo_do_autor(autor: Any, tipo_emenda: Any) -> str:
+    """Tipo de autor da emenda: bancada estadual, relator-geral, comissão ou parlamentar individual."""
+    nome = normalize_name_tokens(texto(autor) or "")
+    tipo = texto(tipo_emenda) or ""
+    if "bancada" in nome or tipo == "Emenda de Bancada":
+        return "BANCADA_ESTADUAL"
+    if "relator" in nome or tipo == "Emenda de Relator":
+        return "RELATOR_GERAL"
+    if nome.startswith(("com ", "comissao")) or tipo == "Emenda de Comissão":
+        return "COMISSAO_INSTITUCIONAL"
+    return "INDIVIDUAL"
+
+
+def uf_da_localidade(localidade: Any) -> Optional[str]:
+    """
+    UF do destino da emenda: 'SÃO PAULO (UF)' é o estado e 'CAMPINAS - SP' é um município. Região, 'Nacional',
+    'MÚLTIPLO' e 'Exterior' não têm UF (None).
+    """
+    bruto = texto(localidade)
+    if bruto is None:
+        return None
+    if bruto.upper().endswith("(UF)"):
+        return UF_POR_NOME.get(normalize_name_tokens(bruto[:-4]).upper())
+    sufixo = re.search(r"\s-\s([A-Z]{2})$", bruto)
+    return sufixo.group(1) if sufixo and sufixo.group(1) in _UFS else None

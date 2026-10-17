@@ -4,12 +4,10 @@ import React from "react";
 import {
   Building2,
   TrendingUp,
-  ExternalLink,
   Receipt,
   FileCheck,
 } from "lucide-react";
 import type { PoliticoDossier } from "@/services/api";
-import { safeExternalUrl } from "@/lib/safeUrl";
 import { EmptyState } from "@/components/StateViews";
 import { formatMoney } from "./format";
 
@@ -215,64 +213,31 @@ export default function CeapTab({ dossier }: CeapTabProps) {
                 </div>
               </div>
 
-              {/* Feed de Despesas e Notas Fiscais Recentes com Link Oficial */}
-              {dossier?.custos_ceap?.despesas_recentes && dossier.custos_ceap.despesas_recentes.length > 0 && (
+              {/* Total gasto em cada ano (a fonte publicada pelo ETL não traz nota por nota) */}
+              {dossier.custos_ceap.gastos_por_ano && dossier.custos_ceap.gastos_por_ano.length > 0 && (
                 <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-800">
                     <div className="flex items-center gap-2">
                       <FileCheck className="w-4 h-4 text-emerald-400" aria-hidden="true" />
-                      <h4 className="text-sm font-bold text-slate-100">
-                        Últimos Comprovantes Fiscais Auditados
-                      </h4>
+                      <h4 className="text-sm font-bold text-slate-100">Gasto da cota por ano</h4>
                     </div>
-                    <span className="text-xs text-slate-400">
-                      Exibindo últimas {dossier.custos_ceap.despesas_recentes.length} notas emitidas
-                    </span>
+                    <span className="text-xs text-slate-400">Fonte oficial: Câmara e Senado</span>
                   </div>
 
                   <div className="overflow-x-auto rounded-xl border border-slate-800/80 bg-slate-950/60">
                     <table className="w-full text-left text-xs">
                       <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider text-[10px] font-bold border-b border-slate-800">
                         <tr>
-                          <th className="py-2.5 px-3 whitespace-nowrap">Mês/Ano</th>
-                          <th className="py-2.5 px-3">Rubrica / Tipo de Despesa</th>
-                          <th className="py-2.5 px-3">Prestador / Fornecedor</th>
-                          <th className="py-2.5 px-3 text-right whitespace-nowrap">Valor da Nota</th>
-                          <th className="py-2.5 px-3 text-center whitespace-nowrap">Documento</th>
+                          <th className="py-2.5 px-3 whitespace-nowrap">Ano</th>
+                          <th className="py-2.5 px-3 text-right whitespace-nowrap">Total gasto</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/50">
-                        {dossier.custos_ceap.despesas_recentes.map((d) => (
-                          <tr key={`${d.data_emissao}-${d.nome_fornecedor}-${d.valor_liquido}`} className="hover:bg-slate-900/80 transition-colors">
-                            <td className="py-2.5 px-3 font-mono text-slate-300 whitespace-nowrap">
-                              {d.mes ? String(d.mes).padStart(2, "0") : "--"}/{d.ano}
-                            </td>
-                            <td className="py-2.5 px-3 text-slate-300 font-medium">
-                              {d.tipo_despesa}
-                            </td>
-                            <td className="py-2.5 px-3 text-slate-400">
-                              <span className="line-clamp-1" title={d.nome_fornecedor}>
-                                {d.nome_fornecedor}
-                              </span>
-                            </td>
+                        {dossier.custos_ceap.gastos_por_ano.map((g) => (
+                          <tr key={g.ano} className="hover:bg-slate-900/80 transition-colors">
+                            <td className="py-2.5 px-3 font-mono text-slate-300 whitespace-nowrap">{g.ano}</td>
                             <td className="py-2.5 px-3 text-right font-mono font-bold text-cyan-400 whitespace-nowrap">
-                              R$ {d.valor_liquido.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                            </td>
-                            <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                              {d.documento_url ? (
-                                <a
-                                  href={safeExternalUrl(d.documento_url)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-lg"
-                                  title="Ver nota original no portal oficial"
-                                >
-                                  <span>NF-e</span>
-                                  <ExternalLink className="w-3 h-3" aria-hidden="true" />
-                                </a>
-                              ) : (
-                                <span className="text-[10px] text-slate-400">Registrado</span>
-                              )}
+                              R$ {g.total_gasto.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                             </td>
                           </tr>
                         ))}

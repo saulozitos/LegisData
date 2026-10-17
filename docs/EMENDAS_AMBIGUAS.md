@@ -24,3 +24,7 @@ arbitrariamente a nenhum dos dois. Isso impede que valores milionários sejam im
 
 O algoritmo do loader avalia o período do mandato parlamentar ( e )
 para resolver homônimos inter-legislaturas, garantindo imputação correta sem comprometer a exatidão oficial.
+
+## Situação após a Entrega 3c (2026-10-16)
+
+O critério acima passou a ser aplicado pela carga de `fin.emenda` (`etl/pipelines/pessoa_resolver.py`): o nome só é atribuído a uma pessoa quando é único ou quando exatamente uma das candidatas tinha mandato no ano da emenda. O resto fica com `autor_situacao = 'HOMONIMO_NAO_DESAMBIGUADO'`. No banco de desenvolvimento são 878 emendas de 30 nomes (por exemplo Izalci Lucas, Zenaide Maia e Romário), quase todos senadores cujo mandato de 2019 a 2022 não está em `core.mandato` e que também existem como ex-deputados, sem ligação entre os cadastros; a unificação de pessoas (`docs/PESSOAS_DUPLICADAS.md`) os resolve. Consulta: `SELECT autor_texto, count(*) FROM fin.emenda WHERE autor_situacao = 'HOMONIMO_NAO_DESAMBIGUADO' GROUP BY 1`.

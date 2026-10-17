@@ -71,7 +71,7 @@ def pg_engine():
         pytest.skip(f"Postgres de teste indisponível em {SERVIDOR_URL} ({exc.__class__.__name__}); `make test-db-up`")
     if not reutilizar:
         with engine.begin() as conn:
-            for schema in ("api", "stg", "leg", "param", "etl", "eco", "core", "ref", "public"):
+            for schema in ("api", "stg", "fin", "leg", "param", "etl", "eco", "core", "ref", "public"):
                 conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
             conn.execute(text("CREATE SCHEMA public"))
         from app.core.migrations import upgrade_schema

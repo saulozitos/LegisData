@@ -174,12 +174,14 @@ describe('PoliticianHeaderCard', () => {
 });
 
 describe('CeapTab', () => {
-  it('lista categorias, fornecedores e só linka documentos seguros', () => {
+  it('lista categorias, fornecedores e o gasto por ano', () => {
     render(<CeapTab dossier={fullDossier()} />);
     expect(screen.getByText('120 comprovantes fiscais')).toBeInTheDocument();
     expect(screen.getAllByText('Gráfica Alfa LTDA').length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('link', { name: /NF-e/ })).toHaveLength(1);
-    expect(screen.getByText('--/2024')).toBeInTheDocument(); // mês ausente
+    expect(screen.getByText('Gasto da cota por ano')).toBeInTheDocument();
+    expect(screen.getByText('2024')).toBeInTheDocument();
+    const linha2023 = screen.getByText('2023').closest('tr') as HTMLElement;
+    expect(within(linha2023).getByText('R$ 400.000,00')).toBeInTheDocument();
   });
 
   it('sem dados de CEAP mostra indisponível — nunca "R$ 0,00"', () => {

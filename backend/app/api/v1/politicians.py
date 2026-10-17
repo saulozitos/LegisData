@@ -2,31 +2,24 @@ import re
 import unicodedata
 import uuid
 from datetime import date, datetime
-from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-from app.core.config import PROCESSED_DATA_DIR
-from app.core.data_files import load_json_cached
 from app.core.database import get_db
 from app.core.links import url_oficial_proposicao
 from app.core.query_utils import ALL_KEYWORDS, BRT, contains
 from app.models import (
     CargoPoliticoEnum,
     CasaLegislativaEnum,
-    CertidaoJudicial,
-    DespesaCota,
-    DoacaoCampanha,
-    EmendaParlamentar,
     Mandate,
     PartyAffiliation,
     PoliticalParty,
     Politician,
-    PoliticianAssetDeclaration,
-    PoliticianRemuneration,
     ProcessoJudicial,
 )
 from app.models.leg import Autoria, Proposicao, Votacao, Voto
+from app.services import financas_service
 from app.services.basometro import calcular_basometro
+from app.services.financas_service import Certidao
 from app.services.ialp_pesos import carregar_pesos_ialp
 from app.services.ialp_pontos import pontos_ialp_pessoa
 from app.services.presidencia_service import listar_presidentes, periodo_do_mandato, presidente_por_referencia
@@ -34,98 +27,24 @@ from app.services.resumo_votos_service import resumo_votos as resumo_votos_do_pa
 from app.services.roi_cidadao import METODOLOGIA as ROI_METODOLOGIA
 from app.services.roi_cidadao import PISO_DE_PONTOS, calcular_roi
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, asc, desc, func
+from sqlalchemy import and_, desc, func
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
 router = APIRouter()
-DATA_DIR = PROCESSED_DATA_DIR
 
 # Limites de listas devolvidas no dossiê (os agregados são sempre calculados no banco, sobre todos os registros)
 MAX_VOTES_LISTED = 300
 MAX_PROPOSITIONS_LISTED = 500
 # Quando a fonte repete o parlamentar na mesma proposição, vale o papel de maior peso: autor principal, relator, coautor
 _PRIORIDADE_PAPEL: Dict[str, int] = {"AUTOR_PRINCIPAL": 0, "RELATOR": 1, "COAUTOR": 2}
-MAX_EMENDAS_LISTED = 500
-
-# Cache dos arquivos JSON processados (invalidado por mtime; arquivo ausente nunca é cacheado)
-_json_cache: Dict[str, Any] = {}
-_load_json_cached = load_json_cached
 
 
 def _normalize_name(text: Optional[str]) -> str:
     if not text:
         return ""
     return "".join(c for c in unicodedata.normalize("NFD", text.upper()) if unicodedata.category(c) != "Mn").strip()
-
-
-def _mask_document(doc: Optional[str]) -> Optional[str]:
-    """Mascara CPF (LGPD): ***.123.456-**. CNPJ (pessoa jurídica) é dado público e permanece íntegro."""
-    if not doc:
-        return doc
-    if "*" in doc:  # já mascarado na origem (ETL grava CPF de doador mascarado): não mascara de novo
-        return doc
-    digits = re.sub(r"\D", "", doc)
-    if len(digits) == 11:
-        return f"***.{digits[3:6]}.{digits[6:9]}-**"
-    if len(digits) == 14:
-        return doc
-    if len(digits) > 4:
-        return "*" * (len(digits) - 4) + digits[-4:]
-    return "***"
-
-
-def _processed_ceap_index() -> Dict[str, Any]:
-    file_path = DATA_DIR / "despesas_ceap_historico.json"
-    if not file_path.exists():
-        file_path = DATA_DIR / "despesas_ceap_2019_2026.json"
-    raw = _load_json_cached(file_path)
-    if not isinstance(raw, dict):
-        return {}
-    cached = _json_cache.get(str(file_path) + "#index")
-    mtime = file_path.stat().st_mtime
-    if cached and cached[0] == mtime:
-        return cached[1]
-    index = {_normalize_name(k): v for k, v in raw.items()}
-    _json_cache[str(file_path) + "#index"] = (mtime, index)
-    return index
-
-
-def _processed_emendas_index() -> Dict[str, List[Dict[str, Any]]]:
-    file_path = DATA_DIR / "emendas_parlamentares_historico.json"
-    if not file_path.exists():
-        file_path = DATA_DIR / "emendas_parlamentares_2019_2026.json"
-    raw = _load_json_cached(file_path)
-    if not isinstance(raw, list):
-        return {}
-    cached = _json_cache.get(str(file_path) + "#index")
-    mtime = file_path.stat().st_mtime
-    if cached and cached[0] == mtime:
-        return cached[1]
-    index: Dict[str, List[Dict[str, Any]]] = {}
-    for item in raw:
-        index.setdefault(_normalize_name(item.get("politician_name", "")), []).append(item)
-    _json_cache[str(file_path) + "#index"] = (mtime, index)
-    return index
-
-
-def _get_processed_ceap(electoral_name: str, civil_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """Busca CEAP consolidada no arquivo do ETL por nome normalizado EXATO (nunca por substring)."""
-    index = _processed_ceap_index()
-    for candidate in (_normalize_name(electoral_name), _normalize_name(civil_name)):
-        if candidate and candidate in index:
-            return index[candidate]
-    return None
-
-
-def _get_processed_emendas(electoral_name: str, civil_name: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Busca emendas no arquivo do ETL por nome normalizado EXATO (nunca por substring)."""
-    index = _processed_emendas_index()
-    for candidate in (_normalize_name(electoral_name), _normalize_name(civil_name)):
-        if candidate and candidate in index:
-            return index[candidate]
-    return []
 
 
 SIMBOLICO_KEYWORDS = [
@@ -173,6 +92,11 @@ VOTE_LABELS = {
     "AUSENTE": "Ausente",
     "ARTIGO_17": "Art. 17",
 }
+
+
+def _pessoas_financas(db: Session, pol: Politician) -> List[int]:
+    """Cadastros de `core.pessoa` do parlamentar, onde ficam as finanças (ver `financas_service`)."""
+    return financas_service.pessoas_do_parlamentar(db, pol.id, pol.camara_id, pol.senado_id)
 
 
 def _opt_float(valor: Any) -> Optional[float]:
@@ -609,7 +533,7 @@ def _resolve_politician(db: Session, politician_id: str) -> Politician:
     raise HTTPException(status_code=404, detail=f"Político '{politician_id}' não encontrado.")
 
 
-def _enrich_judicial_records(pol: Politician, certidoes_db: List[CertidaoJudicial], db: Session) -> Dict[str, Any]:
+def _enrich_judicial_records(pol: Politician, certidoes_db: List[Certidao], db: Session) -> Dict[str, Any]:
     """
     Consolida dados judiciais a partir de `processos_judiciais` e `certidoes_judiciais`.
     Campos ausentes são devolvidos como None: nenhum número de processo, data ou código é inventado.
@@ -634,7 +558,7 @@ def _enrich_judicial_records(pol: Politician, certidoes_db: List[CertidaoJudicia
         for p in processos_db
     ]
 
-    def _is_positive(cert: CertidaoJudicial) -> bool:
+    def _is_positive(cert: Certidao) -> bool:
         status_clean = (cert.status or "").lower()
         return "positiva" in status_clean or "declarada" in status_clean
 
@@ -702,278 +626,6 @@ def _enrich_judicial_records(pol: Politician, certidoes_db: List[CertidaoJudicia
     }
 
 
-def _ceap_from_db(db: Session, pol: Politician) -> Optional[Dict[str, Any]]:
-    """Agrega a CEAP no banco (SUM/GROUP BY) em vez de carregar milhares de linhas em memória."""
-    flt = DespesaCota.politician_id == pol.id
-    total_val, total_notas = db.query(func.coalesce(func.sum(DespesaCota.net_value), 0), func.count()).filter(flt).one()
-    if not total_notas:
-        return None
-    total_ceap_geral = float(total_val)
-
-    type_rows = (
-        db.query(DespesaCota.expense_type, func.sum(DespesaCota.net_value).label("total"))
-        .filter(flt)
-        .group_by(DespesaCota.expense_type)
-        .order_by(desc("total"))
-        .all()
-    )
-    gastos_por_tipo = [
-        {"tipo_despesa": t, "total_gasto": round(float(v), 2), "percentual": _pct(float(v), total_ceap_geral)}
-        for t, v in type_rows
-    ]
-
-    supplier_rows = (
-        db.query(
-            DespesaCota.supplier_name,
-            func.max(DespesaCota.supplier_cnpj_cpf),
-            func.sum(DespesaCota.net_value).label("total"),
-            func.count(),
-        )
-        .filter(flt)
-        .group_by(DespesaCota.supplier_name)
-        .order_by(desc("total"))
-        .limit(10)
-        .all()
-    )
-    maiores_fornecedores = [
-        {
-            "nome_fornecedor": name,
-            "cnpj_cpf": _mask_document(doc),
-            "total_recebido": round(float(total), 2),
-            "num_notas": int(n),
-        }
-        for name, doc, total, n in supplier_rows
-    ]
-
-    recentes = (
-        db.query(DespesaCota)
-        .filter(flt)
-        .order_by(desc(DespesaCota.year), desc(DespesaCota.month).nulls_last(), DespesaCota.id)
-        .limit(15)
-        .all()
-    )
-    despesas_recentes = [
-        {
-            "ano": d.year,
-            "mes": d.month,
-            "tipo_despesa": d.expense_type,
-            "valor_liquido": float(d.net_value),
-            "nome_fornecedor": d.supplier_name,
-            "cnpj_cpf": _mask_document(d.supplier_cnpj_cpf),
-            "data_emissao": d.issue_date.isoformat() if d.issue_date else None,
-            "documento_url": d.document_url,
-        }
-        for d in recentes
-    ]
-    return {
-        "possui_dados": True,
-        "gasto_total_recente": round(total_ceap_geral, 2),
-        "total_notas": int(total_notas),
-        "gastos_por_tipo": gastos_por_tipo,
-        "maiores_fornecedores": maiores_fornecedores,
-        "despesas_recentes": despesas_recentes,
-    }
-
-
-def _ceap_from_file(pol: Politician) -> Optional[Dict[str, Any]]:
-    proc_ceap = _get_processed_ceap(pol.electoral_name, pol.civil_name)
-    if not proc_ceap:
-        return None
-    total_ceap_geral = float(proc_ceap.get("total_gasto") or 0.0)
-    gastos_por_tipo = [
-        {
-            "tipo_despesa": t,
-            "total_gasto": round(float(v), 2),
-            "percentual": _pct(float(v), total_ceap_geral),
-        }
-        for t, v in (proc_ceap.get("por_tipo") or {}).items()
-    ]
-    gastos_por_tipo.sort(key=lambda x: x["total_gasto"], reverse=True)
-
-    maiores_fornecedores = [
-        {
-            "nome_fornecedor": f.get("nome") or "Fornecedor",
-            "cnpj_cpf": _mask_document(f.get("cnpj_cpf")),
-            "total_recebido": round(float(f.get("total") or 0.0), 2),
-            "num_notas": int(f.get("notas") or 1),
-        }
-        for f in (proc_ceap.get("fornecedores") or {}).values()
-    ]
-    maiores_fornecedores.sort(key=lambda x: x["total_recebido"], reverse=True)
-    maiores_fornecedores = maiores_fornecedores[:10]
-
-    por_ano = proc_ceap.get("por_ano") or {}
-    despesas_recentes = [
-        {
-            "ano": int(ano),
-            "mes": None,
-            "tipo_despesa": "Consolidado Anual CEAP (Prestação de Contas)",
-            "valor_liquido": round(float(val), 2),
-            "nome_fornecedor": "Congresso Nacional (Câmara / Senado)",
-            "cnpj_cpf": None,
-            "data_emissao": None,
-            "documento_url": None,
-        }
-        for ano, val in sorted(por_ano.items(), reverse=True)
-    ]
-    return {
-        "possui_dados": True,
-        "gasto_total_recente": round(total_ceap_geral, 2),
-        "total_notas": int(proc_ceap.get("total_notas") or len(despesas_recentes)),
-        "gastos_por_tipo": gastos_por_tipo,
-        "maiores_fornecedores": maiores_fornecedores,
-        "despesas_recentes": despesas_recentes,
-        "por_ano": por_ano,
-    }
-
-
-def _emendas_summary(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Resumo de emendas a partir de linhas normalizadas (valor_empenhado, valor_pago, localidade, tipo, funcao)."""
-    total_empenhado = float(sum(r["valor_empenhado"] for r in rows))
-    total_pago = float(sum(r["valor_pago"] for r in rows))
-
-    def group(key: str) -> Dict[str, float]:
-        acc: Dict[str, float] = {}
-        for r in rows:
-            acc[r[key]] = acc.get(r[key], 0.0) + r["valor_pago"]
-        return acc
-
-    def to_list(acc: Dict[str, float], label: str) -> List[Dict[str, Any]]:
-        out = [{label: k, "valor_pago": round(v, 2), "percentual": _pct(v, total_pago)} for k, v in acc.items()]
-        out.sort(key=lambda x: x["valor_pago"], reverse=True)
-        return out
-
-    return {
-        "possui_dados": True,
-        "total_empenhado": round(total_empenhado, 2),
-        "total_pago": round(total_pago, 2),
-        "percentual_execucao": _pct(total_pago, total_empenhado),
-        "destinos_principais": to_list(group("localidade_destino"), "localidade"),
-        "distribuicao_por_tipo": to_list(group("tipo_emenda"), "tipo"),
-        "distribuicao_por_area": to_list(group("funcao"), "area"),
-    }
-
-
-def _emendas_from_db(db: Session, pol: Politician) -> Optional[Dict[str, Any]]:
-    flt = EmendaParlamentar.politician_id == pol.id
-    total_emp, total_pago, total_n = (
-        db.query(
-            func.coalesce(func.sum(EmendaParlamentar.committed_value), 0),
-            func.coalesce(func.sum(EmendaParlamentar.paid_value), 0),
-            func.count(),
-        )
-        .filter(flt)
-        .one()
-    )
-    if not total_n:
-        return None
-    total_emp, total_pago = float(total_emp), float(total_pago)
-
-    def grouped(column, label: str, default: Optional[str] = None) -> List[Dict[str, Any]]:
-        col = func.coalesce(column, default) if default else column
-        rows = (
-            db.query(col, func.sum(EmendaParlamentar.paid_value).label("total"))
-            .filter(flt)
-            .group_by(col)
-            .order_by(desc("total"))
-            .all()
-        )
-        return [{label: k, "valor_pago": round(float(v), 2), "percentual": _pct(float(v), total_pago)} for k, v in rows]
-
-    emendas = (
-        db.query(EmendaParlamentar)
-        .filter(flt)
-        .order_by(desc(EmendaParlamentar.year), desc(EmendaParlamentar.paid_value), EmendaParlamentar.id)
-        .limit(MAX_EMENDAS_LISTED)
-        .all()
-    )
-    return {
-        "possui_dados": True,
-        "total_empenhado": round(total_emp, 2),
-        "total_pago": round(total_pago, 2),
-        "percentual_execucao": _pct(total_pago, total_emp),
-        "destinos_principais": grouped(EmendaParlamentar.destination_locality, "localidade"),
-        "distribuicao_por_tipo": grouped(EmendaParlamentar.amendment_type, "tipo"),
-        "distribuicao_por_area": grouped(EmendaParlamentar.function_area, "area", "Outras Funções"),
-        "total_emendas": int(total_n),
-        "lista_emendas": [
-            {
-                "id": str(e.id),
-                "ano": e.year,
-                "codigo_emenda": e.amendment_code,
-                "tipo_emenda": e.amendment_type,
-                "valor_empenhado": float(e.committed_value),
-                "valor_pago": float(e.paid_value),
-                "localidade_destino": e.destination_locality,
-                "funcao": e.function_area,
-            }
-            for e in emendas
-        ],
-    }
-
-
-def _normalize_emenda_rows(raw: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    rows = []
-    for e in raw:
-        rows.append(
-            {
-                "ano": e.get("ano"),
-                "codigo_emenda": e.get("codigo_emenda"),
-                "tipo_emenda": e.get("tipo_emenda") or "INDIVIDUAL",
-                "valor_empenhado": float(e.get("valor_empenhado") or 0.0),
-                "valor_pago": float(e.get("valor_pago") or 0.0),
-                "localidade_destino": e.get("localidade_destino") or "Não Informado",
-                "funcao": e.get("funcao") or "Outras Funções",
-            }
-        )
-    return rows
-
-
-def _emendas_from_file(pol: Politician) -> Optional[Dict[str, Any]]:
-    raw = _get_processed_emendas(pol.electoral_name, pol.civil_name)
-    if not raw:
-        return None
-    rows = _normalize_emenda_rows(raw)
-    summary = _emendas_summary(rows)
-    summary["total_emendas"] = len(rows)
-    summary["lista_emendas"] = [
-        {
-            "id": str(r["codigo_emenda"] or idx),
-            "ano": int(r["ano"]) if r["ano"] is not None else None,
-            "codigo_emenda": r["codigo_emenda"],
-            "tipo_emenda": r["tipo_emenda"],
-            "valor_empenhado": r["valor_empenhado"],
-            "valor_pago": r["valor_pago"],
-            "localidade_destino": r["localidade_destino"],
-            "funcao": r["funcao"],
-        }
-        for idx, r in enumerate(rows[:MAX_EMENDAS_LISTED])
-    ]
-    return summary
-
-
-EMPTY_EMENDAS = {
-    "possui_dados": False,
-    "total_empenhado": 0.0,
-    "total_pago": 0.0,
-    "percentual_execucao": 0.0,
-    "destinos_principais": [],
-    "distribuicao_por_tipo": [],
-    "distribuicao_por_area": [],
-    "total_emendas": 0,
-    "lista_emendas": [],
-}
-
-EMPTY_CEAP = {
-    "possui_dados": False,
-    "gasto_total_recente": 0.0,
-    "total_notas": 0,
-    "gastos_por_tipo": [],
-    "maiores_fornecedores": [],
-    "despesas_recentes": [],
-}
-
-
 @router.get("/{politician_id}", response_model=Dict[str, Any])
 def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     """
@@ -988,6 +640,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     Dados ausentes são devolvidos como null (ou "possui_dados": false); nada é inferido ou fabricado.
     """
     pol = _resolve_politician(db, politician_id)
+    pessoas = _pessoas_financas(db, pol)
 
     # A. Trajetória de Mandatos
     mandates_db = (
@@ -1078,63 +731,17 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             partido_atual_sigla = atual["partido_sigla"]
 
     # C. Remunerações (Salário, CEAP, Benefícios) — totais calculados no banco para o ano mais recente com dados
-    remun_filter = PoliticianRemuneration.politician_id == pol.id
-    remuns_recent = (
-        db.query(PoliticianRemuneration)
-        .filter(remun_filter)
-        .order_by(desc(PoliticianRemuneration.reference_year), desc(PoliticianRemuneration.reference_month))
-        .limit(12)
-        .all()
-    )
-    remuneracao_historico = [
-        {
-            "ano": r.reference_year,
-            "mes": r.reference_month,
-            "salario_bruto": float(r.gross_salary),
-            # Campos que a fonte oficial não informa para o mês ficam null (nunca 0 presumido)
-            "salario_liquido": _opt_float(r.net_salary),
-            "cota_ceap": _opt_float(r.parliamentary_quota_ceap),
-            "auxilio_moradia": _opt_float(r.housing_allowance),
-            "outros_beneficios": _opt_float(r.other_benefits),
-            "fonte": r.data_source,
-        }
-        for r in remuns_recent
-    ]
-
-    ano_remuneracao = remuns_recent[0].reference_year if remuns_recent else None
-    total_bruto_ano = Decimal("0.00")
-    total_ceap_ano: Optional[Decimal] = None
-    total_beneficios_ano: Optional[Decimal] = None
-    media_ceap: Optional[float] = None
-    if ano_remuneracao is not None:
-        bruto, ceap, qtd_ceap, benef, qtd_benef = (
-            db.query(
-                func.coalesce(func.sum(PoliticianRemuneration.gross_salary), 0),
-                func.sum(PoliticianRemuneration.parliamentary_quota_ceap),
-                func.count(PoliticianRemuneration.parliamentary_quota_ceap),
-                func.sum(
-                    func.coalesce(PoliticianRemuneration.housing_allowance, 0)
-                    + func.coalesce(PoliticianRemuneration.other_benefits, 0)
-                ),
-                func.count(PoliticianRemuneration.housing_allowance)
-                + func.count(PoliticianRemuneration.other_benefits),
-            )
-            .filter(remun_filter, PoliticianRemuneration.reference_year == ano_remuneracao)
-            .one()
-        )
-        total_bruto_ano = Decimal(bruto)
-        if qtd_ceap:
-            total_ceap_ano = Decimal(ceap)
-            media_ceap = float((Decimal(ceap) / Decimal(qtd_ceap)).quantize(Decimal("0.01")))
-        if qtd_benef:
-            total_beneficios_ano = Decimal(benef)
-
-    sal_bruto_atual = float(remuns_recent[0].gross_salary) if remuns_recent else None
-    sal_liquido_atual = _opt_float(remuns_recent[0].net_salary) if remuns_recent else None
+    remun = financas_service.remuneracao(db, pessoas)
+    remuneracao_historico = remun["historico"]
+    ano_remuneracao = remun["ano"]
+    total_bruto_ano = remun["total_bruto_ano"]
+    total_ceap_ano = remun["total_ceap_ano"]
+    total_beneficios_ano = remun["total_beneficios_ano"]
+    media_ceap = remun["media_ceap"]
+    sal_bruto_atual = remun["bruto_atual"]
+    sal_liquido_atual = remun["liquido_atual"]
     # Subsídio bruto registrado no período coberto pela fonte: o líquido só é coletado para o mês mais recente.
-    salario_acumulado_registrado = float(
-        db.query(func.coalesce(func.sum(PoliticianRemuneration.gross_salary), 0)).filter(remun_filter).scalar() or 0
-    )
+    salario_acumulado_registrado = remun["acumulado"]
 
     # D. Matérias de Autoria Própria e Atividade Legislativa (schema leg; iniciativas do Executivo só para quem
     # exerceu mandato de PRESIDENTE, restritas ao período do mandato)
@@ -1489,25 +1096,10 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         )
 
     # G. Evolução Patrimonial (TSE DivulgaCand)
-    assets_db = (
-        db.query(PoliticianAssetDeclaration)
-        .filter(PoliticianAssetDeclaration.politician_id == pol.id)
-        .order_by(asc(PoliticianAssetDeclaration.election_year))
-        .all()
-    )
-
-    patrimonio_historico = []
-    for a in assets_db:
-        val_float = float(a.declared_value_brl)
-        val_formatado = f"R$ {val_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        patrimonio_historico.append(
-            {
-                "ano": a.election_year,
-                "valor": val_float,
-                "valor_formatado": val_formatado,
-                "detalhes": a.asset_details,
-            }
-        )
+    patrimonio_historico = [
+        {**a, "valor_formatado": "R$ " + f"{a['valor']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")}
+        for a in financas_service.declaracoes_de_patrimonio(db, pessoas)
+    ]
 
     crescimento_pct: Optional[float] = None
     crescimento_absoluto: Optional[float] = None
@@ -1532,52 +1124,36 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         "crescimento_absoluto": crescimento_absoluto,
     }
 
-    # H. Custo do Mandato (CEAP): banco (agregado) -> arquivo do ETL -> vazio
-    custos_ceap = _ceap_from_db(db, pol) or _ceap_from_file(pol) or dict(EMPTY_CEAP)
+    # H. Custo do Mandato (CEAP): schema fin
+    custos_ceap = financas_service.custos_ceap(db, pessoas) or dict(financas_service.VAZIO_CEAP)
 
     # I. Trilha do Dinheiro (Emendas Parlamentares)
-    emendas_parlamentares = _emendas_from_db(db, pol) or _emendas_from_file(pol) or dict(EMPTY_EMENDAS)
+    emendas_parlamentares = financas_service.emendas_do_parlamentar(db, pessoas) or dict(financas_service.VAZIO_EMENDAS)
 
     # J. Raio-X Judicial e Ficha Limpa
-    certidoes_db = db.query(CertidaoJudicial).filter(CertidaoJudicial.politician_id == pol.id).all()
-    ficha_limpa = _enrich_judicial_records(pol, certidoes_db, db)
+    ficha_limpa = _enrich_judicial_records(pol, financas_service.certidoes(db, pessoas), db)
 
-    # K. Financiamento de Campanha (Doações Eleitorais TSE) — CPF de doadores pessoa física mascarado
-    doacoes_db = (
-        db.query(DoacaoCampanha)
-        .filter(DoacaoCampanha.politician_id == pol.id)
-        .order_by(desc(DoacaoCampanha.amount_donated), DoacaoCampanha.id)
-        .all()
-    )
-    total_doado = float(sum(d.amount_donated for d in doacoes_db))
+    # K. Financiamento de Campanha (Doações Eleitorais TSE) — o CPF de doador pessoa física já vem mascarado do TSE
+    doacoes_db = financas_service.doacoes_de_campanha(db, pessoas)
+    total_doado = float(sum(d["valor_doado"] for d in doacoes_db))
     top_5_doadores = [
         {
-            "nome_doador": d.donor_name,
-            "cpf_cnpj_doador": _mask_document(d.donor_cpf_cnpj),
-            "valor_doado": float(d.amount_donated),
-            "tipo_receita": d.donation_type,
-            "percentual": _pct(float(d.amount_donated), total_doado),
+            "nome_doador": d["nome_doador"],
+            "cpf_cnpj_doador": d["cpf_cnpj_doador"],
+            "valor_doado": d["valor_doado"],
+            "tipo_receita": d["tipo_receita"],
+            "percentual": _pct(d["valor_doado"], total_doado),
         }
         for d in doacoes_db[:5]
     ]
 
     financiamento_campanha = {
         "possui_dados": len(doacoes_db) > 0,
-        "ano_eleicao": doacoes_db[0].election_year if doacoes_db else None,
+        "ano_eleicao": doacoes_db[0]["ano_eleicao"] if doacoes_db else None,
         "total_arrecadado": round(total_doado, 2),
         "total_doadores": len(doacoes_db),
         "top_doadores": top_5_doadores,
-        "todas_doacoes": [
-            {
-                "id": str(d.id),
-                "ano_eleicao": d.election_year,
-                "nome_doador": d.donor_name,
-                "cpf_cnpj_doador": _mask_document(d.donor_cpf_cnpj),
-                "valor_doado": float(d.amount_donated),
-                "tipo_receita": d.donation_type,
-            }
-            for d in doacoes_db
-        ],
+        "todas_doacoes": doacoes_db,
     }
 
     # L. Indicadores avançados — calculados somente com dados reais; sem insumo, retornam null
@@ -1833,68 +1409,12 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
 
 @router.get("/{politician_id}/ceap")
 def get_politician_ceap(politician_id: str, db: Session = Depends(get_db)):
-    """Retorna o detalhamento das despesas da CEAP (Cota Parlamentar)."""
+    """CEAP (Cota Parlamentar) do parlamentar: total e valor por ano e tipo de despesa."""
     pol = _resolve_politician(db, politician_id)
-
-    flt = DespesaCota.politician_id == pol.id
-    total, total_notas = db.query(func.coalesce(func.sum(DespesaCota.net_value), 0), func.count()).filter(flt).one()
-    if total_notas:
-        despesas = (
-            db.query(DespesaCota)
-            .filter(flt)
-            .order_by(desc(DespesaCota.year), desc(DespesaCota.month).nulls_last(), DespesaCota.id)
-            .limit(2000)
-            .all()
-        )
-        return {
-            "politico_id": str(pol.id),
-            "nome": pol.electoral_name,
-            "total_gasto": float(total),
-            "total_notas": int(total_notas),
-            "despesas": [
-                {
-                    "ano": d.year,
-                    "mes": d.month,
-                    "tipo": d.expense_type,
-                    "valor": float(d.net_value),
-                    "fornecedor": d.supplier_name,
-                    "cnpj_cpf": _mask_document(d.supplier_cnpj_cpf),
-                    "data": d.issue_date.isoformat() if d.issue_date else None,
-                    "url": d.document_url,
-                }
-                for d in despesas
-            ],
-        }
-
-    proc_ceap = _get_processed_ceap(pol.electoral_name, pol.civil_name)
-    if proc_ceap:
-        despesas_list = [
-            {
-                "ano": int(ano),
-                "mes": None,
-                "tipo": "Consolidado Anual CEAP (Prestação de Contas)",
-                "valor": float(val),
-                "fornecedor": "Senado Federal / Câmara dos Deputados",
-                "cnpj_cpf": None,
-                "data": None,
-                "url": None,
-            }
-            for ano, val in sorted((proc_ceap.get("por_ano") or {}).items(), reverse=True)
-        ]
-        return {
-            "politico_id": str(pol.id),
-            "nome": pol.electoral_name,
-            "total_gasto": float(proc_ceap.get("total_gasto") or 0.0),
-            "total_notas": int(proc_ceap.get("total_notas") or len(despesas_list)),
-            "despesas": despesas_list,
-        }
-
     return {
         "politico_id": str(pol.id),
         "nome": pol.electoral_name,
-        "total_gasto": 0.0,
-        "total_notas": 0,
-        "despesas": [],
+        **financas_service.ceap_por_ano_e_tipo(db, _pessoas_financas(db, pol)),
     }
 
 
@@ -1902,71 +1422,10 @@ def get_politician_ceap(politician_id: str, db: Session = Depends(get_db)):
 def get_politician_emendas(politician_id: str, db: Session = Depends(get_db)):
     """Retorna as emendas parlamentares alocadas pelo deputado ou senador."""
     pol = _resolve_politician(db, politician_id)
-
-    flt = EmendaParlamentar.politician_id == pol.id
-    total_emp, total_pago, total_n = (
-        db.query(
-            func.coalesce(func.sum(EmendaParlamentar.committed_value), 0),
-            func.coalesce(func.sum(EmendaParlamentar.paid_value), 0),
-            func.count(),
-        )
-        .filter(flt)
-        .one()
-    )
-    if total_n:
-        emendas = (
-            db.query(EmendaParlamentar)
-            .filter(flt)
-            .order_by(desc(EmendaParlamentar.year), desc(EmendaParlamentar.paid_value), EmendaParlamentar.id)
-            .limit(2000)
-            .all()
-        )
-        return {
-            "politico_id": str(pol.id),
-            "nome": pol.electoral_name,
-            "total_empenhado": float(total_emp),
-            "total_pago": float(total_pago),
-            "emendas": [
-                {
-                    "ano": e.year,
-                    "codigo": e.amendment_code,
-                    "tipo": e.amendment_type,
-                    "valor_empenhado": float(e.committed_value),
-                    "valor_pago": float(e.paid_value),
-                    "destino": e.destination_locality,
-                    "area": e.function_area,
-                }
-                for e in emendas
-            ],
-        }
-
-    rows = _normalize_emenda_rows(_get_processed_emendas(pol.electoral_name, pol.civil_name))
-    if rows:
-        return {
-            "politico_id": str(pol.id),
-            "nome": pol.electoral_name,
-            "total_empenhado": float(sum(r["valor_empenhado"] for r in rows)),
-            "total_pago": float(sum(r["valor_pago"] for r in rows)),
-            "emendas": [
-                {
-                    "ano": r["ano"],
-                    "codigo": r["codigo_emenda"],
-                    "tipo": r["tipo_emenda"],
-                    "valor_empenhado": r["valor_empenhado"],
-                    "valor_pago": r["valor_pago"],
-                    "destino": r["localidade_destino"],
-                    "area": r["funcao"],
-                }
-                for r in rows[:2000]
-            ],
-        }
-
     return {
         "politico_id": str(pol.id),
         "nome": pol.electoral_name,
-        "total_empenhado": 0.0,
-        "total_pago": 0.0,
-        "emendas": [],
+        **financas_service.emendas_detalhadas(db, _pessoas_financas(db, pol)),
     }
 
 
@@ -1974,9 +1433,7 @@ def get_politician_emendas(politician_id: str, db: Session = Depends(get_db)):
 def get_politician_certidoes(politician_id: str, db: Session = Depends(get_db)):
     """Retorna as certidões judiciais e status perante a Lei da Ficha Limpa."""
     pol = _resolve_politician(db, politician_id)
-    certidoes = db.query(CertidaoJudicial).filter(CertidaoJudicial.politician_id == pol.id).all()
-
-    ficha_data = _enrich_judicial_records(pol, certidoes, db)
+    ficha_data = _enrich_judicial_records(pol, financas_service.certidoes(db, _pessoas_financas(db, pol)), db)
     return {"politico_id": str(pol.id), "nome": pol.electoral_name, **ficha_data}
 
 
@@ -1984,15 +1441,8 @@ def get_politician_certidoes(politician_id: str, db: Session = Depends(get_db)):
 def get_politician_doacoes(politician_id: str, db: Session = Depends(get_db)):
     """Retorna as doações e financiamento eleitoral de campanha (TSE)."""
     pol = _resolve_politician(db, politician_id)
-
-    doacoes = (
-        db.query(DoacaoCampanha)
-        .filter(DoacaoCampanha.politician_id == pol.id)
-        .order_by(desc(DoacaoCampanha.amount_donated), DoacaoCampanha.id)
-        .all()
-    )
-
-    total_doado = float(sum(d.amount_donated for d in doacoes))
+    doacoes = financas_service.doacoes_de_campanha(db, _pessoas_financas(db, pol))
+    total_doado = float(sum(d["valor_doado"] for d in doacoes))
     return {
         "politico_id": str(pol.id),
         "nome": pol.electoral_name,
@@ -2000,23 +1450,13 @@ def get_politician_doacoes(politician_id: str, db: Session = Depends(get_db)):
         "total_doadores": len(doacoes),
         "top_5": [
             {
-                "nome_doador": d.donor_name,
-                "cpf_cnpj_doador": _mask_document(d.donor_cpf_cnpj),
-                "valor_doado": float(d.amount_donated),
-                "tipo_receita": d.donation_type,
-                "percentual": _pct(float(d.amount_donated), total_doado),
+                "nome_doador": d["nome_doador"],
+                "cpf_cnpj_doador": d["cpf_cnpj_doador"],
+                "valor_doado": d["valor_doado"],
+                "tipo_receita": d["tipo_receita"],
+                "percentual": _pct(d["valor_doado"], total_doado),
             }
             for d in doacoes[:5]
         ],
-        "doacoes": [
-            {
-                "id": str(d.id),
-                "ano_eleicao": d.election_year,
-                "nome_doador": d.donor_name,
-                "cpf_cnpj_doador": _mask_document(d.donor_cpf_cnpj),
-                "valor_doado": float(d.amount_donated),
-                "tipo_receita": d.donation_type,
-            }
-            for d in doacoes
-        ],
+        "doacoes": doacoes,
     }

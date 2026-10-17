@@ -15,7 +15,7 @@ def chamadas(monkeypatch):
 
 def test_executa_todas_na_ordem_e_devolve_o_resultado_de_cada_uma(chamadas):
     resultados = carga_economica.carregar_tudo(object())
-    assert chamadas == ["series", "presidencia", "composicao", "pnad"]
+    assert chamadas == ["series", "presidencia", "composicao", "pnad", "financas"]
     assert resultados["composicao"] == {"ok": "composicao"}
 
 
@@ -32,4 +32,4 @@ def test_a_composicao_depende_dos_mandatos_e_as_demais_seguem(chamadas, monkeypa
     with pytest.raises(RuntimeError) as erro:
         carga_economica.carregar_tudo(object())
     assert "sem presidentes" in str(erro.value) and "Composição do Congresso" in str(erro.value)
-    assert chamadas == ["series", "pnad"]
+    assert chamadas == ["series", "pnad", "financas"]

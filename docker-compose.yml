@@ -50,9 +50,6 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    volumes:
-      # Apenas dados do ETL em modo somente leitura (sem montagem de código do disco)
-      - ./etl/data:/etl_data:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/', timeout=4).status == 200 else 1)"]
       interval: 30s

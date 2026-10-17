@@ -1,42 +1,10 @@
-"""Leitura de arquivos processados pelo ETL com cache invalidado por data de modificação."""
+"""Intervalos de anos dos mandatos para as séries anuais."""
 
-import json
 from datetime import date, datetime, timedelta
-from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
-
-_cache: Dict[str, Tuple[float, Any]] = {}
 
 # Primeiro ano das séries anuais (IPCA/PIB/etc.): mandatos iniciados antes começam a contar nele
 FIRST_SERIES_YEAR = 1995
-
-
-def _cached(file_path: Path, loader) -> Optional[Any]:
-    """Arquivo ausente ou ilegível devolve None e NUNCA é cacheado (não "envenena" o processo)."""
-    try:
-        mtime = file_path.stat().st_mtime
-    except OSError:
-        return None
-    key = f"{loader.__name__}:{file_path}"
-    hit = _cache.get(key)
-    if hit and hit[0] == mtime:
-        return hit[1]
-    try:
-        data = loader(file_path)
-    except Exception:
-        return None
-    _cache[key] = (mtime, data)
-    return data
-
-
-def _read_json(file_path: Path) -> Any:
-    with open(file_path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def load_json_cached(file_path: Path) -> Optional[Any]:
-    """JSON compartilhado entre requisições: trate o retorno como somente leitura."""
-    return _cached(file_path, _read_json)
 
 
 def _parse_date(value: str) -> date:

@@ -47,9 +47,9 @@ export function fullDossier(): PoliticoDossier {
         { tipo_despesa: 'Passagens aéreas', total_gasto: 400000, percentual: 44.4 },
       ],
       maiores_fornecedores: [{ nome_fornecedor: 'Gráfica Alfa LTDA', cnpj_cpf: '12345678000190', total_recebido: 300000, num_notas: 40 }],
-      despesas_recentes: [
-        { ano: 2024, mes: 3, tipo_despesa: 'Passagens aéreas', valor_liquido: 1500.5, nome_fornecedor: 'Cia Aérea', cnpj_cpf: null, data_emissao: '2024-03-02', documento_url: 'https://camara.leg.br/nf/1' },
-        { ano: 2024, mes: null, tipo_despesa: 'Combustível', valor_liquido: 200, nome_fornecedor: 'Posto', cnpj_cpf: null, data_emissao: null, documento_url: 'javascript:alert(1)' },
+      gastos_por_ano: [
+        { ano: 2024, total_gasto: 500000 },
+        { ano: 2023, total_gasto: 400000 },
       ],
     },
     emendas_parlamentares: {
