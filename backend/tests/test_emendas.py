@@ -346,3 +346,66 @@ def test_nome_de_estado_por_extenso_busca_pela_uf_e_nao_pelo_trecho(client, db):
     assert client.get(f"{BASE}/localidade/Para").json()["total_emendas_encontradas"] == 2  # não casa PARANÁ nem PARAÍBA
     # um trecho que não é o nome inteiro de um estado continua sendo busca por nome
     assert client.get(f"{BASE}/localidade/belem").json()["total_emendas_encontradas"] == 1
+
+
+def test_duas_buscas_seguidas_na_mesma_transacao_nao_misturam_os_alvos(client, db):
+    _emenda(db, "ANA SILVA", "INDIVIDUAL", codigo_emenda="1", localidade_destino="RECIFE - PE", uf="PE", valor_pago=1)
+    _emenda(db, "BIA SOUZA", "INDIVIDUAL", codigo_emenda="2", localidade_destino="NATAL - RN", uf="RN", valor_pago=2)
+    db.commit()
+    for _ in range(2):
+        assert client.get(f"{BASE}/autor/silva").json()["total_emendas_enviadas"] == 1
+        assert client.get(f"{BASE}/autor/souza").json()["total_emendas_enviadas"] == 1
+        assert client.get(f"{BASE}/localidade/recife").json()["total_emendas_encontradas"] == 1
+
+
+def test_busca_cancelada_por_demora_vira_pedido_de_termo_mais_especifico(db):
+    from app.services import emendas_service as svc
+    from sqlalchemy.exc import OperationalError
+
+    class Cancelada(Exception):
+        pgcode = "57014"
+
+    class OutroErro(Exception):
+        pgcode = "08006"
+
+    def cancela():
+        raise OperationalError("SELECT 1", {}, Cancelada())
+
+    def quebra():
+        raise OperationalError("SELECT 1", {}, OutroErro())
+
+    with pytest.raises(svc.ErroDeDominio) as erro:
+        svc._com_limite_de_tempo(db, cancela)
+    assert erro.value.status_code == 400 and "mais específico" in erro.value.detail
+    with pytest.raises(OperationalError):  # outro erro de banco não é "busca ampla demais"
+        svc._com_limite_de_tempo(db, quebra)
+
+
+def test_a_busca_liga_o_limite_de_tempo_so_na_transacao(db):
+    from app.services import emendas_service as svc
+
+    limite = f"{svc.TEMPO_MAXIMO_DA_BUSCA_MS // 1000}s"  # o Postgres mostra 8000 ms como "8s"
+    svc._prepara_busca(db)
+    assert db.execute(text("SHOW statement_timeout")).scalar() == limite
+    db.rollback()
+    assert db.execute(text("SHOW statement_timeout")).scalar() != limite
+
+
+def test_descricao_do_tipo_de_autor_vem_de_um_lugar_so_no_resumo_e_no_perfil():
+    from app.services.emendas_service import meta_do_tipo_de_autor, perfil_do_autor
+
+    for tipo in ("BANCADA_ESTADUAL", "RELATOR_GERAL", "COMISSAO_INSTITUCIONAL", "INDIVIDUAL"):
+        perfil = perfil_do_autor("NOME", tipo)
+        meta = meta_do_tipo_de_autor(tipo)
+        assert perfil["categoria"] == meta["categoria"] and perfil["icone"] == meta["icone"]
+    assert meta_do_tipo_de_autor("QUALQUER COISA") == meta_do_tipo_de_autor("INDIVIDUAL")
+    assert perfil_do_autor("X", "QUALQUER COISA")["tipo_autor"] == "INDIVIDUAL"
+
+
+def test_emenda_sem_funcao_usa_a_mesma_area_no_dossie_e_nas_buscas(client, db):
+    from app.services.emendas_service import AREA_SEM_FUNCAO
+
+    _emenda(db, "ANA SILVA", "INDIVIDUAL", codigo_emenda="1", funcao=None, valor_pago=3)
+    db.commit()
+    assert client.get(f"{BASE}/autor/silva").json()["emendas"][0]["area_tematica"] == AREA_SEM_FUNCAO
+    assert client.get(f"{BASE}/resumo").json()["por_area_tematica"][0]["area"] == AREA_SEM_FUNCAO

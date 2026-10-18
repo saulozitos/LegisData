@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
+from etl.pipelines.loader_helpers import inteiro
 from etl.utils.bootstrap import ensure_backend_on_path
 from etl.utils.names import normalize_name_tokens, normalize_plain
 
@@ -80,10 +81,8 @@ class ResolvedorDePessoas:
 
     def por_identificador(self, camara_id: Any = None, senado_id: Any = None) -> Optional[int]:
         for tipo, valor in (("CAMARA_ID", camara_id), ("SENADO_ID", senado_id)):
-            try:
-                achado = self._por_identificador.get((tipo, int(valor))) if valor not in (None, "") else None
-            except (TypeError, ValueError, OverflowError):
-                achado = None
+            numero = inteiro(valor)  # a mesma regra do resto do ETL: bool e fração não são identificador
+            achado = self._por_identificador.get((tipo, numero)) if numero is not None else None
             if achado is not None:
                 return achado
         return None

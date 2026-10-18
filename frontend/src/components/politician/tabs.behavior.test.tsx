@@ -272,6 +272,23 @@ describe('FinancingTab', () => {
     expect(screen.getByText('Nenhuma doação encontrada para o termo pesquisado.')).toBeInTheDocument();
   });
 
+  it('a linha "Demais doadores" da fonte vira uma frase, não um doador do top 5', () => {
+    const d = fullDossier();
+    d.financiamento_campanha.total_doadores = 28;
+    d.financiamento_campanha.demais_doadores = { quantidade: 26, valor: 24804 };
+    render(<FinancingTab dossier={d} />);
+    expect(screen.getByTestId('demais-doadores').textContent).toMatch(/Outros 26 doadores somam R\$\s*24\.804,00/);
+  });
+
+  it('sem a quantidade de doadores a média por doador fica "n/d" e nunca um palpite', () => {
+    const d = fullDossier();
+    d.financiamento_campanha.total_doadores = null;
+    d.financiamento_campanha.demais_doadores = { quantidade: null, valor: 10 };
+    render(<FinancingTab dossier={d} />);
+    expect(screen.getAllByText('n/d').length).toBeGreaterThanOrEqual(2); // total de doadores e ticket médio
+    expect(screen.getByTestId('demais-doadores').textContent).toMatch(/^Os demais doadores somam/);
+  });
+
   it('sem prestação de contas mostra indisponível — nunca "R$ 0,00 arrecadados"', () => {
     render(<FinancingTab dossier={sparseDossier()} />);
     expect(screen.getByText('Financiamento de campanha indisponível')).toBeInTheDocument();

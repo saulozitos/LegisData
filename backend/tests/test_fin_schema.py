@@ -175,3 +175,76 @@ def test_nao_se_apaga_pessoa_com_emenda_identificada(db, pessoa):
     _viola(
         db, lambda: db.execute(text("DELETE FROM core.pessoa WHERE id = :p"), {"p": pessoa}), "emenda_pessoa_id_fkey"
     )
+
+
+# ── busca por trecho: curingas como texto, índices trigram e a migração de ida e volta ───────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "texto, trecho, esperado",
+    [
+        ("São Paulo", "sao", True),
+        ("SÃO PAULO", "paulo", True),
+        ("Maria Silva", "SILVA", True),
+        ("a_b", "_", True),
+        ("ab", "_", False),  # "_" é texto, não curinga de um caractere
+        ("100%", "%", True),
+        ("abc", "%", False),  # "%" é texto, não curinga
+        ("a\\b", "\\", True),
+        ("abc", "\\", False),
+        ("abc", "xyz", False),
+    ],
+)
+def test_contem_texto_ignora_acento_e_caixa_e_trata_curingas_como_texto(db, texto, trecho, esperado):
+    assert db.execute(text("SELECT ref.contem_texto(:t, :c)"), {"t": texto, "c": trecho}).scalar() is esperado
+
+
+@pytest.mark.parametrize(
+    "coluna, indice", [("autor_texto", "ix_emenda_autor_trgm"), ("localidade_destino", "ix_emenda_localidade_trgm")]
+)
+def test_busca_por_trecho_usa_o_indice_trigram(db, coluna, indice):
+    _emenda(db)
+    db.commit()
+    db.execute(text("SET LOCAL enable_seqscan = off"))  # a tabela é pequena: sem isto o planejador prefere varrê-la
+    plano = "\n".join(
+        r[0]
+        for r in db.execute(
+            text(f"EXPLAIN SELECT id FROM fin.emenda WHERE ref.contem_texto({coluna}, :termo)"), {"termo": "abel"}
+        )
+    )
+    assert indice in plano
+
+
+def test_migracao_0031_desce_e_sobe_de_novo(pg_engine):
+    """O downgrade apaga o schema `fin` e a função de busca na ordem certa, e o upgrade os recria idênticos."""
+    import os
+
+    from alembic import command
+    from alembic.config import Config
+    from app.core.migrations import BACKEND_DIR
+
+    from .conftest import TEST_DATABASE_URL
+
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+    anterior = os.environ.get("ALEMBIC_DATABASE_URL")
+    os.environ["ALEMBIC_DATABASE_URL"] = TEST_DATABASE_URL
+
+    def existe(sql):
+        with pg_engine.connect() as conn:
+            return bool(conn.execute(text(sql)).scalar())
+
+    try:
+        command.downgrade(config, "0030")
+        assert not existe("SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'fin')")
+        assert not existe("SELECT to_regprocedure('ref.contem_texto(text, text)') IS NOT NULL")
+        command.upgrade(config, "head")
+        assert existe("SELECT to_regclass('fin.doacao_campanha') IS NOT NULL")
+        assert existe("SELECT to_regprocedure('ref.contem_texto(text, text)') IS NOT NULL")
+        assert existe("SELECT to_regclass('fin.ix_emenda_autor_trgm') IS NOT NULL")
+    finally:
+        if anterior is None:
+            os.environ.pop("ALEMBIC_DATABASE_URL", None)
+        else:
+            os.environ["ALEMBIC_DATABASE_URL"] = anterior
+        command.upgrade(config, "head")

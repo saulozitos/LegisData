@@ -3,6 +3,7 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.errors import ErroDeDominio
+from app.core.numeros import brl
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -22,17 +23,13 @@ LIMITE_BASE_SM = 4.0
 _METODOLOGIA_SQL = text("SELECT chave, texto FROM eco.pnad_metodologia")
 
 
-def _brl(valor: float) -> str:
-    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-
 def _renda_da_classe(minimo: float, maximo: Optional[float], salario: float) -> Dict[str, Any]:
     if maximo is None:
-        formatada = f"Acima de {_brl(minimo * salario)}"
+        formatada = f"Acima de {brl(minimo * salario)}"
     elif minimo == 0:
-        formatada = f"Até {_brl(maximo * salario)}"
+        formatada = f"Até {brl(maximo * salario)}"
     else:
-        formatada = f"{_brl(minimo * salario)} a {_brl(maximo * salario)}"
+        formatada = f"{brl(minimo * salario)} a {brl(maximo * salario)}"
     return {
         "renda_familiar_min_brl": round(minimo * salario, 2),
         "renda_familiar_max_brl": round(maximo * salario, 2) if maximo is not None else None,
@@ -143,7 +140,7 @@ def classes_sociais(db: Session, ano: Optional[int]) -> Dict[str, Any]:
         "anos_disponiveis": anos,
         "fonte": (
             f"IBGE — PNAD Contínua anual {escolhido} (microdados, visita {entrada['visita']}), calculado pelo "
-            f"LegisData com o peso amostral calibrado; salário mínimo de {escolhido}: {_brl(salario)}. "
+            f"LegisData com o peso amostral calibrado; salário mínimo de {escolhido}: {brl(salario)}. "
             "Classes por rendimento habitual domiciliar total em múltiplos do salário mínimo."
         ),
         "metodologia": {r["chave"]: r["texto"] for r in db.execute(_METODOLOGIA_SQL).mappings()},

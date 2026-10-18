@@ -245,7 +245,7 @@ def test_remuneracao_devolve_so_os_ultimos_12_meses_do_mais_recente_para_o_mais_
     )
 
 
-def _doacao(nome, valor, ano=2022, doc=None, tipo=None, id_="1"):
+def _doacao(nome, valor, ano=2022, doc=None, tipo=None, id_="1", agregado=False, qtd=1):
     return {
         "id": id_,
         "ano_eleicao": ano,
@@ -253,23 +253,25 @@ def _doacao(nome, valor, ano=2022, doc=None, tipo=None, id_="1"):
         "cpf_cnpj_doador": doc,
         "valor_doado": float(valor),
         "tipo_receita": tipo,
+        "agregado": agregado,
+        "quantidade_doadores": qtd,
     }
 
 
 def test_resumo_das_doacoes_soma_tudo_mas_lista_so_os_cinco_maiores_com_a_participacao_de_cada_um():
     doacoes = [_doacao(f"D{i}", valor) for i, valor in enumerate((50, 20, 10, 10, 5, 3, 2))]
     resumo = fs.resumo_das_doacoes(doacoes)
-    assert resumo["total"] == 100.0 and resumo["quantidade"] == 7 and resumo["ano_eleicao"] == 2022
-    assert [d["nome_doador"] for d in resumo["top_5"]] == ["D0", "D1", "D2", "D3", "D4"]
-    assert resumo["top_5"][0]["percentual"] == 50.0
+    assert resumo["total_arrecadado"] == 100.0 and resumo["total_doadores"] == 7 and resumo["ano_eleicao"] == 2022
+    assert [d["nome_doador"] for d in resumo["top_doadores"]] == ["D0", "D1", "D2", "D3", "D4"]
+    assert resumo["top_doadores"][0]["percentual"] == 50.0
     vazio = {
         "ano_eleicao": None,
         "eleicoes_disponiveis": [],
-        "doacoes": [],
-        "total": 0.0,
-        "total_recibos": 0,
-        "quantidade": 0,
-        "top_5": [],
+        "total_arrecadado": 0.0,
+        "total_doadores": 0,
+        "demais_doadores": None,
+        "top_doadores": [],
+        "todas_doacoes": [],
     }
     assert fs.resumo_das_doacoes([]) == vazio
 
@@ -277,9 +279,9 @@ def test_resumo_das_doacoes_soma_tudo_mas_lista_so_os_cinco_maiores_com_a_partic
 def test_resumo_das_doacoes_so_considera_a_campanha_mais_recente():
     doacoes = [_doacao("Antigo", 900, ano=2018), _doacao("Novo", 100, ano=2022), _doacao("Outro", 50, ano=2022)]
     resumo = fs.resumo_das_doacoes(doacoes)
-    assert resumo["ano_eleicao"] == 2022 and resumo["total"] == 150.0 and resumo["quantidade"] == 2
-    assert [d["nome_doador"] for d in resumo["doacoes"]] == ["Novo", "Outro"]
-    assert [d["nome_doador"] for d in resumo["top_5"]] == ["Novo", "Outro"]
+    assert resumo["ano_eleicao"] == 2022 and resumo["total_arrecadado"] == 150.0 and resumo["total_doadores"] == 2
+    assert [d["nome_doador"] for d in resumo["todas_doacoes"]] == ["Novo", "Outro"]
+    assert [d["nome_doador"] for d in resumo["top_doadores"]] == ["Novo", "Outro"]
 
 
 def test_resumo_das_doacoes_conta_doador_distinto_e_soma_os_recibos_dele():
@@ -289,8 +291,8 @@ def test_resumo_das_doacoes_conta_doador_distinto_e_soma_os_recibos_dele():
         _doacao("Ana", 10, doc="***.111.222-**", tipo="PIX"),
     ]
     resumo = fs.resumo_das_doacoes(doacoes)
-    assert resumo["quantidade"] == 2 and resumo["total"] == 100.0
-    ana = resumo["top_5"][0]
+    assert resumo["total_doadores"] == 2 and resumo["total_arrecadado"] == 100.0
+    ana = resumo["top_doadores"][0]
     assert ana["nome_doador"] == "Ana" and ana["valor_doado"] == 70.0 and ana["percentual"] == 70.0
     assert ana["tipo_receita"] == "Cheque"  # o tipo é o do maior recibo
 
@@ -300,7 +302,7 @@ def test_resumo_das_doacoes_aceita_pedir_uma_eleicao_e_lista_as_disponiveis():
     recente = fs.resumo_das_doacoes(doacoes)
     antiga = fs.resumo_das_doacoes(doacoes, 2018)
     assert recente["eleicoes_disponiveis"] == antiga["eleicoes_disponiveis"] == [2022, 2018]
-    assert recente["ano_eleicao"] == 2022 and antiga["ano_eleicao"] == 2018 and antiga["total"] == 900.0
+    assert recente["ano_eleicao"] == 2022 and antiga["ano_eleicao"] == 2018 and antiga["total_arrecadado"] == 900.0
     with pytest.raises(ErroDeDominio) as erro:
         fs.resumo_das_doacoes(doacoes, 2010)
     assert erro.value.status_code == 404
@@ -314,8 +316,8 @@ def test_resumo_das_doacoes_nao_funde_doadores_anonimos_nem_homonimos_com_docume
         _doacao("Ana", 10, doc="***.333.444-**", id_="d"),
     ]
     resumo = fs.resumo_das_doacoes(doacoes)
-    assert resumo["quantidade"] == 4 and resumo["total_recibos"] == 4
-    assert [d["valor_doado"] for d in resumo["top_5"]] == [40.0, 30.0, 20.0, 10.0]
+    assert resumo["total_doadores"] == 4
+    assert [d["valor_doado"] for d in resumo["top_doadores"]] == [40.0, 30.0, 20.0, 10.0]
 
 
 @pytest.mark.parametrize("inverter", [False, True])
@@ -326,7 +328,7 @@ def test_resumo_das_doacoes_desempata_na_fronteira_do_top_5_pelo_nome_em_qualque
     ]
     if inverter:
         doacoes.reverse()
-    nomes = [d["nome_doador"] for d in fs.resumo_das_doacoes(doacoes)["top_5"]]
+    nomes = [d["nome_doador"] for d in fs.resumo_das_doacoes(doacoes)["top_doadores"]]
     assert nomes == ["A", "B", "C", "D", "E"]  # entre E, F e G (5 cada) fica o primeiro pelo nome
 
 
@@ -339,11 +341,11 @@ def test_resumo_das_doacoes_junta_o_mesmo_cnpj_com_e_sem_pontuacao(inverter):
     if inverter:
         doacoes.reverse()
     resumo = fs.resumo_das_doacoes(doacoes)
-    assert resumo["quantidade"] == 1 and resumo["total_recibos"] == 2
-    assert resumo["top_5"][0]["valor_doado"] == 100.0 and resumo["top_5"][0]["percentual"] == 100.0
+    assert resumo["total_doadores"] == 1
+    assert resumo["top_doadores"][0]["valor_doado"] == 100.0 and resumo["top_doadores"][0]["percentual"] == 100.0
     # nome e documento exibidos são os do recibo que chega primeiro: a lista vem ordenada por valor DESC, id
     esperado = ("EMPRESA X LTDA", "12345678000190") if not inverter else ("EMPRESA X", "12.345.678/0001-90")
-    assert (resumo["top_5"][0]["nome_doador"], resumo["top_5"][0]["cpf_cnpj_doador"]) == esperado
+    assert (resumo["top_doadores"][0]["nome_doador"], resumo["top_doadores"][0]["cpf_cnpj_doador"]) == esperado
 
 
 @pytest.mark.parametrize("inverter", [False, True])
@@ -353,7 +355,7 @@ def test_resumo_das_doacoes_desempata_homonimos_com_documentos_diferentes_pelo_d
     doacoes = [_doacao(n, v, id_=i) for n, v, i in base] + [_doacao(n, v, doc=d, id_=d) for n, v, d in ana]
     if inverter:
         doacoes.reverse()
-    top = fs.resumo_das_doacoes(doacoes)["top_5"]
+    top = fs.resumo_das_doacoes(doacoes)["top_doadores"]
     assert [d["nome_doador"] for d in top] == ["A", "B", "C", "D", "Ana"]
     assert top[-1]["cpf_cnpj_doador"] == "***.111.222-**"  # o documento menor vence o empate, qualquer que seja a ordem
 
@@ -365,7 +367,7 @@ def test_resumo_das_doacoes_desempata_por_centavos_e_nao_por_erro_de_ponto_flutu
         _doacao("Beto", 0.20, doc="***.111.111-**", id_="b"),
         _doacao("Ana", 0.30, doc="***.222.222-**", id_="c"),
     ]
-    assert [d["nome_doador"] for d in fs.resumo_das_doacoes(doacoes)["top_5"]] == ["Ana", "Beto"]
+    assert [d["nome_doador"] for d in fs.resumo_das_doacoes(doacoes)["top_doadores"]] == ["Ana", "Beto"]
 
 
 def test_financiamento_da_campanha_traz_o_bloco_do_dossie_e_o_vazio():
@@ -424,3 +426,52 @@ def test_fornecedor_com_o_mesmo_valor_em_cadastros_irmaos_mostra_o_nome_de_forma
     for ordem in ([pessoa, irma], [irma, pessoa]):
         forn = fs.custos_ceap(db, ordem)["maiores_fornecedores"]
         assert forn[0]["nome_fornecedor"] == "ALFA LTDA"  # o maior nome, igual ao que o ETL escolhe no empate
+
+
+def test_resumo_das_doacoes_nao_conta_a_linha_agregada_como_doador_nem_a_poe_no_top_5():
+    doacoes = [
+        _doacao("Demais doadores (26)", 24804, tipo="Agregado", id_="z", agregado=True, qtd=26),  # a maior da campanha
+        _doacao("Ana", 100, doc="***.111.222-**", id_="a"),
+        _doacao("Beto", 50, id_="b"),
+    ]
+    resumo = fs.resumo_das_doacoes(doacoes)
+    assert resumo["total_doadores"] == 28  # 2 listados + os 26 da linha agregada
+    assert resumo["total_arrecadado"] == 24954.0
+    assert [d["nome_doador"] for d in resumo["top_doadores"]] == ["Ana", "Beto"]
+    assert resumo["demais_doadores"] == {"quantidade": 26, "valor": 24804.0}
+    assert resumo["top_doadores"][0]["percentual"] == 0.4  # participação sobre o total, com a agregada dentro
+    assert [d["nome_doador"] for d in resumo["todas_doacoes"]][0] == "Demais doadores (26)"  # a relação mostra tudo
+
+
+def test_resumo_das_doacoes_com_agregada_sem_quantidade_deixa_o_total_de_doadores_desconhecido():
+    doacoes = [
+        _doacao("Ana", 10, id_="a"),
+        _doacao("Demais doadores", 5, tipo="Agregado", id_="z", agregado=True, qtd=None),
+    ]
+    resumo = fs.resumo_das_doacoes(doacoes)
+    assert resumo["total_doadores"] is None and resumo["demais_doadores"] == {"quantidade": None, "valor": 5.0}
+
+
+def test_resumo_das_doacoes_so_com_a_linha_agregada_nao_tem_top_5():
+    resumo = fs.resumo_das_doacoes([_doacao("Demais doadores (3)", 9, tipo="Agregado", agregado=True, qtd=3)])
+    assert resumo["top_doadores"] == [] and resumo["total_doadores"] == 3 and resumo["total_arrecadado"] == 9.0
+
+
+def test_doacoes_de_campanha_traz_se_a_linha_e_agregada_e_quantos_doadores_ela_vale(db, pessoa):
+    for nome, valor, agregado, qtd in (("Ana", 10, False, 1), ("Demais doadores (4)", 5, True, 4)):
+        inserir_fin(
+            db,
+            "doacao_campanha",
+            pessoa_id=pessoa,
+            ano_eleicao=2022,
+            doador_nome=nome,
+            doador_documento=None,
+            valor=valor,
+            tipo_receita="Agregado" if agregado else "PF",
+            agregado=agregado,
+            quantidade_doadores=qtd,
+            fonte_id=fonte_id(db, "TSE"),
+        )
+    db.commit()
+    linhas = {d["nome_doador"]: (d["agregado"], d["quantidade_doadores"]) for d in fs.doacoes_de_campanha(db, [pessoa])}
+    assert linhas == {"Ana": (False, 1), "Demais doadores (4)": (True, 4)}

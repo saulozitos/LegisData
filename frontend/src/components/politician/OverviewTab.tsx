@@ -569,7 +569,7 @@ export default function OverviewTab({ dossier, onChangeTab, onSelectParty }: Ove
                       Total de Doadores Registrados
                     </span>
                     <span className="text-lg sm:text-xl font-black font-mono text-cyan-400 block leading-tight">
-                      {dossier?.financiamento_campanha?.total_doadores || 0} doadores
+                      {dossier?.financiamento_campanha?.total_doadores ?? "n/d"} doadores
                     </span>
                     <span className="text-[10px] text-slate-400 mt-1 block">
                       Partidos, pessoas físicas e recursos próprios

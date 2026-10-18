@@ -26,6 +26,9 @@ export default function FinancingTab({ dossier }: FinancingTabProps) {
       />
     );
   }
+  // Média por doador só existe com a quantidade de doadores conhecida; sem ela fica "n/d" em vez de um palpite.
+  const campanha = dossier.financiamento_campanha;
+  const ticketMedio = campanha.total_doadores ? campanha.total_arrecadado / campanha.total_doadores : null;
   return (
             <div className="space-y-6">
               {/* Header de Financiamento */}
@@ -71,7 +74,7 @@ export default function FinancingTab({ dossier }: FinancingTabProps) {
                   <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5">
                     <span className="text-[10px] text-slate-400 font-medium block mb-1">Total de Doadores</span>
                     <span className="text-lg font-black font-mono text-cyan-400 block">
-                      {dossier?.financiamento_campanha?.total_doadores || 0}
+                      {dossier?.financiamento_campanha?.total_doadores ?? "n/d"}
                     </span>
                     <span className="text-[10px] text-slate-400 mt-1 block">Pessoas e empresas distintas na prestação de contas</span>
                   </div>
@@ -89,7 +92,7 @@ export default function FinancingTab({ dossier }: FinancingTabProps) {
                   <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5">
                     <span className="text-[10px] text-slate-400 font-medium block mb-1">Ticket Médio por Doador</span>
                     <span className="text-lg font-black font-mono text-purple-400 block">
-                      R$ {((dossier?.financiamento_campanha?.total_arrecadado || 0) / Math.max(1, dossier?.financiamento_campanha?.total_doadores || 1)).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      {ticketMedio === null ? "n/d" : `R$ ${ticketMedio.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
                     </span>
                     <span className="text-[10px] text-slate-400 mt-1 block">Valor médio por doador</span>
                   </div>
@@ -157,6 +160,16 @@ export default function FinancingTab({ dossier }: FinancingTabProps) {
                     </div>
                   ))}
                 </div>
+
+                {campanha.demais_doadores && (
+                  <p className="text-xs text-slate-400" data-testid="demais-doadores">
+                    {campanha.demais_doadores.quantidade === null
+                      ? "Os demais doadores"
+                      : `Outros ${campanha.demais_doadores.quantidade} doadores`}{" "}
+                    somam R$ {campanha.demais_doadores.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} e a fonte
+                    não os lista um a um.
+                  </p>
+                )}
               </div>
 
               {/* Tabela de Todas as Doações Declaradas */}

@@ -110,6 +110,17 @@ def decimal_de(value: Any, limite: Decimal = LIMITE_CEAP) -> Optional[Decimal]:
     return numero if numero is not None and abs(numero) < limite else None
 
 
+def soma_na_faixa(valor: Decimal, limite: Decimal) -> Optional[Decimal]:
+    """
+    Total de várias parcelas já arredondado em centavos, ou None se estoura a faixa da coluna. `decimal_de` limita cada
+    parcela; a soma delas (por ano e tipo, por fornecedor, entre fontes, entre linhas repetidas) pode passar do limite
+    e, como o Postgres arredonda antes de conferir, um valor logo abaixo dele também estoura: sem esta conferência o
+    `numeric field overflow` derrubaria a carga inteira por causa de uma linha.
+    """
+    centavos = valor.quantize(Decimal("0.01"))
+    return centavos if abs(centavos) < limite else None
+
+
 def _texto_ou_none(value: Any) -> Optional[str]:
     """Texto aparado; None/NaN/vazio -> None (CSV do pandas devolve NaN para célula vazia)."""
     if value is None or (isinstance(value, float) and value != value):
@@ -480,7 +491,8 @@ def _ascii(valor: Any) -> str:
     """
     Texto com qualquer dígito Unicode (árabe-índico, largura total...) trocado pelo dígito ASCII equivalente, hífens
     Unicode (U+2010, travessão, sinal de menos) trocados por '-', pontos médios por '.', espaços Unicode por espaço
-    comum, caracteres invisíveis de formatação (largura zero, hífen suave) removidos e as "letras" Hangul que só ocupam
+    comum, caracteres invisíveis de formatação (largura zero, hífen suave) e marcas combinantes (U+034F, U+0301 que o NFKC
+    não recompôs, seletores de variação) removidos e as "letras" Hangul que só ocupam
     espaço (U+115F, U+1160, U+3164, U+FFA0) trocadas por espaço, para não esconderem um separador de CPF.
     """
     normal = unicodedata.normalize("NFKC", str(valor or ""))
@@ -495,7 +507,11 @@ def _ascii(valor: Any) -> str:
             saida.append(".")
         elif categoria in ("Zs", "Zl", "Zp") or c in "\u115f\u1160\u3164\uffa0":
             saida.append(" ")
-        elif categoria != "Cf":
+        elif categoria not in (
+            "Cf",
+            "Mn",
+            "Me",
+        ):  # formatação invisível e marcas combinantes não separam dígitos de um CPF
             saida.append(c)
     return "".join(saida)
 
@@ -609,6 +625,9 @@ def uf_da_localidade(localidade: Any) -> Optional[str]:
 
 
 # ── Elegibilidade dos registros das fontes de finanças: regra única do loader e da reconciliação ─────────────────────
+# Contrato comum: `ler_*(registro) -> (campos | None, motivo | None)`. Com campos, o motivo é None; sem eles, o motivo
+# ("sem_proveniencia", "sem_identificador", "sem_detalhe_por_ano" ou "invalidas") diz por que o registro ficou de fora e
+# vira chave da contagem de cada carga. `ler_registros_da_remuneracao` é a mesma regra no nível do arquivo.
 def valores_da_ceap(dados: Dict[str, Any]) -> Dict[Tuple[int, str], Decimal]:
     """Total por (ano, tipo de despesa) de um parlamentar do arquivo. A reconciliação usa a mesma regra do loader."""
     totais: Dict[Tuple[int, str], Decimal] = defaultdict(Decimal)
@@ -620,7 +639,8 @@ def valores_da_ceap(dados: Dict[str, Any]) -> Dict[Tuple[int, str], Decimal]:
             nome_tipo = texto(tipo)
             if ano_ok is not None and valor_dec is not None and nome_tipo:
                 totais[(ano_ok, nome_tipo)] += valor_dec
-    return totais
+    # o total de um (ano, tipo) que estoura a coluna fica de fora: a carga não pode cair por causa dele
+    return {chave: total for chave, valor in totais.items() if (total := soma_na_faixa(valor, LIMITE_CEAP)) is not None}
 
 
 def ler_ceap(dados: Any) -> Tuple[Optional[Dict[Tuple[int, str], Decimal]], Optional[str]]:
@@ -683,31 +703,85 @@ def ler_remuneracao(registro: Any) -> Tuple[Optional[Dict[str, Any]], Optional[s
     }, None
 
 
-def ler_doacoes(item: Any) -> Tuple[Optional[int], List[Dict[str, Any]], Optional[str]]:
+TIPO_RECEITA_AGREGADA = "agregado"  # comparado sem caixa: a fonte marca a linha "Demais doadores" com este tipo
+_DEMAIS_DOADORES = re.compile(r"\(\s*([0-9]+)\s*\)\s*$")
+
+
+def ler_doacoes(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """
-    (ano, linhas de doador, motivo) de uma prestação do arquivo. Sem ano ou sem lista de doadores o motivo é "invalidas";
-    sem proveniência, "sem_proveniencia". Regra única de elegibilidade (loader e reconciliação).
+    Uma prestação do arquivo: `{"ano": ano, "linhas": [linhas de doador]}`, ou (None, motivo) com "sem_proveniencia" ou
+    "invalidas" (sem ano ou sem lista de doadores). Regra única de elegibilidade (loader e reconciliação).
     """
     if not isinstance(item, dict) or not is_trusted(item):
-        return None, [], "sem_proveniencia"
+        return None, "sem_proveniencia"
     ano = inteiro_em(item.get("ano_eleicao"), ANO_MINIMO, ANO_MAXIMO)
     if ano is None or not isinstance(item.get("doadores"), list):
-        return None, [], "invalidas"
+        return None, "invalidas"
     linhas = []
     for doador in item["doadores"]:
         valor = decimal_de(doador.get("valor_doado"), LIMITE_TSE) if isinstance(doador, dict) else None
         if valor is None:
             continue
+        tipo = texto(doador.get("tipo_receita"))
+        agregado = (tipo or "").casefold() == TIPO_RECEITA_AGREGADA
+        achado = _DEMAIS_DOADORES.search(texto(doador.get("nome_doador")) or "") if agregado else None
         linhas.append(
             {
                 "ano": ano,
                 "nome": nome_sem_cpf(doador.get("nome_doador")) or DOADOR_NAO_IDENTIFICADO,
                 "doc": documento_do_doador(doador.get("cpf_cnpj_doador")),
                 "valor": valor,
-                "tipo": texto(doador.get("tipo_receita")),
+                "tipo": tipo,
+                "agregado": agregado,
+                # a linha agregada vale por todos os doadores que a fonte juntou ("Demais doadores (26)"); nula se não vier N
+                "qtd": (int(achado.group(1)) if achado and int(achado.group(1)) >= 1 else None) if agregado else 1,
             }
         )
-    return ano, linhas, None
+    return {"ano": ano, "linhas": linhas}, None
+
+
+def ler_patrimonio(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Campos de uma declaração de bens, ou (None, "sem_proveniencia" | "invalidas"). Regra única de elegibilidade."""
+    if not isinstance(item, dict) or not is_trusted(item):
+        return None, "sem_proveniencia"
+    ano = inteiro_em(item.get("ano_eleicao"), ANO_MINIMO, ANO_MAXIMO)
+    valor = decimal_de(item.get("valor_declarado_brl"), LIMITE_TSE)
+    if ano is None or valor is None:
+        return None, "invalidas"
+    quantidade = inteiro(item.get("quantidade_bens"))
+    return {
+        "ano": ano,
+        "valor": valor,
+        "qtd": quantidade if quantidade is not None and quantidade >= 0 else None,
+        "det": texto_sem_cpf(item.get("detalhes_bens")),
+    }, None
+
+
+def ler_certidao(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Campos de uma situação de registro do TSE, ou (None, "sem_proveniencia" | "invalidas"). Regra única."""
+    if not isinstance(item, dict) or not is_trusted(item):
+        return None, "sem_proveniencia"
+    orgao, tipo, situacao = texto(item.get("orgao")), texto(item.get("tipo_certidao")), texto(item.get("status_ficha"))
+    if not (orgao and tipo and situacao):
+        return None, "invalidas"
+    return {
+        "orgao": orgao,
+        "tipo": tipo,
+        "situacao": situacao,
+        "det": texto_sem_cpf(item.get("detalhes")),
+        "proc": texto_sem_cpf(item.get("numero_processo")),
+    }, None
+
+
+def ler_registros_da_remuneracao(corpo: Any) -> Tuple[Optional[List[Any]], Optional[str]]:
+    """
+    Nível de arquivo: os meses de remuneração, ou (None, "sem_proveniencia") quando o arquivo não é um objeto ou não
+    tem proveniência oficial (a carga inteira é pulada). Cada mês passa depois por `ler_remuneracao`.
+    """
+    if not isinstance(corpo, dict) or not is_trusted(corpo):
+        return None, "sem_proveniencia"
+    registros = corpo.get("registros")
+    return (registros if isinstance(registros, list) else []), None
 
 
 # ── Consolidação das linhas de finanças: funções puras, testáveis sem Postgres ────────────────────────────────────────
@@ -741,7 +815,11 @@ def fornecedores_do_parlamentar(dados: Dict[str, Any]) -> List[Dict[str, Any]]:
         acumulado["notas"] = soma_ou_desconhecido(acumulado["notas"], notas)
         if (valor_dec, nome) > (acumulado["maior"], acumulado["nome"]):
             acumulado["nome"], acumulado["maior"] = nome, valor_dec
-    return [{k: v for k, v in x.items() if k != "maior"} for x in agrupados.values()]
+    return [
+        {k: v for k, v in x.items() if k != "maior"}
+        for x in agrupados.values()
+        if soma_na_faixa(x["valor"], LIMITE_CEAP) is not None  # fornecedor cuja soma estoura a coluna fica de fora
+    ]
 
 
 def resumos_completos(resumos: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
@@ -774,7 +852,10 @@ def somar_linhas(
     a repetição é o mesmo dado sob outra grafia do nome, então fica a linha de maior valor; entre fontes diferentes
     (Câmara e Senado) os campos numéricos se somam (desconhecido em qualquer parcela deixa o total desconhecido).
     Nos empates e na escolha da linha que define os demais campos (nome, fonte) decide o conteúdo da linha, nunca a
-    ordem em que o arquivo ou as fontes aparecem.
+    ordem em que o arquivo ou as fontes aparecem. A escolha é POR TABELA: despesa, fornecedor e resumo de uma mesma
+    pessoa podem sair de entradas repetidas diferentes (caso raro: duas entradas da mesma casa resolvidas para a mesma
+    pessoa). Para o resumo de notas vale a regra mais cautelosa, em `resumos_completos`: qualquer entrada com a
+    quantidade desconhecida tira o resumo da pessoa.
     """
 
     def ordem(linha: Dict[str, Any]) -> Tuple[Any, ...]:
@@ -826,44 +907,3 @@ def chave_da_prestacao(linhas: List[Dict[str, Any]]) -> Tuple[Any, ...]:
     """Ordem total entre prestações do mesmo (pessoa, ano): quantidade, soma e, no empate, o conteúdo das linhas."""
     conteudo = sorted((x["nome"], x["doc"] or "", str(x["valor"]), x["tipo"] or "") for x in linhas)
     return len(linhas), sum((x["valor"] for x in linhas), Decimal(0)), conteudo
-
-
-def registros_da_remuneracao(corpo: Any) -> Optional[List[Any]]:
-    """Meses de remuneração do arquivo, ou None quando ele não vale (não é objeto ou sem proveniência oficial)."""
-    if not isinstance(corpo, dict) or not is_trusted(corpo):
-        return None
-    registros = corpo.get("registros")
-    return registros if isinstance(registros, list) else []
-
-
-def ler_patrimonio(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    """Campos de uma declaração de bens, ou (None, "sem_proveniencia" | "invalidas"). Regra única de elegibilidade."""
-    if not isinstance(item, dict) or not is_trusted(item):
-        return None, "sem_proveniencia"
-    ano = inteiro_em(item.get("ano_eleicao"), ANO_MINIMO, ANO_MAXIMO)
-    valor = decimal_de(item.get("valor_declarado_brl"), LIMITE_TSE)
-    if ano is None or valor is None:
-        return None, "invalidas"
-    quantidade = inteiro(item.get("quantidade_bens"))
-    return {
-        "ano": ano,
-        "valor": valor,
-        "qtd": quantidade if quantidade is not None and quantidade >= 0 else None,
-        "det": texto_sem_cpf(item.get("detalhes_bens")),
-    }, None
-
-
-def ler_certidao(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    """Campos de uma situação de registro do TSE, ou (None, "sem_proveniencia" | "invalidas"). Regra única."""
-    if not isinstance(item, dict) or not is_trusted(item):
-        return None, "sem_proveniencia"
-    orgao, tipo, situacao = texto(item.get("orgao")), texto(item.get("tipo_certidao")), texto(item.get("status_ficha"))
-    if not (orgao and tipo and situacao):
-        return None, "invalidas"
-    return {
-        "orgao": orgao,
-        "tipo": tipo,
-        "situacao": situacao,
-        "det": texto_sem_cpf(item.get("detalhes")),
-        "proc": texto(item.get("numero_processo")),
-    }, None

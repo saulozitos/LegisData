@@ -30,8 +30,8 @@ from etl.pipelines.loader_helpers import (
     ler_ceap,
     ler_doacoes,
     ler_emenda,
+    ler_registros_da_remuneracao,
     ler_remuneracao,
-    registros_da_remuneracao,
 )
 from etl.utils.bootstrap import ensure_backend_on_path
 from etl.utils.datafiles import load_json
@@ -66,7 +66,7 @@ def totais_emendas_do_arquivo(emendas: Any) -> Dict[int, Dict[str, Decimal]]:
 
 def totais_remuneracao_do_arquivo(corpo: Any) -> Dict[int, Decimal]:
     totais: Dict[int, Decimal] = defaultdict(Decimal)
-    for registro in registros_da_remuneracao(corpo) or []:  # o loader pula o arquivo inteiro sem proveniência
+    for registro in ler_registros_da_remuneracao(corpo)[0] or []:  # o loader pula o arquivo inteiro sem proveniência
         lido, _motivo = ler_remuneracao(registro)  # a mesma regra do loader (inclui o mês entre 1 e 12)
         if lido is not None:
             totais[lido["ano"]] += lido["bruto"]
@@ -76,9 +76,9 @@ def totais_remuneracao_do_arquivo(corpo: Any) -> Dict[int, Decimal]:
 def totais_doacoes_do_arquivo(prestacoes: Any) -> Dict[int, Decimal]:
     totais: Dict[int, Decimal] = defaultdict(Decimal)
     for item in prestacoes if isinstance(prestacoes, list) else []:
-        ano, doadores, _motivo = ler_doacoes(item)  # a mesma regra do loader
-        if ano is not None:
-            totais[ano] += sum((d["valor"] for d in doadores), Decimal(0))
+        lida, _motivo = ler_doacoes(item)  # a mesma regra do loader
+        if lida is not None:
+            totais[lida["ano"]] += sum((d["valor"] for d in lida["linhas"]), Decimal(0))
     return totais
 
 

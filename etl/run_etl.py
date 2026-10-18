@@ -127,6 +127,8 @@ def _ceap_emendas(ano_inicio: int):
     resumo = run(ano_inicio=ano_inicio)
     if resumo.get("ceap_gravado") is False or resumo.get("emendas_gravado") is False:
         raise RuntimeError(f"CEAP/emendas não gravadas (arquivos anteriores preservados): {resumo}")
+    # a API lê o banco, não os arquivos: o dossiê só enxerga o dado novo depois de `--load-economia` (ou do próximo deploy)
+    logger.info("CEAP/emendas gravadas em arquivo; rode --load-economia para levá-las ao schema fin.")
     return resumo
 
 

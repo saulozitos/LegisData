@@ -293,4 +293,39 @@ describe("EmendasExplorerPanel", () => {
     await screen.findByText(/Recurso da CMO/i);
     expect(screen.queryByText(/reuniu/i)).not.toBeInTheDocument();
   });
+
+  it("a busca por autor também exige 2 letras e não consulta a API com 1", async () => {
+    vi.mocked(api.getEmendasResumo).mockResolvedValue(mockResumo);
+    vi.mocked(api.getEmendasPorAutor).mockResolvedValue(mockAutor);
+
+    render(<EmendasExplorerPanel />);
+    await screen.findByText(/Explorador Nacional de Emendas Orçamentárias/i);
+    fireEvent.click(screen.getByRole("button", { name: /Bancadas & Relator/i }));
+    await screen.findByText(/Recurso da CMO/i);
+    vi.mocked(api.getEmendasPorAutor).mockClear();
+
+    fireEvent.change(screen.getByLabelText(/Pesquisar por autor institucional/i), { target: { value: "B" } });
+    expect(await screen.findByText(/Digite ao menos 2 letras/i)).toBeInTheDocument();
+    expect(api.getEmendasPorAutor).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/Pesquisar por autor institucional/i)).toHaveAttribute("maxlength", "100");
+
+    fireEvent.change(screen.getByLabelText(/Pesquisar por autor institucional/i), { target: { value: "Ba" } });
+    await screen.findByText(/Recurso da CMO/i);
+    expect(api.getEmendasPorAutor).toHaveBeenCalledWith("Ba", 50, expect.anything());
+  });
+
+  it("o espaço no começo ou no fim do termo de autor não conta como letra", async () => {
+    vi.mocked(api.getEmendasResumo).mockResolvedValue(mockResumo);
+    vi.mocked(api.getEmendasPorAutor).mockResolvedValue(mockAutor);
+
+    render(<EmendasExplorerPanel />);
+    await screen.findByText(/Explorador Nacional de Emendas Orçamentárias/i);
+    fireEvent.click(screen.getByRole("button", { name: /Bancadas & Relator/i }));
+    await screen.findByText(/Recurso da CMO/i);
+    vi.mocked(api.getEmendasPorAutor).mockClear();
+
+    fireEvent.change(screen.getByLabelText(/Pesquisar por autor institucional/i), { target: { value: " a " } });
+    expect(await screen.findByText(/Digite ao menos 2 letras/i)).toBeInTheDocument();
+    expect(api.getEmendasPorAutor).not.toHaveBeenCalled();
+  });
 });

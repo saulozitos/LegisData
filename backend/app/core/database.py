@@ -12,6 +12,7 @@ engine = create_engine(
     max_overflow=settings.DB_MAX_OVERFLOW,
     pool_timeout=settings.DB_POOL_TIMEOUT,
     pool_recycle=1800,
+    hide_parameters=True,  # um erro do banco não copia os valores do lote (nomes, textos) para o log
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

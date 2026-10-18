@@ -548,7 +548,7 @@ def test_doacoes_aceita_pedir_a_eleicao_e_o_dossie_lista_as_disponiveis(client, 
     )
     db.commit()
     dossie = client.get(f"{BASE}/{seed.fulano.id}").json()["financiamento_campanha"]
-    assert dossie["eleicoes_disponiveis"] == [2022, 2018] and dossie["total_recibos"] == 1
+    assert dossie["eleicoes_disponiveis"] == [2022, 2018] and dossie["demais_doadores"] is None
     antiga = client.get(f"{BASE}/{seed.fulano.id}/doacoes?ano_eleicao=2018").json()
     assert antiga["ano_eleicao"] == 2018 and antiga["total_arrecadado"] == 9000.0 and antiga["possui_dados"] is True
     assert client.get(f"{BASE}/{seed.fulano.id}/doacoes?ano_eleicao=2010").status_code == 404

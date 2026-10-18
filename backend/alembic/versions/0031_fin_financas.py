@@ -18,7 +18,9 @@ da fonte fica em `autor_texto`, nunca se força o vínculo com outra pessoa).
   o líquido, então essas três ficam nulas e o dossiê as mostra como indisponíveis.
 - `fin.emenda.pessoa_id` usa `ON DELETE RESTRICT`: emenda identificada exige a pessoa (CHECK), então a unificação de
   pessoas duplicadas precisa religar as emendas à pessoa canônica antes de apagar a duplicada.
-- `fin.declaracao_patrimonio`, `fin.doacao_campanha` e `fin.certidao`: dados do TSE.
+- `fin.declaracao_patrimonio`, `fin.doacao_campanha` e `fin.certidao`: dados do TSE. A fonte publica os maiores doadores
+  de cada candidato e uma linha "Demais doadores (N)" que preserva o total: ela é gravada com `agregado` verdadeiro e
+  `quantidade_doadores` = N (nulo se a quantidade não vier no texto); as demais têm `quantidade_doadores` = 1.
 
 Cada linha aponta para `etl.fonte` (decisão D7). Os dados começam em 1995 (decisão D8). A carga vem do ETL, que lê os
 arquivos oficiais; as tabelas do legado (`public.*`) continuam existindo até a limpeza da Fase 9.
@@ -121,12 +123,15 @@ def upgrade() -> None:
         )
         """
     )
-    # busca por trecho do nome, sem acento nem caixa: a regra fica num lugar só para as consultas da API
+    # Busca por trecho do nome, sem acento nem caixa: a regra fica num lugar só para as consultas da API. O corpo é um
+    # LIKE sobre `ref.normalizar_texto(texto)` (o trecho, normalizado, tem `\\`, `%` e `_` escapados) para o planejador
+    # inlinar a função e usar os índices trigram abaixo em termos de 3 ou mais caracteres.
     op.execute(
-        """
+        r"""
         CREATE FUNCTION ref.contem_texto(texto text, trecho text) RETURNS boolean
         LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT AS $$
-            SELECT strpos(ref.normalizar_texto(texto), ref.normalizar_texto(trecho)) > 0
+            SELECT ref.normalizar_texto(texto) LIKE
+                   '%' || replace(replace(replace(ref.normalizar_texto(trecho), '\', '\\'), '%', '\%'), '_', '\_') || '%'
         $$
         """
     )
@@ -134,6 +139,14 @@ def upgrade() -> None:
     op.execute("CREATE INDEX ix_emenda_ano ON fin.emenda (ano)")
     op.execute("CREATE INDEX ix_emenda_uf ON fin.emenda (uf)")
     op.execute("CREATE INDEX ix_emenda_autor_codigo ON fin.emenda (autor_codigo)")
+    # pg_trgm vem da migração 0002; as expressões são as mesmas que `ref.contem_texto` inlina nas buscas
+    op.execute(
+        "CREATE INDEX ix_emenda_autor_trgm ON fin.emenda USING gin (ref.normalizar_texto(autor_texto) public.gin_trgm_ops)"
+    )
+    op.execute(
+        "CREATE INDEX ix_emenda_localidade_trgm ON fin.emenda "
+        "USING gin (ref.normalizar_texto(localidade_destino) public.gin_trgm_ops)"
+    )
 
     op.execute(
         """
@@ -185,6 +198,8 @@ def upgrade() -> None:
             ),
             valor numeric(15,2) NOT NULL,
             tipo_receita text,
+            agregado boolean NOT NULL DEFAULT false,
+            quantidade_doadores integer CHECK (quantidade_doadores >= 1),
             fonte_id smallint NOT NULL REFERENCES etl.fonte(id),
             atualizado_em timestamptz NOT NULL DEFAULT now()
         )

@@ -10,14 +10,14 @@ from .conftest import fonte_id, inserir_fin, pessoa_do
 BASE = "/api/v1/politicians"
 
 
-def _add_remuneration(db, seed, months=2):
+def _add_remuneration(db, seed, months=2, ano=2024):
     pessoa = pessoa_do(db, seed.fulano)
     for month in range(1, months + 1):
         inserir_fin(
             db,
             "remuneracao",
             pessoa_id=pessoa,
-            ano=2024,
+            ano=ano,
             mes=month,
             salario_bruto=40000,
             salario_liquido=30000,
@@ -98,12 +98,55 @@ def test_patrimony_history_growth_and_compatibility(client, db, seed):
 
 @pytest.mark.parametrize("final_value,expected", [(100100, "COMPATÍVEL"), (190000, "MODERADO"), (900000, "ATÍPICO")])
 def test_patrimony_compatibility_classification(client, db, seed, final_value, expected):
-    _add_remuneration(db, seed, months=2)  # subsídios brutos registrados: 80.000
-    _declarar_patrimonio(db, seed.fulano, 2018, 100000)
+    _add_remuneration(db, seed, months=2, ano=2019)  # subsídios brutos registrados: 80.000, a partir de 2019
+    _declarar_patrimonio(db, seed.fulano, 2018, 100000)  # a base: a última declaração até o início da remuneração
     _declarar_patrimonio(db, seed.fulano, 2022, final_value)
     db.commit()
     enrich = client.get(f"{BASE}/{seed.fulano.id}").json()["indices_inteligencia"]["enriquecimento_patrimonial"]
     assert enrich["compatibilidade"] == expected
+
+
+def test_patrimonio_so_e_comparado_na_janela_da_remuneracao_e_a_declaracao_antiga_nao_infla_a_razao(client, db, seed):
+    _add_remuneration(db, seed, months=2, ano=2019)  # 80.000 de subsídio, a partir de 2019
+    _declarar_patrimonio(db, seed.fulano, 1998, 1000)  # antes da janela: não entra na comparação
+    _declarar_patrimonio(db, seed.fulano, 2018, 100000)
+    _declarar_patrimonio(db, seed.fulano, 2022, 150000)
+    db.commit()
+    enrich = client.get(f"{BASE}/{seed.fulano.id}").json()["indices_inteligencia"]["enriquecimento_patrimonial"]
+    assert enrich["periodo_comparado"] == {"de": 2018, "ate": 2022}
+    assert enrich["delta_patrimonio"] == 50000.0  # 150.000 - 100.000 (e não - 1.000)
+    assert enrich["razao_patrimonio_renda"] == 0.62 and enrich["compatibilidade"] == "COMPATÍVEL"
+
+
+def test_patrimonio_sem_declaracao_depois_da_base_nao_e_comparado(client, db, seed):
+    _add_remuneration(db, seed, months=2, ano=2024)
+    _declarar_patrimonio(db, seed.fulano, 2018, 100000)  # a base seria 2018 e não há declaração depois dela
+    db.commit()
+    enrich = client.get(f"{BASE}/{seed.fulano.id}").json()["indices_inteligencia"]["enriquecimento_patrimonial"]
+    assert enrich["periodo_comparado"] is None and enrich["compatibilidade"] is None
+    assert "Dados insuficientes" in enrich["diagnostico"]
+
+
+def test_declaracoes_na_janela_da_remuneracao_e_funcao_pura():
+    from app.services.financas_service import declaracoes_na_janela_da_remuneracao as janela
+
+    declaracoes = [{"ano": a} for a in (1998, 2006, 2018, 2022)]
+    assert [d["ano"] for d in janela(declaracoes, 2019)] == [2018, 2022]
+    assert [d["ano"] for d in janela(declaracoes, 2018)] == [2018, 2022]  # a base pode ser do próprio primeiro ano
+    assert [d["ano"] for d in janela(declaracoes, 2000)] == [1998, 2006, 2018, 2022]
+    assert janela(declaracoes, 1990) == [] and janela(declaracoes, None) == [] and janela([], 2019) == []
+
+
+def test_remuneracao_devolve_float_e_o_primeiro_ano_da_fonte(client, db, seed):
+    _add_remuneration(db, seed, months=2, ano=2021)
+    db.commit()
+    resumo = client.get(f"{BASE}/{seed.fulano.id}").json()["remuneracao"]["resumo"]
+    assert resumo["total_bruto_2023"] == 80000.0 and resumo["ano_referencia"] == 2021
+    from app.services import financas_service
+
+    fonte = financas_service.remuneracao(db, [pessoa_do(db, seed.fulano)])
+    assert fonte["primeiro_ano"] == 2021 and isinstance(fonte["total_bruto_ano"], float)
+    assert isinstance(fonte["total_ceap_ano"], float) and fonte["total_beneficios_ano"] == 0.0
 
 
 def test_ceap_endpoint_totals_by_year_and_type_from_fin(client, db, seed):

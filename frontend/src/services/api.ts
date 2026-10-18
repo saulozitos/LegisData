@@ -1024,10 +1024,10 @@ export interface FinanciamentoCampanhaData {
   /** Eleição do resumo; `null` quando o parlamentar não tem nenhuma doação registrada. */
   ano_eleicao: number | null;
   total_arrecadado: number;
-  /** Doadores distintos da campanha (um doador com vários recibos conta uma vez). */
-  total_doadores: number;
-  /** Recibos da campanha (uma linha de `todas_doacoes` cada). */
-  total_recibos: number;
+  /** Doadores distintos da campanha (a linha "Demais doadores" soma o N da fonte); `null` se a fonte não informa N. */
+  total_doadores: number | null;
+  /** Linha agregada "Demais doadores (N)" da fonte; `null` quando todos os doadores estão listados. */
+  demais_doadores: { quantidade: number | null; valor: number } | null;
   /** Eleições com doações registradas, da mais recente para a mais antiga; o resumo é da primeira. */
   eleicoes_disponiveis: number[];
   top_doadores: TopDoadorItem[];
@@ -1100,6 +1100,8 @@ export interface EnriquecimentoPatrimonialData {
   delta_patrimonio: number | null;
   salario_acumulado_estimado: number | null;
   razao_patrimonio_renda: number | null;
+  /** Anos das duas declarações comparadas (mesmo período do subsídio registrado); `null` sem comparação. */
+  periodo_comparado?: { de: number; ate: number } | null;
   compatibilidade: "COMPATÍVEL" | "MODERADO" | "ATÍPICO" | null;
   diagnostico: string;
 }

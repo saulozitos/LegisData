@@ -12,6 +12,8 @@ from etl.pipelines.loader_helpers import (
     cnpj_do_fornecedor,
     decimal_de,
     documento_do_doador,
+    ler_certidao,
+    ler_doacoes,
     nome_do_fornecedor,
     nome_sem_cpf,
     resumos_completos,
@@ -1030,11 +1032,11 @@ def test_resolvedor_nao_escolhe_quando_dois_homonimos_tinham_mandato_no_mesmo_an
 def test_fronteiras_do_mandato_dentro_do_ano(pg_engine, banco):
     with pg_engine.begin() as conn:
         a = _pessoa(conn, "Eva Fim", mandato=("2010-01-01", "2020-12-31"))
-        _pessoa(conn, "Eva Fim", mandato=("2021-01-01", "2022-06-30"))
+        b = _pessoa(conn, "Eva Fim", mandato=("2021-01-01", "2022-06-30"))
     with pg_engine.connect() as conn:
         resolvedor = ResolvedorDePessoas(conn)
         assert resolvedor.por_nome(["Eva Fim"], 2020).pessoa_id == a  # termina em 31/12: ainda conta
-        assert resolvedor.por_nome(["Eva Fim"], 2021).pessoa_id != a  # começa em 01/01 do outro
+        assert resolvedor.por_nome(["Eva Fim"], 2021).pessoa_id == b  # começa em 01/01 do outro
 
 
 def test_resolvedor_junta_o_cadastro_do_legado_ao_que_tem_identificador(pg_engine, banco):
@@ -1359,9 +1361,9 @@ def test_substituir_roda_todas_as_guardas_antes_do_primeiro_delete(pg_engine, ba
 
 
 def test_a_tabela_de_emendas_nao_tem_delete_total_porque_faz_upsert():
+    """O DELETE total trocaria o `uid` público de todas as emendas: só as tabelas substituídas por inteiro o têm."""
     assert "fin.emenda" in fin._SQL_CONTAGEM and "fin.emenda" not in fin._SQL_DELETE
-    with pytest.raises(KeyError):
-        fin._substituir(None, [("fin.emenda", "", [])]) if False else fin._SQL_DELETE["fin.emenda"]
+    assert set(fin._SQL_DELETE) == set(fin._SQL_CONTAGEM) - {"fin.emenda"}
 
 
 # ── 5ª revisão: CPF em qualquer grafia, desempate fixo, fornecedor canônico, quantidade desconhecida ──────────────────
@@ -1583,23 +1585,25 @@ def test_nome_sem_cpf_nao_deixa_digitos_do_cpf_depois_de_numero_e_hifen():
 
 
 def test_regex_de_cpf_nao_tem_backtracking_catastrofico():
-    """Mede só as regex (o texto já normalizado), comparando n com 2n; o melhor de 3 tira o ruído do relógio."""
+    """Mede só as regex (o texto já normalizado), comparando n com 2n; as medições se intercalam para um pico de carga
+    do relógio atingir os dois tamanhos e o melhor de cada um tira o ruído."""
     import time
 
     from etl.pipelines.loader_helpers import _CPF_EM_TEXTO, _SEQUENCIA_CPF
 
     def tempo(texto_longo):
-        melhor = None
-        for _ in range(3):
-            inicio = time.perf_counter()
-            _CPF_EM_TEXTO.sub(" ", texto_longo)
-            _SEQUENCIA_CPF.sub(" ", texto_longo)
-            decorrido = time.perf_counter() - inicio
-            melhor = decorrido if melhor is None else min(melhor, decorrido)
-        return melhor
+        inicio = time.perf_counter()
+        _CPF_EM_TEXTO.sub(" ", texto_longo)
+        _SEQUENCIA_CPF.sub(" ", texto_longo)
+        return time.perf_counter() - inicio
 
     for unidade in ("1 ", "1.", "1", "123 - ", "123,", "R$ 1 ", "1~", "12 3 "):
-        pequeno, grande = tempo(unidade * 20_000), tempo(unidade * 40_000)
+        pequeno_txt, grande_txt = unidade * 20_000, unidade * 40_000
+        pequenos, grandes = [], []
+        for _ in range(3):
+            pequenos.append(tempo(pequeno_txt))
+            grandes.append(tempo(grande_txt))
+        pequeno, grande = min(pequenos), min(grandes)
         # linear dá cerca de 2x; quadrático, cerca de 4x (o piso de 0,05 s cobre o que o relógio não resolve)
         assert grande < 3 * pequeno + 0.05, (unidade, pequeno, grande)
         assert grande < 3  # teto absoluto largo, só para pegar explosão exponencial
@@ -1637,8 +1641,8 @@ def test_entrada_da_ceap_sem_gasto_valido_nao_leva_fornecedores_nem_resumo():
     assert despesas == [] and fornecedores == [] and resumos == []
 
 
-def test_ler_patrimonio_ler_certidao_e_registros_da_remuneracao_sao_a_regra_unica():
-    from etl.pipelines.loader_helpers import ler_certidao, ler_patrimonio, registros_da_remuneracao
+def test_todos_os_ler_seguem_o_contrato_campos_ou_motivo():
+    from etl.pipelines.loader_helpers import ler_certidao, ler_patrimonio, ler_registros_da_remuneracao
 
     assert ler_patrimonio("x") == (None, "sem_proveniencia")
     assert ler_patrimonio({"ano_eleicao": 2022, "valor_declarado_brl": 1}) == (None, "sem_proveniencia")
@@ -1648,9 +1652,13 @@ def test_ler_patrimonio_ler_certidao_e_registros_da_remuneracao_sao_a_regra_unic
     assert ler_certidao(_oficial(orgao="TSE", tipo_certidao="T")) == (None, "invalidas")
     lido, _ = ler_certidao(_oficial(orgao="TSE", tipo_certidao="T", status_ficha="ok", numero_processo="1"))
     assert lido["proc"] == "1" and lido["det"] is None
-    assert registros_da_remuneracao([]) is None and registros_da_remuneracao({"registros": []}) is None
-    assert registros_da_remuneracao(_oficial(registros="x")) == []
-    assert registros_da_remuneracao(_oficial(registros=[1, 2])) == [1, 2]
+    assert ler_registros_da_remuneracao([]) == (None, "sem_proveniencia")
+    assert ler_registros_da_remuneracao({"registros": []}) == (None, "sem_proveniencia")
+    assert ler_registros_da_remuneracao(_oficial(registros="x")) == ([], None)
+    assert ler_registros_da_remuneracao(_oficial(registros=[1, 2])) == ([1, 2], None)
+    assert ler_doacoes("x") == (None, "sem_proveniencia")
+    assert ler_doacoes(_oficial(ano_eleicao=1800, doadores=[])) == (None, "invalidas")
+    assert ler_doacoes(_oficial(ano_eleicao=2022, doadores=[])) == ({"ano": 2022, "linhas": []}, None)
 
 
 def test_doacoes_sem_nome_viram_o_rotulo_padrao_e_nao_se_fundem_no_banco(pg_engine, banco, tmp_path):
@@ -1876,3 +1884,157 @@ def test_rotulo_de_fornecedor_sem_nome_vem_da_constante_compartilhada():
     from etl.utils.rotulos import FORNECEDOR_NAO_IDENTIFICADO
 
     assert nome_do_fornecedor("") == FORNECEDOR_NAO_IDENTIFICADO == "Fornecedor não identificado"
+
+
+# ── 10ª revisão: linha agregada de doadores, marcas combinantes, motivo novo, identificador malformado ────────────────
+
+
+def _prestacao_com_agregada():
+    return _oficial(
+        camara_id=100,
+        ano_eleicao=2022,
+        doadores=[
+            {
+                "nome_doador": "Ana Doadora",
+                "cpf_cnpj_doador": "***.123.456-**",
+                "valor_doado": 100,
+                "tipo_receita": "PF",
+            },
+            {
+                "nome_doador": "Demais doadores (26)",
+                "cpf_cnpj_doador": None,
+                "valor_doado": 24804,
+                "tipo_receita": "Agregado",
+            },
+            {"nome_doador": "Demais doadores", "cpf_cnpj_doador": None, "valor_doado": 5, "tipo_receita": "agregado"},
+            {
+                "nome_doador": "Demais doadores (0)",
+                "cpf_cnpj_doador": None,
+                "valor_doado": 5,
+                "tipo_receita": "Agregado",
+            },
+        ],
+    )
+
+
+def test_ler_doacoes_marca_a_linha_agregada_e_le_quantos_doadores_ela_vale():
+    lida, motivo = ler_doacoes(_prestacao_com_agregada())
+    assert motivo is None and lida["ano"] == 2022
+    resumo = [(x["nome"], x["agregado"], x["qtd"]) for x in lida["linhas"]]
+    assert resumo == [
+        ("Ana Doadora", False, 1),
+        ("Demais doadores (26)", True, 26),
+        ("Demais doadores", True, None),  # tipo Agregado sem N no texto: quantidade desconhecida, nunca um palpite
+        ("Demais doadores (0)", True, None),  # N inválido (menor que 1) também é desconhecido
+    ]
+
+
+def test_doacoes_gravam_a_linha_agregada_com_a_quantidade_de_doadores(pg_engine, banco, tmp_path):
+    _gravar(tmp_path, fin.DOACOES_ARQUIVO, [_prestacao_com_agregada()])
+    with pg_engine.begin() as conn:
+        fin.carregar_doacoes(conn, tmp_path)
+    with pg_engine.connect() as conn:
+        linhas = conn.execute(
+            text("SELECT doador_nome, agregado, quantidade_doadores FROM fin.doacao_campanha ORDER BY valor DESC")
+        ).all()
+    assert [tuple(r) for r in linhas] == [
+        ("Demais doadores (26)", True, 26),
+        ("Ana Doadora", False, 1),
+        ("Demais doadores", True, None),
+        ("Demais doadores (0)", True, None),
+    ]
+
+
+@pytest.mark.parametrize("marca", ["\u034f", "\ufe0f", "\u0301", "\u180b", "\u200d"])
+def test_marca_combinante_invisivel_dentro_do_cpf_nao_o_esconde(marca):
+    cpf = "11" + marca + "1.222.333-44"
+    assert texto_sem_cpf(f"CPF {cpf} fim") == "CPF fim"
+    assert nome_sem_cpf(f"MEI {cpf}") == "MEI"
+    assert nome_sem_cpf("João da Conceição") == "João da Conceição"  # acento composto pelo NFKC não é perdido
+
+
+def test_numero_do_processo_da_certidao_tambem_passa_pelo_filtro_de_cpf():
+    lido, _ = ler_certidao(
+        _oficial(orgao="TSE", tipo_certidao="T", status_ficha="ok", numero_processo="111.222.333-44")
+    )
+    assert lido["proc"] is None
+    lido, _ = ler_certidao(
+        _oficial(orgao="TSE", tipo_certidao="T", status_ficha="ok", numero_processo="0001234-56.2020.8.26.0100")
+    )
+    assert lido["proc"] == "0001234-56.2020.8.26.0100"
+
+
+def test_motivo_novo_de_um_ler_nao_derruba_a_carga_com_keyerror(monkeypatch):
+    monkeypatch.setattr(fin, "ler_remuneracao", lambda registro: (None, "motivo_inedito"))
+    linhas, contagem = fin.linhas_da_remuneracao(_oficial(registros=[{"camara_id": 1}]), _SempreAPessoa(), 1)
+    assert linhas == [] and contagem["motivo_inedito"] == 1 and contagem["invalidas"] == 0
+
+
+def test_identificador_malformado_nao_casa_com_outra_pessoa(pg_engine, banco):
+    with pg_engine.connect() as conn:
+        resolvedor = ResolvedorDePessoas(conn)
+        ana = resolvedor.por_identificador(camara_id=100)
+        assert ana is not None
+        assert resolvedor.por_identificador(camara_id=True) is None  # True não é 1
+        assert resolvedor.por_identificador(camara_id=100.9) is None  # fração não é 100
+        assert (
+            resolvedor.por_identificador(camara_id="100") == ana
+            and resolvedor.por_identificador(camara_id=100.0) == ana
+        )
+
+
+# ── 10ª revisão (2): somas dentro da faixa da coluna, interface comum dos ler_* ──────────────────────────────────────
+
+
+def test_soma_na_faixa_arredonda_em_centavos_e_barra_o_que_estoura_a_coluna():
+    from etl.pipelines.loader_helpers import LIMITE_CEAP, soma_na_faixa
+
+    assert soma_na_faixa(Decimal("10.004"), LIMITE_CEAP) == Decimal("10.00")
+    assert soma_na_faixa(Decimal("999999999999.99"), LIMITE_CEAP) == Decimal("999999999999.99")
+    assert soma_na_faixa(Decimal("1000000000000.00"), LIMITE_CEAP) is None
+    assert soma_na_faixa(Decimal("999999999999.999"), LIMITE_CEAP) is None  # arredonda para o limite: estoura
+    assert soma_na_faixa(Decimal("-1000000000000.00"), LIMITE_CEAP) is None
+
+
+def test_total_de_ano_e_tipo_da_ceap_que_estoura_a_coluna_fica_de_fora():
+    from etl.pipelines.loader_helpers import valores_da_ceap
+
+    parcela = 600_000_000_000.0  # cada parcela cabe em numeric(14,2); a soma das duas não
+    valores = valores_da_ceap({"por_ano_tipo": {"2023": {"T": parcela, " T": parcela, "U": 1.0}}})
+    assert valores == {(2023, "U"): Decimal("1.00")}
+
+
+def test_soma_entre_fontes_que_estoura_a_coluna_e_contada_e_nao_derruba_a_carga(pg_engine, banco, tmp_path):
+    grande = 600_000_000_000.0
+    camara = _ceap(camara_id=500, por_ano_tipo={"2023": {"T": grande}}, fornecedores={})
+    senado = _ceap(camara_id=None, senado_id=501, por_ano_tipo={"2023": {"T": grande}}, fornecedores={})
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"C": camara, "S": senado, "OUTRA": _ceap()})
+    with pg_engine.begin() as conn:
+        resultado = fin.carregar_ceap(conn, tmp_path)
+    assert resultado["soma_fora_da_faixa"] == 1  # Câmara + Senado dão 1,2 trilhão: não cabe em numeric(14,2)
+    assert _contar(pg_engine, "despesa_cota") == 3  # só as despesas da "OUTRA" (Ana) entraram
+
+
+def test_emendas_repetidas_cuja_soma_estoura_a_coluna_ficam_de_fora_e_sao_contadas():
+    metade = 60_000_000_000_000.0  # 6e13 cada; juntas passam de 1e14
+    emendas = [_emenda("E1", "ANA", valor_empenhado=metade, valor_pago=metade) for _ in range(2)]
+    linhas, contagem = fin.linhas_das_emendas(emendas, _SempreAPessoa(), 1)
+    assert linhas == [] and contagem["soma_fora_da_faixa"] == 1 and contagem["chave_repetida"] == 1
+
+
+@pytest.mark.parametrize(
+    "nome, esperado",
+    [
+        ("ler_ceap", "sem_proveniencia"),
+        ("ler_emenda", "sem_proveniencia"),
+        ("ler_remuneracao", "invalidas"),  # o mês não tem proveniência própria: ela vem do arquivo
+        ("ler_patrimonio", "sem_proveniencia"),
+        ("ler_certidao", "sem_proveniencia"),
+        ("ler_doacoes", "sem_proveniencia"),
+    ],
+)
+def test_todo_ler_devolve_campos_ou_motivo_nunca_os_dois(nome, esperado):
+    from etl.pipelines import loader_helpers
+
+    campos, motivo = getattr(loader_helpers, nome)("x")
+    assert campos is None and motivo == esperado

@@ -614,6 +614,20 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
               </p>
             </div>
 
+            {/* Busca livre por autor (bancada, comissão ou relator) */}
+            <div className="relative max-w-xl">
+              <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={autorInput}
+                maxLength={TERMO_MAXIMO}
+                onChange={(e) => setAutorInput(e.target.value)}
+                placeholder="Ex: Bancada da Bahia, Comissão de Saúde, Relator..."
+                className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-slate-700 rounded-2xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 transition shadow-inner"
+                aria-label="Pesquisar por autor institucional"
+              />
+            </div>
+
             {/* Sugestões de Autores Institucionais */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-2">
               {AUTORES_SUGESTOES.map((item) => {

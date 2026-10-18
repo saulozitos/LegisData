@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from app.core.errors import ErroDeDominio
 from app.core.numeros import opt_float as _opt_float
 from app.core.numeros import pct as _pct
+from app.services.emendas_service import AREA_SEM_FUNCAO
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -68,7 +69,11 @@ def _total_notas(db: Session, ids: Sequence[int]) -> Optional[int]:
 
 # ── CEAP ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
 def custos_ceap(db: Session, pessoas: Sequence[int]) -> Optional[Dict[str, Any]]:
-    """Resumo da CEAP: total, notas, gasto por tipo e por ano e maiores fornecedores. None se não há dado."""
+    """
+    Resumo da CEAP: total, notas, gasto por tipo e por ano e maiores fornecedores. None se não há dado. A fonte traz só os
+    15 maiores fornecedores de cada entrada (Câmara e Senado), então o total de um fornecedor que aparece no top 15 de uma
+    casa e fora do da outra é subestimado, e a concentração calculada pelo dossiê parte dessa lista parcial.
+    """
     if not pessoas:
         return None
     ids = list(pessoas)
@@ -173,14 +178,14 @@ _AGRUPAMENTOS = {
     "WHERE pessoa_id = ANY(:ids) GROUP BY 1 ORDER BY total DESC, 1 LIMIT 20",
     "tipo": "SELECT tipo_emenda AS chave, sum(valor_pago) AS total FROM fin.emenda "
     "WHERE pessoa_id = ANY(:ids) GROUP BY 1 ORDER BY total DESC, 1",
-    "area": "SELECT coalesce(funcao, 'Outros') AS chave, sum(valor_pago) AS total FROM fin.emenda "
+    "area": "SELECT coalesce(funcao, :sem_funcao) AS chave, sum(valor_pago) AS total FROM fin.emenda "
     "WHERE pessoa_id = ANY(:ids) GROUP BY 1 ORDER BY total DESC, 1",
 }
 
 
 def _agrupado(db: Session, ids: List[int], rotulo: str, total_pago: float) -> List[Dict[str, Any]]:
     """Valor pago por localidade, tipo ou área (`rotulo` escolhe uma das consultas fixas acima)."""
-    linhas = db.execute(text(_AGRUPAMENTOS[rotulo]), {"ids": ids}).all()
+    linhas = db.execute(text(_AGRUPAMENTOS[rotulo]), {"ids": ids, "sem_funcao": AREA_SEM_FUNCAO}).all()
     return [
         {rotulo: r.chave, "valor_pago": round(float(r.total), 2), "percentual": _pct(float(r.total), total_pago)}
         for r in linhas
@@ -294,7 +299,11 @@ def emendas_detalhadas(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
 
 # ── Remuneração ──────────────────────────────────────────────────────────────────────────────────────────────────────
 def remuneracao(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
-    """Últimos 12 meses, totais do ano mais recente e subsídio bruto acumulado; campos que a fonte não traz ficam None."""
+    """
+    Os 12 registros mais recentes (12 meses COM remuneração, não 12 meses do calendário: lacunas de mandato entram como
+    estão), os totais do ano do registro mais recente e o subsídio bruto acumulado. Tudo em float; o que a fonte não traz
+    fica None, nunca zero.
+    """
     ids = list(pessoas)
     meses = (
         db.execute(
@@ -322,9 +331,14 @@ def remuneracao(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
         for r in meses
     ]
     ano = meses[0].ano if meses else None
-    total_bruto_ano: Optional[Decimal] = None  # sem remuneração registrada o total é desconhecido, não zero
-    total_ceap_ano: Optional[Decimal] = None
-    total_beneficios_ano: Optional[Decimal] = None
+    primeiro_ano = (
+        db.execute(text("SELECT min(ano) FROM fin.remuneracao WHERE pessoa_id = ANY(:ids)"), {"ids": ids}).scalar()
+        if ids
+        else None
+    )
+    total_bruto_ano: Optional[float] = None  # sem remuneração registrada o total é desconhecido, não zero
+    total_ceap_ano: Optional[float] = None
+    total_beneficios_ano: Optional[float] = None
     media_ceap: Optional[float] = None
     acumulado = Decimal("0.00")
     if ano is not None:
@@ -337,12 +351,12 @@ def remuneracao(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
             ),
             {"ids": ids, "ano": ano},
         ).one()
-        total_bruto_ano = Decimal(bruto)
+        total_bruto_ano = float(bruto)
         if qtd_ceap:
-            total_ceap_ano = Decimal(ceap)
+            total_ceap_ano = float(ceap)
             media_ceap = float((Decimal(ceap) / Decimal(qtd_ceap)).quantize(Decimal("0.01")))
         if qtd_beneficios:
-            total_beneficios_ano = Decimal(beneficios)
+            total_beneficios_ano = float(beneficios)
         acumulado = Decimal(
             db.execute(
                 text("SELECT coalesce(sum(salario_bruto), 0) FROM fin.remuneracao WHERE pessoa_id = ANY(:ids)"),
@@ -353,6 +367,7 @@ def remuneracao(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
     return {
         "historico": historico,
         "ano": ano,
+        "primeiro_ano": primeiro_ano,
         "total_bruto_ano": total_bruto_ano,
         "total_ceap_ano": total_ceap_ano,
         "total_beneficios_ano": total_beneficios_ano,
@@ -361,6 +376,24 @@ def remuneracao(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
         "liquido_atual": historico[0]["salario_liquido"] if historico else None,
         "acumulado": float(acumulado),
     }
+
+
+def declaracoes_na_janela_da_remuneracao(
+    declaracoes: Sequence[Dict[str, Any]], primeiro_ano_remuneracao: Optional[int]
+) -> List[Dict[str, Any]]:
+    """
+    Declarações de bens (da mais antiga para a mais nova) que cobrem o MESMO período do subsídio registrado: a base é a
+    última declarada até o primeiro ano da remuneração e vêm junto as seguintes. Comparar o patrimônio desde uma
+    declaração de 1998 com um subsídio que só existe desde 2019 inflaria a razão. Sem base, ou sem remuneração, a lista
+    é vazia (a comparação não é possível).
+    """
+    if primeiro_ano_remuneracao is None:
+        return []
+    ate_a_base = [d for d in declaracoes if d["ano"] <= primeiro_ano_remuneracao]
+    if not ate_a_base:
+        return []
+    base = ate_a_base[-1]
+    return [base] + [d for d in declaracoes if d["ano"] > base["ano"]]
 
 
 # ── TSE ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -383,7 +416,8 @@ def doacoes_de_campanha(db: Session, pessoas: Sequence[int]) -> List[Dict[str, A
         return []
     linhas = db.execute(
         text(
-            "SELECT id, ano_eleicao, doador_nome, doador_documento, valor, tipo_receita FROM fin.doacao_campanha "
+            "SELECT id, ano_eleicao, doador_nome, doador_documento, valor, tipo_receita, agregado, quantidade_doadores "
+            "FROM fin.doacao_campanha "
             "WHERE pessoa_id = ANY(:ids) ORDER BY valor DESC, id"
         ),
         {"ids": list(pessoas)},
@@ -396,6 +430,8 @@ def doacoes_de_campanha(db: Session, pessoas: Sequence[int]) -> List[Dict[str, A
             "cpf_cnpj_doador": r.doador_documento,
             "valor_doado": float(r.valor),
             "tipo_receita": r.tipo_receita,
+            "agregado": r.agregado,
+            "quantidade_doadores": r.quantidade_doadores,
         }
         for r in linhas
     ]
@@ -421,9 +457,14 @@ def _chave_do_doador(doacao: Dict[str, Any]) -> Tuple[Any, ...]:
 def resumo_das_doacoes(doacoes: Sequence[Dict[str, Any]], ano_eleicao: Optional[int] = None) -> Dict[str, Any]:
     """
     Resumo de UMA campanha da lista (já ordenada por valor): a eleição pedida ou, sem pedido, a mais recente. Traz as
-    doações dela, o total, a quantidade de recibos e de doadores distintos, os 5 maiores doadores (com a participação
-    de cada um) e as eleições disponíveis. Eleições diferentes nunca se misturam no total. Um doador com vários recibos
-    conta uma vez; doador sem nome e sem documento não se funde com outro (cada recibo é um doador desconhecido).
+    doações dela, o total, a quantidade de doadores distintos, os 5 maiores (com a participação de cada um) e as eleições
+    disponíveis, já com os nomes de chave do dossiê. Eleições diferentes nunca se misturam no total.
+
+    A fonte publica só os maiores doadores de cada candidato e uma linha agregada "Demais doadores (N)" que preserva o
+    total. Essa linha (`agregado`) nunca entra no top 5 nem conta como um doador: ela soma N (`quantidade_doadores`) à
+    quantidade, e vai separada em `demais_doadores`. Se N não veio, a quantidade é desconhecida (None), nunca um palpite.
+    Um doador com vários recibos conta uma vez; doador sem nome e sem documento não se funde com outro.
+
     Levanta `ErroDeDominio` 404 quando a eleição pedida não tem doações MAS há doações de outras eleições; quem não tem
     nenhuma doação recebe o resumo vazio (`ano_eleicao` nulo) qualquer que seja a eleição pedida.
     """
@@ -432,11 +473,11 @@ def resumo_das_doacoes(doacoes: Sequence[Dict[str, Any]], ano_eleicao: Optional[
         return {
             "ano_eleicao": None,
             "eleicoes_disponiveis": [],
-            "doacoes": [],
-            "total": 0.0,
-            "total_recibos": 0,
-            "quantidade": 0,
-            "top_5": [],
+            "total_arrecadado": 0.0,
+            "total_doadores": 0,
+            "demais_doadores": None,
+            "top_doadores": [],
+            "todas_doacoes": [],
         }
     ano = ano_eleicao if ano_eleicao is not None else eleicoes[0]
     if ano not in eleicoes:
@@ -444,15 +485,21 @@ def resumo_das_doacoes(doacoes: Sequence[Dict[str, Any]], ano_eleicao: Optional[
     da_campanha = [d for d in doacoes if d["ano_eleicao"] == ano]
     total = float(sum(d["valor_doado"] for d in da_campanha))
     por_doador: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
-    for d in da_campanha:  # o tipo do doador é o do maior recibo
+    demais = [d for d in da_campanha if d["agregado"]]
+    for d in da_campanha:
+        if d["agregado"]:
+            continue
         chave = _chave_do_doador(d)
         atual = por_doador.get(chave)
         if atual is None:
             por_doador[chave] = {**d, "maior": d["valor_doado"]}
             continue
         atual["valor_doado"] += d["valor_doado"]
-        if d["valor_doado"] > atual["maior"]:
+        if d["valor_doado"] > atual["maior"]:  # o tipo do doador é o do maior recibo
             atual["maior"], atual["tipo_receita"] = d["valor_doado"], d["tipo_receita"]
+    quantidades_demais = [d["quantidade_doadores"] for d in demais]
+    desconhecida = any(q is None for q in quantidades_demais)
+    quantidade = None if desconhecida else len(por_doador) + sum(q for q in quantidades_demais if q is not None)
     # valor arredondado em centavos (a soma em float de 0.10 + 0.20 não pode ficar à frente de 0.30), depois nome e documento
     maiores = sorted(
         por_doador.values(),
@@ -461,11 +508,17 @@ def resumo_das_doacoes(doacoes: Sequence[Dict[str, Any]], ano_eleicao: Optional[
     return {
         "ano_eleicao": ano,
         "eleicoes_disponiveis": eleicoes,
-        "doacoes": da_campanha,
-        "total": round(total, 2),
-        "total_recibos": len(da_campanha),
-        "quantidade": len(por_doador),
-        "top_5": [
+        "total_arrecadado": round(total, 2),
+        "total_doadores": quantidade,
+        "demais_doadores": (
+            {
+                "quantidade": None if desconhecida else sum(q for q in quantidades_demais if q is not None),
+                "valor": round(float(sum(d["valor_doado"] for d in demais)), 2),
+            }
+            if demais
+            else None
+        ),
+        "top_doadores": [
             {
                 "nome_doador": d["nome_doador"],
                 "cpf_cnpj_doador": d["cpf_cnpj_doador"],
@@ -475,27 +528,22 @@ def resumo_das_doacoes(doacoes: Sequence[Dict[str, Any]], ano_eleicao: Optional[
             }
             for d in maiores
         ],
+        "todas_doacoes": da_campanha,
     }
 
 
 def financiamento_da_campanha(doacoes: Sequence[Dict[str, Any]], ano_eleicao: Optional[int] = None) -> Dict[str, Any]:
-    """Bloco de financiamento de campanha do dossiê (uma eleição); `/doacoes` reaproveita e só renomeia as chaves."""
-    resumo = resumo_das_doacoes(doacoes, ano_eleicao)
-    return {
-        "possui_dados": len(doacoes) > 0,
-        "ano_eleicao": resumo["ano_eleicao"],
-        "eleicoes_disponiveis": resumo["eleicoes_disponiveis"],
-        "total_arrecadado": resumo["total"],
-        "total_doadores": resumo["quantidade"],
-        "total_recibos": resumo["total_recibos"],
-        "top_doadores": resumo["top_5"],
-        "todas_doacoes": resumo["doacoes"],
-    }
+    """Bloco de financiamento de campanha do dossiê (uma eleição); `/doacoes` reaproveita e só renomeia duas chaves."""
+    return {"possui_dados": len(doacoes) > 0, **resumo_das_doacoes(doacoes, ano_eleicao)}
 
 
 @dataclass(frozen=True)
 class Certidao:
-    """Linha de `fin.certidao` com os nomes que o Raio-X Judicial usa; o TSE não informa data, link nem autenticidade."""
+    """
+    Linha de `fin.certidao` com os nomes que o Raio-X Judicial usa; o TSE não informa data, link nem autenticidade.
+    Adaptador temporário: os nomes seguem o ORM legado (`court_agency`, `certificate_type`...) enquanto
+    `_enrich_judicial_records` vive na rota; ambos mudam juntos na limpeza do legado (Fase 9).
+    """
 
     id: int
     court_agency: str

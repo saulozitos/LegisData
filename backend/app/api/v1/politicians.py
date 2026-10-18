@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from app.core.database import get_db
 from app.core.links import url_oficial_proposicao
-from app.core.numeros import opt_float as _opt_float
+from app.core.numeros import brl
 from app.core.numeros import pct as _pct
 from app.core.query_utils import ALL_KEYWORDS, BRT, contains
 from app.models import (
@@ -1091,8 +1091,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
 
     # G. Evolução Patrimonial (TSE DivulgaCand)
     patrimonio_historico = [
-        {**a, "valor_formatado": "R$ " + f"{a['valor']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")}
-        for a in financas_service.declaracoes_de_patrimonio(db, pessoas)
+        {**a, "valor_formatado": brl(a["valor"])} for a in financas_service.declaracoes_de_patrimonio(db, pessoas)
     ]
 
     crescimento_pct: Optional[float] = None
@@ -1196,9 +1195,13 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         "diagnostico": diag_hhi,
     }
 
-    # 3. Evolução patrimonial vs. remuneração oficial registrada (só com ≥2 declarações e remuneração real)
-    if len(patrimonio_historico) >= 2 and salario_acumulado_registrado > 0:
-        delta_patrimonio: Optional[float] = float(crescimento_absoluto or 0.0)
+    # 3. Evolução patrimonial vs. remuneração oficial registrada: as duas pontas cobrem o MESMO período (a declaração-base
+    # é a última até o primeiro ano da remuneração) e é preciso ao menos uma declaração depois da base.
+    janela_patrimonio = financas_service.declaracoes_na_janela_da_remuneracao(
+        patrimonio_historico, remun["primeiro_ano"]
+    )
+    if len(janela_patrimonio) >= 2 and salario_acumulado_registrado > 0:
+        delta_patrimonio: Optional[float] = round(janela_patrimonio[-1]["valor"] - janela_patrimonio[0]["valor"], 2)
         razao_patrimonio_renda: Optional[float] = round(delta_patrimonio / salario_acumulado_registrado, 2)
 
         if delta_patrimonio <= 0 or razao_patrimonio_renda <= 0.8:
@@ -1212,16 +1215,22 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         else:
             compat_patrimonial = "ATÍPICO"
             diag_patrimonio = f"Variação atípica: o patrimônio declarado cresceu {razao_patrimonio_renda}x o total de subsídios registrados."
+        periodo_comparado: Optional[Dict[str, int]] = {
+            "de": janela_patrimonio[0]["ano"],
+            "ate": janela_patrimonio[-1]["ano"],
+        }
     else:
         delta_patrimonio = None
         razao_patrimonio_renda = None
         compat_patrimonial = None
-        diag_patrimonio = "Dados insuficientes (requer ao menos 2 declarações de bens e remuneração registrada)."
+        periodo_comparado = None
+        diag_patrimonio = "Dados insuficientes (requer uma declaração de bens até o início da remuneração registrada e outra depois dela)."
 
     enriquecimento_patrimonial = {
         "delta_patrimonio": round(delta_patrimonio, 2) if delta_patrimonio is not None else None,
         "salario_acumulado_estimado": round(salario_acumulado_registrado, 2) if salario_acumulado_registrado else None,
         "razao_patrimonio_renda": razao_patrimonio_renda,
+        "periodo_comparado": periodo_comparado,
         "compatibilidade": compat_patrimonial,
         "diagnostico": diag_patrimonio,
     }
@@ -1342,9 +1351,9 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
                 "media_ceap_mensal": media_ceap,
                 "ano_referencia": ano_remuneracao,
                 # Chaves *_2023 mantidas por compatibilidade: refletem o ano em "ano_referencia"
-                "total_bruto_2023": _opt_float(total_bruto_ano),
-                "total_ceap_2023": _opt_float(total_ceap_ano),
-                "total_beneficios_2023": _opt_float(total_beneficios_ano),
+                "total_bruto_2023": total_bruto_ano,
+                "total_ceap_2023": total_ceap_ano,
+                "total_beneficios_2023": total_beneficios_ano,
             },
             "historico": remuneracao_historico,
         },
@@ -1425,15 +1434,11 @@ def get_politician_doacoes(
     pol = _resolve_politician(db, politician_id)
     doacoes = financas_service.doacoes_de_campanha(db, _pessoas_financas(db, pol))
     bloco = financas_service.financiamento_da_campanha(doacoes, ano_eleicao)
+    # só estes dois nomes diferem do bloco do dossiê (contrato antigo de `/doacoes`)
     return {
         "politico_id": str(pol.id),
         "nome": pol.electoral_name,
-        "possui_dados": bloco["possui_dados"],
-        "ano_eleicao": bloco["ano_eleicao"],
-        "eleicoes_disponiveis": bloco["eleicoes_disponiveis"],
-        "total_arrecadado": bloco["total_arrecadado"],
-        "total_doadores": bloco["total_doadores"],
-        "total_recibos": bloco["total_recibos"],
+        **{k: v for k, v in bloco.items() if k not in ("top_doadores", "todas_doacoes")},
         "top_5": bloco["top_doadores"],
         "doacoes": bloco["todas_doacoes"],
     }

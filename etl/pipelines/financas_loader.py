@@ -14,11 +14,14 @@ que já está no banco. Cada carga é uma transação: ou grava inteira ou não 
 
 import logging
 import os
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from etl.config import PROCESSED_DATA_DIR
 from etl.pipelines.loader_helpers import (
+    LIMITE_CEAP,
+    LIMITE_EMENDA,
     chave_da_prestacao,
     fornecedores_do_parlamentar,
     inteiro,
@@ -27,10 +30,11 @@ from etl.pipelines.loader_helpers import (
     ler_doacoes,
     ler_emenda,
     ler_patrimonio,
+    ler_registros_da_remuneracao,
     ler_remuneracao,
     manter_a_melhor,
-    registros_da_remuneracao,
     resumos_completos,
+    soma_na_faixa,
     somar_linhas,
     tipo_do_autor,
     uf_da_localidade,
@@ -182,13 +186,16 @@ def linhas_da_ceap(
     despesas: List[Dict[str, Any]] = []
     fornecedores: List[Dict[str, Any]] = []
     resumos: List[Dict[str, Any]] = []
-    contagem = {
-        "parlamentares": 0,
-        "sem_pessoa": 0,
-        "sem_identificador": 0,
-        "sem_proveniencia": 0,
-        "sem_detalhe_por_ano": 0,
-    }
+    contagem: Dict[str, int] = defaultdict(
+        int,
+        {
+            "parlamentares": 0,
+            "sem_pessoa": 0,
+            "sem_identificador": 0,
+            "sem_proveniencia": 0,
+            "sem_detalhe_por_ano": 0,
+        },
+    )
     for dados in ceap.values():
         valores, motivo = ler_ceap(dados)
         if valores is None:
@@ -225,6 +232,11 @@ def carregar_ceap(conn: Connection, processed_dir: Path) -> Dict[str, int]:
     # deixa uma linha por chave em cada tabela e a guarda de encolhimento olha o tamanho final.
     despesas, repetidas = somar_linhas(despesas, ("p", "ano", "tipo"), ("valor",))
     fornecedores, _ = somar_linhas(fornecedores, ("p", "grupo"), ("valor", "notas"))
+    # a soma entre fontes (Câmara + Senado) também precisa caber na coluna
+    antes = len(despesas) + len(fornecedores)
+    despesas = [x for x in despesas if soma_na_faixa(x["valor"], LIMITE_CEAP) is not None]
+    fornecedores = [x for x in fornecedores if soma_na_faixa(x["valor"], LIMITE_CEAP) is not None]
+    contagem["soma_fora_da_faixa"] = antes - len(despesas) - len(fornecedores)
     completos, resumo_incompleto = resumos_completos(resumos)
     resumos, _ = somar_linhas(completos, ("p",), ("notas",))
     if repetidas:
@@ -275,15 +287,18 @@ ON CONFLICT (autor_texto, codigo_emenda, ano, tipo_emenda, localidade_destino, f
 def linhas_das_emendas(
     emendas: List[Any], resolvedor: ResolvedorDePessoas, fonte_id: int
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
-    contagem = {
-        "IDENTIFICADO": 0,
-        "NAO_CADASTRADO": 0,
-        "HOMONIMO_NAO_DESAMBIGUADO": 0,
-        "INSTITUCIONAL": 0,
-        "sem_proveniencia": 0,
-        "invalidas": 0,
-        "chave_repetida": 0,
-    }
+    contagem: Dict[str, int] = defaultdict(
+        int,
+        {
+            "IDENTIFICADO": 0,
+            "NAO_CADASTRADO": 0,
+            "HOMONIMO_NAO_DESAMBIGUADO": 0,
+            "INSTITUCIONAL": 0,
+            "sem_proveniencia": 0,
+            "invalidas": 0,
+            "chave_repetida": 0,
+        },
+    )
     unicas: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
     for bruta in emendas:
         lida, motivo = ler_emenda(bruta)
@@ -321,7 +336,14 @@ def linhas_das_emendas(
         else:
             contagem[situacao] += 1
             unicas[chave] = linha
-    return list(unicas.values()), contagem
+    cabem = [
+        x
+        for x in unicas.values()
+        if soma_na_faixa(x["empenhado"], LIMITE_EMENDA) is not None
+        and soma_na_faixa(x["pago"], LIMITE_EMENDA) is not None
+    ]
+    contagem["soma_fora_da_faixa"] = len(unicas) - len(cabem)
+    return cabem, contagem
 
 
 def carregar_emendas(conn: Connection, processed_dir: Path) -> Dict[str, int]:
@@ -343,9 +365,9 @@ def carregar_emendas(conn: Connection, processed_dir: Path) -> Dict[str, int]:
 def linhas_da_remuneracao(
     corpo: Dict[str, Any], resolvedor: ResolvedorDePessoas, fonte_id: int
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
-    contagem = {"sem_pessoa": 0, "invalidas": 0, "repetidas": 0}
+    contagem: Dict[str, int] = defaultdict(int, {"sem_pessoa": 0, "invalidas": 0, "repetidas": 0})
     unicas: Dict[Tuple[int, int, int], Dict[str, Any]] = {}
-    for registro in registros_da_remuneracao(corpo) or []:
+    for registro in ler_registros_da_remuneracao(corpo)[0] or []:
         lido, motivo = ler_remuneracao(registro)
         if lido is None:
             contagem[str(motivo)] += 1
@@ -367,7 +389,7 @@ def carregar_remuneracao(conn: Connection, processed_dir: Path) -> Dict[str, int
         conn,
         processed_dir,
         arquivo=REMUNERACAO_ARQUIVO,
-        aceita=lambda dados: registros_da_remuneracao(dados) is not None,
+        aceita=lambda dados: ler_registros_da_remuneracao(dados)[0] is not None,
         chave_ausente="arquivo_ausente_ou_sem_proveniencia",
         montar=linhas_da_remuneracao,
         fonte=FONTE_REMUNERACAO,
@@ -385,7 +407,9 @@ def carregar_remuneracao(conn: Connection, processed_dir: Path) -> Dict[str, int
 def linhas_do_patrimonio(
     declaracoes: List[Any], resolvedor: ResolvedorDePessoas, fonte_id: int
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
-    contagem = {"sem_pessoa": 0, "sem_proveniencia": 0, "invalidas": 0, "repetidas": 0}
+    contagem: Dict[str, int] = defaultdict(
+        int, {"sem_pessoa": 0, "sem_proveniencia": 0, "invalidas": 0, "repetidas": 0}
+    )
     unicas: Dict[Tuple[int, int], Dict[str, Any]] = {}
     for item in declaracoes:
         lido, motivo = ler_patrimonio(item)
@@ -426,17 +450,20 @@ def linhas_das_doacoes(
     prestacoes: List[Any], resolvedor: ResolvedorDePessoas, fonte_id: int
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     por_prestacao: Dict[Tuple[int, int], List[Dict[str, Any]]] = {}
-    contagem = {"sem_pessoa": 0, "sem_proveniencia": 0, "invalidas": 0, "prestacao_descartada": 0}
+    contagem: Dict[str, int] = defaultdict(
+        int, {"sem_pessoa": 0, "sem_proveniencia": 0, "invalidas": 0, "prestacao_descartada": 0}
+    )
     for item in prestacoes:
-        ano, doadores, motivo = ler_doacoes(item)
-        if ano is None:
+        lida, motivo = ler_doacoes(item)
+        if lida is None:
             contagem[str(motivo)] += 1
             continue
         pessoa = resolvedor.resolver(item).pessoa_id
         if pessoa is None:
             contagem["sem_pessoa"] += 1
             continue
-        linhas = [{"p": pessoa, "f": fonte_id, **doador} for doador in doadores]
+        ano = lida["ano"]
+        linhas = [{"p": pessoa, "f": fonte_id, **doador} for doador in lida["linhas"]]
         anteriores = por_prestacao.get((pessoa, ano))
         if anteriores is None:
             por_prestacao[(pessoa, ano)] = linhas
@@ -463,7 +490,8 @@ def carregar_doacoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
         tabela="fin.doacao_campanha",
         insercao=(
             "INSERT INTO fin.doacao_campanha (pessoa_id, ano_eleicao, doador_nome, doador_documento, valor, tipo_receita, "
-            "fonte_id) VALUES (:p, :ano, :nome, :doc, :valor, :tipo, :f)"
+            "agregado, quantidade_doadores, fonte_id) "
+            "VALUES (:p, :ano, :nome, :doc, :valor, :tipo, :agregado, :qtd, :f)"
         ),
     )
 
@@ -471,7 +499,9 @@ def carregar_doacoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
 def linhas_das_certidoes(
     ocorrencias: List[Any], resolvedor: ResolvedorDePessoas, fonte_id: int
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
-    contagem = {"sem_pessoa": 0, "sem_proveniencia": 0, "invalidas": 0, "repetidas": 0}
+    contagem: Dict[str, int] = defaultdict(
+        int, {"sem_pessoa": 0, "sem_proveniencia": 0, "invalidas": 0, "repetidas": 0}
+    )
     unicas: Dict[Tuple[int, str, str], Dict[str, Any]] = {}
     for item in ocorrencias:
         lido, motivo = ler_certidao(item)
