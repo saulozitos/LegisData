@@ -405,7 +405,8 @@ def resumo_das_doacoes(doacoes: Sequence[Dict[str, Any]], ano_eleicao: Optional[
     doações dela, o total, a quantidade de recibos e de doadores distintos, os 5 maiores doadores (com a participação
     de cada um) e as eleições disponíveis. Eleições diferentes nunca se misturam no total. Um doador com vários recibos
     conta uma vez; doador sem nome e sem documento não se funde com outro (cada recibo é um doador desconhecido).
-    Levanta `ErroDeDominio` 404 quando a eleição pedida não tem doações.
+    Levanta `ErroDeDominio` 404 quando a eleição pedida não tem doações MAS há doações de outras eleições; quem não tem
+    nenhuma doação recebe o resumo vazio (`ano_eleicao` nulo) qualquer que seja a eleição pedida.
     """
     eleicoes = sorted({d["ano_eleicao"] for d in doacoes}, reverse=True)
     if not eleicoes:
@@ -426,7 +427,13 @@ def resumo_das_doacoes(doacoes: Sequence[Dict[str, Any]], ano_eleicao: Optional[
     por_doador: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
     for d in da_campanha:  # o tipo do doador é o do maior recibo
         anonimo = d["cpf_cnpj_doador"] is None and d["nome_doador"] == DOADOR_ANONIMO
-        chave: Tuple[Any, ...] = ("recibo", d["id"]) if anonimo else (d["nome_doador"], d["cpf_cnpj_doador"])
+        chave: Tuple[Any, ...]
+        if anonimo:
+            chave = ("recibo", d["id"])
+        elif len(re.sub(r"\D", "", d["cpf_cnpj_doador"] or "")) == 14:  # o mesmo CNPJ, com ou sem pontuação
+            chave = ("cnpj", re.sub(r"\D", "", d["cpf_cnpj_doador"]))
+        else:
+            chave = (d["nome_doador"], d["cpf_cnpj_doador"])
         atual = por_doador.get(chave)
         if atual is None:
             por_doador[chave] = {**d, "maior": d["valor_doado"]}
@@ -452,6 +459,21 @@ def resumo_das_doacoes(doacoes: Sequence[Dict[str, Any]], ano_eleicao: Optional[
             }
             for d in maiores
         ],
+    }
+
+
+def financiamento_da_campanha(doacoes: Sequence[Dict[str, Any]], ano_eleicao: Optional[int] = None) -> Dict[str, Any]:
+    """Bloco de financiamento de campanha do dossiê (uma eleição); `/doacoes` reaproveita e só renomeia as chaves."""
+    resumo = resumo_das_doacoes(doacoes, ano_eleicao)
+    return {
+        "possui_dados": len(doacoes) > 0,
+        "ano_eleicao": resumo["ano_eleicao"],
+        "eleicoes_disponiveis": resumo["eleicoes_disponiveis"],
+        "total_arrecadado": resumo["total"],
+        "total_doadores": resumo["quantidade"],
+        "total_recibos": resumo["total_recibos"],
+        "top_doadores": resumo["top_5"],
+        "todas_doacoes": resumo["doacoes"],
     }
 
 

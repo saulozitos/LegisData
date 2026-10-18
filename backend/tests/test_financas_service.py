@@ -325,3 +325,33 @@ def test_resumo_das_doacoes_desempata_na_fronteira_do_top_5_pelo_nome():
     ]
     nomes = [d["nome_doador"] for d in fs.resumo_das_doacoes(doacoes)["top_5"]]
     assert nomes == ["A", "B", "C", "D", "E"]  # entre E, F e G (5 cada) fica o primeiro pelo nome
+
+
+def test_resumo_das_doacoes_junta_o_mesmo_cnpj_com_e_sem_pontuacao():
+    doacoes = [
+        _doacao("EMPRESA X LTDA", 60, doc="12345678000190", id_="a"),
+        _doacao("EMPRESA X", 40, doc="12.345.678/0001-90", id_="b"),
+    ]
+    resumo = fs.resumo_das_doacoes(doacoes)
+    assert resumo["quantidade"] == 1 and resumo["total_recibos"] == 2
+    assert resumo["top_5"][0]["valor_doado"] == 100.0 and resumo["top_5"][0]["percentual"] == 100.0
+
+
+def test_resumo_das_doacoes_desempata_homonimos_com_documentos_diferentes_na_fronteira_do_top_5():
+    base = [("A", 50, "1"), ("B", 20, "2"), ("C", 10, "3"), ("D", 10, "4")]
+    ana = [("Ana", 5, "***.111.222-**"), ("Ana", 5, "***.333.444-**")]
+    for ordem in (ana, list(reversed(ana))):
+        doacoes = [_doacao(n, v, id_=i) for n, v, i in base] + [_doacao(n, v, doc=d, id_=d) for n, v, d in ordem]
+        top = fs.resumo_das_doacoes(doacoes)["top_5"]
+        assert [d["nome_doador"] for d in top] == ["A", "B", "C", "D", "Ana"]
+        assert len({d["cpf_cnpj_doador"] for d in top if d["nome_doador"] == "Ana"}) == 1
+
+
+def test_financiamento_da_campanha_traz_o_bloco_do_dossie_e_o_vazio():
+    vazio = fs.financiamento_da_campanha([])
+    assert vazio["possui_dados"] is False and vazio["ano_eleicao"] is None and vazio["todas_doacoes"] == []
+    bloco = fs.financiamento_da_campanha([_doacao("Ana", 10, ano=2018), _doacao("Beto", 5, ano=2022)])
+    assert bloco["possui_dados"] is True and bloco["ano_eleicao"] == 2022 and bloco["total_arrecadado"] == 5.0
+    assert bloco["eleicoes_disponiveis"] == [2022, 2018] and [d["nome_doador"] for d in bloco["top_doadores"]] == [
+        "Beto"
+    ]

@@ -30,6 +30,7 @@ from etl.pipelines.loader_helpers import _dec  # noqa: E402
 from etl.utils.datafiles import load_json  # noqa: E402
 from etl.utils.names import build_unique_name_map, normalize_name_tokens  # noqa: E402
 from etl.utils.provenance import is_trusted  # noqa: E402
+from etl.utils.rotulos import DOADOR_NAO_IDENTIFICADO  # noqa: E402
 
 logger = logging.getLogger("TSELoaders")
 
@@ -96,7 +97,7 @@ def carregar_doacoes(session: Session, data_dir: Path) -> Dict[str, int]:
                 DoacaoCampanha(
                     politician_id=pol_id,
                     election_year=ano,
-                    donor_name=str(d.get("nome_doador") or "Doador não identificado")[:255],
+                    donor_name=str(d.get("nome_doador") or DOADOR_NAO_IDENTIFICADO)[:255],
                     donor_cpf_cnpj=(d.get("cpf_cnpj_doador") or None),
                     amount_donated=valor,
                     donation_type=(d.get("tipo_receita") or None),

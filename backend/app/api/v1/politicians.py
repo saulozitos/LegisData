@@ -36,7 +36,8 @@ from sqlalchemy.orm import Session
 
 router = APIRouter()
 
-# Limites de listas devolvidas no dossiê (os agregados são sempre calculados no banco, sobre todos os registros)
+# Limites de listas devolvidas no dossiê (os agregados são calculados sobre todos os registros; a exceção é o resumo de
+# doações, que agrupa doadores em Python sobre as doações lidas do banco)
 MAX_VOTES_LISTED = 300
 MAX_PROPOSITIONS_LISTED = 500
 # Quando a fonte repete o parlamentar na mesma proposição, vale o papel de maior peso: autor principal, relator, coautor
@@ -1128,18 +1129,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
 
     # K. Financiamento de Campanha (Doações Eleitorais TSE) — o CPF de doador pessoa física já vem mascarado do TSE
     doacoes_db = financas_service.doacoes_de_campanha(db, pessoas)
-    resumo_doacoes = financas_service.resumo_das_doacoes(doacoes_db)
-
-    financiamento_campanha = {
-        "possui_dados": len(doacoes_db) > 0,
-        "ano_eleicao": resumo_doacoes["ano_eleicao"],
-        "total_arrecadado": resumo_doacoes["total"],
-        "total_doadores": resumo_doacoes["quantidade"],
-        "total_recibos": resumo_doacoes["total_recibos"],
-        "eleicoes_disponiveis": resumo_doacoes["eleicoes_disponiveis"],
-        "top_doadores": resumo_doacoes["top_5"],
-        "todas_doacoes": resumo_doacoes["doacoes"],
-    }
+    financiamento_campanha = financas_service.financiamento_da_campanha(doacoes_db)
 
     # L. Indicadores avançados — calculados somente com dados reais; sem insumo, retornam null
     # 1. ROI do Cidadão: assiduidade (30%) + entrega legislativa em pontos IALP (40%) + custo por ponto IALP (30%).
@@ -1428,19 +1418,22 @@ def get_politician_doacoes(
     ano_eleicao: Optional[int] = Query(None, ge=1995, le=2100, description="Eleição; sem ela vale a mais recente."),
     db: Session = Depends(get_db),
 ):
-    """Retorna as doações e financiamento eleitoral de uma campanha (TSE): a eleição pedida ou a mais recente."""
+    """
+    Retorna as doações e o financiamento eleitoral de uma campanha (TSE): a eleição pedida ou a mais recente. Pedir uma
+    eleição sem doações de quem TEM doações em outras dá 404; quem não tem nenhuma doação recebe 200 sem dados.
+    """
     pol = _resolve_politician(db, politician_id)
     doacoes = financas_service.doacoes_de_campanha(db, _pessoas_financas(db, pol))
-    resumo = financas_service.resumo_das_doacoes(doacoes, ano_eleicao)
+    bloco = financas_service.financiamento_da_campanha(doacoes, ano_eleicao)
     return {
         "politico_id": str(pol.id),
         "nome": pol.electoral_name,
-        "possui_dados": len(doacoes) > 0,
-        "total_arrecadado": resumo["total"],
-        "total_doadores": resumo["quantidade"],
-        "total_recibos": resumo["total_recibos"],
-        "top_5": resumo["top_5"],
-        "ano_eleicao": resumo["ano_eleicao"],
-        "eleicoes_disponiveis": resumo["eleicoes_disponiveis"],
-        "doacoes": resumo["doacoes"],
+        "possui_dados": bloco["possui_dados"],
+        "ano_eleicao": bloco["ano_eleicao"],
+        "eleicoes_disponiveis": bloco["eleicoes_disponiveis"],
+        "total_arrecadado": bloco["total_arrecadado"],
+        "total_doadores": bloco["total_doadores"],
+        "total_recibos": bloco["total_recibos"],
+        "top_5": bloco["top_doadores"],
+        "doacoes": bloco["todas_doacoes"],
     }

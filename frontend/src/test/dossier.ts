@@ -73,6 +73,8 @@ export function fullDossier(): PoliticoDossier {
       ano_eleicao: 2022,
       total_arrecadado: 2000000,
       total_doadores: 2,
+      total_recibos: 2,
+      eleicoes_disponiveis: [2022],
       top_doadores: [{ nome_doador: 'Doador Um', cpf_cnpj_doador: '***.456.789-**', valor_doado: 1000000, tipo_receita: 'Fundo Partidário', percentual: 50 }],
       todas_doacoes: [
         { id: 'd1', ano_eleicao: 2022, nome_doador: 'Doador Um', cpf_cnpj_doador: '12345678901', valor_doado: 1000000, tipo_receita: 'Fundo Partidário' },

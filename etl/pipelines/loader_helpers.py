@@ -21,6 +21,7 @@ from etl.utils.names import (
     normalize_name_tokens,
 )
 from etl.utils.provenance import is_trusted
+from etl.utils.rotulos import DOADOR_NAO_IDENTIFICADO
 
 # Início da 57ª legislatura (1º/fev/2023): único limite inferior de observação que se conhece para quem está
 # "em exercício" quando a fonte não informa a data de filiação/mandato.
@@ -435,19 +436,28 @@ UF_POR_NOME = {
 }
 _UFS = frozenset(UF_POR_NOME.values())
 # Formas de CPF reconhecidas (o texto já passou por `_ascii`: dígitos, hífens e espaços Unicode viraram ASCII):
-#  - canônica NNN.NNN.NNN-NN, em qualquer vizinhança que não seja outro dígito ("2020-012.345.678-00", "...-00,987...");
-#  - grupos 3-3-3-2 com até 3 caracteres de separação (ponto, hífen, barra, vírgula, dois-pontos, sublinhado, espaço) ou
-#    sem separação, e 10 dígitos seguidos (CPF que perdeu o zero à esquerda). O separador antes dos dois últimos dígitos
-#    nunca é só uma vírgula: "123.456.789,00" é valor em reais, não CPF.
+#  - canônica NNN.NNN.NNN-NN, em qualquer vizinhança que não seja outro dígito ("2020-012.345.678-00", "...-00,987..."):
+#    nunca é valor em reais, então é removida sempre, mesmo depois de "R$";
+#  - grupos 3-3-3-2 com até 3 caracteres de separação (espaço, ponto, hífen, barra, vírgula, dois-pontos, sublinhado,
+#    ponto e vírgula, barra vertical, parênteses, colchetes, asterisco, cerquilha, mais e apóstrofo) ou sem separação, e
+#    10 dígitos seguidos (CPF que perdeu o zero à esquerda). Em texto livre, o separador antes dos dois últimos dígitos
+#    nunca é só uma vírgula, porque "123.456.789,00" é valor em reais; em nomes não há valor em reais, e a vírgula vale.
 # Data, hora, telefone, lista numerada e número de processo não têm o desenho 3-3-3-2 e ficam intactos. O CNPJ formatado
 # vem primeiro na alternância para não ser lido como CPF parcial; CNPJ sem pontuação (14 dígitos) nunca casa porque a
 # sequência é limitada por não-dígitos.
-_SEP = r"[\s.\-/_,:]{1,3}"
-_SEP_FINAL = r"[\s.\-/_:]{1,3}"
+_SEP = r"[\s.\-/_,:;|()\[\]*#+']{1,3}"
+_SEP_FINAL_TEXTO = r"[\s.\-/_:;|()\[\]*#+']{1,3}"
 _CNPJ_FORMATADO = r"(?<![0-9])(?P<cnpj>[0-9]{2}\.[0-9]{3}\.[0-9]{3}/[0-9]{4}-[0-9]{2})(?![0-9])"
-_CPF_CANONICO = r"(?<![0-9])[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}(?![0-9])"
-_CPF_AGRUPADO = rf"[0-9]{{3}}(?:{_SEP})?[0-9]{{3}}(?:{_SEP})?[0-9]{{3}}(?:{_SEP_FINAL})?[0-9]{{2}}|[0-9]{{10}}"
-_SEQUENCIA_CPF = re.compile(rf"{_CNPJ_FORMATADO}|{_CPF_CANONICO}|(?<![0-9])(?:{_CPF_AGRUPADO})(?![0-9])")
+_CPF_CANONICO = r"[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}(?![0-9])"
+
+
+def _cpf_agrupado(sep_final: str) -> str:
+    return rf"[0-9]{{3}}(?:{_SEP})?[0-9]{{3}}(?:{_SEP})?[0-9]{{3}}(?:{sep_final})?[0-9]{{2}}|[0-9]{{10}}"
+
+
+_SEQUENCIA_CPF = re.compile(
+    rf"{_CNPJ_FORMATADO}|(?<![0-9]){_CPF_CANONICO}|(?<![0-9])(?:{_cpf_agrupado(_SEP)})(?![0-9])"
+)
 _MASCARA_CPF = re.compile(r"^\*{3}\.[0-9]{3}\.[0-9]{3}-\*{2}$")
 TIPOS_DE_AUTOR_INSTITUCIONAL = ("BANCADA_ESTADUAL", "COMISSAO_INSTITUCIONAL", "RELATOR_GERAL")
 
@@ -491,8 +501,7 @@ def _ascii(valor: Any) -> str:
 
 
 def _sem_cpf(achado: "re.Match[str]") -> str:
-    trecho = achado.group(0)
-    return trecho if achado.group("cnpj") or len(so_digitos(trecho)) not in (10, 11) else " "
+    return achado.group(0) if achado.group("cnpj") else " "
 
 
 def nome_do_fornecedor(valor: Any) -> str:
@@ -507,19 +516,28 @@ def nome_sem_cpf(valor: Any) -> Optional[str]:
 
 
 # CPF em texto livre (descrição de bens, detalhes de certidão): as mesmas formas dos nomes, sem cortar valores em reais
-# nem números maiores. Fora da forma canônica (que nunca é valor em reais), a sequência:
-#  - precedida de "R$" é preservada ("R$ 12345678900");
-#  - não começa no meio de um número ("1.234.567.890,00": dígito + ponto/vírgula antes) nem termina antes de casa decimal
-#    ("12345678900,50").
+# nem números maiores. A forma canônica sai sempre. Fora dela, a sequência é preservada quando:
+#  - vem precedida de "R$" ("R$ 12345678900"; mas "R$" seguido da forma canônica NÃO protege o CPF);
+#  - termina antes de casa decimal (",50" depois de 11 dígitos), o que ainda deixa passar uma lista de CPFs separados por
+#    vírgula, porque o que vem depois da vírgula tem mais de dois dígitos.
+# O separador antes dos dois últimos dígitos nunca é só uma vírgula (`_SEP_FINAL_TEXTO`), então "1.234.567.890,12" e
+# "123.456.789,00" não casam o desenho 3-3-3-2.
 _CPF_EM_TEXTO = re.compile(
-    rf"{_CPF_CANONICO}"
-    rf"|(?P<moeda>R\$\s*)?(?:{_CNPJ_FORMATADO}"
-    rf"|(?<![0-9])(?<![0-9][.,])(?:{_CPF_AGRUPADO})(?![0-9])(?![.,][0-9]))"
+    rf"(?P<canon>(?<![0-9]){_CPF_CANONICO})"
+    rf"|(?P<moeda>R\$\s*(?!{_CPF_CANONICO}))?(?:{_CNPJ_FORMATADO}"
+    rf"|(?<![0-9])(?:{_cpf_agrupado(_SEP_FINAL_TEXTO)})(?![0-9]))"
 )
+_CASA_DECIMAL = re.compile(r"[.,][0-9]{1,2}(?![0-9])")
 
 
 def _tira_cpf_do_texto(achado: "re.Match[str]") -> str:
-    return achado.group(0) if achado.group("moeda") or achado.group("cnpj") else " "
+    if achado.group("canon"):
+        return " "
+    if achado.group("moeda") or achado.group("cnpj"):
+        return achado.group(0)
+    if _CASA_DECIMAL.match(achado.string, achado.end()):
+        return achado.group(0)
+    return " "
 
 
 def texto_sem_cpf(valor: Any) -> Optional[str]:
@@ -680,7 +698,7 @@ def ler_doacoes(item: Any) -> Tuple[Optional[int], List[Dict[str, Any]], Optiona
         linhas.append(
             {
                 "ano": ano,
-                "nome": nome_sem_cpf(doador.get("nome_doador")) or "Doador não identificado",
+                "nome": nome_sem_cpf(doador.get("nome_doador")) or DOADOR_NAO_IDENTIFICADO,
                 "doc": documento_do_doador(doador.get("cpf_cnpj_doador")),
                 "valor": valor,
                 "tipo": texto(doador.get("tipo_receita")),
@@ -690,6 +708,14 @@ def ler_doacoes(item: Any) -> Tuple[Optional[int], List[Dict[str, Any]], Optiona
 
 
 # ── Consolidação das linhas de finanças: funções puras, testáveis sem Postgres ────────────────────────────────────────
+def grupo_do_fornecedor(cnpj: Optional[str], nome: str) -> str:
+    """
+    Chave do fornecedor: o CNPJ ou, sem ele, o nome. É o espelho Python da coluna gerada `grupo` de
+    `fin.despesa_cota_fornecedor` (`coalesce(cnpj::text, 'nome:' || nome)`); um teste confere que as duas coincidem.
+    """
+    return cnpj or f"nome:{nome}"
+
+
 def fornecedores_do_parlamentar(dados: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Fornecedores de uma entrada, com o mesmo CNPJ em grafias diferentes unido (fica o nome de maior valor)."""
     agrupados: Dict[str, List[Any]] = {}  # grupo -> [valor, notas (None se desconhecida), nome, maior valor, cnpj]
@@ -703,11 +729,11 @@ def fornecedores_do_parlamentar(dados: Dict[str, Any]) -> List[Dict[str, Any]]:
         nome, cnpj = nome_do_fornecedor(item.get("nome")), cnpj_do_fornecedor(item.get("cnpj_cpf"))
         notas = inteiro(item.get("notas"))
         notas = notas if notas is not None and notas >= 0 else None
-        grupo = cnpj or f"nome:{nome}"  # sem CNPJ, vale o nome; é a mesma chave que a API usa para agrupar
+        grupo = grupo_do_fornecedor(cnpj, nome)
         acumulado = agrupados.setdefault(grupo, [Decimal(0), 0, nome, valor_dec, cnpj])
         acumulado[0] += valor_dec
         acumulado[1] = soma_ou_desconhecido(acumulado[1], notas)
-        if valor_dec > acumulado[3]:
+        if (valor_dec, nome) > (acumulado[3], acumulado[2]):  # empate de valor: o nome decide, não a ordem do arquivo
             acumulado[2], acumulado[3] = nome, valor_dec
     return [
         {"grupo": grupo, "nome": nome, "cnpj": cnpj, "valor": valor, "notas": notas}
@@ -775,6 +801,22 @@ def somar_linhas(
                     base[campo] = soma_ou_desconhecido(base[campo], outra[campo])
         unicas.append(base)
     return unicas, repetidas
+
+
+def manter_a_melhor(
+    unicas: Dict[Any, Dict[str, Any]], chave: Any, linha: Dict[str, Any], campos: Tuple[str, ...]
+) -> bool:
+    """
+    Guarda `linha` em `unicas[chave]` e devolve True se a chave já existia (registro repetido). Entre duas linhas da mesma
+    chave vale a de maior `chave_de_desempate(campos)`, nunca a ordem em que o arquivo as traz.
+    """
+    anterior = unicas.get(chave)
+    if anterior is None:
+        unicas[chave] = linha
+        return False
+    if chave_de_desempate(linha, *campos) > chave_de_desempate(anterior, *campos):
+        unicas[chave] = linha
+    return True
 
 
 def chave_da_prestacao(linhas: List[Dict[str, Any]]) -> Tuple[Any, ...]:

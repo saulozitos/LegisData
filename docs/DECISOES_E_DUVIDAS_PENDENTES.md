@@ -46,3 +46,10 @@ Data do registro: 2026-10-13.
 - **Contexto**: no arquivo do TSE, 568 de 724 parlamentares têm doações em mais de uma eleição (2002 a 2022). Somar todas as eleições num único total e mostrar "Eleição 2018" ao lado de R$ de 2018 e de 2022 enganava o cidadão. O dossiê passou a mostrar só a campanha mais recente (rótulo "última campanha"), e `GET /politicians/{id}/doacoes` aceita `?ano_eleicao=` e devolve `eleicoes_disponiveis`.
 - **Consequência**: o histórico de eleições anteriores continua no banco e na API, mas a tela do dossiê ainda não tem seletor de eleição.
 - **Opção para decidir**: acrescentar ao `FinancingTab` um seletor de eleição que consulte `/doacoes?ano_eleicao=`, ou manter só a campanha mais recente.
+
+## 6. Formas de número preservadas pelo filtro de CPF em texto livre (Entrega 3c)
+
+- **Contexto**: o filtro de CPF dos campos de texto livre do TSE (descrição de bens, detalhes de certidão) remove a forma canônica `NNN.NNN.NNN-NN` em qualquer vizinhança, inclusive depois de "R$". Fora dela, só reconhece o desenho de grupos 3-3-3-2 (com até 3 separadores) e 10 ou 11 dígitos corridos, e **preserva de propósito** o que pode ser valor em reais: 11 dígitos corridos seguidos de casa decimal (`12345678900,50`), qualquer sequência precedida de "R$" que não seja a forma canônica (`R$ 12345678900`, `R$ 123 456 789 00`) e a forma `NNN.NNN.NNN,NN` (vírgula antes dos dois últimos dígitos).
+- **Consequência**: um CPF escrito exatamente nessas formas, em texto livre, não é removido. Nos arquivos atuais isso não ocorre (0 alterações e 0 CPFs restantes nas 15.379 descrições de bens e nas 32 certidões); o risco é de cargas futuras.
+- **Também de propósito**: 10 dígitos corridos sem outra pista são removidos, mesmo quando poderiam ser um telefone sem separador ou uma área. Privacidade vale mais que preservar esse número.
+- **Opção para decidir**: manter assim, ou trocar a regra por uma lista de rótulos aceitos ("CPF", "C.P.F.") e remover só o que vem depois deles.

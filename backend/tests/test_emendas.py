@@ -303,3 +303,19 @@ def test_autor_com_emendas_de_tipos_diferentes_aparece_uma_vez(client, db):
     dados = client.get(f"{BASE}/autor/saude").json()
     assert dados["quantidade_autores"] == 1 and len(dados["autores_encontrados"]) == 1
     assert dados["autores_encontrados"][0]["tipo_autor"] == "COMISSAO_INSTITUCIONAL"  # o tipo do maior valor pago
+
+
+@pytest.mark.parametrize(
+    "rota, termo, mensagem",
+    [
+        ("localidade", "a", "Informe ao menos 2 caracteres da localidade."),
+        ("autor", "a", "Informe ao menos 2 caracteres do autor."),
+        ("localidade", "%20a%20", "Informe ao menos 2 caracteres da localidade."),  # curto depois do strip
+        ("autor", "%20a%20", "Informe ao menos 2 caracteres do autor."),
+        ("localidade", "a%00b", "A localidade contém caractere inválido."),
+        ("autor", "a%00b", "O autor contém caractere inválido."),
+    ],
+)
+def test_mensagens_da_validacao_do_termo(client, emendas, rota, termo, mensagem):
+    resposta = client.get(f"{BASE}/{rota}/{termo}")
+    assert resposta.status_code == 400 and resposta.json()["detail"] == mensagem

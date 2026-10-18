@@ -31,6 +31,7 @@ from etl.extractors.tse_core import (
 )
 from etl.utils.io_utils import write_json_if_valid
 from etl.utils.provenance import mark_official
+from etl.utils.rotulos import DOADOR_NAO_IDENTIFICADO
 
 logger = logging.getLogger("TseDoacoesExtractor")
 
@@ -169,7 +170,7 @@ def agregar_receitas(
             item["total"] += numero
             item["quantidade"] += 1
             item["doadores"][
-                (mascarar_documento(doc), _limpo(nome) or "Doador não identificado", _limpo(origem))
+                (mascarar_documento(doc), _limpo(nome) or DOADOR_NAO_IDENTIFICADO, _limpo(origem))
             ] += numero
     return resultado
 

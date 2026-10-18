@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session
 
 # Termo de busca curto casa quase tudo e obriga a varrer a tabela inteira; o limite superior fica na rota.
 TAMANHO_MINIMO_DA_BUSCA = 2
-_DE = {"a localidade": "da localidade", "o autor": "do autor"}
 
 DICIONARIO_ORCAMENTO = {
     "termos": {
@@ -270,13 +269,16 @@ def resumo(db: Session) -> Dict[str, Any]:
     }
 
 
-def _termo_valido(valor: str, rotulo: str) -> str:
-    """Termo da busca sem espaços nas pontas; levanta 400 para caractere nulo ou menos de 2 caracteres."""
+def _termo_valido(valor: str, sujeito: str, complemento: str) -> str:
+    """
+    Termo da busca sem espaços nas pontas; levanta 400 para caractere nulo ou menos de 2 caracteres. `sujeito` abre a
+    mensagem do caractere inválido ("A localidade") e `complemento` fecha a do tamanho ("da localidade").
+    """
     termo = valor.strip()
     if "\x00" in termo:
-        raise ErroDeDominio(400, f"{rotulo.capitalize()} contém caractere inválido.")
+        raise ErroDeDominio(400, f"{sujeito} contém caractere inválido.")
     if len(termo) < TAMANHO_MINIMO_DA_BUSCA:
-        raise ErroDeDominio(400, f"Informe ao menos 2 caracteres {_DE[rotulo]}.")
+        raise ErroDeDominio(400, f"Informe ao menos 2 caracteres {complemento}.")
     return termo
 
 
@@ -310,7 +312,7 @@ def _ids_da_localidade(db: Session, termo: str) -> List[int]:
 
 def por_localidade(db: Session, localidade: str, limite: int) -> Dict[str, Any]:
     """Emendas destinadas a uma cidade ou estado (sigla do estado, ou trecho do nome sem acento nem caixa)."""
-    termo = _termo_valido(localidade, "a localidade")
+    termo = _termo_valido(localidade, "A localidade", "da localidade")
     ids = _ids_da_localidade(db, termo)
     total = db.execute(
         text(
@@ -360,7 +362,7 @@ def por_localidade(db: Session, localidade: str, limite: int) -> Dict[str, Any]:
 
 def por_autor(db: Session, autor: str, limite: int) -> Dict[str, Any]:
     """Emendas de um autor (parlamentar, comissão ou bancada), pelo trecho do nome ou pelo código do autor."""
-    termo = _termo_valido(autor, "o autor")
+    termo = _termo_valido(autor, "O autor", "do autor")
     ids = [
         r[0]
         for r in db.execute(

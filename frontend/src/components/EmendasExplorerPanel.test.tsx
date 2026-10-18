@@ -262,6 +262,7 @@ describe("EmendasExplorerPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /Bancadas & Relator/i }));
     expect(await screen.findByText(/reuniu 2 autores/i)).toBeInTheDocument();
     expect(screen.getByText(/Bancada da Bahia, Bancada de Goiás/i)).toBeInTheDocument();
+    expect(screen.queryByText(/e outros/i)).not.toBeInTheDocument();  // a lista está completa
   });
 
   it("quando a lista de autores é cortada, o aviso termina com \"e outros\"", async () => {

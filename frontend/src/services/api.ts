@@ -1021,14 +1021,15 @@ export interface TopDoadorItem {
 
 export interface FinanciamentoCampanhaData {
   possui_dados: boolean;
-  ano_eleicao: number;
+  /** Eleição do resumo; `null` quando o parlamentar não tem nenhuma doação registrada. */
+  ano_eleicao: number | null;
   total_arrecadado: number;
   /** Doadores distintos da campanha (um doador com vários recibos conta uma vez). */
   total_doadores: number;
   /** Recibos da campanha (uma linha de `todas_doacoes` cada). */
-  total_recibos?: number;
+  total_recibos: number;
   /** Eleições com doações registradas, da mais recente para a mais antiga; o resumo é da primeira. */
-  eleicoes_disponiveis?: number[];
+  eleicoes_disponiveis: number[];
   top_doadores: TopDoadorItem[];
   todas_doacoes: DoacaoItem[];
 }

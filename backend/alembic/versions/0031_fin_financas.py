@@ -6,7 +6,8 @@ da fonte fica em `autor_texto`, nunca se força o vínculo com outra pessoa).
 
 - `fin.despesa_cota`: CEAP por pessoa, ano e tipo de despesa (total real; estorno entra negativo).
 - `fin.despesa_cota_fornecedor` e `fin.despesa_cota_resumo`: maiores fornecedores e quantidade de notas por pessoa. O
-  mesmo fornecedor é identificado pelo CNPJ ou, sem ele, pelo nome (`grupo`, coluna gerada): a regra mora só no schema.
+  mesmo fornecedor é identificado pelo CNPJ ou, sem ele, pelo nome (`grupo`, coluna gerada). O ETL espelha a regra em
+  `grupo_do_fornecedor` para juntar as linhas antes de gravar, e um teste confere que as duas coincidem.
   A quantidade de notas de um fornecedor pode ser nula (a fonte não informou).
   CPF de fornecedor nunca é gravado: só CNPJ (14 dígitos) (decisão D3). O documento do doador só aceita CNPJ ou a
   máscara de CPF do TSE (`***.NNN.NNN-**`).

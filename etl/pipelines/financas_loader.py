@@ -20,7 +20,6 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 from etl.config import PROCESSED_DATA_DIR
 from etl.pipelines.loader_helpers import (
     chave_da_prestacao,
-    chave_de_desempate,
     fornecedores_do_parlamentar,
     inteiro,
     ler_ceap,
@@ -29,6 +28,7 @@ from etl.pipelines.loader_helpers import (
     ler_emenda,
     ler_patrimonio,
     ler_remuneracao,
+    manter_a_melhor,
     registros_da_remuneracao,
     resumos_completos,
     somar_linhas,
@@ -98,6 +98,14 @@ def _protege_contra_encolhimento(conn: Connection, tabela: str, novas: int) -> N
     )
 
 
+_DELETE_DA_TABELA = {  # SQL literal por tabela (nada de montar o nome da tabela na consulta)
+    "fin.remuneracao": "DELETE FROM fin.remuneracao",
+    "fin.declaracao_patrimonio": "DELETE FROM fin.declaracao_patrimonio",
+    "fin.doacao_campanha": "DELETE FROM fin.doacao_campanha",
+    "fin.certidao": "DELETE FROM fin.certidao",
+}
+
+
 def _lotes(linhas: List[Dict[str, Any]]) -> Iterable[List[Dict[str, Any]]]:
     for i in range(0, len(linhas), LOTE):
         yield linhas[i : i + LOTE]
@@ -117,6 +125,13 @@ def _arquivo(processed_dir: Path, nome: str) -> Any:
 def _inserir(conn: Connection, sql: str, linhas: List[Dict[str, Any]]) -> None:
     for lote in _lotes(linhas):
         conn.execute(text(sql), lote)
+
+
+def _substituir(conn: Connection, tabela: str, insercao: str, linhas: List[Dict[str, Any]]) -> None:
+    """Troca o conteúdo de `tabela` (esquema `fin`) pelas `linhas`, depois da guarda contra encolhimento."""
+    _protege_contra_encolhimento(conn, tabela, len(linhas))
+    conn.execute(text(_DELETE_DA_TABELA[tabela]))
+    _inserir(conn, insercao, linhas)
 
 
 # ── CEAP ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -166,7 +181,7 @@ def carregar_ceap(conn: Connection, processed_dir: Path) -> Dict[str, int]:
     if not despesas:
         logger.warning("CEAP sem nenhum registro utilizável (%s); o banco não foi alterado.", contagem)
         return {**contagem, "despesas": 0}
-    # Duas entradas do arquivo podem resolver para a mesma pessoa (Câmara e Senado, ou variantes do nome): `_somar`
+    # Duas entradas do arquivo podem resolver para a mesma pessoa (Câmara e Senado, ou variantes do nome): `somar_linhas`
     # deixa uma linha por chave em cada tabela e a guarda de encolhimento olha o tamanho final.
     despesas, repetidas = somar_linhas(despesas, ("p", "ano", "tipo"), ("valor",))
     fornecedores, _ = somar_linhas(fornecedores, ("p", "grupo"), ("valor", "notas"))
@@ -302,14 +317,9 @@ def linhas_da_remuneracao(
             continue
         chave = (pessoa, lido["ano"], lido["mes"])
         linha = {"p": pessoa, **lido, "f": fonte_id}
-        anterior = unicas.get(chave)
-        if (
-            anterior is not None
-        ):  # duas folhas no mesmo mês: vale a de maior bruto (depois o maior líquido), não a do arquivo
+        # duas folhas no mesmo mês: vale a de maior bruto (depois o maior líquido), não a do arquivo
+        if manter_a_melhor(unicas, chave, linha, ("bruto", "liquido")):
             contagem["repetidas"] += 1
-            if chave_de_desempate(anterior, "bruto", "liquido") >= chave_de_desempate(linha, "bruto", "liquido"):
-                continue
-        unicas[chave] = linha
     return list(unicas.values()), contagem
 
 
@@ -323,10 +333,9 @@ def carregar_remuneracao(conn: Connection, processed_dir: Path) -> Dict[str, int
     if not linhas:
         logger.warning("Remuneração sem nenhum registro utilizável (%s); o banco não foi alterado.", contagem)
         return {**contagem, "meses": 0}
-    _protege_contra_encolhimento(conn, "fin.remuneracao", len(linhas))
-    conn.execute(text("DELETE FROM fin.remuneracao"))
-    _inserir(
+    _substituir(
         conn,
+        "fin.remuneracao",
         "INSERT INTO fin.remuneracao (pessoa_id, ano, mes, salario_bruto, salario_liquido, fonte_id) "
         "VALUES (:p, :ano, :mes, :bruto, :liquido, :f)",
         linhas,
@@ -350,12 +359,9 @@ def linhas_do_patrimonio(
             contagem["sem_pessoa"] += 1
             continue
         linha = {"p": pessoa, **lido, "f": fonte_id}
-        anterior = unicas.get((pessoa, lido["ano"]))
-        if anterior is not None:  # duas declarações do mesmo ano: vale a de maior valor (depois quantidade e detalhes)
+        # duas declarações do mesmo ano: vale a de maior valor (depois quantidade e detalhes)
+        if manter_a_melhor(unicas, (pessoa, lido["ano"]), linha, ("valor", "qtd", "det")):
             contagem["repetidas"] += 1
-            if chave_de_desempate(anterior, "valor", "qtd", "det") >= chave_de_desempate(linha, "valor", "qtd", "det"):
-                continue
-        unicas[(pessoa, lido["ano"])] = linha
     return list(unicas.values()), contagem
 
 
@@ -367,10 +373,9 @@ def carregar_patrimonio(conn: Connection, processed_dir: Path) -> Dict[str, int]
     if not linhas:
         logger.warning("Patrimônio sem nenhum registro utilizável (%s); o banco não foi alterado.", contagem)
         return {**contagem, "declaracoes": 0}
-    _protege_contra_encolhimento(conn, "fin.declaracao_patrimonio", len(linhas))
-    conn.execute(text("DELETE FROM fin.declaracao_patrimonio"))
-    _inserir(
+    _substituir(
         conn,
+        "fin.declaracao_patrimonio",
         "INSERT INTO fin.declaracao_patrimonio (pessoa_id, ano_eleicao, valor_declarado, quantidade_bens, detalhes, "
         "fonte_id) VALUES (:p, :ano, :valor, :qtd, :det, :f)",
         linhas,
@@ -413,10 +418,9 @@ def carregar_doacoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
     if not linhas:
         logger.warning("Doações sem nenhuma linha utilizável (%s); o banco não foi alterado.", contagem)
         return {**contagem, "linhas": 0}
-    _protege_contra_encolhimento(conn, "fin.doacao_campanha", len(linhas))
-    conn.execute(text("DELETE FROM fin.doacao_campanha"))
-    _inserir(
+    _substituir(
         conn,
+        "fin.doacao_campanha",
         "INSERT INTO fin.doacao_campanha (pessoa_id, ano_eleicao, doador_nome, doador_documento, valor, tipo_receita, "
         "fonte_id) VALUES (:p, :ano, :nome, :doc, :valor, :tipo, :f)",
         linhas,
@@ -440,14 +444,9 @@ def linhas_das_certidoes(
             continue
         linha = {"p": pessoa, **lido, "f": fonte_id}
         chave = (pessoa, lido["orgao"], lido["tipo"])
-        anterior = unicas.get(chave)
-        if anterior is not None:  # mesma (pessoa, órgão, tipo): critério fixo, não a ordem do arquivo
+        # mesma (pessoa, órgão, tipo): critério fixo, não a ordem do arquivo
+        if manter_a_melhor(unicas, chave, linha, ("situacao", "det", "proc")):
             contagem["repetidas"] += 1
-            if chave_de_desempate(anterior, "situacao", "det", "proc") >= chave_de_desempate(
-                linha, "situacao", "det", "proc"
-            ):
-                continue
-        unicas[chave] = linha
     return list(unicas.values()), contagem
 
 
@@ -459,10 +458,9 @@ def carregar_certidoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
     if not linhas:
         logger.warning("Certidões sem nenhum registro utilizável (%s); o banco não foi alterado.", contagem)
         return {**contagem, "certidoes": 0}
-    _protege_contra_encolhimento(conn, "fin.certidao", len(linhas))
-    conn.execute(text("DELETE FROM fin.certidao"))
-    _inserir(
+    _substituir(
         conn,
+        "fin.certidao",
         "INSERT INTO fin.certidao (pessoa_id, orgao, tipo, situacao, detalhes, numero_processo, fonte_id) "
         "VALUES (:p, :orgao, :tipo, :situacao, :det, :proc, :f)",
         linhas,

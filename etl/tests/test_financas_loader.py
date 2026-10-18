@@ -1539,14 +1539,22 @@ def test_nome_sem_cpf_nao_deixa_digitos_do_cpf_depois_de_numero_e_hifen():
     assert nome_do_fornecedor("LOJA 2020 2021 2022") == "LOJA 2020 2021 2022"
 
 
-def test_texto_longo_de_digitos_e_separadores_e_processado_em_tempo_linear():
+def test_regex_de_cpf_nao_tem_backtracking_catastrofico():
+    """Mede só as regex (o texto já normalizado), comparando n com 2n: tempo absoluto seria frágil sob cobertura."""
     import time
 
-    for texto_longo in ("1 " * 200_000, "1." * 200_000, "1" * 500_000, "123 - " * 100_000):
+    from etl.pipelines.loader_helpers import _CPF_EM_TEXTO, _SEQUENCIA_CPF
+
+    def tempo(texto_longo):
         inicio = time.perf_counter()
-        texto_sem_cpf(texto_longo)
-        nome_sem_cpf(texto_longo)
-        assert time.perf_counter() - inicio < 5
+        _CPF_EM_TEXTO.sub(" ", texto_longo)
+        _SEQUENCIA_CPF.sub(" ", texto_longo)
+        return time.perf_counter() - inicio
+
+    for unidade in ("1 ", "1.", "1", "123 - ", "123,", "R$ 1 "):
+        pequeno, grande = tempo(unidade * 20_000), tempo(unidade * 40_000)
+        assert grande < 6 * pequeno + 0.2, (unidade, pequeno, grande)  # linear dá cerca de 2x; quadrático, 4x ou mais
+        assert grande < 3  # teto absoluto largo, só para pegar explosão exponencial
 
 
 def test_so_digitos_nao_le_a_repr_de_dict_como_cnpj():
@@ -1609,3 +1617,91 @@ def test_doacoes_sem_nome_viram_o_rotulo_padrao_e_nao_se_fundem_no_banco(pg_engi
     with pg_engine.connect() as conn:
         linhas = conn.execute(text("SELECT doador_nome, doador_documento FROM fin.doacao_campanha")).all()
     assert sorted(tuple(r) for r in linhas) == [("Doador não identificado", None)] * 2
+
+
+# ── 7ª revisão: "R$" não protege CPF canônico, lista de CPFs, separadores, nomes, grupo, rótulo anônimo ───────────────
+
+
+@pytest.mark.parametrize(
+    "bruto, esperado",
+    [
+        ("R$ 111.222.333-44", "R$"),  # a moeda não protege a forma canônica
+        ("R$111.222.333-44", "R$"),
+        ("Sócios: 11122233344,55566677788,99988877766", "Sócios: , ,"),  # CPFs corridos separados por vírgula
+        ("111.222.333-44,55566677788", ","),
+        ("111 222 333 44,555 666 777 88", ","),
+        ("(111) 222-333-44", "("),
+        ("111|222|333|44", None),
+        ("111;222;333;44", None),
+    ],
+)
+def test_texto_livre_tira_cpf_depois_de_moeda_em_lista_e_com_mais_separadores(bruto, esperado):
+    assert texto_sem_cpf(bruto) == esperado
+
+
+@pytest.mark.parametrize(
+    "nome, esperado",
+    [
+        ("MEI 111.222.333,44", "MEI"),  # em nome não há valor em reais: a vírgula antes do fim vale
+        ("MEI 111.222.333, 44", "MEI"),
+        ("MEI (111) 222-333-44", "MEI ("),
+        ("MEI 111;222;333;44", "MEI"),
+    ],
+)
+def test_nome_sem_cpf_tira_cpf_com_virgula_final_e_separadores_extras(nome, esperado):
+    assert nome_sem_cpf(nome) == esperado
+
+
+def test_fornecedor_empatado_em_valor_decide_o_nome_pelo_conteudo_e_nao_pela_ordem():
+    def fornecedores(*nomes):
+        return {
+            str(i): {"nome": n, "cnpj_cpf": "02.558.157/0001-62", "total": 100, "notas": 1} for i, n in enumerate(nomes)
+        }
+
+    from etl.pipelines.loader_helpers import fornecedores_do_parlamentar
+
+    ida = fornecedores_do_parlamentar({"fornecedores": fornecedores("ALFA LTDA", "ALFA LIMITADA")})
+    volta = fornecedores_do_parlamentar({"fornecedores": fornecedores("ALFA LIMITADA", "ALFA LTDA")})
+    assert ida[0]["nome"] == volta[0]["nome"] == "ALFA LTDA"
+    assert ida[0]["valor"] == Decimal(200) and ida[0]["notas"] == 2
+
+
+def test_manter_a_melhor_guarda_a_de_maior_ordem_e_diz_se_a_chave_repetiu():
+    from etl.pipelines.loader_helpers import manter_a_melhor
+
+    unicas = {}
+    assert manter_a_melhor(unicas, "k", {"a": 1, "b": None}, ("a", "b")) is False
+    assert manter_a_melhor(unicas, "k", {"a": 1, "b": 5}, ("a", "b")) is True
+    assert manter_a_melhor(unicas, "k", {"a": 0, "b": 9}, ("a", "b")) is True
+    assert unicas["k"] == {"a": 1, "b": 5}
+
+
+def test_grupo_do_fornecedor_do_etl_e_igual_a_coluna_gerada_do_banco(pg_engine, banco, tmp_path):
+    from etl.pipelines.loader_helpers import grupo_do_fornecedor
+
+    forn = {
+        "A": {"nome": "POSTO SOL", "cnpj_cpf": "02.558.157/0001-62", "total": 10.0, "notas": 1},
+        "B": {"nome": "MEI 098.765.432-00", "cnpj_cpf": "098.765.432-00", "total": 5.0, "notas": 1},
+        "C": {"nome": "MEI 012.345.678-00", "cnpj_cpf": None, "total": 7.0, "notas": 2},
+        "D": {"nome": "nome:POSTO SOL", "cnpj_cpf": None, "total": 1.0, "notas": 1},
+    }
+    camara = _ceap(camara_id=500, fornecedores=forn)
+    senado = _ceap(camara_id=None, senado_id=501, fornecedores={"E": forn["C"]})
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"A": camara, "B": senado})
+    with pg_engine.begin() as conn:
+        fin.carregar_ceap(conn, tmp_path)
+    with pg_engine.connect() as conn:
+        linhas = conn.execute(
+            text("SELECT nome, cnpj, grupo, valor_total, notas FROM fin.despesa_cota_fornecedor")
+        ).all()
+    assert linhas and all(grupo == grupo_do_fornecedor(cnpj, nome) for nome, cnpj, grupo, _v, _n in linhas)
+    mei = [tuple(r) for r in linhas if r[0] == "MEI"]
+    assert len(mei) == 1 and mei[0][3] == Decimal("19.00") and mei[0][4] == 5  # 5 + 7 + 7, cadastros irmãos somados
+
+
+def test_rotulo_de_doador_anonimo_do_etl_e_o_mesmo_do_backend():
+    from app.services import financas_service
+
+    from etl.utils.rotulos import DOADOR_NAO_IDENTIFICADO
+
+    assert financas_service.DOADOR_ANONIMO == DOADOR_NAO_IDENTIFICADO == "Doador não identificado"
