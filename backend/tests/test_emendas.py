@@ -169,7 +169,7 @@ def test_busca_vazia_retorna_400(client, emendas, rota):
 
 
 def test_localidade_trata_curinga_de_like_como_texto(client, emendas):
-    assert client.get(f"{BASE}/localidade/%25%25").status_code == 404
+    assert client.get(f"{BASE}/localidade/%25%25%25").status_code == 404  # "%%%" é texto, não curinga
 
 
 @pytest.mark.parametrize(
@@ -209,8 +209,9 @@ def test_busca_ampla_por_autor_monta_o_perfil_de_uma_unica_emenda(client, db):
 @pytest.mark.parametrize("rota", ["localidade", "autor"])
 def test_busca_publica_rejeita_termo_curto_ou_longo_demais(client, emendas, rota):
     assert client.get(f"{BASE}/{rota}/a").status_code == 400
+    assert client.get(f"{BASE}/{rota}/xx").status_code == 400  # 2 caracteres só valem como sigla de estado
     assert client.get(f"{BASE}/{rota}/{'x' * 101}").status_code == 422
-    assert client.get(f"{BASE}/{rota}/xx").status_code == 404
+    assert client.get(f"{BASE}/{rota}/xxx").status_code == 404
 
 
 def test_busca_ignora_acento_e_caixa(client, emendas):
@@ -279,12 +280,13 @@ def test_404_da_busca_nao_repete_o_termo_digitado(client, emendas, rota):
     assert resposta.status_code == 404 and "zzzNaoExiste" not in resposta.text
 
 
-def test_termo_de_duas_letras_que_nao_e_uf_busca_por_trecho_do_nome(client, db):
+def test_termo_de_duas_letras_so_vale_como_sigla_de_estado(client, db):
     _emenda(db, "ANA", "INDIVIDUAL", codigo_emenda="1", localidade_destino="BELO HORIZONTE - MG", uf="MG")
     _emenda(db, "BIA", "INDIVIDUAL", codigo_emenda="2", localidade_destino="BH SHOPPING - MG", uf="MG")
     db.commit()
-    assert client.get(f"{BASE}/localidade/bh").json()["total_emendas_encontradas"] == 1  # "BH" não é UF
-    assert client.get(f"{BASE}/localidade/mg").json()["total_emendas_encontradas"] == 2  # "MG" é UF
+    assert client.get(f"{BASE}/localidade/bh").status_code == 400  # "BH" não é UF e 2 letras não usam o índice
+    assert client.get(f"{BASE}/localidade/mg").json()["total_emendas_encontradas"] == 2  # "MG" é UF: filtra por `uf`
+    assert client.get(f"{BASE}/localidade/bh%20sh").json()["total_emendas_encontradas"] == 1
 
 
 def test_lista_de_autores_encontrados_corta_em_dez_e_conta_todos(client, db):
@@ -308,10 +310,12 @@ def test_autor_com_emendas_de_tipos_diferentes_aparece_uma_vez(client, db):
 @pytest.mark.parametrize(
     "rota, termo, mensagem",
     [
-        ("localidade", "a", "Informe ao menos 2 caracteres da localidade."),
-        ("autor", "a", "Informe ao menos 2 caracteres do autor."),
-        ("localidade", "%20a%20", "Informe ao menos 2 caracteres da localidade."),  # curto depois do strip
-        ("autor", "%20a%20", "Informe ao menos 2 caracteres do autor."),
+        ("localidade", "a", "Informe ao menos 3 caracteres da localidade ou a sigla do estado."),
+        ("localidade", "bh", "Informe ao menos 3 caracteres da localidade ou a sigla do estado."),
+        ("autor", "a", "Informe ao menos 3 caracteres do autor."),
+        ("autor", "mg", "Informe ao menos 3 caracteres do autor."),  # a sigla só vale na busca por localidade
+        ("localidade", "%20a%20", "Informe ao menos 3 caracteres da localidade ou a sigla do estado."),  # após o strip
+        ("autor", "%20a%20", "Informe ao menos 3 caracteres do autor."),
         ("localidade", "a%00b", "A localidade contém caractere inválido."),
         ("autor", "a%00b", "O autor contém caractere inválido."),
     ],
@@ -348,47 +352,107 @@ def test_nome_de_estado_por_extenso_busca_pela_uf_e_nao_pelo_trecho(client, db):
     assert client.get(f"{BASE}/localidade/belem").json()["total_emendas_encontradas"] == 1
 
 
-def test_duas_buscas_seguidas_na_mesma_transacao_nao_misturam_os_alvos(client, db):
+def test_buscas_seguidas_na_mesma_sessao_nao_misturam_os_resultados(db):
+    from app.services import emendas_service as svc
+
     _emenda(db, "ANA SILVA", "INDIVIDUAL", codigo_emenda="1", localidade_destino="RECIFE - PE", uf="PE", valor_pago=1)
     _emenda(db, "BIA SOUZA", "INDIVIDUAL", codigo_emenda="2", localidade_destino="NATAL - RN", uf="RN", valor_pago=2)
     db.commit()
+    # o mesmo `db`, sem commit entre as chamadas: cada busca é uma consulta única e não deixa nada para a seguinte
     for _ in range(2):
-        assert client.get(f"{BASE}/autor/silva").json()["total_emendas_enviadas"] == 1
-        assert client.get(f"{BASE}/autor/souza").json()["total_emendas_enviadas"] == 1
-        assert client.get(f"{BASE}/localidade/recife").json()["total_emendas_encontradas"] == 1
+        assert svc.por_autor(db, "silva", 50)["total_emendas_enviadas"] == 1
+        assert svc.por_autor(db, "souza", 50)["total_emendas_enviadas"] == 1
+        assert svc.por_localidade(db, "recife", 50)["total_emendas_encontradas"] == 1
 
 
-def test_busca_cancelada_por_demora_vira_pedido_de_termo_mais_especifico(db):
+def test_a_busca_nao_cria_tabela_temporaria_nem_escreve_no_catalogo(db):
+    from app.services import emendas_service as svc
+
+    _emenda(db, "ANA SILVA", "INDIVIDUAL", codigo_emenda="1")
+    db.commit()
+    antes = db.execute(text("SELECT count(*) FROM pg_class")).scalar()
+    svc.por_autor(db, "silva", 50)
+    assert db.execute(text("SELECT to_regclass('pg_temp.emenda_alvo')")).scalar() is None
+    assert db.execute(text("SELECT count(*) FROM pg_class")).scalar() == antes
+
+
+def test_a_consulta_da_busca_devolve_as_emendas_na_ordem_pedida_e_limita_so_a_lista(db):
+    from app.services import emendas_service as svc
+
+    _emenda(db, "ANA SILVA", "INDIVIDUAL", codigo_emenda="1", ano=2022, valor_pago=10)
+    _emenda(db, "ANA SILVA", "INDIVIDUAL", codigo_emenda="2", ano=2024, valor_pago=5)
+    _emenda(db, "ANA SILVA", "INDIVIDUAL", codigo_emenda="3", ano=2024, valor_pago=90)
+    db.commit()
+    emendas = svc.por_autor(db, "silva", 50)["emendas"]
+    assert [(e["ano"], e["codigo_emenda"]) for e in emendas] == [(2024, "3"), (2024, "2"), (2022, "1")]
+    curta = svc.por_autor(db, "silva", 2)
+    assert len(curta["emendas"]) == 2 and curta["total_emendas_enviadas"] == 3  # `limit` corta só a lista
+
+
+def test_busca_cancelada_pelo_banco_por_demora_responde_400_pela_api(client, db, monkeypatch):
+    """Cancelamento REAL: o banco cancela a consulta (SQLSTATE 57014) e a API devolve 400, com a sessão ainda usável."""
+    from app.services import emendas_service as svc
+
+    _emenda(db, "ANA SILVA", "INDIVIDUAL", codigo_emenda="1")
+    db.commit()
+    monkeypatch.setattr(svc, "TEMPO_MAXIMO_DA_BUSCA_MS", 20)
+    monkeypatch.setattr(svc, "_BUSCA", text("SELECT pg_sleep(2) AS resultado"))
+    resposta = client.get(f"{BASE}/autor/silva")
+    assert resposta.status_code == 400 and "mais específico" in resposta.json()["detail"]
+    monkeypatch.undo()
+    assert client.get(f"{BASE}/autor/silva").status_code == 200  # nada ficou preso na sessão nem no pool
+
+
+def test_outro_erro_de_banco_na_busca_nao_vira_pedido_de_termo_mais_especifico(db, monkeypatch):
     from app.services import emendas_service as svc
     from sqlalchemy.exc import OperationalError
 
-    class Cancelada(Exception):
-        pgcode = "57014"
-
-    class OutroErro(Exception):
+    class Outro(Exception):
         pgcode = "08006"
 
-    def cancela():
-        raise OperationalError("SELECT 1", {}, Cancelada())
+    original = db.execute
 
-    def quebra():
-        raise OperationalError("SELECT 1", {}, OutroErro())
+    def quebra(consulta, *args, **kwargs):
+        if consulta is svc._BUSCA:
+            raise OperationalError("SELECT 1", {}, Outro())
+        return original(consulta, *args, **kwargs)
 
-    with pytest.raises(svc.ErroDeDominio) as erro:
-        svc._com_limite_de_tempo(db, cancela)
-    assert erro.value.status_code == 400 and "mais específico" in erro.value.detail
-    with pytest.raises(OperationalError):  # outro erro de banco não é "busca ampla demais"
-        svc._com_limite_de_tempo(db, quebra)
+    monkeypatch.setattr(db, "execute", quebra)
+    with pytest.raises(OperationalError):
+        svc._executa_busca(db, "autor", "silva", 50)
 
 
-def test_a_busca_liga_o_limite_de_tempo_so_na_transacao(db):
+def test_sem_vaga_de_busca_a_api_responde_503_sem_esperar(client, emendas, monkeypatch):
+    import threading
+
     from app.services import emendas_service as svc
 
-    limite = f"{svc.TEMPO_MAXIMO_DA_BUSCA_MS // 1000}s"  # o Postgres mostra 8000 ms como "8s"
-    svc._prepara_busca(db)
-    assert db.execute(text("SHOW statement_timeout")).scalar() == limite
-    db.rollback()
-    assert db.execute(text("SHOW statement_timeout")).scalar() != limite
+    monkeypatch.setattr(svc, "_BUSCAS_SIMULTANEAS", threading.BoundedSemaphore(1))
+    assert svc._BUSCAS_SIMULTANEAS.acquire(blocking=False)  # a única vaga está ocupada
+    resposta = client.get(f"{BASE}/autor/abel")
+    assert resposta.status_code == 503 and "muitas buscas" in resposta.json()["detail"]
+    svc._BUSCAS_SIMULTANEAS.release()
+    assert client.get(f"{BASE}/autor/abel").status_code == 200  # a vaga é devolvida mesmo depois do 503
+
+
+def test_a_vaga_da_busca_volta_mesmo_quando_ela_nao_acha_nada(client, emendas, monkeypatch):
+    import threading
+
+    from app.services import emendas_service as svc
+
+    monkeypatch.setattr(svc, "_BUSCAS_SIMULTANEAS", threading.BoundedSemaphore(1))
+    assert client.get(f"{BASE}/autor/zzznaoexiste").status_code == 404
+    assert client.get(f"{BASE}/autor/abel").status_code == 200
+
+
+def test_o_limite_de_tempo_da_busca_vale_so_na_transacao(db):
+    from app.services import emendas_service as svc
+
+    padrao = db.execute(text("SHOW statement_timeout")).scalar()
+    db.execute(svc._LIMITE_DE_TEMPO, {"ms": "8000"})
+    assert db.execute(text("SHOW statement_timeout")).scalar() == "8s"
+    db.commit()  # o fim da transação devolve o valor de antes; `set_config(..., false)` ficaria na sessão
+    assert db.execute(text("SHOW statement_timeout")).scalar() == padrao
 
 
 def test_descricao_do_tipo_de_autor_vem_de_um_lugar_so_no_resumo_e_no_perfil():

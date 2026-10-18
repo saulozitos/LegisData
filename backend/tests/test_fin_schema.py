@@ -215,10 +215,23 @@ def test_busca_por_trecho_usa_o_indice_trigram(db, coluna, indice):
     assert indice in plano
 
 
-def test_migracao_0031_desce_e_sobe_de_novo(pg_engine):
-    """O downgrade apaga o schema `fin` e a função de busca na ordem certa, e o upgrade os recria idênticos."""
-    import os
+_CATALOGO_DO_FIN = """
+    SELECT 'coluna', table_name || '.' || column_name, data_type || ' ' || is_nullable || ' ' ||
+           coalesce(column_default, '') || ' ' || coalesce(generation_expression, '')
+      FROM information_schema.columns WHERE table_schema = 'fin'
+    UNION ALL
+    SELECT 'restricao', conrelid::regclass::text || '.' || conname, pg_get_constraintdef(oid)
+      FROM pg_constraint WHERE connamespace = 'fin'::regnamespace
+    UNION ALL
+    SELECT 'indice', tablename || '.' || indexname, indexdef FROM pg_indexes WHERE schemaname = 'fin'
+    UNION ALL
+    SELECT 'funcao', 'ref.contem_texto', pg_get_functiondef('ref.contem_texto(text, text)'::regprocedure)
+    ORDER BY 1, 2
+"""
 
+
+def test_migracao_0031_desce_e_sobe_de_novo(pg_engine, monkeypatch):
+    """O downgrade apaga o schema `fin` e a função de busca na ordem certa, e o upgrade recria tudo idêntico."""
     from alembic import command
     from alembic.config import Config
     from app.core.migrations import BACKEND_DIR
@@ -227,24 +240,23 @@ def test_migracao_0031_desce_e_sobe_de_novo(pg_engine):
 
     config = Config(str(BACKEND_DIR / "alembic.ini"))
     config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-    anterior = os.environ.get("ALEMBIC_DATABASE_URL")
-    os.environ["ALEMBIC_DATABASE_URL"] = TEST_DATABASE_URL
+    # `setenv` do monkeypatch só desfaz no fim do TESTE: o upgrade do `finally` ainda enxerga o banco de teste
+    monkeypatch.setenv("ALEMBIC_DATABASE_URL", TEST_DATABASE_URL)
 
     def existe(sql):
         with pg_engine.connect() as conn:
             return bool(conn.execute(text(sql)).scalar())
 
+    def catalogo():
+        with pg_engine.connect() as conn:
+            return [tuple(linha) for linha in conn.execute(text(_CATALOGO_DO_FIN))]
+
+    antes = catalogo()
+    assert antes  # há o que comparar
     try:
         command.downgrade(config, "0030")
         assert not existe("SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'fin')")
         assert not existe("SELECT to_regprocedure('ref.contem_texto(text, text)') IS NOT NULL")
-        command.upgrade(config, "head")
-        assert existe("SELECT to_regclass('fin.doacao_campanha') IS NOT NULL")
-        assert existe("SELECT to_regprocedure('ref.contem_texto(text, text)') IS NOT NULL")
-        assert existe("SELECT to_regclass('fin.ix_emenda_autor_trgm') IS NOT NULL")
     finally:
-        if anterior is None:
-            os.environ.pop("ALEMBIC_DATABASE_URL", None)
-        else:
-            os.environ["ALEMBIC_DATABASE_URL"] = anterior
-        command.upgrade(config, "head")
+        command.upgrade(config, "head")  # mesmo se um assert falhar, o banco de teste volta a ter o `fin`
+    assert catalogo() == antes  # colunas, restrições, índices e a função, um a um

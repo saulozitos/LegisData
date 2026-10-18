@@ -130,13 +130,12 @@ def custos_ceap(db: Session, pessoas: Sequence[int]) -> Optional[Dict[str, Any]]
 
 def vazio_ceap() -> Dict[str, Any]:
     """
-    Resposta da CEAP de quem não tem dado, num dict novo a cada chamada (as listas não são compartilhadas). O dossiê
-    sempre devolve os totais numéricos (0.0) com `possui_dados` falso e a tela mostra "indisponível"; já `/ceap` avulso
-    devolve `total_gasto` nulo, porque ali o consumidor é um cliente da API e zero afirmaria "gasto zero".
+    Resposta da CEAP de quem não tem dado, num dict novo a cada chamada (as listas não são compartilhadas). O total é
+    nulo no dossiê e em `/ceap` avulso: zero afirmaria "gasto zero" onde a base simplesmente não tem a despesa.
     """
     return {
         "possui_dados": False,
-        "gasto_total_recente": 0.0,
+        "gasto_total_recente": None,
         "total_notas": None,
         "gastos_por_tipo": [],
         "gastos_por_ano": [],
@@ -379,21 +378,42 @@ def remuneracao(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
 
 
 def declaracoes_na_janela_da_remuneracao(
-    declaracoes: Sequence[Dict[str, Any]], primeiro_ano_remuneracao: Optional[int]
+    declaracoes: Sequence[Dict[str, Any]],
+    primeiro_ano_remuneracao: Optional[int],
+    ultimo_ano_remuneracao: Optional[int],
 ) -> List[Dict[str, Any]]:
     """
-    Declarações de bens (da mais antiga para a mais nova) que cobrem o MESMO período do subsídio registrado: a base é a
-    última declarada até o primeiro ano da remuneração e vêm junto as seguintes. Comparar o patrimônio desde uma
-    declaração de 1998 com um subsídio que só existe desde 2019 inflaria a razão. Sem base, ou sem remuneração, a lista
-    é vazia (a comparação não é possível).
+    Declarações de bens (da mais antiga para a mais nova) que cobrem o MESMO período do subsídio registrado, cortado nas
+    DUAS pontas: a base é a última declarada até o primeiro ano da remuneração e o fim é a última declarada até o último
+    ano dela. Comparar o patrimônio desde uma declaração de 1998 com um subsídio que só existe desde 2019 inflaria a
+    razão; comparar uma declaração de 2026 com um subsídio que parou em 2023 também. Sem base, sem fim posterior à base,
+    ou sem remuneração, a lista é vazia (a comparação não é possível).
     """
-    if primeiro_ano_remuneracao is None:
+    if primeiro_ano_remuneracao is None or ultimo_ano_remuneracao is None:
         return []
     ate_a_base = [d for d in declaracoes if d["ano"] <= primeiro_ano_remuneracao]
     if not ate_a_base:
         return []
     base = ate_a_base[-1]
-    return [base] + [d for d in declaracoes if d["ano"] > base["ano"]]
+    janela = [base] + [d for d in declaracoes if base["ano"] < d["ano"] <= ultimo_ano_remuneracao]
+    return janela if len(janela) >= 2 else []
+
+
+def subsidio_na_janela(db: Session, pessoas: Sequence[int], depois_do_ano: int, ate_o_ano: int) -> Optional[float]:
+    """
+    Subsídio bruto registrado nos anos `depois_do_ano < ano <= ate_o_ano`: o ano da declaração-base fica de fora porque a
+    declaração dele já traz o patrimônio acumulado até ali. None sem remuneração na faixa (desconhecido, não zero).
+    """
+    if not pessoas:
+        return None
+    soma, qtd = db.execute(
+        text(
+            "SELECT sum(salario_bruto), count(*) FROM fin.remuneracao "
+            "WHERE pessoa_id = ANY(:ids) AND ano > :depois AND ano <= :ate"
+        ),
+        {"ids": list(pessoas), "depois": depois_do_ano, "ate": ate_o_ano},
+    ).one()
+    return float(soma) if qtd else None
 
 
 # ── TSE ──────────────────────────────────────────────────────────────────────────────────────────────────────────────

@@ -40,8 +40,14 @@ const AUTORES_SUGESTOES = [
   { id: "COMISSAO DE EDUCACAO", label: "Comissão de Educação", icone: GraduationCap, cor: "border-blue-500/40 text-blue-300 bg-blue-500/10" },
 ];
 
-// a API exige ao menos 2 caracteres (um termo curto casaria quase tudo)
-const TERMO_MINIMO = 2;
+// A API exige ao menos 3 caracteres (um termo curto casaria quase tudo e varreria a tabela inteira); a busca por
+// localidade também aceita a sigla do estado, com 2.
+const TERMO_MINIMO = 3;
+const SIGLAS_DE_ESTADO = new Set([
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ",
+  "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+]);
+const localidadeValida = (termo: string) => termo.length >= TERMO_MINIMO || SIGLAS_DE_ESTADO.has(termo.toUpperCase());
 // Mesmo limite do backend (a busca com mais de 100 caracteres volta 422)
 const TERMO_MAXIMO = 100;
 
@@ -69,7 +75,7 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
   const localidadeQuery = useApi(
     `emendas:loc:${debouncedLocalidade}`,
     (signal) => getEmendasPorLocalidade(debouncedLocalidade, 50, signal),
-    debouncedLocalidade.length >= TERMO_MINIMO && activeTab === "localidade"
+    localidadeValida(debouncedLocalidade) && activeTab === "localidade"
   );
 
   const autorQuery = useApi(
@@ -461,9 +467,9 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
           </div>
 
           {/* Resultado da Busca Territorial */}
-          {debouncedLocalidade.length < TERMO_MINIMO ? (
+          {!localidadeValida(debouncedLocalidade) ? (
             <EmptyState
-              title={`Digite ao menos ${TERMO_MINIMO} letras`}
+              title={`Digite ao menos ${TERMO_MINIMO} letras ou a sigla do estado`}
               message="Informe o nome de um município ou o estado, pela sigla ou por extenso (ex: SP, Minas Gerais, Recife)."
             />
           ) : localidadeQuery.loading ? (

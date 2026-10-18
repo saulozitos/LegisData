@@ -278,6 +278,24 @@ describe('FinancingTab', () => {
     d.financiamento_campanha.demais_doadores = { quantidade: 26, valor: 24804 };
     render(<FinancingTab dossier={d} />);
     expect(screen.getByTestId('demais-doadores').textContent).toMatch(/Outros 26 doadores somam R\$\s*24\.804,00/);
+    // a linha agregada não entra no top 5: só os doadores nomeados aparecem ali
+    expect(screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent)).toEqual(['Doador Um']);
+    expect(screen.queryByRole('heading', { level: 4, name: /Demais doadores/ })).not.toBeInTheDocument();
+  });
+
+  it('na relação de doações a linha agregada diz quantos doadores ela soma e não mostra documento', () => {
+    const d = fullDossier();
+    d.financiamento_campanha.todas_doacoes.push(
+      { id: 'd3', ano_eleicao: 2022, nome_doador: 'Demais doadores (26)', cpf_cnpj_doador: null, valor_doado: 24804, tipo_receita: 'Agregado', agregado: true, quantidade_doadores: 26 },
+      { id: 'd4', ano_eleicao: 2022, nome_doador: 'Demais doadores', cpf_cnpj_doador: null, valor_doado: 5, tipo_receita: 'Agregado', agregado: true, quantidade_doadores: null },
+    );
+    render(<FinancingTab dossier={d} />);
+    const avisos = screen.getAllByTestId('linha-agregada').map((e) => e.textContent);
+    expect(avisos).toEqual([
+      'Soma de 26 doadores que a fonte não lista um a um',
+      'Soma de vários doadores; a fonte não informa quantos',
+    ]);
+    expect(screen.queryAllByTestId('linha-agregada')).toHaveLength(2); // as linhas normais não levam o aviso
   });
 
   it('sem a quantidade de doadores a média por doador fica "n/d" e nunca um palpite', () => {
@@ -285,7 +303,10 @@ describe('FinancingTab', () => {
     d.financiamento_campanha.total_doadores = null;
     d.financiamento_campanha.demais_doadores = { quantidade: null, valor: 10 };
     render(<FinancingTab dossier={d} />);
-    expect(screen.getAllByText('n/d').length).toBeGreaterThanOrEqual(2); // total de doadores e ticket médio
+    const total = screen.getByText('Total de Doadores').parentElement as HTMLElement;
+    const ticket = screen.getByText('Ticket Médio por Doador').parentElement as HTMLElement;
+    expect(within(total).getByText('n/d')).toBeInTheDocument();
+    expect(within(ticket).getByText('n/d')).toBeInTheDocument();
     expect(screen.getByTestId('demais-doadores').textContent).toMatch(/^Os demais doadores somam/);
   });
 

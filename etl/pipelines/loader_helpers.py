@@ -60,6 +60,14 @@ def inteiro_em(valor: Any, minimo: int, maximo: int) -> Optional[int]:
     return numero if numero is not None and minimo <= numero <= maximo else None
 
 
+LIMITE_INT4 = 2**31 - 1  # colunas `integer` do Postgres: um valor acima derrubaria a carga inteira
+
+
+def contagem_int4(valor: Any) -> Optional[int]:
+    """Contagem não negativa que cabe numa coluna `integer`; negativa, fracionária, inválida ou acima do teto, None."""
+    return inteiro_em(valor, 0, LIMITE_INT4)
+
+
 def normalizar_sigla_presenca(sigla: Any) -> Optional[str]:
     """Sigla de partido vinda das fontes de presença -> sigla canônica; None quando a fonte não registra partido.
 
@@ -704,7 +712,13 @@ def ler_remuneracao(registro: Any) -> Tuple[Optional[Dict[str, Any]], Optional[s
 
 
 TIPO_RECEITA_AGREGADA = "agregado"  # comparado sem caixa: a fonte marca a linha "Demais doadores" com este tipo
-_DEMAIS_DOADORES = re.compile(r"\(\s*([0-9]+)\s*\)\s*$")
+_DEMAIS_DOADORES = re.compile(r"\(\s*([0-9]{1,10})\s*\)\s*$")  # até 10 dígitos: o teto de `integer` é checado depois
+
+
+def _quantidade_agregada(achado: "re.Match[str]") -> Optional[int]:
+    """N de "Demais doadores (N)": de 1 até o teto de `integer`; zero ou acima dele, desconhecido."""
+    numero = contagem_int4(achado.group(1))
+    return numero if numero is not None and numero >= 1 else None
 
 
 def ler_doacoes(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
@@ -734,7 +748,7 @@ def ler_doacoes(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
                 "tipo": tipo,
                 "agregado": agregado,
                 # a linha agregada vale por todos os doadores que a fonte juntou ("Demais doadores (26)"); nula se não vier N
-                "qtd": (int(achado.group(1)) if achado and int(achado.group(1)) >= 1 else None) if agregado else 1,
+                "qtd": (_quantidade_agregada(achado) if achado else None) if agregado else 1,
             }
         )
     return {"ano": ano, "linhas": linhas}, None
@@ -748,11 +762,10 @@ def ler_patrimonio(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     valor = decimal_de(item.get("valor_declarado_brl"), LIMITE_TSE)
     if ano is None or valor is None:
         return None, "invalidas"
-    quantidade = inteiro(item.get("quantidade_bens"))
     return {
         "ano": ano,
         "valor": valor,
-        "qtd": quantidade if quantidade is not None and quantidade >= 0 else None,
+        "qtd": contagem_int4(item.get("quantidade_bens")),
         "det": texto_sem_cpf(item.get("detalhes_bens")),
     }, None
 
@@ -804,8 +817,7 @@ def fornecedores_do_parlamentar(dados: Dict[str, Any]) -> List[Dict[str, Any]]:
         if valor_dec is None:
             continue
         nome, cnpj = nome_do_fornecedor(item.get("nome")), cnpj_do_fornecedor(item.get("cnpj_cpf"))
-        notas = inteiro(item.get("notas"))
-        notas = notas if notas is not None and notas >= 0 else None
+        notas = contagem_int4(item.get("notas"))
         grupo = grupo_do_fornecedor(cnpj, nome)
         # `maior` é o maior valor de uma única grafia: o nome mostrado é o dela, e no empate vale o nome (não a ordem)
         acumulado = agrupados.setdefault(
@@ -840,8 +852,14 @@ def chave_de_desempate(linha: Dict[str, Any], *campos: str) -> Tuple[Any, ...]:
 
 
 def soma_ou_desconhecido(a: Any, b: Any) -> Any:
-    """Soma de duas parcelas; se qualquer uma é desconhecida (None) o total também é: parcial nunca vale como total."""
-    return None if a is None or b is None else a + b
+    """
+    Soma de duas parcelas; se qualquer uma é desconhecida (None) o total também é: parcial nunca vale como total. Uma
+    soma inteira acima do teto de `integer` também é desconhecida, pois não caberia na coluna.
+    """
+    if a is None or b is None:
+        return None
+    total = a + b
+    return None if isinstance(total, int) and total > LIMITE_INT4 else total
 
 
 def somar_linhas(

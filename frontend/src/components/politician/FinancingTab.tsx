@@ -229,9 +229,16 @@ export default function FinancingTab({ dossier }: FinancingTabProps) {
                             <tr key={d.id || idx} className="hover:bg-slate-900/60 transition-colors">
                               <td className="py-2.5 px-3 text-slate-200 font-sans font-medium">
                                 {d.nome_doador}
+                                {d.agregado && (
+                                  <span className="block text-[10px] font-normal text-slate-400" data-testid="linha-agregada">
+                                    {d.quantidade_doadores === null
+                                      ? "Soma de vários doadores; a fonte não informa quantos"
+                                      : `Soma de ${d.quantidade_doadores} doadores que a fonte não lista um a um`}
+                                  </span>
+                                )}
                               </td>
                               <td className="py-2.5 px-3 text-slate-400 text-[11px]">
-                                {formatCpfCnpj(d.cpf_cnpj_doador)}
+                                {d.agregado ? "—" : formatCpfCnpj(d.cpf_cnpj_doador)}
                               </td>
                               <td className="py-2.5 px-3 text-slate-400 text-[11px]">
                                 {d.tipo_receita || "Recurso Financeiro"}

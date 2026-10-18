@@ -573,14 +573,17 @@ def test_arquivo_ruim_nunca_apaga_nenhuma_das_seis_tabelas(pg_engine, banco, tmp
     with pg_engine.begin() as conn:
         resultado = FUNCAO_DA_CARGA[carga](conn, tmp_path)
     assert _fotografia(pg_engine, carga) == antes
-    # a carga relatou que não gravou nada (e não gravou por acaso o mesmo conteúdo)
-    assert (
-        resultado.get("arquivo_ausente")
-        or resultado.get("arquivo_ausente_ou_sem_proveniencia")
-        or not any(
-            resultado.get(chave) for chave in ("despesas", "emendas", "meses", "declaracoes", "linhas", "certidoes")
-        )
-    )
+    # a carga relatou POR QUE não gravou: arquivo que não existe é uma coisa, arquivo que existe e não serve é outra
+    if ruim == "ausente":
+        assert resultado == {"arquivo_ausente": 1}
+    elif ruim == "tipo_errado":
+        assert resultado == {"formato_invalido": 1}
+    assert not _gravou(resultado)
+
+
+def _gravou(resultado):
+    """True se a carga relatou alguma linha gravada em alguma tabela."""
+    return any(resultado.get(chave) for chave in ("despesas", "emendas", "meses", "declaracoes", "linhas", "certidoes"))
 
 
 def test_doacoes_so_com_prestacoes_sem_linhas_utilizaveis_nao_apagam_o_banco(pg_engine, banco, tmp_path):
@@ -809,7 +812,7 @@ def _arquivo_com(carga, n):
     return [_oficial(camara_id=100, orgao="TSE", tipo_certidao=f"T{i}", status_ficha="ok") for i in range(n)]
 
 
-def _total_da_carga(engine, carga):
+def _linhas_da_tabela_principal(engine, carga):
     return sum(_contar(engine, t) for t in TABELAS_POR_CARGA[carga][:1])
 
 
@@ -825,7 +828,7 @@ def test_carga_que_encolheria_a_tabela_para_menos_da_metade_aborta_sem_alterar_o
 ):
     monkeypatch.delenv(fin.VARIAVEL_ACEITAR_ENCOLHIMENTO, raising=False)
     _rodar(pg_engine, carga, tmp_path, _arquivo_com(carga, 20))
-    assert _total_da_carga(pg_engine, carga) == 20
+    assert _linhas_da_tabela_principal(pg_engine, carga) == 20
     antes = _fotografia(pg_engine, carga)
 
     with pytest.raises(RuntimeError, match="nada foi alterado"):
@@ -834,7 +837,7 @@ def test_carga_que_encolheria_a_tabela_para_menos_da_metade_aborta_sem_alterar_o
 
     monkeypatch.setenv(fin.VARIAVEL_ACEITAR_ENCOLHIMENTO, "1")  # redução legítima, liberada de propósito
     _rodar(pg_engine, carga, tmp_path, _arquivo_com(carga, 3))
-    assert _total_da_carga(pg_engine, carga) == 3
+    assert _linhas_da_tabela_principal(pg_engine, carga) == 3
 
 
 @pytest.mark.parametrize("carga", list(TABELAS_POR_CARGA))
@@ -846,7 +849,7 @@ def test_limite_exato_da_protecao_metade_passa_e_menos_que_a_metade_aborta(
     with pytest.raises(RuntimeError, match="nada foi alterado"):
         _rodar(pg_engine, carga, tmp_path, _arquivo_com(carga, 9))
     _rodar(pg_engine, carga, tmp_path, _arquivo_com(carga, 10))  # exatamente 50%
-    assert _total_da_carga(pg_engine, carga) == 10
+    assert _linhas_da_tabela_principal(pg_engine, carga) == 10
 
 
 def test_tabela_com_menos_linhas_que_o_minimo_nao_dispara_a_protecao(pg_engine, banco, tmp_path, monkeypatch):
@@ -2038,3 +2041,75 @@ def test_todo_ler_devolve_campos_ou_motivo_nunca_os_dois(nome, esperado):
 
     campos, motivo = getattr(loader_helpers, nome)("x")
     assert campos is None and motivo == esperado
+
+
+# ── Contagens que cabem numa coluna `integer` ────────────────────────────────────────────────────────────────────────
+def test_quantidade_de_doadores_acima_do_teto_de_integer_ou_gigante_vira_desconhecida():
+    from etl.pipelines.loader_helpers import LIMITE_INT4
+
+    def quantidade(nome):
+        prestacao = _oficial(
+            ano_eleicao=2022, doadores=[{"nome_doador": nome, "valor_doado": 10, "tipo_receita": "Agregado"}]
+        )
+        return ler_doacoes(prestacao)[0]["linhas"][0]["qtd"]
+
+    assert quantidade(f"Demais doadores ({LIMITE_INT4})") == LIMITE_INT4
+    assert quantidade(f"Demais doadores ({LIMITE_INT4 + 1})") is None  # estouraria a coluna e derrubaria a carga
+    assert quantidade("Demais doadores (" + "9" * 5000 + ")") is None  # 5000 dígitos: sem ValueError do `int()`
+
+
+def test_contagens_acima_do_teto_de_integer_ficam_desconhecidas():
+    from etl.pipelines.loader_helpers import LIMITE_INT4, contagem_int4, fornecedores_do_parlamentar, ler_patrimonio
+
+    assert contagem_int4(LIMITE_INT4) == LIMITE_INT4 and contagem_int4(LIMITE_INT4 + 1) is None
+    assert contagem_int4(-1) is None and contagem_int4(1.5) is None and contagem_int4("x") is None
+    assert contagem_int4(0) == 0 and contagem_int4("12") == 12
+    declaracao = _oficial(ano_eleicao=2022, valor_declarado_brl=10)
+    assert ler_patrimonio({**declaracao, "quantidade_bens": 3_000_000_000})[0]["qtd"] is None
+    assert ler_patrimonio({**declaracao, "quantidade_bens": 4})[0]["qtd"] == 4
+    vivo = {"nome": "VIVO", "cnpj_cpf": "02.558.157/0001-62", "total": 10.0}
+    assert fornecedores_do_parlamentar({"fornecedores": {"a": {**vivo, "notas": 3_000_000_000}}})[0]["notas"] is None
+    assert fornecedores_do_parlamentar({"fornecedores": {"a": {**vivo, "notas": 3}}})[0]["notas"] == 3
+
+
+def test_soma_de_contagens_que_estoura_o_integer_vira_desconhecida():
+    from etl.pipelines.loader_helpers import LIMITE_INT4, soma_ou_desconhecido
+
+    assert soma_ou_desconhecido(LIMITE_INT4 - 1, 1) == LIMITE_INT4
+    assert soma_ou_desconhecido(LIMITE_INT4, 1) is None
+    assert soma_ou_desconhecido(Decimal("1.50"), Decimal("2")) == Decimal("3.50")  # valores monetários não são cortados
+    linhas = [
+        {"p": 1, "grupo": "g", "valor": Decimal(5), "notas": 2_000_000_000, "f": 1},
+        {"p": 1, "grupo": "g", "valor": Decimal(5), "notas": 2_000_000_000, "f": 2},  # outra fonte: as notas se somam
+    ]
+    unicas, _ = somar_linhas(linhas, ("p", "grupo"), ("valor", "notas"))
+    assert unicas[0]["valor"] == Decimal(10) and unicas[0]["notas"] is None
+
+
+def test_total_de_notas_gigante_na_ceap_nao_derruba_a_carga_e_deixa_a_pessoa_sem_resumo(pg_engine, banco, tmp_path):
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap(total_notas=3_000_000_000)})
+    with pg_engine.begin() as conn:
+        resultado = fin.carregar_ceap(conn, tmp_path)  # antes: "integer out of range" e rollback de tudo
+    assert resultado["despesas"] == 3 and _contar(pg_engine, "despesa_cota") == 3
+    assert _contar(pg_engine, "despesa_cota_resumo") == 0  # quantidade desconhecida: sem resumo, nunca um palpite
+
+
+# ── Texto do erro que vai para o log e para o deploy ─────────────────────────────────────────────────────────────────
+def test_erro_do_banco_so_leva_a_mensagem_principal_e_a_restricao_para_o_log(pg_engine, banco):
+    from etl.pipelines.carga_economica import descricao_do_erro
+
+    sigilo = "Fulano-De-Tal-12345"
+    with pytest.raises(Exception) as erro:
+        with pg_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO fin.doacao_campanha (pessoa_id, ano_eleicao, doador_nome, doador_documento, valor, "
+                    "fonte_id) VALUES (:p, 2022, :n, 'sem-mascara', 1, (SELECT min(id) FROM etl.fonte))"
+                ),
+                {"p": banco["ana"], "n": sigilo},
+            )
+    assert sigilo in str(erro.value)  # a mensagem crua do Postgres traz a linha inteira: é isso que não pode ir ao log
+    texto_do_erro = descricao_do_erro(erro.value)
+    assert sigilo not in texto_do_erro and "DETAIL" not in texto_do_erro and "Failing row" not in texto_do_erro
+    assert "IntegrityError" in texto_do_erro and "doacao_campanha_doador_documento_check" in texto_do_erro
+    assert descricao_do_erro(RuntimeError("tabela encolheria")) == "tabela encolheria"  # mensagens da carga seguem

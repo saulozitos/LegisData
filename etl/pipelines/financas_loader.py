@@ -22,9 +22,10 @@ from etl.config import PROCESSED_DATA_DIR
 from etl.pipelines.loader_helpers import (
     LIMITE_CEAP,
     LIMITE_EMENDA,
+    TIPOS_DE_AUTOR_INSTITUCIONAL,
     chave_da_prestacao,
+    contagem_int4,
     fornecedores_do_parlamentar,
-    inteiro,
     ler_ceap,
     ler_certidao,
     ler_doacoes,
@@ -147,13 +148,29 @@ def _substituir(conn: Connection, tabelas: List[Tuple[str, str, List[Dict[str, A
         _inserir(conn, insercao, linhas)
 
 
+def _ler_arquivo(
+    processed_dir: Path, arquivo: str, aceita: Callable[[Any], bool]
+) -> Tuple[Any, Optional[Dict[str, int]]]:
+    """
+    Lê o arquivo da carga e diz se ele serve: (dados, None) quando `aceita`; senão (None, resultado) com
+    `arquivo_ausente` para o que não existe e `formato_invalido` (mais um aviso no log) para o que existe mas tem o tipo
+    errado ou nenhuma proveniência. Passo comum às seis cargas, que nunca apagam nada nesses casos.
+    """
+    dados = _arquivo(processed_dir, arquivo)
+    if aceita(dados):
+        return dados, None
+    if dados is None:
+        return None, {"arquivo_ausente": 1}
+    logger.warning("%s com formato ou proveniência inválidos; carga pulada.", arquivo)
+    return None, {"formato_invalido": 1}
+
+
 def _carga_simples(
     conn: Connection,
     processed_dir: Path,
     *,
     arquivo: str,
     aceita: Callable[[Any], bool],
-    chave_ausente: str,
     montar: Callable[[Any, ResolvedorDePessoas, int], Tuple[List[Dict[str, Any]], Dict[str, int]]],
     fonte: str,
     rotulo: str,
@@ -165,11 +182,9 @@ def _carga_simples(
     Roteiro das cargas que trocam uma tabela inteira: lê o arquivo, monta as linhas, e só substitui a tabela se alguma
     linha serviu (arquivo ausente, de formato inválido ou sem nenhum registro utilizável nunca apaga o que já está lá).
     """
-    dados = _arquivo(processed_dir, arquivo)
-    if not aceita(dados):
-        if dados is not None:
-            logger.warning("%s com formato ou proveniência inválidos; carga pulada.", arquivo)
-        return {chave_ausente: 1}
+    dados, recusa = _ler_arquivo(processed_dir, arquivo, aceita)
+    if recusa is not None:
+        return recusa
     linhas, contagem = montar(dados, ResolvedorDePessoas(conn), _fontes(conn)[fonte])
     if not linhas:
         logger.warning("%s sem nenhum registro utilizável (%s); o banco não foi alterado.", rotulo, contagem)
@@ -214,16 +229,16 @@ def linhas_da_ceap(
         ]
         if valores:  # fornecedores e quantidade de notas só valem ao lado de um gasto que a entrada realmente somou
             fornecedores += [{"p": pessoa, "f": fonte_id, **x} for x in fornecedores_do_parlamentar(dados)]
-            notas = inteiro(dados.get("total_notas"))
+            notas = contagem_int4(dados.get("total_notas"))
             # quantidade desconhecida não vira zero: a linha com `notas` None só marca a pessoa para `resumos_completos`
-            resumos.append({"p": pessoa, "notas": notas if notas is not None and notas >= 0 else None, "f": fonte_id})
+            resumos.append({"p": pessoa, "notas": notas, "f": fonte_id})
     return despesas, fornecedores, resumos, contagem
 
 
 def carregar_ceap(conn: Connection, processed_dir: Path) -> Dict[str, int]:
-    ceap = _arquivo(processed_dir, CEAP_ARQUIVO)
-    if not isinstance(ceap, dict):
-        return {"arquivo_ausente": 1}
+    ceap, recusa = _ler_arquivo(processed_dir, CEAP_ARQUIVO, lambda dados: isinstance(dados, dict))
+    if recusa is not None:
+        return recusa
     despesas, fornecedores, resumos, contagem = linhas_da_ceap(ceap, ResolvedorDePessoas(conn), _fontes(conn))
     if not despesas:
         logger.warning("CEAP sem nenhum registro utilizável (%s); o banco não foi alterado.", contagem)
@@ -307,11 +322,11 @@ def linhas_das_emendas(
             continue
         autor, ano = lida["autor"], lida["ano"]
         tipo_autor = tipo_do_autor(autor, lida["tipo_emenda"])
-        if tipo_autor == "INDIVIDUAL":
+        if tipo_autor in TIPOS_DE_AUTOR_INSTITUCIONAL:
+            situacao, pessoa = "INSTITUCIONAL", None
+        else:
             resolucao = resolvedor.por_nome([autor], ano)
             situacao, pessoa = resolucao.situacao, resolucao.pessoa_id
-        else:
-            situacao, pessoa = "INSTITUCIONAL", None
         linha = {
             "p": pessoa,
             "autor": autor,
@@ -347,9 +362,9 @@ def linhas_das_emendas(
 
 
 def carregar_emendas(conn: Connection, processed_dir: Path) -> Dict[str, int]:
-    emendas = _arquivo(processed_dir, EMENDAS_ARQUIVO)
-    if not isinstance(emendas, list):
-        return {"arquivo_ausente": 1}
+    emendas, recusa = _ler_arquivo(processed_dir, EMENDAS_ARQUIVO, lambda dados: isinstance(dados, list))
+    if recusa is not None:
+        return recusa
     linhas, contagem = linhas_das_emendas(emendas, ResolvedorDePessoas(conn), _fontes(conn)[FONTE_EMENDAS])
     if not linhas:
         logger.warning("Emendas sem nenhum registro utilizável (%s); o banco não foi alterado.", contagem)
@@ -390,7 +405,6 @@ def carregar_remuneracao(conn: Connection, processed_dir: Path) -> Dict[str, int
         processed_dir,
         arquivo=REMUNERACAO_ARQUIVO,
         aceita=lambda dados: ler_registros_da_remuneracao(dados)[0] is not None,
-        chave_ausente="arquivo_ausente_ou_sem_proveniencia",
         montar=linhas_da_remuneracao,
         fonte=FONTE_REMUNERACAO,
         rotulo="Remuneração",
@@ -433,7 +447,6 @@ def carregar_patrimonio(conn: Connection, processed_dir: Path) -> Dict[str, int]
         processed_dir,
         arquivo=PATRIMONIO_ARQUIVO,
         aceita=lambda dados: isinstance(dados, list),
-        chave_ausente="arquivo_ausente",
         montar=linhas_do_patrimonio,
         fonte=FONTE_TSE,
         rotulo="Patrimônio",
@@ -482,7 +495,6 @@ def carregar_doacoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
         processed_dir,
         arquivo=DOACOES_ARQUIVO,
         aceita=lambda dados: isinstance(dados, list),
-        chave_ausente="arquivo_ausente",
         montar=linhas_das_doacoes,
         fonte=FONTE_TSE,
         rotulo="Doações",
@@ -526,7 +538,6 @@ def carregar_certidoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
         processed_dir,
         arquivo=CERTIDOES_ARQUIVO,
         aceita=lambda dados: isinstance(dados, list),
-        chave_ausente="arquivo_ausente",
         montar=linhas_das_certidoes,
         fonte=FONTE_TSE,
         rotulo="Certidões",

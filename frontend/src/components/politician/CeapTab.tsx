@@ -71,7 +71,9 @@ export default function CeapTab({ dossier }: CeapTabProps) {
                       Gasto Total Auditado
                     </span>
                     <span className="text-lg sm:text-xl font-black font-mono text-amber-400 block leading-tight">
-                      R$ {(dossier?.custos_ceap?.gasto_total_recente || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {dossier.custos_ceap.gasto_total_recente === null
+                        ? "Indisponível"
+                        : `R$ ${dossier.custos_ceap.gasto_total_recente.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
                     </span>
                     <span className="text-[10px] text-slate-400 mt-1 block">
                       Reembolsos oficiais na legislatura

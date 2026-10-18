@@ -53,3 +53,27 @@ def test_carga_nao_tolerada_continua_levantando_mesmo_com_financas_tolerada(cham
     monkeypatch.setattr("etl.pipelines.economia_loader.carregar", quebra)
     with pytest.raises(RuntimeError, match="sem séries"):
         carga_economica.carregar_tudo(object(), toleradas=("financas",))
+
+
+def test_erro_do_banco_numa_carga_tolerada_sai_sem_os_valores_da_linha(chamadas, monkeypatch):
+    from sqlalchemy.exc import IntegrityError
+
+    class Diag:
+        message_primary = "new row violates check constraint"
+        constraint_name = "doacao_campanha_doador_documento_check"
+
+    class Original(Exception):
+        diag = Diag()
+
+    def quebra(engine):
+        raise IntegrityError("INSERT ...", {}, Original("DETAIL: Failing row contains (Fulano-De-Tal)"))
+
+    monkeypatch.setattr("etl.pipelines.financas_loader.carregar", quebra)
+    resultados = carga_economica.carregar_tudo(object(), toleradas=("financas",))
+    assert "Fulano-De-Tal" not in resultados["financas"]["erro"]
+    assert resultados["financas"]["erro"] == (
+        "IntegrityError: new row violates check constraint (restrição doacao_campanha_doador_documento_check)"
+    )
+    with pytest.raises(RuntimeError) as erro:  # sem tolerância o erro sobe, também sem os valores
+        carga_economica.carregar_tudo(object())
+    assert "Fulano-De-Tal" not in str(erro.value)

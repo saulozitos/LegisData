@@ -221,7 +221,7 @@ describe("EmendasExplorerPanel", () => {
     expect(screen.getByText(/Emendas deste Autor \(1\)/i)).toBeInTheDocument();
   });
 
-  it("termo com menos de 2 letras não consulta a API e pede mais letras", async () => {
+  it("termo curto não consulta a API e pede mais letras", async () => {
     vi.mocked(api.getEmendasResumo).mockResolvedValue(mockResumo);
     vi.mocked(api.getEmendasPorLocalidade).mockResolvedValue(mockLocalidade);
 
@@ -231,9 +231,13 @@ describe("EmendasExplorerPanel", () => {
     await screen.findByText("Carlos Sampaio");
     vi.mocked(api.getEmendasPorLocalidade).mockClear();
 
-    fireEvent.change(screen.getByLabelText(/Pesquisar por município ou estado/i), { target: { value: "C" } });
-    expect(await screen.findByText(/Digite ao menos 2 letras/i)).toBeInTheDocument();
-    expect(api.getEmendasPorLocalidade).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText(/Pesquisar por município ou estado/i), { target: { value: "Re" } });
+    expect(await screen.findByText(/Digite ao menos 3 letras ou a sigla do estado/i)).toBeInTheDocument();
+    expect(api.getEmendasPorLocalidade).not.toHaveBeenCalled(); // 2 letras que não são sigla de estado
+
+    fireEvent.change(screen.getByLabelText(/Pesquisar por município ou estado/i), { target: { value: "sp" } });
+    await screen.findByText("Carlos Sampaio");
+    expect(api.getEmendasPorLocalidade).toHaveBeenCalledWith("sp", 50, expect.anything()); // a sigla vale com 2
   });
 
   it("o campo de busca limita o termo a 100 caracteres, como o backend", async () => {
@@ -294,7 +298,7 @@ describe("EmendasExplorerPanel", () => {
     expect(screen.queryByText(/reuniu/i)).not.toBeInTheDocument();
   });
 
-  it("a busca por autor também exige 2 letras e não consulta a API com 1", async () => {
+  it("a busca por autor exige 3 letras e não consulta a API com menos", async () => {
     vi.mocked(api.getEmendasResumo).mockResolvedValue(mockResumo);
     vi.mocked(api.getEmendasPorAutor).mockResolvedValue(mockAutor);
 
@@ -304,14 +308,14 @@ describe("EmendasExplorerPanel", () => {
     await screen.findByText(/Recurso da CMO/i);
     vi.mocked(api.getEmendasPorAutor).mockClear();
 
-    fireEvent.change(screen.getByLabelText(/Pesquisar por autor institucional/i), { target: { value: "B" } });
-    expect(await screen.findByText(/Digite ao menos 2 letras/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Pesquisar por autor institucional/i), { target: { value: "Ba" } });
+    expect(await screen.findByText(/Digite ao menos 3 letras/i)).toBeInTheDocument();  // nem a sigla de estado vale aqui
     expect(api.getEmendasPorAutor).not.toHaveBeenCalled();
     expect(screen.getByLabelText(/Pesquisar por autor institucional/i)).toHaveAttribute("maxlength", "100");
 
-    fireEvent.change(screen.getByLabelText(/Pesquisar por autor institucional/i), { target: { value: "Ba" } });
+    fireEvent.change(screen.getByLabelText(/Pesquisar por autor institucional/i), { target: { value: "Ban" } });
     await screen.findByText(/Recurso da CMO/i);
-    expect(api.getEmendasPorAutor).toHaveBeenCalledWith("Ba", 50, expect.anything());
+    expect(api.getEmendasPorAutor).toHaveBeenCalledWith("Ban", 50, expect.anything());
   });
 
   it("o espaço no começo ou no fim do termo de autor não conta como letra", async () => {
@@ -324,8 +328,8 @@ describe("EmendasExplorerPanel", () => {
     await screen.findByText(/Recurso da CMO/i);
     vi.mocked(api.getEmendasPorAutor).mockClear();
 
-    fireEvent.change(screen.getByLabelText(/Pesquisar por autor institucional/i), { target: { value: " a " } });
-    expect(await screen.findByText(/Digite ao menos 2 letras/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Pesquisar por autor institucional/i), { target: { value: " ab " } });
+    expect(await screen.findByText(/Digite ao menos 3 letras/i)).toBeInTheDocument();
     expect(api.getEmendasPorAutor).not.toHaveBeenCalled();
   });
 });

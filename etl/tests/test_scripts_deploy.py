@@ -74,5 +74,10 @@ def test_deploy_descarta_saidas_do_cron_antes_do_merge_e_carrega_tudo_pela_carga
 
 def test_deploy_repassa_a_liberacao_de_encolhimento_vazia_por_padrao_e_tolera_so_as_financas():
     texto = (RAIZ / "scripts" / "deploy" / "deploy.sh").read_text(encoding="utf-8")
-    assert '-e LEGISDATA_ACEITAR_ENCOLHIMENTO="${LEGISDATA_ACEITAR_ENCOLHIMENTO:-}"' in texto
-    assert "toleradas=('financas',)" in texto
+    inicio = _posicao(texto, r"^um_comando\(\) \{")
+    corpo = texto[inicio : inicio + texto[inicio:].index("\n}\n")]
+    # a variável é repassada DENTRO de `um_comando` (não solta no script) e vazia quando o operador não a define
+    assert re.search(r"-e LEGISDATA_ACEITAR_ENCOLHIMENTO=\"\$\{LEGISDATA_ACEITAR_ENCOLHIMENTO:-\}\"", corpo)
+    # só as finanças são toleradas, com qualquer espaçamento ou aspas
+    assert re.search(r"toleradas\s*=\s*\(\s*['\"]financas['\"]\s*,?\s*\)", texto)
+    assert not re.search(r"toleradas\s*=\s*\([^)]*['\"](series|presidencia|composicao|pnad)['\"]", texto)

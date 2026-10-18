@@ -394,7 +394,7 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         ),
         Etapa(
             "load_economia",
-            "Carga das séries econômicas, mandatos presidenciais, composição do Congresso e PNAD",
+            "Carga das séries econômicas, mandatos presidenciais, composição do Congresso, PNAD e finanças (fin)",
             _load_economia,
             depende_de_extracao=True,
         ),

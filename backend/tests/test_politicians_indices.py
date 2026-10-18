@@ -98,7 +98,8 @@ def test_patrimony_history_growth_and_compatibility(client, db, seed):
 
 @pytest.mark.parametrize("final_value,expected", [(100100, "COMPATÍVEL"), (190000, "MODERADO"), (900000, "ATÍPICO")])
 def test_patrimony_compatibility_classification(client, db, seed, final_value, expected):
-    _add_remuneration(db, seed, months=2, ano=2019)  # subsídios brutos registrados: 80.000, a partir de 2019
+    _add_remuneration(db, seed, months=1, ano=2019)  # subsídios brutos registrados: 40.000 em 2019 e 40.000 em 2022
+    _add_remuneration(db, seed, months=1, ano=2022)
     _declarar_patrimonio(db, seed.fulano, 2018, 100000)  # a base: a última declaração até o início da remuneração
     _declarar_patrimonio(db, seed.fulano, 2022, final_value)
     db.commit()
@@ -107,13 +108,14 @@ def test_patrimony_compatibility_classification(client, db, seed, final_value, e
 
 
 def test_patrimonio_so_e_comparado_na_janela_da_remuneracao_e_a_declaracao_antiga_nao_infla_a_razao(client, db, seed):
-    _add_remuneration(db, seed, months=2, ano=2019)  # 80.000 de subsídio, a partir de 2019
+    _add_remuneration(db, seed, months=1, ano=2019)  # 80.000 de subsídio na janela: 2019 e 2022
+    _add_remuneration(db, seed, months=1, ano=2022)
     _declarar_patrimonio(db, seed.fulano, 1998, 1000)  # antes da janela: não entra na comparação
     _declarar_patrimonio(db, seed.fulano, 2018, 100000)
     _declarar_patrimonio(db, seed.fulano, 2022, 150000)
     db.commit()
     enrich = client.get(f"{BASE}/{seed.fulano.id}").json()["indices_inteligencia"]["enriquecimento_patrimonial"]
-    assert enrich["periodo_comparado"] == {"de": 2018, "ate": 2022}
+    assert enrich["periodo_comparado"] == {"de": 2018, "ate": 2022, "subsidio_de": 2019, "subsidio_ate": 2022}
     assert enrich["delta_patrimonio"] == 50000.0  # 150.000 - 100.000 (e não - 1.000)
     assert enrich["razao_patrimonio_renda"] == 0.62 and enrich["compatibilidade"] == "COMPATÍVEL"
 
@@ -131,10 +133,57 @@ def test_declaracoes_na_janela_da_remuneracao_e_funcao_pura():
     from app.services.financas_service import declaracoes_na_janela_da_remuneracao as janela
 
     declaracoes = [{"ano": a} for a in (1998, 2006, 2018, 2022)]
-    assert [d["ano"] for d in janela(declaracoes, 2019)] == [2018, 2022]
-    assert [d["ano"] for d in janela(declaracoes, 2018)] == [2018, 2022]  # a base pode ser do próprio primeiro ano
-    assert [d["ano"] for d in janela(declaracoes, 2000)] == [1998, 2006, 2018, 2022]
-    assert janela(declaracoes, 1990) == [] and janela(declaracoes, None) == [] and janela([], 2019) == []
+    assert [d["ano"] for d in janela(declaracoes, 2019, 2026)] == [2018, 2022]
+    assert [d["ano"] for d in janela(declaracoes, 2018, 2022)] == [
+        2018,
+        2022,
+    ]  # a base pode ser do próprio primeiro ano
+    assert [d["ano"] for d in janela(declaracoes, 2000, 2022)] == [1998, 2006, 2018, 2022]
+    # o fim também é cortado: a declaração de 2022 fica fora de uma remuneração que parou em 2021
+    assert janela(declaracoes, 2000, 2021) == [{"ano": 1998}, {"ano": 2006}, {"ano": 2018}]
+    assert janela(declaracoes, 2019, 2021) == []  # só a base cabe na janela: não há o que comparar
+    assert janela(declaracoes, 1990, 2022) == [] and janela(declaracoes, None, 2022) == []
+    assert janela(declaracoes, 2019, None) == [] and janela([], 2019, 2022) == []
+
+
+def test_reeleito_compara_o_patrimonio_so_ate_a_ultima_declaracao_dentro_do_subsidio(client, db, seed):
+    """Remuneração 2019-2026, declarações 2018 e 2022: o divisor é o subsídio de 2019-2022, não o dos 8 anos."""
+    for ano in (2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026):
+        _add_remuneration(db, seed, months=1, ano=ano)  # 40.000 por ano
+    _declarar_patrimonio(db, seed.fulano, 2018, 100000)
+    _declarar_patrimonio(db, seed.fulano, 2022, 220000)
+    db.commit()
+    enrich = client.get(f"{BASE}/{seed.fulano.id}").json()["indices_inteligencia"]["enriquecimento_patrimonial"]
+    assert enrich["periodo_comparado"] == {"de": 2018, "ate": 2022, "subsidio_de": 2019, "subsidio_ate": 2022}
+    assert enrich["salario_acumulado_estimado"] == 160000.0  # 2019, 2020, 2021 e 2022
+    assert enrich["razao_patrimonio_renda"] == 0.75 and enrich["compatibilidade"] == "COMPATÍVEL"
+
+
+def test_ex_parlamentar_nao_compara_declaracao_posterior_ao_fim_do_subsidio(client, db, seed):
+    """Remuneração 2019-2023, declarações 2018, 2022 e 2026: a de 2026 (candidatura) fica fora da janela."""
+    for ano in (2019, 2020, 2021, 2022, 2023):
+        _add_remuneration(db, seed, months=1, ano=ano)
+    _declarar_patrimonio(db, seed.fulano, 2018, 100000)
+    _declarar_patrimonio(db, seed.fulano, 2022, 150000)
+    _declarar_patrimonio(db, seed.fulano, 2026, 900000)
+    db.commit()
+    enrich = client.get(f"{BASE}/{seed.fulano.id}").json()["indices_inteligencia"]["enriquecimento_patrimonial"]
+    assert enrich["periodo_comparado"]["ate"] == 2022 and enrich["delta_patrimonio"] == 50000.0
+    assert enrich["compatibilidade"] == "COMPATÍVEL"
+
+
+def test_subsidio_na_janela_exclui_o_ano_da_base_e_nao_inventa_zero(db, seed):
+    from app.services import financas_service
+
+    _add_remuneration(db, seed, months=1, ano=2018)
+    _add_remuneration(db, seed, months=2, ano=2019)
+    db.commit()
+    pessoas = [pessoa_do(db, seed.fulano)]
+    assert financas_service.subsidio_na_janela(db, pessoas, 2018, 2019) == 80000.0  # o ano da base (2018) fica de fora
+    assert (
+        financas_service.subsidio_na_janela(db, pessoas, 2019, 2022) is None
+    )  # sem remuneração na faixa: desconhecido
+    assert financas_service.subsidio_na_janela(db, [], 2018, 2019) is None
 
 
 def test_remuneracao_devolve_float_e_o_primeiro_ano_da_fonte(client, db, seed):

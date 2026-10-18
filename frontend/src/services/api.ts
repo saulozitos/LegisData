@@ -926,7 +926,7 @@ export interface CeapGastoAno {
 
 export interface CustosCeapData {
   possui_dados: boolean;
-  gasto_total_recente: number;
+  gasto_total_recente: number | null;
   total_notas: number | null;
   gastos_por_tipo: CeapGastoTipo[];
   maiores_fornecedores: CeapFornecedor[];
@@ -1009,6 +1009,10 @@ export interface DoacaoItem {
   cpf_cnpj_doador: string | null;
   valor_doado: number;
   tipo_receita?: string | null;
+  /** Linha "Demais doadores (N)" da fonte: vale por vários doadores, não por um. */
+  agregado: boolean;
+  /** Quantos doadores a linha representa (1 nas normais); null quando a fonte não informa o N de uma linha agregada. */
+  quantidade_doadores: number | null;
 }
 
 export interface TopDoadorItem {
@@ -1101,7 +1105,7 @@ export interface EnriquecimentoPatrimonialData {
   salario_acumulado_estimado: number | null;
   razao_patrimonio_renda: number | null;
   /** Anos das duas declarações comparadas (mesmo período do subsídio registrado); `null` sem comparação. */
-  periodo_comparado?: { de: number; ate: number } | null;
+  periodo_comparado?: { de: number; ate: number; subsidio_de: number; subsidio_ate: number } | null;
   compatibilidade: "COMPATÍVEL" | "MODERADO" | "ATÍPICO" | null;
   diagnostico: string;
 }

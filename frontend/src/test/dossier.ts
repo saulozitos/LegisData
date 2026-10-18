@@ -77,8 +77,8 @@ export function fullDossier(): PoliticoDossier {
       eleicoes_disponiveis: [2022],
       top_doadores: [{ nome_doador: 'Doador Um', cpf_cnpj_doador: '***.456.789-**', valor_doado: 1000000, tipo_receita: 'Fundo Partidário', percentual: 50 }],
       todas_doacoes: [
-        { id: 'd1', ano_eleicao: 2022, nome_doador: 'Doador Um', cpf_cnpj_doador: '12345678901', valor_doado: 1000000, tipo_receita: 'Fundo Partidário' },
-        { id: 'd2', ano_eleicao: 2022, nome_doador: 'Empresa Dois', cpf_cnpj_doador: null, valor_doado: 1000000, tipo_receita: null },
+        { id: 'd1', ano_eleicao: 2022, nome_doador: 'Doador Um', cpf_cnpj_doador: '***.456.789-**', valor_doado: 1000000, tipo_receita: 'Fundo Partidário', agregado: false, quantidade_doadores: 1 },
+        { id: 'd2', ano_eleicao: 2022, nome_doador: 'Empresa Dois', cpf_cnpj_doador: null, valor_doado: 1000000, tipo_receita: null, agregado: false, quantidade_doadores: 1 },
       ],
     },
     basometro: { taxa_governismo_pct: 72, total_votacoes_analisadas: 50, votos_alinhados: 36, votos_divergentes: 14, classificacao: 'GOVERNISTA' },

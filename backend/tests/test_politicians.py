@@ -268,7 +268,7 @@ def test_dossier_reaches_finance_stored_on_the_duplicate_with_the_official_id(cl
     assert beltrano["possui_dados"] is True and beltrano["gasto_total_recente"] == 900.0
     # quem tem outro identificador não herda nada
     lula = client.get(f"{BASE}/{seed.lula_fonte.id}").json()["custos_ceap"]
-    assert lula["possui_dados"] is False and lula["gasto_total_recente"] == 0.0
+    assert lula["possui_dados"] is False and lula["gasto_total_recente"] is None  # sem dado não é "gasto zero"
 
 
 def test_dossier_for_politician_without_any_data_has_empty_sections(client, db, seed):

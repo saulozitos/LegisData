@@ -1195,14 +1195,20 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         "diagnostico": diag_hhi,
     }
 
-    # 3. Evolução patrimonial vs. remuneração oficial registrada: as duas pontas cobrem o MESMO período (a declaração-base
-    # é a última até o primeiro ano da remuneração) e é preciso ao menos uma declaração depois da base.
+    # 3. Evolução patrimonial vs. remuneração oficial registrada: as duas pontas cobrem o MESMO período. A base é a última
+    # declaração até o primeiro ano da remuneração, o fim é a última até o último ano dela, e o divisor soma só o subsídio
+    # dentro da janela (não o acumulado do mandato inteiro, que alimenta o ROI).
     janela_patrimonio = financas_service.declaracoes_na_janela_da_remuneracao(
-        patrimonio_historico, remun["primeiro_ano"]
+        patrimonio_historico, remun["primeiro_ano"], remun["ano"]
     )
-    if len(janela_patrimonio) >= 2 and salario_acumulado_registrado > 0:
+    subsidio_da_janela = (
+        financas_service.subsidio_na_janela(db, pessoas, janela_patrimonio[0]["ano"], janela_patrimonio[-1]["ano"])
+        if janela_patrimonio
+        else None
+    )
+    if subsidio_da_janela:
         delta_patrimonio: Optional[float] = round(janela_patrimonio[-1]["valor"] - janela_patrimonio[0]["valor"], 2)
-        razao_patrimonio_renda: Optional[float] = round(delta_patrimonio / salario_acumulado_registrado, 2)
+        razao_patrimonio_renda: Optional[float] = round(delta_patrimonio / subsidio_da_janela, 2)
 
         if delta_patrimonio <= 0 or razao_patrimonio_renda <= 0.8:
             compat_patrimonial = "COMPATÍVEL"
@@ -1218,17 +1224,20 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         periodo_comparado: Optional[Dict[str, int]] = {
             "de": janela_patrimonio[0]["ano"],
             "ate": janela_patrimonio[-1]["ano"],
+            # o subsídio somado começa no ano seguinte ao da base e termina no ano do fim da janela
+            "subsidio_de": janela_patrimonio[0]["ano"] + 1,
+            "subsidio_ate": janela_patrimonio[-1]["ano"],
         }
     else:
         delta_patrimonio = None
         razao_patrimonio_renda = None
         compat_patrimonial = None
         periodo_comparado = None
-        diag_patrimonio = "Dados insuficientes (requer uma declaração de bens até o início da remuneração registrada e outra depois dela)."
+        diag_patrimonio = "Dados insuficientes (requer uma declaração de bens até o início da remuneração registrada e outra depois dela, até o fim dela)."
 
     enriquecimento_patrimonial = {
         "delta_patrimonio": round(delta_patrimonio, 2) if delta_patrimonio is not None else None,
-        "salario_acumulado_estimado": round(salario_acumulado_registrado, 2) if salario_acumulado_registrado else None,
+        "salario_acumulado_estimado": round(subsidio_da_janela, 2) if subsidio_da_janela else None,
         "razao_patrimonio_renda": razao_patrimonio_renda,
         "periodo_comparado": periodo_comparado,
         "compatibilidade": compat_patrimonial,

@@ -17,6 +17,7 @@ from etl.utils.bootstrap import ensure_backend_on_path
 ensure_backend_on_path()
 
 from sqlalchemy.engine import Engine  # noqa: E402
+from sqlalchemy.exc import DBAPIError  # noqa: E402
 
 logger = logging.getLogger("CargaEconomica")
 
@@ -33,6 +34,20 @@ CARGAS: Tuple[Tuple[str, str, str, Optional[str]], ...] = (
     ("pnad", "PNAD (classes sociais)", "etl.pipelines.pnad_loader", None),
     ("financas", "Finanças (fin)", "etl.pipelines.financas_loader", None),
 )
+
+
+def descricao_do_erro(exc: Exception) -> str:
+    """
+    Texto do erro que pode ir para o log e para a saída do deploy. O erro do Postgres traz um `DETAIL: Failing row
+    contains (...)` com os valores da linha (o `hide_parameters` do engine não o esconde), então dele só saem o tipo, a
+    mensagem principal e o nome da restrição. Os demais erros (as mensagens da própria carga) saem como são.
+    """
+    if isinstance(exc, DBAPIError):
+        diag = getattr(exc.orig, "diag", None)
+        principal = getattr(diag, "message_primary", None) or "erro do banco"
+        restricao = getattr(diag, "constraint_name", None)
+        return f"{type(exc).__name__}: {principal}" + (f" (restrição {restricao})" if restricao else "")
+    return str(exc)
 
 
 def carregar_tudo(
@@ -62,11 +77,13 @@ def carregar_tudo(
             resultados[chave] = importlib.import_module(modulo).carregar(engine)
             logger.info("%s: %s", nome, resultados[chave])
         except Exception as exc:  # noqa: BLE001 - isolada de propósito; relatada abaixo
-            logger.error("Carga '%s' falhou: %s", nome, exc, exc_info=True)
+            descricao = descricao_do_erro(exc)
+            # a pilha de um erro do banco repete a mensagem inteira, com os valores da linha: só ela é omitida
+            logger.error("Carga '%s' falhou: %s", nome, descricao, exc_info=not isinstance(exc, DBAPIError))
             if chave in aceitas:
-                resultados[chave] = {"erro": str(exc)}
+                resultados[chave] = {"erro": descricao}
                 continue
-            falhas.append(f"{nome}: {exc}")
+            falhas.append(f"{nome}: {descricao}")
             falharam.add(chave)
     if falhas:
         raise RuntimeError("; ".join(falhas))
