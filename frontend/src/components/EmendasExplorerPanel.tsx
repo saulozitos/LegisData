@@ -678,11 +678,11 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
                       <p className="text-xs text-slate-400 mt-1 max-w-2xl">
                         {autorQuery.data.perfil_autor?.descricao_amigavel}
                       </p>
-                      {(autorQuery.data.quantidade_autores ?? 1) > 1 && (
+                      {autorQuery.data.quantidade_autores > 1 && (
                         <p className="text-xs text-amber-300 mt-2 max-w-2xl">
                           Esta busca reuniu {autorQuery.data.quantidade_autores} autores (
-                          {(autorQuery.data.autores_encontrados ?? []).map((a) => a.nome_amigavel).join(", ")}
-                          {(autorQuery.data.quantidade_autores ?? 0) > (autorQuery.data.autores_encontrados ?? []).length
+                          {autorQuery.data.autores_encontrados.map((a) => a.nome_amigavel).join(", ")}
+                          {autorQuery.data.quantidade_autores > autorQuery.data.autores_encontrados.length
                             ? " e outros"
                             : ""}
                           ). Os totais abaixo somam todos eles.

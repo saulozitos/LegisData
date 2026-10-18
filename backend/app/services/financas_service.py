@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from app.core.errors import ErroDeDominio
 from app.core.numeros import opt_float as _opt_float
 from app.core.numeros import pct as _pct
 from sqlalchemy import text
@@ -93,7 +94,7 @@ def custos_ceap(db: Session, pessoas: Sequence[int]) -> Optional[Dict[str, Any]]
             "SELECT (array_agg(nome ORDER BY valor_total DESC, nome))[1] AS nome, max(cnpj) AS cnpj, "
             "sum(valor_total) AS total, "
             "CASE WHEN bool_or(notas IS NULL) THEN NULL ELSE sum(notas) END AS notas FROM fin.despesa_cota_fornecedor "
-            "WHERE pessoa_id = ANY(:ids) GROUP BY coalesce(cnpj, nome) ORDER BY total DESC, nome LIMIT 10"
+            "WHERE pessoa_id = ANY(:ids) GROUP BY grupo ORDER BY total DESC, nome LIMIT 10"
         ),
         {"ids": ids},
     ).all()
@@ -123,7 +124,11 @@ def custos_ceap(db: Session, pessoas: Sequence[int]) -> Optional[Dict[str, Any]]
 
 
 def vazio_ceap() -> Dict[str, Any]:
-    """Resposta da CEAP de quem não tem dado, num dict novo a cada chamada (as listas não são compartilhadas)."""
+    """
+    Resposta da CEAP de quem não tem dado, num dict novo a cada chamada (as listas não são compartilhadas). O dossiê
+    sempre devolve os totais numéricos (0.0) com `possui_dados` falso e a tela mostra "indisponível"; já `/ceap` avulso
+    devolve `total_gasto` nulo, porque ali o consumidor é um cliente da API e zero afirmaria "gasto zero".
+    """
     return {
         "possui_dados": False,
         "gasto_total_recente": 0.0,
@@ -230,7 +235,7 @@ def emendas_do_parlamentar(db: Session, pessoas: Sequence[int]) -> Optional[Dict
 
 
 def vazio_emendas() -> Dict[str, Any]:
-    """Resposta das emendas de quem não tem nenhuma, num dict novo a cada chamada."""
+    """Resposta das emendas de quem não tem nenhuma, num dict novo a cada chamada (totais 0.0 e `possui_dados` falso)."""
     return {
         "possui_dados": False,
         "total_empenhado": 0.0,
@@ -248,7 +253,7 @@ def emendas_detalhadas(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
     """Totais e linhas das emendas do parlamentar (rota `/emendas` do dossiê)."""
     ids = list(pessoas)
     if not ids:
-        return {"total_empenhado": 0.0, "total_pago": 0.0, "emendas": []}
+        return {"possui_dados": False, "total_empenhado": 0.0, "total_pago": 0.0, "emendas": []}
     empenhado, pago = db.execute(
         text(
             "SELECT coalesce(sum(valor_empenhado), 0), coalesce(sum(valor_pago), 0) FROM fin.emenda "
@@ -264,6 +269,7 @@ def emendas_detalhadas(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
         {"ids": ids, "limite": MAX_EMENDAS_DETALHADAS},
     ).all()
     return {
+        "possui_dados": len(linhas) > 0,
         "total_empenhado": float(empenhado),
         "total_pago": float(pago),
         "emendas": [
@@ -390,19 +396,37 @@ def doacoes_de_campanha(db: Session, pessoas: Sequence[int]) -> List[Dict[str, A
     ]
 
 
-def resumo_das_doacoes(doacoes: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+DOADOR_ANONIMO = "Doador não identificado"  # o mesmo rótulo que o ETL grava quando a fonte não informa o nome
+
+
+def resumo_das_doacoes(doacoes: Sequence[Dict[str, Any]], ano_eleicao: Optional[int] = None) -> Dict[str, Any]:
     """
-    Resumo da campanha mais recente da lista (já ordenada por valor): a eleição, as doações dela, o total, a quantidade de
-    doadores distintos e os 5 maiores (com a participação de cada um). Eleições diferentes nunca se misturam no total.
+    Resumo de UMA campanha da lista (já ordenada por valor): a eleição pedida ou, sem pedido, a mais recente. Traz as
+    doações dela, o total, a quantidade de recibos e de doadores distintos, os 5 maiores doadores (com a participação
+    de cada um) e as eleições disponíveis. Eleições diferentes nunca se misturam no total. Um doador com vários recibos
+    conta uma vez; doador sem nome e sem documento não se funde com outro (cada recibo é um doador desconhecido).
+    Levanta `ErroDeDominio` 404 quando a eleição pedida não tem doações.
     """
-    if not doacoes:
-        return {"ano_eleicao": None, "doacoes": [], "total": 0.0, "quantidade": 0, "top_5": []}
-    ano = max(d["ano_eleicao"] for d in doacoes)
+    eleicoes = sorted({d["ano_eleicao"] for d in doacoes}, reverse=True)
+    if not eleicoes:
+        return {
+            "ano_eleicao": None,
+            "eleicoes_disponiveis": [],
+            "doacoes": [],
+            "total": 0.0,
+            "total_recibos": 0,
+            "quantidade": 0,
+            "top_5": [],
+        }
+    ano = ano_eleicao if ano_eleicao is not None else eleicoes[0]
+    if ano not in eleicoes:
+        raise ErroDeDominio(404, "Não há doações registradas para essa eleição.")
     da_campanha = [d for d in doacoes if d["ano_eleicao"] == ano]
     total = float(sum(d["valor_doado"] for d in da_campanha))
-    por_doador: Dict[Tuple[Any, Any], Dict[str, Any]] = {}
-    for d in da_campanha:  # um doador com vários recibos conta uma vez; o tipo é o do maior recibo
-        chave = (d["nome_doador"], d["cpf_cnpj_doador"])
+    por_doador: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
+    for d in da_campanha:  # o tipo do doador é o do maior recibo
+        anonimo = d["cpf_cnpj_doador"] is None and d["nome_doador"] == DOADOR_ANONIMO
+        chave: Tuple[Any, ...] = ("recibo", d["id"]) if anonimo else (d["nome_doador"], d["cpf_cnpj_doador"])
         atual = por_doador.get(chave)
         if atual is None:
             por_doador[chave] = {**d, "maior": d["valor_doado"]}
@@ -413,8 +437,10 @@ def resumo_das_doacoes(doacoes: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     maiores = sorted(por_doador.values(), key=lambda x: (-x["valor_doado"], x["nome_doador"] or ""))[:5]
     return {
         "ano_eleicao": ano,
+        "eleicoes_disponiveis": eleicoes,
         "doacoes": da_campanha,
         "total": round(total, 2),
+        "total_recibos": len(da_campanha),
         "quantidade": len(por_doador),
         "top_5": [
             {

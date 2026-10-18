@@ -434,20 +434,26 @@ UF_POR_NOME = {
     "TOCANTINS": "TO",
 }
 _UFS = frozenset(UF_POR_NOME.values())
-# CPF solto no nome (MEI vem como "NOME 012.345.678-00" ou "NOME 09876543200"): 10 ou 11 dígitos, juntos ou separados por
-# até 3 caracteres entre ponto, hífen, barra, vírgula, dois-pontos, sublinhado e espaço (por exemplo " - "). Dígitos de
-# outros alfabetos, de largura total e hífens Unicode viram ASCII antes (`_ascii`). O CNPJ formatado vem primeiro na alternância para não ser lido
-# como um CPF parcial; CNPJ sem pontuação (14 dígitos) nunca casa porque a sequência exige 10 ou 11 no total.
-_SEQUENCIA_CPF = re.compile(
-    r"(?<![0-9])(?P<cnpj>[0-9]{2}\.[0-9]{3}\.[0-9]{3}/[0-9]{4}-[0-9]{2})(?![0-9])"
-    r"|(?<![0-9])(?:[0-9][\s.\-/_,:]{0,3}){9,10}[0-9](?![0-9])"
-)
+# Formas de CPF reconhecidas (o texto já passou por `_ascii`: dígitos, hífens e espaços Unicode viraram ASCII):
+#  - canônica NNN.NNN.NNN-NN, em qualquer vizinhança que não seja outro dígito ("2020-012.345.678-00", "...-00,987...");
+#  - grupos 3-3-3-2 com até 3 caracteres de separação (ponto, hífen, barra, vírgula, dois-pontos, sublinhado, espaço) ou
+#    sem separação, e 10 dígitos seguidos (CPF que perdeu o zero à esquerda). O separador antes dos dois últimos dígitos
+#    nunca é só uma vírgula: "123.456.789,00" é valor em reais, não CPF.
+# Data, hora, telefone, lista numerada e número de processo não têm o desenho 3-3-3-2 e ficam intactos. O CNPJ formatado
+# vem primeiro na alternância para não ser lido como CPF parcial; CNPJ sem pontuação (14 dígitos) nunca casa porque a
+# sequência é limitada por não-dígitos.
+_SEP = r"[\s.\-/_,:]{1,3}"
+_SEP_FINAL = r"[\s.\-/_:]{1,3}"
+_CNPJ_FORMATADO = r"(?<![0-9])(?P<cnpj>[0-9]{2}\.[0-9]{3}\.[0-9]{3}/[0-9]{4}-[0-9]{2})(?![0-9])"
+_CPF_CANONICO = r"(?<![0-9])[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}(?![0-9])"
+_CPF_AGRUPADO = rf"[0-9]{{3}}(?:{_SEP})?[0-9]{{3}}(?:{_SEP})?[0-9]{{3}}(?:{_SEP_FINAL})?[0-9]{{2}}|[0-9]{{10}}"
+_SEQUENCIA_CPF = re.compile(rf"{_CNPJ_FORMATADO}|{_CPF_CANONICO}|(?<![0-9])(?:{_CPF_AGRUPADO})(?![0-9])")
 _MASCARA_CPF = re.compile(r"^\*{3}\.[0-9]{3}\.[0-9]{3}-\*{2}$")
 TIPOS_DE_AUTOR_INSTITUCIONAL = ("BANCADA_ESTADUAL", "COMISSAO_INSTITUCIONAL", "RELATOR_GERAL")
 
 
 def so_digitos(valor: Any) -> str:
-    return re.sub(r"[^0-9]", "", _ascii(valor)) if valor is not None else ""
+    return re.sub(r"[^0-9]", "", _ascii(texto(valor))) if valor is not None else ""
 
 
 def cnpj_do_fornecedor(valor: Any) -> Optional[str]:
@@ -464,18 +470,22 @@ def cnpj_do_fornecedor(valor: Any) -> Optional[str]:
 def _ascii(valor: Any) -> str:
     """
     Texto com qualquer dígito Unicode (árabe-índico, largura total...) trocado pelo dígito ASCII equivalente, hífens
-    Unicode (U+2010, travessão, sinal de menos) trocados por '-' e espaços Unicode por espaço comum.
+    Unicode (U+2010, travessão, sinal de menos) trocados por '-', pontos médios por '.', espaços Unicode por espaço
+    comum e caracteres invisíveis de formatação (largura zero, hífen suave) removidos.
     """
     normal = unicodedata.normalize("NFKC", str(valor or ""))
     saida = []
     for c in normal:
+        categoria = unicodedata.category(c)
         if unicodedata.decimal(c, None) is not None:
             saida.append(str(unicodedata.decimal(c)))
-        elif unicodedata.category(c) == "Pd" or c == "\u2212":
+        elif categoria == "Pd" or c == "\u2212":
             saida.append("-")
-        elif unicodedata.category(c) in ("Zs", "Zl", "Zp"):
+        elif c in "\u00b7\u2027":
+            saida.append(".")
+        elif categoria in ("Zs", "Zl", "Zp"):
             saida.append(" ")
-        else:
+        elif categoria != "Cf":
             saida.append(c)
     return "".join(saida)
 
@@ -487,8 +497,7 @@ def _sem_cpf(achado: "re.Match[str]") -> str:
 
 def nome_do_fornecedor(valor: Any) -> str:
     """Nome do fornecedor sem CPF embutido (MEI aparece como 'NOME 09876543200' na fonte); vazio vira o rótulo padrão."""
-    limpo = " ".join(_SEQUENCIA_CPF.sub(_sem_cpf, _ascii(texto(valor))).split())
-    return limpo or "Fornecedor não identificado"
+    return nome_sem_cpf(valor) or "Fornecedor não identificado"
 
 
 def nome_sem_cpf(valor: Any) -> Optional[str]:
@@ -497,16 +506,15 @@ def nome_sem_cpf(valor: Any) -> Optional[str]:
     return limpo or None
 
 
-# CPF em texto livre (descrição de bens, detalhes de certidão): 10 ou 11 dígitos com até 3 separadores entre eles, como na
-# regra dos nomes, mas sem cortar valores em reais nem números maiores:
-#  - "R$ 12345678900" (precedido do símbolo da moeda) é preservado;
-#  - o lookbehind recusa começo no meio de um número ("1.234.567.890,00": dígito + ponto/vírgula/hífen antes) e o
-#    lookahead recusa fim antes de casa decimal ("890,00") ou de mais um dígito;
-#  - CNPJ formatado vem primeiro na alternância e nunca é cortado.
-# CPF colado a letra, vírgula, ponto ou hífen de rótulo ("CPF-012.345.678-00", "Réu,012.345.678-00") é removido.
+# CPF em texto livre (descrição de bens, detalhes de certidão): as mesmas formas dos nomes, sem cortar valores em reais
+# nem números maiores. Fora da forma canônica (que nunca é valor em reais), a sequência:
+#  - precedida de "R$" é preservada ("R$ 12345678900");
+#  - não começa no meio de um número ("1.234.567.890,00": dígito + ponto/vírgula antes) nem termina antes de casa decimal
+#    ("12345678900,50").
 _CPF_EM_TEXTO = re.compile(
-    r"(?P<moeda>R\$\s*)?(?:(?<![0-9])(?P<cnpj>[0-9]{2}\.[0-9]{3}\.[0-9]{3}/[0-9]{4}-[0-9]{2})(?![0-9])"
-    r"|(?<![0-9])(?<![0-9][.,\-])(?:[0-9][\s.\-/_,:]{0,3}){9,10}[0-9](?![0-9])(?![.,][0-9]))"
+    rf"{_CPF_CANONICO}"
+    rf"|(?P<moeda>R\$\s*)?(?:{_CNPJ_FORMATADO}"
+    rf"|(?<![0-9])(?<![0-9][.,])(?:{_CPF_AGRUPADO})(?![0-9])(?![.,][0-9]))"
 )
 
 
@@ -679,3 +687,138 @@ def ler_doacoes(item: Any) -> Tuple[Optional[int], List[Dict[str, Any]], Optiona
             }
         )
     return ano, linhas, None
+
+
+# ── Consolidação das linhas de finanças: funções puras, testáveis sem Postgres ────────────────────────────────────────
+def fornecedores_do_parlamentar(dados: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Fornecedores de uma entrada, com o mesmo CNPJ em grafias diferentes unido (fica o nome de maior valor)."""
+    agrupados: Dict[str, List[Any]] = {}  # grupo -> [valor, notas (None se desconhecida), nome, maior valor, cnpj]
+    lista_fornecedores = dados.get("fornecedores")
+    for item in (lista_fornecedores if isinstance(lista_fornecedores, dict) else {}).values():
+        if not isinstance(item, dict):
+            continue
+        valor_dec = decimal_de(item.get("total"))
+        if valor_dec is None:
+            continue
+        nome, cnpj = nome_do_fornecedor(item.get("nome")), cnpj_do_fornecedor(item.get("cnpj_cpf"))
+        notas = inteiro(item.get("notas"))
+        notas = notas if notas is not None and notas >= 0 else None
+        grupo = cnpj or f"nome:{nome}"  # sem CNPJ, vale o nome; é a mesma chave que a API usa para agrupar
+        acumulado = agrupados.setdefault(grupo, [Decimal(0), 0, nome, valor_dec, cnpj])
+        acumulado[0] += valor_dec
+        acumulado[1] = soma_ou_desconhecido(acumulado[1], notas)
+        if valor_dec > acumulado[3]:
+            acumulado[2], acumulado[3] = nome, valor_dec
+    return [
+        {"grupo": grupo, "nome": nome, "cnpj": cnpj, "valor": valor, "notas": notas}
+        for grupo, (valor, notas, nome, _maior, cnpj) in agrupados.items()
+    ]
+
+
+def resumos_completos(resumos: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Resumos de quem tem a quantidade de notas conhecida em TODAS as entradas (Câmara e Senado) que somaram gasto. Uma
+    contagem parcial ao lado do gasto completo enganaria, então a pessoa fica sem resumo. Devolve também quantas ficaram.
+    """
+    incompletas = {r["p"] for r in resumos if r["notas"] is None}
+    return [r for r in resumos if r["p"] not in incompletas and r["notas"] is not None], len(incompletas)
+
+
+def chave_de_desempate(linha: Dict[str, Any], *campos: str) -> Tuple[Any, ...]:
+    """
+    Ordem total entre duas linhas que disputam a mesma chave: os campos na ordem dada, com o desconhecido (None) abaixo de
+    qualquer valor. O resultado não depende da ordem em que o arquivo traz as linhas.
+    """
+    return tuple((0, "") if linha[c] is None else (1, linha[c]) for c in campos)
+
+
+def soma_ou_desconhecido(a: Any, b: Any) -> Any:
+    """Soma de duas parcelas; se qualquer uma é desconhecida (None) o total também é: parcial nunca vale como total."""
+    return None if a is None or b is None else a + b
+
+
+def somar_linhas(
+    linhas: List[Dict[str, Any]], chave: Tuple[str, ...], somas: Tuple[str, ...]
+) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Junta linhas de mesma chave e devolve também quantas linhas repetiram a chave na MESMA fonte. Dentro de uma fonte
+    a repetição é o mesmo dado sob outra grafia do nome, então fica a linha de maior valor; entre fontes diferentes
+    (Câmara e Senado) os campos numéricos se somam (desconhecido em qualquer parcela deixa o total desconhecido).
+    Nos empates e na escolha da linha que define os demais campos (nome, fonte) decide o conteúdo da linha, nunca a
+    ordem em que o arquivo ou as fontes aparecem.
+    """
+
+    def ordem(linha: Dict[str, Any]) -> Tuple[Any, ...]:
+        return chave_de_desempate(linha, *somas, *sorted(set(linha) - set(somas)))
+
+    por_fonte: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
+    repetidas = 0
+    for linha in linhas:
+        k = (tuple(linha[c] for c in chave), linha["f"])
+        atual = por_fonte.get(k)
+        if atual is None:
+            por_fonte[k] = dict(linha)
+            continue
+        repetidas += 1
+        if ordem(linha) > ordem(atual):
+            por_fonte[k] = dict(linha)
+    grupos: Dict[Tuple[Any, ...], List[Dict[str, Any]]] = {}
+    for (k, _fonte), linha in por_fonte.items():
+        grupos.setdefault(k, []).append(linha)
+    unicas = []
+    for candidatas in grupos.values():
+        vencedora = max(candidatas, key=ordem)
+        base = dict(vencedora)
+        for outra in candidatas:
+            if outra is not vencedora:
+                for campo in somas:
+                    base[campo] = soma_ou_desconhecido(base[campo], outra[campo])
+        unicas.append(base)
+    return unicas, repetidas
+
+
+def chave_da_prestacao(linhas: List[Dict[str, Any]]) -> Tuple[Any, ...]:
+    """Ordem total entre prestações do mesmo (pessoa, ano): quantidade, soma e, no empate, o conteúdo das linhas."""
+    conteudo = sorted((x["nome"], x["doc"] or "", str(x["valor"]), x["tipo"] or "") for x in linhas)
+    return len(linhas), sum((x["valor"] for x in linhas), Decimal(0)), conteudo
+
+
+def registros_da_remuneracao(corpo: Any) -> Optional[List[Any]]:
+    """Meses de remuneração do arquivo, ou None quando ele não vale (não é objeto ou sem proveniência oficial)."""
+    if not isinstance(corpo, dict) or not is_trusted(corpo):
+        return None
+    registros = corpo.get("registros")
+    return registros if isinstance(registros, list) else []
+
+
+def ler_patrimonio(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Campos de uma declaração de bens, ou (None, "sem_proveniencia" | "invalidas"). Regra única de elegibilidade."""
+    if not isinstance(item, dict) or not is_trusted(item):
+        return None, "sem_proveniencia"
+    ano = inteiro_em(item.get("ano_eleicao"), ANO_MINIMO, ANO_MAXIMO)
+    valor = decimal_de(item.get("valor_declarado_brl"), LIMITE_TSE)
+    if ano is None or valor is None:
+        return None, "invalidas"
+    quantidade = inteiro(item.get("quantidade_bens"))
+    return {
+        "ano": ano,
+        "valor": valor,
+        "qtd": quantidade if quantidade is not None and quantidade >= 0 else None,
+        "det": texto_sem_cpf(item.get("detalhes_bens")),
+    }, None
+
+
+def ler_certidao(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Campos de uma situação de registro do TSE, ou (None, "sem_proveniencia" | "invalidas"). Regra única."""
+    if not isinstance(item, dict) or not is_trusted(item):
+        return None, "sem_proveniencia"
+    orgao, tipo, situacao = texto(item.get("orgao")), texto(item.get("tipo_certidao")), texto(item.get("status_ficha"))
+    if not (orgao and tipo and situacao):
+        return None, "invalidas"
+    return {
+        "orgao": orgao,
+        "tipo": tipo,
+        "situacao": situacao,
+        "det": texto_sem_cpf(item.get("detalhes")),
+        "proc": texto(item.get("numero_processo")),
+    }, None

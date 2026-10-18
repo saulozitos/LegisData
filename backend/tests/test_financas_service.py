@@ -1,5 +1,7 @@
 """Serviço de finanças sobre `fin`: limites, ordenação e a regra de que dado desconhecido nunca vira zero."""
 
+import pytest
+from app.core.errors import ErroDeDominio
 from app.services import financas_service as fs
 from sqlalchemy import text
 
@@ -164,11 +166,12 @@ def test_ceap_fornecedor_com_quantidade_de_notas_desconhecida_nao_mostra_zero(db
     fornecedores = {f["nome_fornecedor"]: f["num_notas"] for f in fs.custos_ceap(db, [pessoa])["maiores_fornecedores"]}
     assert fornecedores == {"Sol": None, "Lua": 3}
     # o mesmo CNPJ com uma parcela desconhecida também fica desconhecido
+    irma = db.execute(text("INSERT INTO core.pessoa (nome_exibicao) VALUES ('Fulano irma') RETURNING id")).scalar_one()
     for nome, notas in (("Posto A", 2), ("Posto B", None)):
         inserir_fin(
             db,
             "despesa_cota_fornecedor",
-            pessoa_id=pessoa,
+            pessoa_id=irma if nome == "Posto B" else pessoa,
             nome=nome,
             cnpj="02558157000162",
             valor_total=50,
@@ -176,7 +179,7 @@ def test_ceap_fornecedor_com_quantidade_de_notas_desconhecida_nao_mostra_zero(db
             fonte_id=fonte_id(db, "SENADO_API") if nome == "Posto B" else fonte,
         )
     db.commit()
-    posto = [f for f in fs.custos_ceap(db, [pessoa])["maiores_fornecedores"] if f["cnpj_cpf"]][0]
+    posto = [f for f in fs.custos_ceap(db, [pessoa, irma])["maiores_fornecedores"] if f["cnpj_cpf"]][0]
     assert posto["total_recebido"] == 100.0 and posto["num_notas"] is None
 
 
@@ -202,13 +205,15 @@ def test_ceap_ordena_o_detalhe_por_ano_depois_por_valor(db, pessoa):
     assert [d["tipo"] for d in fs.ceap_por_ano_e_tipo(db, [pessoa])["despesas"]] == ["Z", "A"]
 
 
-def test_ceap_junta_o_mesmo_cnpj_com_grafias_diferentes_num_fornecedor_so(db, pessoa):
+def test_ceap_junta_o_mesmo_cnpj_de_cadastros_irmaos_num_fornecedor_so(db, pessoa):
+    # Câmara e Senado do mesmo parlamentar são duas pessoas até a unificação: o mesmo CNPJ vem com grafias diferentes
+    irma = db.execute(text("INSERT INTO core.pessoa (nome_exibicao) VALUES ('Fulano irma') RETURNING id")).scalar_one()
     inserir_fin(db, "despesa_cota", pessoa_id=pessoa, ano=2024, tipo_despesa="T", valor_liquido=1000)
-    for nome, valor in (("POSTO SOL LTDA", 300), ("POSTO SOL", 200)):
+    for dono, nome, valor in ((pessoa, "POSTO SOL LTDA", 300), (irma, "POSTO SOL", 200)):
         inserir_fin(
             db,
             "despesa_cota_fornecedor",
-            pessoa_id=pessoa,
+            pessoa_id=dono,
             nome=nome,
             cnpj="02558157000162",
             valor_total=valor,
@@ -216,7 +221,7 @@ def test_ceap_junta_o_mesmo_cnpj_com_grafias_diferentes_num_fornecedor_so(db, pe
         )
     inserir_fin(db, "despesa_cota_fornecedor", pessoa_id=pessoa, nome="SEM CNPJ", cnpj=None, valor_total=400, notas=1)
     db.commit()
-    forn = fs.custos_ceap(db, [pessoa])["maiores_fornecedores"]
+    forn = fs.custos_ceap(db, [pessoa, irma])["maiores_fornecedores"]
     assert [(f["nome_fornecedor"], f["total_recebido"], f["num_notas"]) for f in forn] == [
         ("POSTO SOL LTDA", 500.0, 4),  # nome de maior valor, soma e notas das duas grafias
         ("SEM CNPJ", 400.0, 1),
@@ -240,8 +245,9 @@ def test_remuneracao_devolve_so_os_ultimos_12_meses_do_mais_recente_para_o_mais_
     )
 
 
-def _doacao(nome, valor, ano=2022, doc=None, tipo=None):
+def _doacao(nome, valor, ano=2022, doc=None, tipo=None, id_="1"):
     return {
+        "id": id_,
         "ano_eleicao": ano,
         "nome_doador": nome,
         "cpf_cnpj_doador": doc,
@@ -256,7 +262,15 @@ def test_resumo_das_doacoes_soma_tudo_mas_lista_so_os_cinco_maiores_com_a_partic
     assert resumo["total"] == 100.0 and resumo["quantidade"] == 7 and resumo["ano_eleicao"] == 2022
     assert [d["nome_doador"] for d in resumo["top_5"]] == ["D0", "D1", "D2", "D3", "D4"]
     assert resumo["top_5"][0]["percentual"] == 50.0
-    vazio = {"ano_eleicao": None, "doacoes": [], "total": 0.0, "quantidade": 0, "top_5": []}
+    vazio = {
+        "ano_eleicao": None,
+        "eleicoes_disponiveis": [],
+        "doacoes": [],
+        "total": 0.0,
+        "total_recibos": 0,
+        "quantidade": 0,
+        "top_5": [],
+    }
     assert fs.resumo_das_doacoes([]) == vazio
 
 
@@ -279,3 +293,35 @@ def test_resumo_das_doacoes_conta_doador_distinto_e_soma_os_recibos_dele():
     ana = resumo["top_5"][0]
     assert ana["nome_doador"] == "Ana" and ana["valor_doado"] == 70.0 and ana["percentual"] == 70.0
     assert ana["tipo_receita"] == "Cheque"  # o tipo é o do maior recibo
+
+
+def test_resumo_das_doacoes_aceita_pedir_uma_eleicao_e_lista_as_disponiveis():
+    doacoes = [_doacao("Antigo", 900, ano=2018), _doacao("Novo", 100, ano=2022)]
+    recente = fs.resumo_das_doacoes(doacoes)
+    antiga = fs.resumo_das_doacoes(doacoes, 2018)
+    assert recente["eleicoes_disponiveis"] == antiga["eleicoes_disponiveis"] == [2022, 2018]
+    assert recente["ano_eleicao"] == 2022 and antiga["ano_eleicao"] == 2018 and antiga["total"] == 900.0
+    with pytest.raises(ErroDeDominio) as erro:
+        fs.resumo_das_doacoes(doacoes, 2010)
+    assert erro.value.status_code == 404
+
+
+def test_resumo_das_doacoes_nao_funde_doadores_anonimos_nem_homonimos_com_documentos_diferentes():
+    doacoes = [
+        _doacao("Doador não identificado", 40, id_="a"),
+        _doacao("Doador não identificado", 30, id_="b"),
+        _doacao("Ana", 20, doc="***.111.222-**", id_="c"),
+        _doacao("Ana", 10, doc="***.333.444-**", id_="d"),
+    ]
+    resumo = fs.resumo_das_doacoes(doacoes)
+    assert resumo["quantidade"] == 4 and resumo["total_recibos"] == 4
+    assert [d["valor_doado"] for d in resumo["top_5"]] == [40.0, 30.0, 20.0, 10.0]
+
+
+def test_resumo_das_doacoes_desempata_na_fronteira_do_top_5_pelo_nome():
+    doacoes = [
+        _doacao(nome, valor, id_=nome)
+        for nome, valor in (("A", 50), ("B", 20), ("C", 10), ("D", 10), ("E", 5), ("G", 5), ("F", 5))
+    ]
+    nomes = [d["nome_doador"] for d in fs.resumo_das_doacoes(doacoes)["top_5"]]
+    assert nomes == ["A", "B", "C", "D", "E"]  # entre E, F e G (5 cada) fica o primeiro pelo nome

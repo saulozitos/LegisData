@@ -1135,6 +1135,8 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         "ano_eleicao": resumo_doacoes["ano_eleicao"],
         "total_arrecadado": resumo_doacoes["total"],
         "total_doadores": resumo_doacoes["quantidade"],
+        "total_recibos": resumo_doacoes["total_recibos"],
+        "eleicoes_disponiveis": resumo_doacoes["eleicoes_disponiveis"],
         "top_doadores": resumo_doacoes["top_5"],
         "todas_doacoes": resumo_doacoes["doacoes"],
     }
@@ -1421,17 +1423,24 @@ def get_politician_certidoes(politician_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{politician_id}/doacoes")
-def get_politician_doacoes(politician_id: str, db: Session = Depends(get_db)):
-    """Retorna as doações e financiamento eleitoral de campanha (TSE)."""
+def get_politician_doacoes(
+    politician_id: str,
+    ano_eleicao: Optional[int] = Query(None, ge=1995, le=2100, description="Eleição; sem ela vale a mais recente."),
+    db: Session = Depends(get_db),
+):
+    """Retorna as doações e financiamento eleitoral de uma campanha (TSE): a eleição pedida ou a mais recente."""
     pol = _resolve_politician(db, politician_id)
     doacoes = financas_service.doacoes_de_campanha(db, _pessoas_financas(db, pol))
-    resumo = financas_service.resumo_das_doacoes(doacoes)
+    resumo = financas_service.resumo_das_doacoes(doacoes, ano_eleicao)
     return {
         "politico_id": str(pol.id),
         "nome": pol.electoral_name,
+        "possui_dados": len(doacoes) > 0,
         "total_arrecadado": resumo["total"],
         "total_doadores": resumo["quantidade"],
+        "total_recibos": resumo["total_recibos"],
         "top_5": resumo["top_5"],
         "ano_eleicao": resumo["ano_eleicao"],
+        "eleicoes_disponiveis": resumo["eleicoes_disponiveis"],
         "doacoes": resumo["doacoes"],
     }

@@ -277,3 +277,29 @@ def test_busca_por_autor_que_reune_varios_autores_avisa_e_lista_quem_casou(clien
 def test_404_da_busca_nao_repete_o_termo_digitado(client, emendas, rota):
     resposta = client.get(f"{BASE}/{rota}/zzzNaoExiste")
     assert resposta.status_code == 404 and "zzzNaoExiste" not in resposta.text
+
+
+def test_termo_de_duas_letras_que_nao_e_uf_busca_por_trecho_do_nome(client, db):
+    _emenda(db, "ANA", "INDIVIDUAL", codigo_emenda="1", localidade_destino="BELO HORIZONTE - MG", uf="MG")
+    _emenda(db, "BIA", "INDIVIDUAL", codigo_emenda="2", localidade_destino="BH SHOPPING - MG", uf="MG")
+    db.commit()
+    assert client.get(f"{BASE}/localidade/bh").json()["total_emendas_encontradas"] == 1  # "BH" não é UF
+    assert client.get(f"{BASE}/localidade/mg").json()["total_emendas_encontradas"] == 2  # "MG" é UF
+
+
+def test_lista_de_autores_encontrados_corta_em_dez_e_conta_todos(client, db):
+    for i in range(11):
+        _emenda(db, f"AUTOR {i:02d} SILVA", "INDIVIDUAL", codigo_emenda=str(i), valor_pago=100 - i)
+    db.commit()
+    dados = client.get(f"{BASE}/autor/silva").json()
+    assert dados["quantidade_autores"] == 11 and len(dados["autores_encontrados"]) == 10
+    assert dados["autores_encontrados"][0]["nome_tecnico"] == "AUTOR 00 SILVA"
+
+
+def test_autor_com_emendas_de_tipos_diferentes_aparece_uma_vez(client, db):
+    _emenda(db, "COM. DE SAUDE", "COMISSAO_INSTITUCIONAL", codigo_emenda="1", valor_pago=500)
+    _emenda(db, "COM. DE SAUDE", "RELATOR_GERAL", codigo_emenda="2", valor_pago=1)
+    db.commit()
+    dados = client.get(f"{BASE}/autor/saude").json()
+    assert dados["quantidade_autores"] == 1 and len(dados["autores_encontrados"]) == 1
+    assert dados["autores_encontrados"][0]["tipo_autor"] == "COMISSAO_INSTITUCIONAL"  # o tipo do maior valor pago

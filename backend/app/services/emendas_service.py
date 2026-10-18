@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 # Termo de busca curto casa quase tudo e obriga a varrer a tabela inteira; o limite superior fica na rota.
 TAMANHO_MINIMO_DA_BUSCA = 2
+_DE = {"a localidade": "da localidade", "o autor": "do autor"}
 
 DICIONARIO_ORCAMENTO = {
     "termos": {
@@ -269,6 +270,27 @@ def resumo(db: Session) -> Dict[str, Any]:
     }
 
 
+def _termo_valido(valor: str, rotulo: str) -> str:
+    """Termo da busca sem espaços nas pontas; levanta 400 para caractere nulo ou menos de 2 caracteres."""
+    termo = valor.strip()
+    if "\x00" in termo:
+        raise ErroDeDominio(400, f"{rotulo.capitalize()} contém caractere inválido.")
+    if len(termo) < TAMANHO_MINIMO_DA_BUSCA:
+        raise ErroDeDominio(400, f"Informe ao menos 2 caracteres {_DE[rotulo]}.")
+    return termo
+
+
+def _areas(db: Session, ids: List[int]) -> List[Any]:
+    """Valores por área temática das emendas escolhidas."""
+    return db.execute(
+        text(
+            "SELECT coalesce(funcao, 'Outros') AS area, sum(valor_empenhado) AS empenhado, sum(valor_pago) AS pago, "
+            "count(*) AS quantidade FROM fin.emenda WHERE id = ANY(:ids) GROUP BY 1 ORDER BY pago DESC, 1"
+        ),
+        {"ids": ids},
+    ).all()
+
+
 def _ids_da_localidade(db: Session, termo: str) -> List[int]:
     """
     Emendas cujo destino casa com a busca. Sigla de estado (SP, MG...) vale pela coluna `uf`, que cobre o estado inteiro
@@ -288,11 +310,7 @@ def _ids_da_localidade(db: Session, termo: str) -> List[int]:
 
 def por_localidade(db: Session, localidade: str, limite: int) -> Dict[str, Any]:
     """Emendas destinadas a uma cidade ou estado (sigla do estado, ou trecho do nome sem acento nem caixa)."""
-    termo = localidade.strip()
-    if "\x00" in termo:
-        raise ErroDeDominio(400, "A localidade contém caractere inválido.")
-    if len(termo) < TAMANHO_MINIMO_DA_BUSCA:
-        raise ErroDeDominio(400, "Informe ao menos 2 caracteres da localidade.")
+    termo = _termo_valido(localidade, "a localidade")
     ids = _ids_da_localidade(db, termo)
     total = db.execute(
         text(
@@ -304,13 +322,7 @@ def por_localidade(db: Session, localidade: str, limite: int) -> Dict[str, Any]:
     if not total.n:
         raise ErroDeDominio(404, "Nenhuma emenda encontrada para essa localidade.")
     empenhado, pago = float(total.emp), float(total.pago)
-    areas = db.execute(
-        text(
-            "SELECT coalesce(funcao, 'Outros') AS area, sum(valor_empenhado) AS empenhado, sum(valor_pago) AS pago, "
-            "count(*) AS quantidade FROM fin.emenda WHERE id = ANY(:ids) GROUP BY 1 ORDER BY pago DESC, 1"
-        ),
-        {"ids": ids},
-    ).all()
+    areas = _areas(db, ids)
     linhas = db.execute(
         text(
             "SELECT codigo_emenda, ano, coalesce(funcao, 'Outros') AS area, tipo_emenda, valor_empenhado, valor_pago, "
@@ -319,6 +331,8 @@ def por_localidade(db: Session, localidade: str, limite: int) -> Dict[str, Any]:
         ),
         {"ids": ids, "limite": limite},
     ).all()
+    if not linhas:  # uma carga confirmada entre as consultas esvaziou o resultado
+        raise ErroDeDominio(404, "Nenhuma emenda encontrada para essa localidade.")
     return {
         "localidade_pesquisada": localidade,
         "total_emendas_encontradas": int(total.n),
@@ -346,11 +360,7 @@ def por_localidade(db: Session, localidade: str, limite: int) -> Dict[str, Any]:
 
 def por_autor(db: Session, autor: str, limite: int) -> Dict[str, Any]:
     """Emendas de um autor (parlamentar, comissão ou bancada), pelo trecho do nome ou pelo código do autor."""
-    termo = autor.strip()
-    if "\x00" in termo:
-        raise ErroDeDominio(400, "O autor contém caractere inválido.")
-    if len(termo) < TAMANHO_MINIMO_DA_BUSCA:
-        raise ErroDeDominio(400, "Informe ao menos 2 caracteres do autor.")
+    termo = _termo_valido(autor, "o autor")
     ids = [
         r[0]
         for r in db.execute(
@@ -370,8 +380,9 @@ def por_autor(db: Session, autor: str, limite: int) -> Dict[str, Any]:
     empenhado, pago = float(total.emp), float(total.pago)
     autores = db.execute(
         text(
-            "SELECT autor_texto, tipo_autor, count(*) AS quantidade FROM fin.emenda WHERE id = ANY(:ids) "
-            "GROUP BY 1, 2 ORDER BY sum(valor_pago) DESC, 1 LIMIT 10"
+            "SELECT autor_texto, (array_agg(tipo_autor ORDER BY valor_pago DESC, id))[1] AS tipo_autor, "
+            "count(*) AS quantidade FROM fin.emenda WHERE id = ANY(:ids) "
+            "GROUP BY autor_texto ORDER BY sum(valor_pago) DESC, autor_texto LIMIT 10"
         ),
         {"ids": ids},
     ).all()
@@ -383,13 +394,7 @@ def por_autor(db: Session, autor: str, limite: int) -> Dict[str, Any]:
         ),
         {"ids": ids},
     ).all()
-    areas = db.execute(
-        text(
-            "SELECT coalesce(funcao, 'Outros') AS area, sum(valor_empenhado) AS empenhado, sum(valor_pago) AS pago, "
-            "count(*) AS quantidade FROM fin.emenda WHERE id = ANY(:ids) GROUP BY 1 ORDER BY pago DESC, 1"
-        ),
-        {"ids": ids},
-    ).all()
+    areas = _areas(db, ids)
     linhas = db.execute(
         text(
             "SELECT codigo_emenda, ano, localidade_destino, coalesce(funcao, 'Outros') AS area, valor_empenhado, "

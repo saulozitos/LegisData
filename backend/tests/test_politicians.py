@@ -532,3 +532,29 @@ def test_financiamento_considera_so_a_campanha_mais_recente_e_conta_doadores_dis
 def test_ceap_avulsa_sem_despesa_devolve_gasto_desconhecido_e_nao_zero(client, seed):
     ceap = client.get(f"{BASE}/{seed.beltrano.id}/ceap").json()
     assert ceap["possui_dados"] is False and ceap["total_gasto"] is None and ceap["despesas"] == []
+
+
+def test_doacoes_aceita_pedir_a_eleicao_e_o_dossie_lista_as_disponiveis(client, db, seed, financas):
+    pessoa = pessoa_do(db, seed.fulano)
+    inserir_fin(
+        db,
+        "doacao_campanha",
+        pessoa_id=pessoa,
+        ano_eleicao=2018,
+        doador_nome="Doador Antigo",
+        doador_documento=None,
+        valor=9000,
+        fonte_id=fonte_id(db, "TSE"),
+    )
+    db.commit()
+    dossie = client.get(f"{BASE}/{seed.fulano.id}").json()["financiamento_campanha"]
+    assert dossie["eleicoes_disponiveis"] == [2022, 2018] and dossie["total_recibos"] == 1
+    antiga = client.get(f"{BASE}/{seed.fulano.id}/doacoes?ano_eleicao=2018").json()
+    assert antiga["ano_eleicao"] == 2018 and antiga["total_arrecadado"] == 9000.0 and antiga["possui_dados"] is True
+    assert client.get(f"{BASE}/{seed.fulano.id}/doacoes?ano_eleicao=2010").status_code == 404
+    assert client.get(f"{BASE}/{seed.fulano.id}/doacoes?ano_eleicao=1800").status_code == 422
+
+
+def test_doacoes_sem_nenhuma_doacao_marca_que_nao_ha_dados(client, seed):
+    corpo = client.get(f"{BASE}/{seed.beltrano.id}/doacoes").json()
+    assert corpo["possui_dados"] is False and corpo["ano_eleicao"] is None and corpo["doacoes"] == []

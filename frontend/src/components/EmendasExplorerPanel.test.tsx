@@ -118,6 +118,8 @@ const mockAutor: api.EmendasAutorResponse = {
     descricao_amigavel: "Recurso da CMO",
     icone: "⚖️",
   },
+  quantidade_autores: 1,
+  autores_encontrados: [{ nome_amigavel: "Relator-Geral do Orçamento", categoria: "Relator-Geral do Orçamento", quantidade: 412 }],
   total_emendas_enviadas: 412,
   total_reservado_empenhado_brl: 45030072866.92,
   total_entregue_pago_brl: 20474123892.94,
@@ -260,6 +262,24 @@ describe("EmendasExplorerPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /Bancadas & Relator/i }));
     expect(await screen.findByText(/reuniu 2 autores/i)).toBeInTheDocument();
     expect(screen.getByText(/Bancada da Bahia, Bancada de Goiás/i)).toBeInTheDocument();
+  });
+
+  it("quando a lista de autores é cortada, o aviso termina com \"e outros\"", async () => {
+    vi.mocked(api.getEmendasResumo).mockResolvedValue(mockResumo);
+    vi.mocked(api.getEmendasPorAutor).mockResolvedValue({
+      ...mockAutor,
+      quantidade_autores: 25,
+      autores_encontrados: [
+        { nome_amigavel: "Bancada da Bahia", categoria: "Bancada Estadual", quantidade: 3 },
+        { nome_amigavel: "Bancada de Goiás", categoria: "Bancada Estadual", quantidade: 1 },
+      ],
+    });
+
+    render(<EmendasExplorerPanel />);
+    await screen.findByText(/Explorador Nacional de Emendas Orçamentárias/i);
+    fireEvent.click(screen.getByRole("button", { name: /Bancadas & Relator/i }));
+    expect(await screen.findByText(/reuniu 25 autores/i)).toBeInTheDocument();
+    expect(screen.getByText(/e outros/i)).toBeInTheDocument();
   });
 
   it("autor único não mostra o aviso de vários autores", async () => {

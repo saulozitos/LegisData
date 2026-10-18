@@ -26,10 +26,15 @@ from etl.pipelines.financas_loader import (
     EMENDAS_ARQUIVO,
     REMUNERACAO_ARQUIVO,
 )
-from etl.pipelines.loader_helpers import ler_ceap, ler_doacoes, ler_emenda, ler_remuneracao
+from etl.pipelines.loader_helpers import (
+    ler_ceap,
+    ler_doacoes,
+    ler_emenda,
+    ler_remuneracao,
+    registros_da_remuneracao,
+)
 from etl.utils.bootstrap import ensure_backend_on_path
 from etl.utils.datafiles import load_json
-from etl.utils.provenance import is_trusted
 
 ensure_backend_on_path()
 
@@ -61,10 +66,7 @@ def totais_emendas_do_arquivo(emendas: Any) -> Dict[int, Dict[str, Decimal]]:
 
 def totais_remuneracao_do_arquivo(corpo: Any) -> Dict[int, Decimal]:
     totais: Dict[int, Decimal] = defaultdict(Decimal)
-    if not isinstance(corpo, dict) or not is_trusted(corpo):  # o loader pula o arquivo inteiro sem proveniência
-        return totais
-    registros = corpo.get("registros")
-    for registro in registros if isinstance(registros, list) else []:
+    for registro in registros_da_remuneracao(corpo) or []:  # o loader pula o arquivo inteiro sem proveniência
         lido, _motivo = ler_remuneracao(registro)  # a mesma regra do loader (inclui o mês entre 1 e 12)
         if lido is not None:
             totais[lido["ano"]] += lido["bruto"]

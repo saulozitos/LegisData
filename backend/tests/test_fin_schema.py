@@ -90,13 +90,13 @@ def test_chave_natural_da_emenda_trata_nulos_como_iguais(db):
     assert db.execute(text("SELECT count(*) FROM fin.emenda")).scalar() == 2
 
 
-def test_chave_do_fornecedor_trata_cnpj_nulo_como_igual(db, pessoa):
+def test_chave_do_fornecedor_e_o_cnpj_ou_o_nome_quando_nao_ha_cnpj(db, pessoa):
     colunas = dict(pessoa_id=pessoa, nome="MEI", cnpj=None, valor_total=1, notas=1)
     inserir_fin(db, "despesa_cota_fornecedor", **colunas)
     _viola(
         db,
         lambda: inserir_fin(db, "despesa_cota_fornecedor", **colunas),
-        "despesa_cota_fornecedor_pessoa_id_nome_cnpj_key",
+        "despesa_cota_fornecedor_pessoa_id_grupo_key",
     )
 
 

@@ -73,7 +73,7 @@ export default function FinancingTab({ dossier }: FinancingTabProps) {
                     <span className="text-lg font-black font-mono text-cyan-400 block">
                       {dossier?.financiamento_campanha?.total_doadores || 0}
                     </span>
-                    <span className="text-[10px] text-slate-400 mt-1 block">Registros na prestação de contas</span>
+                    <span className="text-[10px] text-slate-400 mt-1 block">Pessoas e empresas distintas na prestação de contas</span>
                   </div>
 
                   <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5">
@@ -91,7 +91,7 @@ export default function FinancingTab({ dossier }: FinancingTabProps) {
                     <span className="text-lg font-black font-mono text-purple-400 block">
                       R$ {((dossier?.financiamento_campanha?.total_arrecadado || 0) / Math.max(1, dossier?.financiamento_campanha?.total_doadores || 1)).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     </span>
-                    <span className="text-[10px] text-slate-400 mt-1 block">Valor médio por doação</span>
+                    <span className="text-[10px] text-slate-400 mt-1 block">Valor médio por doador</span>
                   </div>
                 </div>
               </div>

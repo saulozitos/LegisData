@@ -5,7 +5,9 @@ comissão, o relator-geral ou um parlamentar de mandato anterior que não existe
 da fonte fica em `autor_texto`, nunca se força o vínculo com outra pessoa).
 
 - `fin.despesa_cota`: CEAP por pessoa, ano e tipo de despesa (total real; estorno entra negativo).
-- `fin.despesa_cota_fornecedor` e `fin.despesa_cota_resumo`: maiores fornecedores e quantidade de notas por pessoa.
+- `fin.despesa_cota_fornecedor` e `fin.despesa_cota_resumo`: maiores fornecedores e quantidade de notas por pessoa. O
+  mesmo fornecedor é identificado pelo CNPJ ou, sem ele, pelo nome (`grupo`, coluna gerada): a regra mora só no schema.
+  A quantidade de notas de um fornecedor pode ser nula (a fonte não informou).
   CPF de fornecedor nunca é gravado: só CNPJ (14 dígitos) (decisão D3). O documento do doador só aceita CNPJ ou a
   máscara de CPF do TSE (`***.NNN.NNN-**`).
 - `fin.emenda`: uma linha por emenda, localidade e função, com o tipo de autor já classificado. O código pode faltar
@@ -74,7 +76,8 @@ def upgrade() -> None:
             notas integer CHECK (notas >= 0),
             fonte_id smallint NOT NULL REFERENCES etl.fonte(id),
             atualizado_em timestamptz NOT NULL DEFAULT now(),
-            UNIQUE NULLS NOT DISTINCT (pessoa_id, nome, cnpj)
+            grupo text GENERATED ALWAYS AS (coalesce(cnpj::text, 'nome:' || nome)) STORED,
+            UNIQUE (pessoa_id, grupo)
         )
         """
     )

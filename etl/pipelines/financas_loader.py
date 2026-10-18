@@ -14,33 +14,30 @@ que já está no banco. Cada carga é uma transação: ou grava inteira ou não 
 
 import logging
 import os
-from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from etl.config import PROCESSED_DATA_DIR
 from etl.pipelines.loader_helpers import (
-    ANO_MAXIMO,
-    ANO_MINIMO,
-    LIMITE_TSE,
-    cnpj_do_fornecedor,
-    decimal_de,
+    chave_da_prestacao,
+    chave_de_desempate,
+    fornecedores_do_parlamentar,
     inteiro,
-    inteiro_em,
     ler_ceap,
+    ler_certidao,
     ler_doacoes,
     ler_emenda,
+    ler_patrimonio,
     ler_remuneracao,
-    nome_do_fornecedor,
-    texto,
-    texto_sem_cpf,
+    registros_da_remuneracao,
+    resumos_completos,
+    somar_linhas,
     tipo_do_autor,
     uf_da_localidade,
 )
 from etl.pipelines.pessoa_resolver import ResolvedorDePessoas
 from etl.utils.bootstrap import ensure_backend_on_path
 from etl.utils.datafiles import load_json
-from etl.utils.provenance import is_trusted
 
 ensure_backend_on_path()
 
@@ -123,31 +120,6 @@ def _inserir(conn: Connection, sql: str, linhas: List[Dict[str, Any]]) -> None:
 
 
 # ── CEAP ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
-def _fornecedores_do_parlamentar(dados: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Fornecedores de uma entrada, com o mesmo CNPJ em grafias diferentes unido (fica o nome de maior valor)."""
-    agrupados: Dict[str, List[Any]] = {}  # grupo -> [valor, notas (None se desconhecida), nome, maior valor, cnpj]
-    lista_fornecedores = dados.get("fornecedores")
-    for item in (lista_fornecedores if isinstance(lista_fornecedores, dict) else {}).values():
-        if not isinstance(item, dict):
-            continue
-        valor_dec = decimal_de(item.get("total"))
-        if valor_dec is None:
-            continue
-        nome, cnpj = nome_do_fornecedor(item.get("nome")), cnpj_do_fornecedor(item.get("cnpj_cpf"))
-        notas = inteiro(item.get("notas"))
-        notas = notas if notas is not None and notas >= 0 else None
-        grupo = cnpj or f"nome:{nome}"  # sem CNPJ, vale o nome; é a mesma chave que a API usa para agrupar
-        acumulado = agrupados.setdefault(grupo, [Decimal(0), 0, nome, valor_dec, cnpj])
-        acumulado[0] += valor_dec
-        acumulado[1] = _soma_ou_desconhecido(acumulado[1], notas)
-        if valor_dec > acumulado[3]:
-            acumulado[2], acumulado[3] = nome, valor_dec
-    return [
-        {"grupo": grupo, "nome": nome, "cnpj": cnpj, "valor": valor, "notas": notas}
-        for grupo, (valor, notas, nome, _maior, cnpj) in agrupados.items()
-    ]
-
-
 def linhas_da_ceap(
     ceap: Dict[str, Any], resolvedor: ResolvedorDePessoas, fontes: Dict[str, int]
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, int]]:
@@ -178,23 +150,12 @@ def linhas_da_ceap(
             {"p": pessoa, "ano": ano, "tipo": tipo, "valor": valor, "f": fonte_id}
             for (ano, tipo), valor in valores.items()
         ]
-        fornecedores += [
-            {"p": pessoa, "f": fonte_id, **fornecedor} for fornecedor in _fornecedores_do_parlamentar(dados)
-        ]
-        if valores:  # a quantidade de notas só vale ao lado de um gasto que a entrada realmente somou
+        if valores:  # fornecedores e quantidade de notas só valem ao lado de um gasto que a entrada realmente somou
+            fornecedores += [{"p": pessoa, "f": fonte_id, **x} for x in fornecedores_do_parlamentar(dados)]
             notas = inteiro(dados.get("total_notas"))
-            # quantidade desconhecida não vira zero: a linha com `notas` None só marca a pessoa para `_resumos_completos`
+            # quantidade desconhecida não vira zero: a linha com `notas` None só marca a pessoa para `resumos_completos`
             resumos.append({"p": pessoa, "notas": notas if notas is not None and notas >= 0 else None, "f": fonte_id})
     return despesas, fornecedores, resumos, contagem
-
-
-def _resumos_completos(resumos: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
-    """
-    Resumos de quem tem a quantidade de notas conhecida em TODAS as entradas (Câmara e Senado) que somaram gasto. Uma
-    contagem parcial ao lado do gasto completo enganaria, então a pessoa fica sem resumo. Devolve também quantas ficaram.
-    """
-    incompletas = {r["p"] for r in resumos if r["notas"] is None}
-    return [r for r in resumos if r["p"] not in incompletas and r["notas"] is not None], len(incompletas)
 
 
 def carregar_ceap(conn: Connection, processed_dir: Path) -> Dict[str, int]:
@@ -207,10 +168,10 @@ def carregar_ceap(conn: Connection, processed_dir: Path) -> Dict[str, int]:
         return {**contagem, "despesas": 0}
     # Duas entradas do arquivo podem resolver para a mesma pessoa (Câmara e Senado, ou variantes do nome): `_somar`
     # deixa uma linha por chave em cada tabela e a guarda de encolhimento olha o tamanho final.
-    despesas, repetidas = _somar(despesas, ("p", "ano", "tipo"), ("valor",))
-    fornecedores, _ = _somar(fornecedores, ("p", "grupo"), ("valor", "notas"))
-    completos, resumo_incompleto = _resumos_completos(resumos)
-    resumos, _ = _somar(completos, ("p",), ("notas",))
+    despesas, repetidas = somar_linhas(despesas, ("p", "ano", "tipo"), ("valor",))
+    fornecedores, _ = somar_linhas(fornecedores, ("p", "grupo"), ("valor", "notas"))
+    completos, resumo_incompleto = resumos_completos(resumos)
+    resumos, _ = somar_linhas(completos, ("p",), ("notas",))
     if repetidas:
         logger.warning(
             "CEAP: %d linhas repetidas na mesma fonte (variantes do nome); ficou a de maior valor.", repetidas
@@ -241,51 +202,6 @@ def carregar_ceap(conn: Connection, processed_dir: Path) -> Dict[str, int]:
         resumos,
     )
     return {**contagem, "despesas": len(despesas), "fornecedores": len(fornecedores)}
-
-
-def _chave_de_desempate(linha: Dict[str, Any], *campos: str) -> Tuple[Any, ...]:
-    """
-    Ordem total entre duas linhas que disputam a mesma chave: os campos na ordem dada, com o desconhecido (None) abaixo de
-    qualquer valor. O resultado não depende da ordem em que o arquivo traz as linhas.
-    """
-    return tuple((0, "") if linha[c] is None else (1, linha[c]) for c in campos)
-
-
-def _soma_ou_desconhecido(a: Any, b: Any) -> Any:
-    """Soma de duas parcelas; se qualquer uma é desconhecida (None) o total também é: parcial nunca vale como total."""
-    return None if a is None or b is None else a + b
-
-
-def _somar(
-    linhas: List[Dict[str, Any]], chave: Tuple[str, ...], somas: Tuple[str, ...]
-) -> Tuple[List[Dict[str, Any]], int]:
-    """
-    Junta linhas de mesma chave e devolve também quantas linhas repetiram a chave na MESMA fonte. Dentro de uma fonte
-    a repetição é o mesmo dado sob outra grafia do nome, então fica a linha de maior valor; entre fontes diferentes
-    (Câmara e Senado) os campos numéricos se somam (desconhecido em qualquer parcela deixa o total desconhecido). Nos empates
-    decide o conteúdo da linha, não a ordem do arquivo; a linha vencedora define os demais campos.
-    """
-    por_fonte: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
-    repetidas = 0
-    for linha in linhas:
-        k = (tuple(linha[c] for c in chave), linha["f"])
-        atual = por_fonte.get(k)
-        if atual is None:
-            por_fonte[k] = dict(linha)
-            continue
-        repetidas += 1
-        if _chave_de_desempate(linha, *somas, *sorted(set(linha) - set(somas))) > _chave_de_desempate(
-            atual, *somas, *sorted(set(atual) - set(somas))
-        ):
-            por_fonte[k] = dict(linha)
-    unicas: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
-    for (k, _fonte), linha in por_fonte.items():
-        if k in unicas:
-            for campo in somas:
-                unicas[k][campo] = _soma_ou_desconhecido(unicas[k][campo], linha[campo])
-        else:
-            unicas[k] = dict(linha)
-    return list(unicas.values()), repetidas
 
 
 # ── Emendas ──────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -375,8 +291,7 @@ def linhas_da_remuneracao(
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     contagem = {"sem_pessoa": 0, "invalidas": 0, "repetidas": 0}
     unicas: Dict[Tuple[int, int, int], Dict[str, Any]] = {}
-    registros = corpo.get("registros")
-    for registro in registros if isinstance(registros, list) else []:
+    for registro in registros_da_remuneracao(corpo) or []:
         lido, motivo = ler_remuneracao(registro)
         if lido is None:
             contagem[str(motivo)] += 1
@@ -392,7 +307,7 @@ def linhas_da_remuneracao(
             anterior is not None
         ):  # duas folhas no mesmo mês: vale a de maior bruto (depois o maior líquido), não a do arquivo
             contagem["repetidas"] += 1
-            if _chave_de_desempate(anterior, "bruto", "liquido") >= _chave_de_desempate(linha, "bruto", "liquido"):
+            if chave_de_desempate(anterior, "bruto", "liquido") >= chave_de_desempate(linha, "bruto", "liquido"):
                 continue
         unicas[chave] = linha
     return list(unicas.values()), contagem
@@ -400,7 +315,7 @@ def linhas_da_remuneracao(
 
 def carregar_remuneracao(conn: Connection, processed_dir: Path) -> Dict[str, int]:
     corpo = _arquivo(processed_dir, REMUNERACAO_ARQUIVO)
-    if not isinstance(corpo, dict) or not is_trusted(corpo):
+    if registros_da_remuneracao(corpo) is None:
         if corpo is not None:
             logger.warning("%s sem proveniência oficial; carga pulada.", REMUNERACAO_ARQUIVO)
         return {"arquivo_ausente_ou_sem_proveniencia": 1}
@@ -426,37 +341,21 @@ def linhas_do_patrimonio(
     contagem = {"sem_pessoa": 0, "sem_proveniencia": 0, "invalidas": 0, "repetidas": 0}
     unicas: Dict[Tuple[int, int], Dict[str, Any]] = {}
     for item in declaracoes:
-        if not isinstance(item, dict) or not is_trusted(item):
-            contagem["sem_proveniencia"] += 1
-            continue
-        ano = inteiro_em(item.get("ano_eleicao"), ANO_MINIMO, ANO_MAXIMO)
-        valor = decimal_de(item.get("valor_declarado_brl"), LIMITE_TSE)
-        if ano is None or valor is None:
-            contagem["invalidas"] += 1
+        lido, motivo = ler_patrimonio(item)
+        if lido is None:
+            contagem[str(motivo)] += 1
             continue
         pessoa = resolvedor.resolver(item).pessoa_id
         if pessoa is None:
             contagem["sem_pessoa"] += 1
             continue
-        quantidade = inteiro(item.get("quantidade_bens"))
-        linha = {
-            "p": pessoa,
-            "ano": ano,
-            "valor": valor,
-            "qtd": quantidade if quantidade is not None and quantidade >= 0 else None,
-            "det": texto_sem_cpf(item.get("detalhes_bens")),
-            "f": fonte_id,
-        }
-        anterior = unicas.get((pessoa, ano))
-        if (
-            anterior is not None
-        ):  # duas declarações do mesmo ano: vale a de maior valor (depois quantidade e detalhes), não a do arquivo
+        linha = {"p": pessoa, **lido, "f": fonte_id}
+        anterior = unicas.get((pessoa, lido["ano"]))
+        if anterior is not None:  # duas declarações do mesmo ano: vale a de maior valor (depois quantidade e detalhes)
             contagem["repetidas"] += 1
-            if _chave_de_desempate(anterior, "valor", "qtd", "det") >= _chave_de_desempate(
-                linha, "valor", "qtd", "det"
-            ):
+            if chave_de_desempate(anterior, "valor", "qtd", "det") >= chave_de_desempate(linha, "valor", "qtd", "det"):
                 continue
-        unicas[(pessoa, ano)] = linha
+        unicas[(pessoa, lido["ano"])] = linha
     return list(unicas.values()), contagem
 
 
@@ -477,12 +376,6 @@ def carregar_patrimonio(conn: Connection, processed_dir: Path) -> Dict[str, int]
         linhas,
     )
     return {**contagem, "declaracoes": len(linhas)}
-
-
-def _chave_da_prestacao(linhas: List[Dict[str, Any]]) -> Tuple[Any, ...]:
-    """Ordem total entre prestações do mesmo (pessoa, ano): quantidade, soma e, no empate, o conteúdo das linhas."""
-    conteudo = sorted((x["nome"], x["doc"] or "", str(x["valor"]), x["tipo"] or "") for x in linhas)
-    return len(linhas), sum((x["valor"] for x in linhas), Decimal(0)), conteudo
 
 
 def linhas_das_doacoes(
@@ -506,7 +399,7 @@ def linhas_das_doacoes(
             continue
         # a prestação mais completa (mais linhas, depois maior valor, depois o conteúdo) vale para a (pessoa, ano)
         contagem["prestacao_descartada"] += 1
-        if _chave_da_prestacao(linhas) > _chave_da_prestacao(anteriores):
+        if chave_da_prestacao(linhas) > chave_da_prestacao(anteriores):
             por_prestacao[(pessoa, ano)] = linhas
     contagem["prestacoes"] = len(por_prestacao)
     return [linha for linhas in por_prestacao.values() for linha in linhas], contagem
@@ -537,38 +430,24 @@ def linhas_das_certidoes(
     contagem = {"sem_pessoa": 0, "sem_proveniencia": 0, "invalidas": 0, "repetidas": 0}
     unicas: Dict[Tuple[int, str, str], Dict[str, Any]] = {}
     for item in ocorrencias:
-        if not isinstance(item, dict) or not is_trusted(item):
-            contagem["sem_proveniencia"] += 1
-            continue
-        orgao, tipo, situacao = (
-            texto(item.get("orgao")),
-            texto(item.get("tipo_certidao")),
-            texto(item.get("status_ficha")),
-        )
-        if not (orgao and tipo and situacao):
-            contagem["invalidas"] += 1
+        lido, motivo = ler_certidao(item)
+        if lido is None:
+            contagem[str(motivo)] += 1
             continue
         pessoa = resolvedor.resolver(item).pessoa_id
         if pessoa is None:
             contagem["sem_pessoa"] += 1
             continue
-        linha = {
-            "p": pessoa,
-            "orgao": orgao,
-            "tipo": tipo,
-            "situacao": situacao,
-            "det": texto_sem_cpf(item.get("detalhes")),
-            "proc": texto(item.get("numero_processo")),
-            "f": fonte_id,
-        }
-        anterior = unicas.get((pessoa, orgao, tipo))
+        linha = {"p": pessoa, **lido, "f": fonte_id}
+        chave = (pessoa, lido["orgao"], lido["tipo"])
+        anterior = unicas.get(chave)
         if anterior is not None:  # mesma (pessoa, órgão, tipo): critério fixo, não a ordem do arquivo
             contagem["repetidas"] += 1
-            if _chave_de_desempate(anterior, "situacao", "det", "proc") >= _chave_de_desempate(
+            if chave_de_desempate(anterior, "situacao", "det", "proc") >= chave_de_desempate(
                 linha, "situacao", "det", "proc"
             ):
                 continue
-        unicas[(pessoa, orgao, tipo)] = linha
+        unicas[chave] = linha
     return list(unicas.values()), contagem
 
 

@@ -1023,7 +1023,12 @@ export interface FinanciamentoCampanhaData {
   possui_dados: boolean;
   ano_eleicao: number;
   total_arrecadado: number;
+  /** Doadores distintos da campanha (um doador com vários recibos conta uma vez). */
   total_doadores: number;
+  /** Recibos da campanha (uma linha de `todas_doacoes` cada). */
+  total_recibos?: number;
+  /** Eleições com doações registradas, da mais recente para a mais antiga; o resumo é da primeira. */
+  eleicoes_disponiveis?: number[];
   top_doadores: TopDoadorItem[];
   todas_doacoes: DoacaoItem[];
 }
@@ -2007,8 +2012,8 @@ export interface EmendasAutorResponse {
     descricao_amigavel: string;
     icone: string;
   };
-  quantidade_autores?: number;
-  autores_encontrados?: Array<{ nome_amigavel: string; categoria: string; quantidade: number }>;
+  quantidade_autores: number;
+  autores_encontrados: Array<{ nome_amigavel: string; categoria: string; quantidade: number }>;
   total_emendas_enviadas: number;
   total_reservado_empenhado_brl: number;
   total_entregue_pago_brl: number;

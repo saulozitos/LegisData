@@ -14,6 +14,8 @@ from etl.pipelines.loader_helpers import (
     documento_do_doador,
     nome_do_fornecedor,
     nome_sem_cpf,
+    resumos_completos,
+    somar_linhas,
     texto_sem_cpf,
     tipo_do_autor,
     uf_da_localidade,
@@ -1211,13 +1213,13 @@ def test_ceap_com_quantidade_de_notas_desconhecida_em_uma_das_fontes_fica_sem_re
     _despesas, _fornecedores, resumos, _contagem = fin.linhas_da_ceap(
         entradas, _SempreAPessoa(), {"CAMARA_CSV": 1, "SENADO_API": 2}
     )
-    completos, incompletas = fin._resumos_completos(resumos)
+    completos, incompletas = resumos_completos(resumos)
     assert completos == [] and incompletas == 1  # a contagem parcial (500) não aparece ao lado do gasto completo
     # as duas conhecidas continuam somando
     entradas["SENADO"]["total_notas"] = 20
     _d, _f, resumos, _c = fin.linhas_da_ceap(entradas, _SempreAPessoa(), {"CAMARA_CSV": 1, "SENADO_API": 2})
-    completos, incompletas = fin._resumos_completos(resumos)
-    assert incompletas == 0 and fin._somar(completos, ("p",), ("notas",))[0][0]["notas"] == 520
+    completos, incompletas = resumos_completos(resumos)
+    assert incompletas == 0 and somar_linhas(completos, ("p",), ("notas",))[0][0]["notas"] == 520
 
 
 def test_remuneracao_repetida_no_mesmo_mes_fica_com_o_maior_bruto_e_e_contada():
@@ -1430,10 +1432,10 @@ def test_doacoes_com_prestacoes_identicas_em_tamanho_e_soma_desempatam_pelo_cont
 def test_somar_empatado_decide_pelo_conteudo_e_soma_desconhecido_como_desconhecido():
     a = {"p": 1, "grupo": "g", "nome": "AAA", "valor": Decimal(10), "notas": 2, "f": 1}
     b = {**a, "nome": "BBB"}
-    assert fin._somar([a, b], ("p", "grupo"), ("valor", "notas"))[0][0]["nome"] == "BBB"
-    assert fin._somar([b, a], ("p", "grupo"), ("valor", "notas"))[0][0]["nome"] == "BBB"
+    assert somar_linhas([a, b], ("p", "grupo"), ("valor", "notas"))[0][0]["nome"] == "BBB"
+    assert somar_linhas([b, a], ("p", "grupo"), ("valor", "notas"))[0][0]["nome"] == "BBB"
     camara, senado = {**a, "f": 1}, {**a, "f": 2, "notas": None}
-    somado = fin._somar([camara, senado], ("p", "grupo"), ("valor", "notas"))[0][0]
+    somado = somar_linhas([camara, senado], ("p", "grupo"), ("valor", "notas"))[0][0]
     assert somado["valor"] == Decimal(20) and somado["notas"] is None  # parcial não vale como total
 
 
@@ -1492,3 +1494,118 @@ def test_ceap_resumo_parcial_nao_e_gravado_e_e_contado(pg_engine, banco, tmp_pat
         resultado = fin.carregar_ceap(conn, tmp_path)
     assert resultado["resumo_incompleto"] == 1 and _contar(pg_engine, "despesa_cota_resumo") == 0
     assert _contar(pg_engine, "despesa_cota") == 1  # o gasto das duas fontes continua gravado
+
+
+# ── 6ª revisão: forma do CPF, texto legítimo intacto, consolidação independente da ordem ─────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "bruto, esperado",
+    [
+        ("Sócios: 111.222.333-44,555.666.777-88", "Sócios: ,"),  # dois CPFs separados por vírgula sem espaço
+        ("2020-111.222.333-44", "2020-"),  # número e hífen antes
+        ("1-111.222.333-44", "1-"),
+        ("111.222.333-44,5", ",5"),
+        ("CPF 111 222 333 44 ok", "CPF ok"),
+        ("111​222​333​44 fim", "fim"),  # caractere de largura zero entre os dígitos
+        ("111·222·333-44 fim", "fim"),  # ponto médio no lugar do ponto
+    ],
+)
+def test_texto_livre_tira_o_cpf_em_mais_vizinhancas(bruto, esperado):
+    assert texto_sem_cpf(bruto) == esperado
+
+
+@pytest.mark.parametrize(
+    "texto_livre",
+    [
+        "validade 01/01/2024 - 30/06/2024",
+        "Emitida em 01/02/2020 10:30",
+        "emitida 12/03/2024 10:15:22",
+        "lotes 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 e 11",
+        "Tel 61 3215-5000",
+        "tel 61 99999-8888",
+        "valor 12.345.678,90 fim",
+        "valor 123.456.789,00 fim",  # centavos depois de um CPF-shaped: é valor em reais
+        "valor 12345678900,50",
+        "R$ 12345678900",
+    ],
+)
+def test_texto_livre_preserva_datas_horas_telefones_listas_e_valores_em_reais(texto_livre):
+    assert texto_sem_cpf(texto_livre) == texto_livre
+
+
+def test_nome_sem_cpf_nao_deixa_digitos_do_cpf_depois_de_numero_e_hifen():
+    assert nome_sem_cpf("2020-111.222.333-44 ME") == "2020- ME"
+    assert nome_do_fornecedor("LOJA 2020 2021 2022") == "LOJA 2020 2021 2022"
+
+
+def test_texto_longo_de_digitos_e_separadores_e_processado_em_tempo_linear():
+    import time
+
+    for texto_longo in ("1 " * 200_000, "1." * 200_000, "1" * 500_000, "123 - " * 100_000):
+        inicio = time.perf_counter()
+        texto_sem_cpf(texto_longo)
+        nome_sem_cpf(texto_longo)
+        assert time.perf_counter() - inicio < 5
+
+
+def test_so_digitos_nao_le_a_repr_de_dict_como_cnpj():
+    assert cnpj_do_fornecedor({"x": "12.345.678/0001-90"}) is None
+    assert cnpj_do_fornecedor(27456163000130) == "27456163000130"
+
+
+def test_fornecedor_e_doador_compartilham_a_limpeza_de_nome():
+    assert nome_do_fornecedor("MEI 012.345.678-00") == nome_sem_cpf("MEI 012.345.678-00") == "MEI"
+    assert nome_do_fornecedor("012.345.678-00") == "Fornecedor não identificado"
+
+
+@pytest.mark.parametrize("inverter", [False, True])
+def test_somar_entre_fontes_escolhe_nome_e_fonte_pelo_conteudo_e_nao_pela_ordem(inverter):
+    camara = {"p": 1, "grupo": "g", "nome": "ZETA", "valor": Decimal(30), "notas": 1, "f": 1}
+    senado = {"p": 1, "grupo": "g", "nome": "ALFA", "valor": Decimal(30), "notas": 2, "f": 2}
+    linhas = [camara, senado]
+    if inverter:
+        linhas.reverse()
+    somado, repetidas = somar_linhas(linhas, ("p", "grupo"), ("valor", "notas"))
+    assert repetidas == 0 and len(somado) == 1
+    assert somado[0]["valor"] == Decimal(60) and somado[0]["notas"] == 3
+    # empatado o valor, vence a linha com mais notas (depois os demais campos): a mesma nas duas ordens
+    assert (somado[0]["nome"], somado[0]["f"]) == ("ALFA", 2)
+
+
+def test_entrada_da_ceap_sem_gasto_valido_nao_leva_fornecedores_nem_resumo():
+    fora = _ceap(por_ano_tipo={"1800": {"T": 5}}, total_notas=9)
+    despesas, fornecedores, resumos, _ = fin.linhas_da_ceap(
+        {"A": fora}, _SempreAPessoa(), {"CAMARA_CSV": 1, "SENADO_API": 2}
+    )
+    assert despesas == [] and fornecedores == [] and resumos == []
+
+
+def test_ler_patrimonio_ler_certidao_e_registros_da_remuneracao_sao_a_regra_unica():
+    from etl.pipelines.loader_helpers import ler_certidao, ler_patrimonio, registros_da_remuneracao
+
+    assert ler_patrimonio("x") == (None, "sem_proveniencia")
+    assert ler_patrimonio({"ano_eleicao": 2022, "valor_declarado_brl": 1}) == (None, "sem_proveniencia")
+    assert ler_patrimonio(_oficial(ano_eleicao=1800, valor_declarado_brl=1)) == (None, "invalidas")
+    lido, _ = ler_patrimonio(_oficial(ano_eleicao=2022, valor_declarado_brl=10, quantidade_bens=-1, detalhes_bens="x"))
+    assert lido == {"ano": 2022, "valor": Decimal(10), "qtd": None, "det": "x"}
+    assert ler_certidao(_oficial(orgao="TSE", tipo_certidao="T")) == (None, "invalidas")
+    lido, _ = ler_certidao(_oficial(orgao="TSE", tipo_certidao="T", status_ficha="ok", numero_processo="1"))
+    assert lido["proc"] == "1" and lido["det"] is None
+    assert registros_da_remuneracao([]) is None and registros_da_remuneracao({"registros": []}) is None
+    assert registros_da_remuneracao(_oficial(registros="x")) == []
+    assert registros_da_remuneracao(_oficial(registros=[1, 2])) == [1, 2]
+
+
+def test_doacoes_sem_nome_viram_o_rotulo_padrao_e_nao_se_fundem_no_banco(pg_engine, banco, tmp_path):
+    doadores = [
+        {"nome_doador": "012.345.678-00", "cpf_cnpj_doador": None, "valor_doado": 10, "tipo_receita": "a"},
+        {"nome_doador": None, "cpf_cnpj_doador": "abc", "valor_doado": 20, "tipo_receita": "b"},
+    ]
+    prestacao = _oficial(camara_id=100, ano_eleicao=2022, doadores=doadores)
+    _gravar(tmp_path, fin.DOACOES_ARQUIVO, [prestacao])
+    with pg_engine.begin() as conn:
+        fin.carregar_doacoes(conn, tmp_path)
+    with pg_engine.connect() as conn:
+        linhas = conn.execute(text("SELECT doador_nome, doador_documento FROM fin.doacao_campanha")).all()
+    assert sorted(tuple(r) for r in linhas) == [("Doador não identificado", None)] * 2

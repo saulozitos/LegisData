@@ -40,3 +40,9 @@ Data do registro: 2026-10-13.
 - **Contexto**: o ETL publica a CEAP como total por parlamentar, ano e tipo de despesa, mais os 15 maiores fornecedores. O dossiê mostrava esses totais anuais na tabela "Últimos Comprovantes Fiscais", como se fossem notas, e o link para o documento oficial da nota nunca existiu de fato nos dados atuais. A tabela virou "Gasto da cota por ano".
 - **Consequência**: o cidadão não vê mais nota por nota nem abre o documento no portal da Câmara.
 - **Opção para decidir**: baixar os cerca de 4 milhões de documentos desde 2009 (CSV anual da Câmara) para uma tabela `fin.despesa_cota_documento` com a URL do portal. Custa armazenamento e uma carga maior; entrega rastreabilidade por nota. Fica pendente da sua decisão.
+
+## 5. Histórico de campanhas no dossiê (Entrega 3c)
+
+- **Contexto**: no arquivo do TSE, 568 de 724 parlamentares têm doações em mais de uma eleição (2002 a 2022). Somar todas as eleições num único total e mostrar "Eleição 2018" ao lado de R$ de 2018 e de 2022 enganava o cidadão. O dossiê passou a mostrar só a campanha mais recente (rótulo "última campanha"), e `GET /politicians/{id}/doacoes` aceita `?ano_eleicao=` e devolve `eleicoes_disponiveis`.
+- **Consequência**: o histórico de eleições anteriores continua no banco e na API, mas a tela do dossiê ainda não tem seletor de eleição.
+- **Opção para decidir**: acrescentar ao `FinancingTab` um seletor de eleição que consulte `/doacoes?ano_eleicao=`, ou manter só a campanha mais recente.
