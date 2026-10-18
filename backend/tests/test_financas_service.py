@@ -318,33 +318,54 @@ def test_resumo_das_doacoes_nao_funde_doadores_anonimos_nem_homonimos_com_docume
     assert [d["valor_doado"] for d in resumo["top_5"]] == [40.0, 30.0, 20.0, 10.0]
 
 
-def test_resumo_das_doacoes_desempata_na_fronteira_do_top_5_pelo_nome():
+@pytest.mark.parametrize("inverter", [False, True])
+def test_resumo_das_doacoes_desempata_na_fronteira_do_top_5_pelo_nome_em_qualquer_ordem(inverter):
+    # os empatados em 5 chegam em ordem contrária à alfabética: sem o desempate por nome ficariam G, F e a sobra seria outra
     doacoes = [
-        _doacao(nome, valor, id_=nome)
-        for nome, valor in (("A", 50), ("B", 20), ("C", 10), ("D", 10), ("E", 5), ("G", 5), ("F", 5))
+        _doacao(n, v, id_=n) for n, v in (("A", 50), ("B", 20), ("D", 10), ("C", 10), ("G", 5), ("F", 5), ("E", 5))
     ]
+    if inverter:
+        doacoes.reverse()
     nomes = [d["nome_doador"] for d in fs.resumo_das_doacoes(doacoes)["top_5"]]
     assert nomes == ["A", "B", "C", "D", "E"]  # entre E, F e G (5 cada) fica o primeiro pelo nome
 
 
-def test_resumo_das_doacoes_junta_o_mesmo_cnpj_com_e_sem_pontuacao():
+@pytest.mark.parametrize("inverter", [False, True])
+def test_resumo_das_doacoes_junta_o_mesmo_cnpj_com_e_sem_pontuacao(inverter):
     doacoes = [
         _doacao("EMPRESA X LTDA", 60, doc="12345678000190", id_="a"),
         _doacao("EMPRESA X", 40, doc="12.345.678/0001-90", id_="b"),
     ]
+    if inverter:
+        doacoes.reverse()
     resumo = fs.resumo_das_doacoes(doacoes)
     assert resumo["quantidade"] == 1 and resumo["total_recibos"] == 2
     assert resumo["top_5"][0]["valor_doado"] == 100.0 and resumo["top_5"][0]["percentual"] == 100.0
+    # nome e documento exibidos são os do recibo que chega primeiro: a lista vem ordenada por valor DESC, id
+    esperado = ("EMPRESA X LTDA", "12345678000190") if not inverter else ("EMPRESA X", "12.345.678/0001-90")
+    assert (resumo["top_5"][0]["nome_doador"], resumo["top_5"][0]["cpf_cnpj_doador"]) == esperado
 
 
-def test_resumo_das_doacoes_desempata_homonimos_com_documentos_diferentes_na_fronteira_do_top_5():
+@pytest.mark.parametrize("inverter", [False, True])
+def test_resumo_das_doacoes_desempata_homonimos_com_documentos_diferentes_pelo_documento(inverter):
     base = [("A", 50, "1"), ("B", 20, "2"), ("C", 10, "3"), ("D", 10, "4")]
-    ana = [("Ana", 5, "***.111.222-**"), ("Ana", 5, "***.333.444-**")]
-    for ordem in (ana, list(reversed(ana))):
-        doacoes = [_doacao(n, v, id_=i) for n, v, i in base] + [_doacao(n, v, doc=d, id_=d) for n, v, d in ordem]
-        top = fs.resumo_das_doacoes(doacoes)["top_5"]
-        assert [d["nome_doador"] for d in top] == ["A", "B", "C", "D", "Ana"]
-        assert len({d["cpf_cnpj_doador"] for d in top if d["nome_doador"] == "Ana"}) == 1
+    ana = [("Ana", 5, "***.333.444-**"), ("Ana", 5, "***.111.222-**")]
+    doacoes = [_doacao(n, v, id_=i) for n, v, i in base] + [_doacao(n, v, doc=d, id_=d) for n, v, d in ana]
+    if inverter:
+        doacoes.reverse()
+    top = fs.resumo_das_doacoes(doacoes)["top_5"]
+    assert [d["nome_doador"] for d in top] == ["A", "B", "C", "D", "Ana"]
+    assert top[-1]["cpf_cnpj_doador"] == "***.111.222-**"  # o documento menor vence o empate, qualquer que seja a ordem
+
+
+def test_resumo_das_doacoes_desempata_por_centavos_e_nao_por_erro_de_ponto_flutuante():
+    # 0.10 + 0.20 dá 0.30000000000000004 em float e não pode ficar à frente de uma doação de 0.30 com nome anterior
+    doacoes = [
+        _doacao("Beto", 0.10, doc="***.111.111-**", id_="a"),
+        _doacao("Beto", 0.20, doc="***.111.111-**", id_="b"),
+        _doacao("Ana", 0.30, doc="***.222.222-**", id_="c"),
+    ]
+    assert [d["nome_doador"] for d in fs.resumo_das_doacoes(doacoes)["top_5"]] == ["Ana", "Beto"]
 
 
 def test_financiamento_da_campanha_traz_o_bloco_do_dossie_e_o_vazio():
@@ -355,3 +376,8 @@ def test_financiamento_da_campanha_traz_o_bloco_do_dossie_e_o_vazio():
     assert bloco["eleicoes_disponiveis"] == [2022, 2018] and [d["nome_doador"] for d in bloco["top_doadores"]] == [
         "Beto"
     ]
+
+
+def test_emendas_detalhadas_sem_pessoa_devolve_o_vazio_nomeado(db):
+    assert fs.emendas_detalhadas(db, []) == fs.vazio_emendas_detalhadas()
+    assert fs.vazio_emendas_detalhadas()["possui_dados"] is False

@@ -66,21 +66,28 @@ LOTE = 5000
 MINIMO_PARA_GUARDA = 10
 FRACAO_MINIMA = 0.5
 VARIAVEL_ACEITAR_ENCOLHIMENTO = "LEGISDATA_ACEITAR_ENCOLHIMENTO"
-_CONTAGENS = {
-    "fin.despesa_cota": "SELECT count(*) FROM fin.despesa_cota",
-    "fin.emenda": "SELECT count(*) FROM fin.emenda",
-    "fin.remuneracao": "SELECT count(*) FROM fin.remuneracao",
-    "fin.declaracao_patrimonio": "SELECT count(*) FROM fin.declaracao_patrimonio",
-    "fin.doacao_campanha": "SELECT count(*) FROM fin.doacao_campanha",
-    "fin.certidao": "SELECT count(*) FROM fin.certidao",
-    "fin.despesa_cota_fornecedor": "SELECT count(*) FROM fin.despesa_cota_fornecedor",
-    "fin.despesa_cota_resumo": "SELECT count(*) FROM fin.despesa_cota_resumo",
+# SQL literal por tabela (nada de montar o nome da tabela na consulta): contagem para a guarda e DELETE da carga
+_SQL_DA_TABELA = {
+    "fin.despesa_cota": ("SELECT count(*) FROM fin.despesa_cota", "DELETE FROM fin.despesa_cota"),
+    "fin.emenda": ("SELECT count(*) FROM fin.emenda", "DELETE FROM fin.emenda"),
+    "fin.remuneracao": ("SELECT count(*) FROM fin.remuneracao", "DELETE FROM fin.remuneracao"),
+    "fin.declaracao_patrimonio": (
+        "SELECT count(*) FROM fin.declaracao_patrimonio",
+        "DELETE FROM fin.declaracao_patrimonio",
+    ),
+    "fin.doacao_campanha": ("SELECT count(*) FROM fin.doacao_campanha", "DELETE FROM fin.doacao_campanha"),
+    "fin.certidao": ("SELECT count(*) FROM fin.certidao", "DELETE FROM fin.certidao"),
+    "fin.despesa_cota_fornecedor": (
+        "SELECT count(*) FROM fin.despesa_cota_fornecedor",
+        "DELETE FROM fin.despesa_cota_fornecedor",
+    ),
+    "fin.despesa_cota_resumo": ("SELECT count(*) FROM fin.despesa_cota_resumo", "DELETE FROM fin.despesa_cota_resumo"),
 }
 
 
 def _protege_contra_encolhimento(conn: Connection, tabela: str, novas: int) -> None:
     """Levanta RuntimeError (sem tocar no banco) se a carga reduziria `tabela` a menos de FRACAO_MINIMA do que existe."""
-    existentes = int(conn.execute(text(_CONTAGENS[tabela])).scalar() or 0)
+    existentes = int(conn.execute(text(_SQL_DA_TABELA[tabela][0])).scalar() or 0)
     if existentes < MINIMO_PARA_GUARDA or novas >= existentes * FRACAO_MINIMA:
         return
     if os.environ.get(VARIAVEL_ACEITAR_ENCOLHIMENTO) == "1":
@@ -96,14 +103,6 @@ def _protege_contra_encolhimento(conn: Connection, tabela: str, novas: int) -> N
         f"{tabela}: a carga traria {novas} linhas e o banco tem {existentes}; nada foi alterado. "
         f"Se a redução é legítima, rode de novo com {VARIAVEL_ACEITAR_ENCOLHIMENTO}=1."
     )
-
-
-_DELETE_DA_TABELA = {  # SQL literal por tabela (nada de montar o nome da tabela na consulta)
-    "fin.remuneracao": "DELETE FROM fin.remuneracao",
-    "fin.declaracao_patrimonio": "DELETE FROM fin.declaracao_patrimonio",
-    "fin.doacao_campanha": "DELETE FROM fin.doacao_campanha",
-    "fin.certidao": "DELETE FROM fin.certidao",
-}
 
 
 def _lotes(linhas: List[Dict[str, Any]]) -> Iterable[List[Dict[str, Any]]]:
@@ -127,11 +126,16 @@ def _inserir(conn: Connection, sql: str, linhas: List[Dict[str, Any]]) -> None:
         conn.execute(text(sql), lote)
 
 
-def _substituir(conn: Connection, tabela: str, insercao: str, linhas: List[Dict[str, Any]]) -> None:
-    """Troca o conteúdo de `tabela` (esquema `fin`) pelas `linhas`, depois da guarda contra encolhimento."""
-    _protege_contra_encolhimento(conn, tabela, len(linhas))
-    conn.execute(text(_DELETE_DA_TABELA[tabela]))
-    _inserir(conn, insercao, linhas)
+def _substituir(conn: Connection, tabelas: List[Tuple[str, str, List[Dict[str, Any]]]]) -> None:
+    """
+    Troca o conteúdo das tabelas `fin` dadas (tabela, INSERT, linhas): primeiro a guarda contra encolhimento de TODAS
+    (nada é tocado se alguma abortar), depois DELETE e INSERT de cada uma.
+    """
+    for tabela, _insercao, linhas in tabelas:
+        _protege_contra_encolhimento(conn, tabela, len(linhas))
+    for tabela, insercao, linhas in tabelas:
+        conn.execute(text(_SQL_DA_TABELA[tabela][1]))
+        _inserir(conn, insercao, linhas)
 
 
 # ── CEAP ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -193,28 +197,27 @@ def carregar_ceap(conn: Connection, processed_dir: Path) -> Dict[str, int]:
         )
     contagem["mesma_fonte_repetida"] = repetidas
     contagem["resumo_incompleto"] = resumo_incompleto
-    _protege_contra_encolhimento(conn, "fin.despesa_cota", len(despesas))
-    _protege_contra_encolhimento(conn, "fin.despesa_cota_fornecedor", len(fornecedores))
-    _protege_contra_encolhimento(conn, "fin.despesa_cota_resumo", len(resumos))
-    conn.execute(text("DELETE FROM fin.despesa_cota"))
-    conn.execute(text("DELETE FROM fin.despesa_cota_fornecedor"))
-    conn.execute(text("DELETE FROM fin.despesa_cota_resumo"))
-    _inserir(
+    _substituir(
         conn,
-        "INSERT INTO fin.despesa_cota (pessoa_id, ano, tipo_despesa, valor_liquido, fonte_id) "
-        "VALUES (:p, :ano, :tipo, :valor, :f)",
-        despesas,
-    )
-    _inserir(
-        conn,
-        "INSERT INTO fin.despesa_cota_fornecedor (pessoa_id, nome, cnpj, valor_total, notas, fonte_id) "
-        "VALUES (:p, :nome, :cnpj, :valor, :notas, :f)",
-        fornecedores,
-    )
-    _inserir(
-        conn,
-        "INSERT INTO fin.despesa_cota_resumo (pessoa_id, total_notas, fonte_id) VALUES (:p, :notas, :f)",
-        resumos,
+        [
+            (
+                "fin.despesa_cota",
+                "INSERT INTO fin.despesa_cota (pessoa_id, ano, tipo_despesa, valor_liquido, fonte_id) "
+                "VALUES (:p, :ano, :tipo, :valor, :f)",
+                despesas,
+            ),
+            (
+                "fin.despesa_cota_fornecedor",
+                "INSERT INTO fin.despesa_cota_fornecedor (pessoa_id, nome, cnpj, valor_total, notas, fonte_id) "
+                "VALUES (:p, :nome, :cnpj, :valor, :notas, :f)",
+                fornecedores,
+            ),
+            (
+                "fin.despesa_cota_resumo",
+                "INSERT INTO fin.despesa_cota_resumo (pessoa_id, total_notas, fonte_id) VALUES (:p, :notas, :f)",
+                resumos,
+            ),
+        ],
     )
     return {**contagem, "despesas": len(despesas), "fornecedores": len(fornecedores)}
 
@@ -335,10 +338,14 @@ def carregar_remuneracao(conn: Connection, processed_dir: Path) -> Dict[str, int
         return {**contagem, "meses": 0}
     _substituir(
         conn,
-        "fin.remuneracao",
-        "INSERT INTO fin.remuneracao (pessoa_id, ano, mes, salario_bruto, salario_liquido, fonte_id) "
-        "VALUES (:p, :ano, :mes, :bruto, :liquido, :f)",
-        linhas,
+        [
+            (
+                "fin.remuneracao",
+                "INSERT INTO fin.remuneracao (pessoa_id, ano, mes, salario_bruto, salario_liquido, fonte_id) "
+                "VALUES (:p, :ano, :mes, :bruto, :liquido, :f)",
+                linhas,
+            )
+        ],
     )
     return {**contagem, "meses": len(linhas)}
 
@@ -375,10 +382,14 @@ def carregar_patrimonio(conn: Connection, processed_dir: Path) -> Dict[str, int]
         return {**contagem, "declaracoes": 0}
     _substituir(
         conn,
-        "fin.declaracao_patrimonio",
-        "INSERT INTO fin.declaracao_patrimonio (pessoa_id, ano_eleicao, valor_declarado, quantidade_bens, detalhes, "
-        "fonte_id) VALUES (:p, :ano, :valor, :qtd, :det, :f)",
-        linhas,
+        [
+            (
+                "fin.declaracao_patrimonio",
+                "INSERT INTO fin.declaracao_patrimonio (pessoa_id, ano_eleicao, valor_declarado, quantidade_bens, detalhes, "
+                "fonte_id) VALUES (:p, :ano, :valor, :qtd, :det, :f)",
+                linhas,
+            )
+        ],
     )
     return {**contagem, "declaracoes": len(linhas)}
 
@@ -420,10 +431,14 @@ def carregar_doacoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
         return {**contagem, "linhas": 0}
     _substituir(
         conn,
-        "fin.doacao_campanha",
-        "INSERT INTO fin.doacao_campanha (pessoa_id, ano_eleicao, doador_nome, doador_documento, valor, tipo_receita, "
-        "fonte_id) VALUES (:p, :ano, :nome, :doc, :valor, :tipo, :f)",
-        linhas,
+        [
+            (
+                "fin.doacao_campanha",
+                "INSERT INTO fin.doacao_campanha (pessoa_id, ano_eleicao, doador_nome, doador_documento, valor, tipo_receita, "
+                "fonte_id) VALUES (:p, :ano, :nome, :doc, :valor, :tipo, :f)",
+                linhas,
+            )
+        ],
     )
     return {**contagem, "linhas": len(linhas)}
 
@@ -460,10 +475,14 @@ def carregar_certidoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
         return {**contagem, "certidoes": 0}
     _substituir(
         conn,
-        "fin.certidao",
-        "INSERT INTO fin.certidao (pessoa_id, orgao, tipo, situacao, detalhes, numero_processo, fonte_id) "
-        "VALUES (:p, :orgao, :tipo, :situacao, :det, :proc, :f)",
-        linhas,
+        [
+            (
+                "fin.certidao",
+                "INSERT INTO fin.certidao (pessoa_id, orgao, tipo, situacao, detalhes, numero_processo, fonte_id) "
+                "VALUES (:p, :orgao, :tipo, :situacao, :det, :proc, :f)",
+                linhas,
+            )
+        ],
     )
     return {**contagem, "certidoes": len(linhas)}
 

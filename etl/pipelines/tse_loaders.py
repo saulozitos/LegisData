@@ -26,7 +26,7 @@ from app.models import (  # noqa: E402
     StatePresidentialElectionResult,
 )
 
-from etl.pipelines.loader_helpers import _dec  # noqa: E402
+from etl.pipelines.loader_helpers import _dec, nome_sem_cpf, texto_sem_cpf  # noqa: E402
 from etl.utils.datafiles import load_json  # noqa: E402
 from etl.utils.names import build_unique_name_map, normalize_name_tokens  # noqa: E402
 from etl.utils.provenance import is_trusted  # noqa: E402
@@ -97,7 +97,7 @@ def carregar_doacoes(session: Session, data_dir: Path) -> Dict[str, int]:
                 DoacaoCampanha(
                     politician_id=pol_id,
                     election_year=ano,
-                    donor_name=str(d.get("nome_doador") or DOADOR_NAO_IDENTIFICADO)[:255],
+                    donor_name=(nome_sem_cpf(d.get("nome_doador")) or DOADOR_NAO_IDENTIFICADO)[:255],
                     donor_cpf_cnpj=(d.get("cpf_cnpj_doador") or None),
                     amount_donated=valor,
                     donation_type=(d.get("tipo_receita") or None),
@@ -139,7 +139,7 @@ def carregar_certidoes_tse(session: Session, data_dir: Path) -> Dict[str, int]:
         chave = (pol_id, item["orgao"], item["tipo_certidao"][:50])
         valores = dict(
             status=item["status_ficha"][:50],
-            details=item.get("detalhes"),
+            details=texto_sem_cpf(item.get("detalhes")),
             process_number=(item.get("numero_processo") or None),
         )
         atual = existentes.get(chave)

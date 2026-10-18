@@ -463,7 +463,7 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
           {/* Resultado da Busca Territorial */}
           {debouncedLocalidade.length < TERMO_MINIMO ? (
             <EmptyState
-              title="Digite ao menos 2 letras"
+              title={`Digite ao menos ${TERMO_MINIMO} letras`}
               message="Informe o nome de um município ou a sigla do estado (ex: SP, MG, Recife)."
             />
           ) : localidadeQuery.loading ? (
@@ -641,7 +641,7 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
           {/* Resultado da Consulta Institucional */}
           {debouncedAutor.length < TERMO_MINIMO ? (
             <EmptyState
-              title="Digite ao menos 2 letras"
+              title={`Digite ao menos ${TERMO_MINIMO} letras`}
               message="Selecione um dos autores sugeridos acima ou informe o nome de uma bancada ou comissão."
             />
           ) : autorQuery.loading ? (

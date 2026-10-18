@@ -1540,20 +1540,25 @@ def test_nome_sem_cpf_nao_deixa_digitos_do_cpf_depois_de_numero_e_hifen():
 
 
 def test_regex_de_cpf_nao_tem_backtracking_catastrofico():
-    """Mede só as regex (o texto já normalizado), comparando n com 2n: tempo absoluto seria frágil sob cobertura."""
+    """Mede só as regex (o texto já normalizado), comparando n com 2n; o melhor de 3 tira o ruído do relógio."""
     import time
 
     from etl.pipelines.loader_helpers import _CPF_EM_TEXTO, _SEQUENCIA_CPF
 
     def tempo(texto_longo):
-        inicio = time.perf_counter()
-        _CPF_EM_TEXTO.sub(" ", texto_longo)
-        _SEQUENCIA_CPF.sub(" ", texto_longo)
-        return time.perf_counter() - inicio
+        melhor = None
+        for _ in range(3):
+            inicio = time.perf_counter()
+            _CPF_EM_TEXTO.sub(" ", texto_longo)
+            _SEQUENCIA_CPF.sub(" ", texto_longo)
+            decorrido = time.perf_counter() - inicio
+            melhor = decorrido if melhor is None else min(melhor, decorrido)
+        return melhor
 
-    for unidade in ("1 ", "1.", "1", "123 - ", "123,", "R$ 1 "):
+    for unidade in ("1 ", "1.", "1", "123 - ", "123,", "R$ 1 ", "1~", "12 3 "):
         pequeno, grande = tempo(unidade * 20_000), tempo(unidade * 40_000)
-        assert grande < 6 * pequeno + 0.2, (unidade, pequeno, grande)  # linear dá cerca de 2x; quadrático, 4x ou mais
+        # linear dá cerca de 2x; quadrático, cerca de 4x (o piso de 0,05 s cobre o que o relógio não resolve)
+        assert grande < 3 * pequeno + 0.05, (unidade, pequeno, grande)
         assert grande < 3  # teto absoluto largo, só para pegar explosão exponencial
 
 
@@ -1705,3 +1710,76 @@ def test_rotulo_de_doador_anonimo_do_etl_e_o_mesmo_do_backend():
     from etl.utils.rotulos import DOADOR_NAO_IDENTIFICADO
 
     assert financas_service.DOADOR_ANONIMO == DOADOR_NAO_IDENTIFICADO == "Doador não identificado"
+
+
+# ── 8ª revisão: DF, casa decimal só em dígitos corridos, separadores genéricos, CPF em nome depois de "R$" ───────────
+
+
+def test_toda_uf_por_extenso_vira_a_sigla_e_o_distrito_federal_nao_perde_a_palavra_federal():
+    from etl.pipelines.loader_helpers import UF_POR_NOME
+
+    assert uf_da_localidade("DISTRITO FEDERAL (UF)") == "DF"
+    assert uf_da_localidade("Distrito Federal (UF)") == "DF"
+    assert uf_da_localidade("BRASÍLIA - DF") == "DF"
+    assert all(uf_da_localidade(f"{nome} (UF)") == sigla for nome, sigla in UF_POR_NOME.items())
+    assert uf_da_localidade("ESPÍRITO SANTO (UF)") == "ES" and uf_da_localidade("Nacional") is None
+
+
+@pytest.mark.parametrize(
+    "bruto, esperado",
+    [
+        ("111 222 333 44,50", ",50"),  # com separadores entre os grupos não é valor em reais
+        ("CPF 111.222.333.44,5", "CPF ,5"),
+        ("CPF 111-222-333-44,1º outorgante", "CPF ,1o outorgante"),  # o "º" vira "o" na normalização
+        ("11122233344,555", ",555"),  # três casas depois da vírgula não são centavos
+        ("ref 2020111.222.333-44", "ref 2020"),  # forma canônica colada a dígito anterior
+        ("111~222~333~44", None),  # separadores fora da lista antiga
+        (
+            "111 .. 222 .. 333 .. 44",
+            "111 .. 222 .. 333 .. 44",
+        ),  # 4 ou mais caracteres entre os grupos: cauda documentada
+        ("111∙222∙333∙44", None),  # U+2219
+    ],
+)
+def test_texto_livre_tira_cpf_em_mais_grafias_e_so_poupa_centavos_de_digitos_corridos(bruto, esperado):
+    assert texto_sem_cpf(bruto) == esperado
+
+
+@pytest.mark.parametrize(
+    "texto_livre",
+    [
+        "R$ 123 456 789 00",  # exemplo da decisão 6: depois de "R$" fora da forma canônica
+        "12345678900,5",  # 11 corridos e uma casa decimal
+        "1234567890,50",  # 10 corridos e centavos
+        "123456789012",  # 12 e 13 dígitos corridos não são CPF
+        "1234567890123",
+        "Casa 1.234.567.890,12",
+    ],
+)
+def test_texto_livre_preserva_formas_da_decisao_6_e_numeros_maiores(texto_livre):
+    assert texto_sem_cpf(texto_livre) == texto_livre
+
+
+def test_nome_depois_de_r_cifrao_perde_o_cpf_porque_nome_nao_tem_valor_em_reais():
+    assert nome_sem_cpf("LOJA R$ 11122233344") == "LOJA R$"
+    assert nome_sem_cpf("MEI 111~222~333~44") == "MEI"
+
+
+@pytest.mark.parametrize("ordem", ["direta", "invertida"])
+def test_ceap_fornecedor_sem_cnpj_e_com_nome_igual_a_um_cnpj_ficam_em_grupos_distintos(
+    pg_engine, banco, tmp_path, ordem
+):
+    forn = {
+        "A": {"nome": "POSTO SOL", "cnpj_cpf": "02.558.157/0001-62", "total": 10.0, "notas": 1},
+        "B": {"nome": "nome:POSTO SOL", "cnpj_cpf": None, "total": 5.0, "notas": 1},
+        "C": {"nome": "02558157000162", "cnpj_cpf": None, "total": 3.0, "notas": 1},  # nome com 14 dígitos
+    }
+    if ordem == "invertida":
+        forn = dict(reversed(list(forn.items())))
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"A": _ceap(fornecedores=forn)})
+    with pg_engine.begin() as conn:
+        fin.carregar_ceap(conn, tmp_path)
+    with pg_engine.connect() as conn:
+        linhas = conn.execute(text("SELECT nome, cnpj, grupo FROM fin.despesa_cota_fornecedor ORDER BY grupo")).all()
+    assert len(linhas) == 3 and len({r[2] for r in linhas}) == 3
+    assert {r[2] for r in linhas} == {"02558157000162", "nome:nome:POSTO SOL", "nome:02558157000162"}

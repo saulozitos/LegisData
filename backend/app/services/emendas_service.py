@@ -278,7 +278,7 @@ def _termo_valido(valor: str, sujeito: str, complemento: str) -> str:
     if "\x00" in termo:
         raise ErroDeDominio(400, f"{sujeito} contém caractere inválido.")
     if len(termo) < TAMANHO_MINIMO_DA_BUSCA:
-        raise ErroDeDominio(400, f"Informe ao menos 2 caracteres {complemento}.")
+        raise ErroDeDominio(400, f"Informe ao menos {TAMANHO_MINIMO_DA_BUSCA} caracteres {complemento}.")
     return termo
 
 

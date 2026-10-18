@@ -249,11 +249,16 @@ def vazio_emendas() -> Dict[str, Any]:
     }
 
 
+def vazio_emendas_detalhadas() -> Dict[str, Any]:
+    """Resposta de `/emendas` de quem não tem pessoa nem emenda, num dict novo a cada chamada."""
+    return {"possui_dados": False, "total_empenhado": 0.0, "total_pago": 0.0, "emendas": []}
+
+
 def emendas_detalhadas(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
     """Totais e linhas das emendas do parlamentar (rota `/emendas` do dossiê)."""
     ids = list(pessoas)
     if not ids:
-        return {"possui_dados": False, "total_empenhado": 0.0, "total_pago": 0.0, "emendas": []}
+        return vazio_emendas_detalhadas()
     empenhado, pago = db.execute(
         text(
             "SELECT coalesce(sum(valor_empenhado), 0), coalesce(sum(valor_pago), 0) FROM fin.emenda "
@@ -441,7 +446,11 @@ def resumo_das_doacoes(doacoes: Sequence[Dict[str, Any]], ano_eleicao: Optional[
         atual["valor_doado"] += d["valor_doado"]
         if d["valor_doado"] > atual["maior"]:
             atual["maior"], atual["tipo_receita"] = d["valor_doado"], d["tipo_receita"]
-    maiores = sorted(por_doador.values(), key=lambda x: (-x["valor_doado"], x["nome_doador"] or ""))[:5]
+    # valor arredondado em centavos (a soma em float de 0.10 + 0.20 não pode ficar à frente de 0.30), depois nome e documento
+    maiores = sorted(
+        por_doador.values(),
+        key=lambda x: (-round(x["valor_doado"], 2), x["nome_doador"] or "", x["cpf_cnpj_doador"] or ""),
+    )[:5]
     return {
         "ano_eleicao": ano,
         "eleicoes_disponiveis": eleicoes,

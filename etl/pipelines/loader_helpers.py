@@ -19,6 +19,7 @@ from etl.utils.names import (
     chave_sigla,
     first_signatory,
     normalize_name_tokens,
+    normalize_plain,
 )
 from etl.utils.provenance import is_trusted
 from etl.utils.rotulos import DOADOR_NAO_IDENTIFICADO
@@ -438,15 +439,14 @@ _UFS = frozenset(UF_POR_NOME.values())
 # Formas de CPF reconhecidas (o texto já passou por `_ascii`: dígitos, hífens e espaços Unicode viraram ASCII):
 #  - canônica NNN.NNN.NNN-NN, em qualquer vizinhança que não seja outro dígito ("2020-012.345.678-00", "...-00,987..."):
 #    nunca é valor em reais, então é removida sempre, mesmo depois de "R$";
-#  - grupos 3-3-3-2 com até 3 caracteres de separação (espaço, ponto, hífen, barra, vírgula, dois-pontos, sublinhado,
-#    ponto e vírgula, barra vertical, parênteses, colchetes, asterisco, cerquilha, mais e apóstrofo) ou sem separação, e
-#    10 dígitos seguidos (CPF que perdeu o zero à esquerda). Em texto livre, o separador antes dos dois últimos dígitos
+#  - grupos 3-3-3-2 com até 3 caracteres de separação (qualquer um que não seja letra, dígito ou sublinhado, além do
+#    próprio sublinhado) ou sem separação, e 10 dígitos seguidos (CPF que perdeu o zero à esquerda). Em texto livre, o separador antes dos dois últimos dígitos
 #    nunca é só uma vírgula, porque "123.456.789,00" é valor em reais; em nomes não há valor em reais, e a vírgula vale.
 # Data, hora, telefone, lista numerada e número de processo não têm o desenho 3-3-3-2 e ficam intactos. O CNPJ formatado
 # vem primeiro na alternância para não ser lido como CPF parcial; CNPJ sem pontuação (14 dígitos) nunca casa porque a
 # sequência é limitada por não-dígitos.
-_SEP = r"[\s.\-/_,:;|()\[\]*#+']{1,3}"
-_SEP_FINAL_TEXTO = r"[\s.\-/_:;|()\[\]*#+']{1,3}"
+_SEP = r"[\W_]{1,3}"
+_SEP_FINAL_TEXTO = r"(?:[^\w,]|_){1,3}"
 _CNPJ_FORMATADO = r"(?<![0-9])(?P<cnpj>[0-9]{2}\.[0-9]{3}\.[0-9]{3}/[0-9]{4}-[0-9]{2})(?![0-9])"
 _CPF_CANONICO = r"[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}(?![0-9])"
 
@@ -455,9 +455,7 @@ def _cpf_agrupado(sep_final: str) -> str:
     return rf"[0-9]{{3}}(?:{_SEP})?[0-9]{{3}}(?:{_SEP})?[0-9]{{3}}(?:{sep_final})?[0-9]{{2}}|[0-9]{{10}}"
 
 
-_SEQUENCIA_CPF = re.compile(
-    rf"{_CNPJ_FORMATADO}|(?<![0-9]){_CPF_CANONICO}|(?<![0-9])(?:{_cpf_agrupado(_SEP)})(?![0-9])"
-)
+_SEQUENCIA_CPF = re.compile(rf"{_CNPJ_FORMATADO}|{_CPF_CANONICO}|(?<![0-9])(?:{_cpf_agrupado(_SEP)})(?![0-9])")
 _MASCARA_CPF = re.compile(r"^\*{3}\.[0-9]{3}\.[0-9]{3}-\*{2}$")
 TIPOS_DE_AUTOR_INSTITUCIONAL = ("BANCADA_ESTADUAL", "COMISSAO_INSTITUCIONAL", "RELATOR_GERAL")
 
@@ -491,7 +489,7 @@ def _ascii(valor: Any) -> str:
             saida.append(str(unicodedata.decimal(c)))
         elif categoria == "Pd" or c == "\u2212":
             saida.append("-")
-        elif c in "\u00b7\u2027":
+        elif c in "\u00b7\u2027\u2219\u22c5":
             saida.append(".")
         elif categoria in ("Zs", "Zl", "Zp"):
             saida.append(" ")
@@ -518,16 +516,17 @@ def nome_sem_cpf(valor: Any) -> Optional[str]:
 # CPF em texto livre (descrição de bens, detalhes de certidão): as mesmas formas dos nomes, sem cortar valores em reais
 # nem números maiores. A forma canônica sai sempre. Fora dela, a sequência é preservada quando:
 #  - vem precedida de "R$" ("R$ 12345678900"; mas "R$" seguido da forma canônica NÃO protege o CPF);
-#  - termina antes de casa decimal (",50" depois de 11 dígitos), o que ainda deixa passar uma lista de CPFs separados por
-#    vírgula, porque o que vem depois da vírgula tem mais de dois dígitos.
+#  - são só dígitos corridos (10 ou 11) seguidos de vírgula e 1 ou 2 dígitos ("12345678900,50"); com separadores entre
+#    os grupos ("111 222 333 44,50") o CPF sai. Uma lista de CPFs separados por vírgula também sai, porque o que vem
+#    depois da vírgula tem mais de dois dígitos.
 # O separador antes dos dois últimos dígitos nunca é só uma vírgula (`_SEP_FINAL_TEXTO`), então "1.234.567.890,12" e
 # "123.456.789,00" não casam o desenho 3-3-3-2.
 _CPF_EM_TEXTO = re.compile(
-    rf"(?P<canon>(?<![0-9]){_CPF_CANONICO})"
+    rf"(?P<canon>{_CPF_CANONICO})"
     rf"|(?P<moeda>R\$\s*(?!{_CPF_CANONICO}))?(?:{_CNPJ_FORMATADO}"
     rf"|(?<![0-9])(?:{_cpf_agrupado(_SEP_FINAL_TEXTO)})(?![0-9]))"
 )
-_CASA_DECIMAL = re.compile(r"[.,][0-9]{1,2}(?![0-9])")
+_CASA_DECIMAL = re.compile(r",[0-9]{1,2}(?![0-9])")
 
 
 def _tira_cpf_do_texto(achado: "re.Match[str]") -> str:
@@ -535,7 +534,8 @@ def _tira_cpf_do_texto(achado: "re.Match[str]") -> str:
         return " "
     if achado.group("moeda") or achado.group("cnpj"):
         return achado.group(0)
-    if _CASA_DECIMAL.match(achado.string, achado.end()):
+    # só dígitos corridos seguidos de vírgula e 1 ou 2 dígitos são valor em reais; com separadores entre os grupos não
+    if achado.group(0).isdigit() and _CASA_DECIMAL.match(achado.string, achado.end()):
         return achado.group(0)
     return " "
 
@@ -600,7 +600,8 @@ def uf_da_localidade(localidade: Any) -> Optional[str]:
     if bruto is None:
         return None
     if bruto.upper().endswith("(UF)"):
-        return UF_POR_NOME.get(normalize_name_tokens(bruto[:-4]).upper())
+        # só acento, caixa e pontuação: `normalize_name_tokens` tira honoríficos e faria "DISTRITO FEDERAL" virar "DISTRITO"
+        return UF_POR_NOME.get(normalize_plain(bruto[:-4]).upper())
     sufixo = re.search(r"\s-\s([A-Z]{2})$", bruto)
     return sufixo.group(1) if sufixo and sufixo.group(1) in _UFS else None
 
@@ -718,7 +719,7 @@ def grupo_do_fornecedor(cnpj: Optional[str], nome: str) -> str:
 
 def fornecedores_do_parlamentar(dados: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Fornecedores de uma entrada, com o mesmo CNPJ em grafias diferentes unido (fica o nome de maior valor)."""
-    agrupados: Dict[str, List[Any]] = {}  # grupo -> [valor, notas (None se desconhecida), nome, maior valor, cnpj]
+    agrupados: Dict[str, Dict[str, Any]] = {}
     lista_fornecedores = dados.get("fornecedores")
     for item in (lista_fornecedores if isinstance(lista_fornecedores, dict) else {}).values():
         if not isinstance(item, dict):
@@ -730,15 +731,15 @@ def fornecedores_do_parlamentar(dados: Dict[str, Any]) -> List[Dict[str, Any]]:
         notas = inteiro(item.get("notas"))
         notas = notas if notas is not None and notas >= 0 else None
         grupo = grupo_do_fornecedor(cnpj, nome)
-        acumulado = agrupados.setdefault(grupo, [Decimal(0), 0, nome, valor_dec, cnpj])
-        acumulado[0] += valor_dec
-        acumulado[1] = soma_ou_desconhecido(acumulado[1], notas)
-        if (valor_dec, nome) > (acumulado[3], acumulado[2]):  # empate de valor: o nome decide, não a ordem do arquivo
-            acumulado[2], acumulado[3] = nome, valor_dec
-    return [
-        {"grupo": grupo, "nome": nome, "cnpj": cnpj, "valor": valor, "notas": notas}
-        for grupo, (valor, notas, nome, _maior, cnpj) in agrupados.items()
-    ]
+        # `maior` é o maior valor de uma única grafia: o nome mostrado é o dela, e no empate vale o nome (não a ordem)
+        acumulado = agrupados.setdefault(
+            grupo, {"grupo": grupo, "nome": nome, "cnpj": cnpj, "valor": Decimal(0), "notas": 0, "maior": valor_dec}
+        )
+        acumulado["valor"] += valor_dec
+        acumulado["notas"] = soma_ou_desconhecido(acumulado["notas"], notas)
+        if (valor_dec, nome) > (acumulado["maior"], acumulado["nome"]):
+            acumulado["nome"], acumulado["maior"] = nome, valor_dec
+    return [{k: v for k, v in x.items() if k != "maior"} for x in agrupados.values()]
 
 
 def resumos_completos(resumos: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
