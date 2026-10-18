@@ -1285,14 +1285,14 @@ def test_ceap_que_esvaziaria_fornecedores_ou_resumo_aborta_sem_alterar_o_banco(
 ):
     monkeypatch.delenv(fin.VARIAVEL_ACEITAR_ENCOLHIMENTO, raising=False)
 
-    def arquivo(n_fornecedores, com_resumo):
+    def arquivo(n_fornecedores, com_resumo, valor=1.0):
         entradas = {}
         for i in range(12):
             entradas[f"P{i}"] = _ceap(
                 nome=f"P{i}",
                 camara_id=1000 + i,
                 total_notas=3 if com_resumo else None,
-                por_ano_tipo={"2023": {"T": 1.0}},
+                por_ano_tipo={"2023": {"T": valor}},
                 fornecedores={
                     f"F{j}": {"nome": f"F{i}-{j}", "cnpj_cpf": None, "total": 1.0, "notas": 1}
                     for j in range(n_fornecedores)
@@ -1308,17 +1308,60 @@ def test_ceap_que_esvaziaria_fornecedores_ou_resumo_aborta_sem_alterar_o_banco(
         fin.carregar_ceap(conn, tmp_path)
     antes = _contar(pg_engine, tabela)
     assert antes == (24 if tabela == "despesa_cota_fornecedor" else 12)
+    fotografia = _fotografia(pg_engine, "ceap")
 
-    # as despesas continuam 12, mas a fonte deixou de trazer fornecedores (ou o total de notas)
+    # as despesas continuam 12 (agora com outro valor, para que reescrevê-las apareça), mas a fonte deixou de trazer
+    # fornecedores (ou o total de notas)
     _gravar(
         tmp_path,
         fin.CEAP_ARQUIVO,
-        arquivo(0 if tabela == "despesa_cota_fornecedor" else 2, tabela != "despesa_cota_resumo"),
+        arquivo(0 if tabela == "despesa_cota_fornecedor" else 2, tabela != "despesa_cota_resumo", valor=2.0),
     )
     with pytest.raises(RuntimeError, match=f"fin.{tabela}.*nada foi alterado"):
         with pg_engine.begin() as conn:
             fin.carregar_ceap(conn, tmp_path)
     assert _contar(pg_engine, tabela) == antes
+    assert _fotografia(pg_engine, "ceap") == fotografia  # as três tabelas ficaram como estavam
+
+
+def test_substituir_roda_todas_as_guardas_antes_do_primeiro_delete(pg_engine, banco, tmp_path, monkeypatch):
+    """Dentro da MESMA transação (sem o rollback do `begin()`): se a guarda da 2ª tabela aborta, a 1ª não foi apagada."""
+    monkeypatch.delenv(fin.VARIAVEL_ACEITAR_ENCOLHIMENTO, raising=False)
+    with pg_engine.begin() as conn:
+        for i in range(12):
+            _pessoa(conn, f"P{i}", camara_id=1000 + i)
+    entradas = {
+        f"P{i}": _ceap(
+            nome=f"P{i}",
+            camara_id=1000 + i,
+            por_ano_tipo={"2023": {"T": 1.0}},
+            fornecedores={"F": {"nome": f"F{i}", "cnpj_cpf": None, "total": 1.0, "notas": 1}},
+        )
+        for i in range(12)
+    }
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, entradas)
+    with pg_engine.begin() as conn:
+        fin.carregar_ceap(conn, tmp_path)
+    with pg_engine.connect() as conn:
+        with conn.begin():
+            despesas = int(conn.execute(text("SELECT count(*) FROM fin.despesa_cota")).scalar())
+            linhas_despesa = [{"p": 1, "ano": 2023, "tipo": "T", "valor": Decimal(1), "f": 1} for _ in range(despesas)]
+            with pytest.raises(RuntimeError, match="fin.despesa_cota_fornecedor"):
+                fin._substituir(
+                    conn,
+                    [
+                        ("fin.despesa_cota", "INSERT INTO fin.despesa_cota DEFAULT VALUES", linhas_despesa),
+                        ("fin.despesa_cota_fornecedor", "INSERT INTO fin.despesa_cota_fornecedor DEFAULT VALUES", []),
+                    ],
+                )
+            # nada foi apagado: a guarda da 2ª tabela abortou antes do DELETE da 1ª
+            assert int(conn.execute(text("SELECT count(*) FROM fin.despesa_cota")).scalar()) == despesas
+
+
+def test_a_tabela_de_emendas_nao_tem_delete_total_porque_faz_upsert():
+    assert "fin.emenda" in fin._SQL_CONTAGEM and "fin.emenda" not in fin._SQL_DELETE
+    with pytest.raises(KeyError):
+        fin._substituir(None, [("fin.emenda", "", [])]) if False else fin._SQL_DELETE["fin.emenda"]
 
 
 # ── 5ª revisão: CPF em qualquer grafia, desempate fixo, fornecedor canônico, quantidade desconhecida ──────────────────
@@ -1734,10 +1777,6 @@ def test_toda_uf_por_extenso_vira_a_sigla_e_o_distrito_federal_nao_perde_a_palav
         ("11122233344,555", ",555"),  # três casas depois da vírgula não são centavos
         ("ref 2020111.222.333-44", "ref 2020"),  # forma canônica colada a dígito anterior
         ("111~222~333~44", None),  # separadores fora da lista antiga
-        (
-            "111 .. 222 .. 333 .. 44",
-            "111 .. 222 .. 333 .. 44",
-        ),  # 4 ou mais caracteres entre os grupos: cauda documentada
         ("111∙222∙333∙44", None),  # U+2219
     ],
 )
@@ -1783,3 +1822,57 @@ def test_ceap_fornecedor_sem_cnpj_e_com_nome_igual_a_um_cnpj_ficam_em_grupos_dis
         linhas = conn.execute(text("SELECT nome, cnpj, grupo FROM fin.despesa_cota_fornecedor ORDER BY grupo")).all()
     assert len(linhas) == 3 and len({r[2] for r in linhas}) == 3
     assert {r[2] for r in linhas} == {"02558157000162", "nome:nome:POSTO SOL", "nome:02558157000162"}
+
+
+# ── 9ª revisão: letras Hangul invisíveis, quebra de linha, documento no legado, UF por extenso, caudas conhecidas ─────
+
+
+@pytest.mark.parametrize("invisivel", ["\u3164", "\uffa0", "\u115f", "\u1160"])
+def test_letras_hangul_invisiveis_nao_escondem_o_separador_do_cpf(invisivel):
+    cpf = invisivel.join(["111", "222", "333", "44"])
+    assert texto_sem_cpf(f"CPF {cpf} fim") == "CPF fim"
+    assert nome_sem_cpf(f"MEI {cpf}") == "MEI"
+
+
+@pytest.mark.parametrize(
+    "bruto, esperado",
+    [
+        ("111\n222\n333\n44", None),  # quebra de linha como separador
+        ("Bens:\n111\t222\t333\t44\nfim", "Bens: fim"),
+        ("Casa\nCarro", "Casa Carro"),  # o texto livre é sempre achatado em uma linha, com ou sem CPF
+        ("Casa  de   praia\t2 quartos", "Casa de praia 2 quartos"),
+    ],
+)
+def test_texto_livre_trata_quebra_de_linha_como_separador_e_achata_o_texto(bruto, esperado):
+    assert texto_sem_cpf(bruto) == esperado
+
+
+def test_nome_com_quebra_de_linha_perde_o_cpf():
+    assert nome_sem_cpf("MEI\n111.222.333-44") == "MEI"
+
+
+@pytest.mark.parametrize(
+    "texto_livre",
+    ["Placa ABC 123 456 78 90", "lote 123 456 789 0", "Apto 123, bloco 456, rua 78 90"],
+)
+def test_desenho_3_3_3_2_nao_pega_numeros_com_outra_forma(texto_livre):
+    assert texto_sem_cpf(texto_livre) == texto_livre
+
+
+def test_caudas_conhecidas_da_decisao_6_ainda_escapam_do_filtro():
+    """Limitação aceita (docs/DECISOES_E_DUVIDAS_PENDENTES.md, decisão 6): 4 ou mais caracteres entre os grupos."""
+    assert texto_sem_cpf("111 .. 222 .. 333 .. 44") == "111 .. 222 .. 333 .. 44"
+
+
+def test_toda_uf_tem_nome_por_extenso_com_e_sem_acento():
+    from etl.pipelines.loader_helpers import UF_POR_NOME
+
+    assert len(UF_POR_NOME) == 27
+    for nome, sigla in (("SÃO PAULO", "SP"), ("PARÁ", "PA"), ("RONDÔNIA", "RO"), ("AMAPÁ", "AP"), ("GOIÁS", "GO")):
+        assert uf_da_localidade(f"{nome} (UF)") == sigla
+
+
+def test_rotulo_de_fornecedor_sem_nome_vem_da_constante_compartilhada():
+    from etl.utils.rotulos import FORNECEDOR_NAO_IDENTIFICADO
+
+    assert nome_do_fornecedor("") == FORNECEDOR_NAO_IDENTIFICADO == "Fornecedor não identificado"

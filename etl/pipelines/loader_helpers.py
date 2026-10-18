@@ -22,7 +22,7 @@ from etl.utils.names import (
     normalize_plain,
 )
 from etl.utils.provenance import is_trusted
-from etl.utils.rotulos import DOADOR_NAO_IDENTIFICADO
+from etl.utils.rotulos import DOADOR_NAO_IDENTIFICADO, FORNECEDOR_NAO_IDENTIFICADO
 
 # Início da 57ª legislatura (1º/fev/2023): único limite inferior de observação que se conhece para quem está
 # "em exercício" quando a fonte não informa a data de filiação/mandato.
@@ -437,8 +437,9 @@ UF_POR_NOME = {
 }
 _UFS = frozenset(UF_POR_NOME.values())
 # Formas de CPF reconhecidas (o texto já passou por `_ascii`: dígitos, hífens e espaços Unicode viraram ASCII):
-#  - canônica NNN.NNN.NNN-NN, em qualquer vizinhança que não seja outro dígito ("2020-012.345.678-00", "...-00,987..."):
-#    nunca é valor em reais, então é removida sempre, mesmo depois de "R$";
+#  - canônica NNN.NNN.NNN-NN, em qualquer vizinhança ("2020-012.345.678-00", "...-00,987..."), até colada a um dígito
+#    anterior ("12012.345.678-00" perde o CPF e deixa o "12"): nunca é valor em reais, então é removida sempre, mesmo
+#    depois de "R$";
 #  - grupos 3-3-3-2 com até 3 caracteres de separação (qualquer um que não seja letra, dígito ou sublinhado, além do
 #    próprio sublinhado) ou sem separação, e 10 dígitos seguidos (CPF que perdeu o zero à esquerda). Em texto livre, o separador antes dos dois últimos dígitos
 #    nunca é só uma vírgula, porque "123.456.789,00" é valor em reais; em nomes não há valor em reais, e a vírgula vale.
@@ -479,7 +480,8 @@ def _ascii(valor: Any) -> str:
     """
     Texto com qualquer dígito Unicode (árabe-índico, largura total...) trocado pelo dígito ASCII equivalente, hífens
     Unicode (U+2010, travessão, sinal de menos) trocados por '-', pontos médios por '.', espaços Unicode por espaço
-    comum e caracteres invisíveis de formatação (largura zero, hífen suave) removidos.
+    comum, caracteres invisíveis de formatação (largura zero, hífen suave) removidos e as "letras" Hangul que só ocupam
+    espaço (U+115F, U+1160, U+3164, U+FFA0) trocadas por espaço, para não esconderem um separador de CPF.
     """
     normal = unicodedata.normalize("NFKC", str(valor or ""))
     saida = []
@@ -491,7 +493,7 @@ def _ascii(valor: Any) -> str:
             saida.append("-")
         elif c in "\u00b7\u2027\u2219\u22c5":
             saida.append(".")
-        elif categoria in ("Zs", "Zl", "Zp"):
+        elif categoria in ("Zs", "Zl", "Zp") or c in "\u115f\u1160\u3164\uffa0":
             saida.append(" ")
         elif categoria != "Cf":
             saida.append(c)
@@ -504,7 +506,7 @@ def _sem_cpf(achado: "re.Match[str]") -> str:
 
 def nome_do_fornecedor(valor: Any) -> str:
     """Nome do fornecedor sem CPF embutido (MEI aparece como 'NOME 09876543200' na fonte); vazio vira o rótulo padrão."""
-    return nome_sem_cpf(valor) or "Fornecedor não identificado"
+    return nome_sem_cpf(valor) or FORNECEDOR_NAO_IDENTIFICADO
 
 
 def nome_sem_cpf(valor: Any) -> Optional[str]:

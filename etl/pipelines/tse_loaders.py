@@ -26,7 +26,7 @@ from app.models import (  # noqa: E402
     StatePresidentialElectionResult,
 )
 
-from etl.pipelines.loader_helpers import _dec, nome_sem_cpf, texto_sem_cpf  # noqa: E402
+from etl.pipelines.loader_helpers import _dec, documento_do_doador, nome_sem_cpf, texto_sem_cpf  # noqa: E402
 from etl.utils.datafiles import load_json  # noqa: E402
 from etl.utils.names import build_unique_name_map, normalize_name_tokens  # noqa: E402
 from etl.utils.provenance import is_trusted  # noqa: E402
@@ -98,7 +98,7 @@ def carregar_doacoes(session: Session, data_dir: Path) -> Dict[str, int]:
                     politician_id=pol_id,
                     election_year=ano,
                     donor_name=(nome_sem_cpf(d.get("nome_doador")) or DOADOR_NAO_IDENTIFICADO)[:255],
-                    donor_cpf_cnpj=(d.get("cpf_cnpj_doador") or None),
+                    donor_cpf_cnpj=documento_do_doador(d.get("cpf_cnpj_doador")),
                     amount_donated=valor,
                     donation_type=(d.get("tipo_receita") or None),
                 )

@@ -66,28 +66,33 @@ LOTE = 5000
 MINIMO_PARA_GUARDA = 10
 FRACAO_MINIMA = 0.5
 VARIAVEL_ACEITAR_ENCOLHIMENTO = "LEGISDATA_ACEITAR_ENCOLHIMENTO"
-# SQL literal por tabela (nada de montar o nome da tabela na consulta): contagem para a guarda e DELETE da carga
-_SQL_DA_TABELA = {
-    "fin.despesa_cota": ("SELECT count(*) FROM fin.despesa_cota", "DELETE FROM fin.despesa_cota"),
-    "fin.emenda": ("SELECT count(*) FROM fin.emenda", "DELETE FROM fin.emenda"),
-    "fin.remuneracao": ("SELECT count(*) FROM fin.remuneracao", "DELETE FROM fin.remuneracao"),
-    "fin.declaracao_patrimonio": (
-        "SELECT count(*) FROM fin.declaracao_patrimonio",
-        "DELETE FROM fin.declaracao_patrimonio",
-    ),
-    "fin.doacao_campanha": ("SELECT count(*) FROM fin.doacao_campanha", "DELETE FROM fin.doacao_campanha"),
-    "fin.certidao": ("SELECT count(*) FROM fin.certidao", "DELETE FROM fin.certidao"),
-    "fin.despesa_cota_fornecedor": (
-        "SELECT count(*) FROM fin.despesa_cota_fornecedor",
-        "DELETE FROM fin.despesa_cota_fornecedor",
-    ),
-    "fin.despesa_cota_resumo": ("SELECT count(*) FROM fin.despesa_cota_resumo", "DELETE FROM fin.despesa_cota_resumo"),
+# SQL literal por tabela (nada de montar o nome da tabela na consulta). A contagem alimenta a guarda contra encolhimento
+# de todas as tabelas; o DELETE total existe só para as que a carga substitui por inteiro. `fin.emenda` fica de fora de
+# propósito: ela faz upsert pela chave natural e o `uid` público não pode mudar entre cargas.
+_SQL_CONTAGEM = {
+    "fin.despesa_cota": "SELECT count(*) FROM fin.despesa_cota",
+    "fin.emenda": "SELECT count(*) FROM fin.emenda",
+    "fin.remuneracao": "SELECT count(*) FROM fin.remuneracao",
+    "fin.declaracao_patrimonio": "SELECT count(*) FROM fin.declaracao_patrimonio",
+    "fin.doacao_campanha": "SELECT count(*) FROM fin.doacao_campanha",
+    "fin.certidao": "SELECT count(*) FROM fin.certidao",
+    "fin.despesa_cota_fornecedor": "SELECT count(*) FROM fin.despesa_cota_fornecedor",
+    "fin.despesa_cota_resumo": "SELECT count(*) FROM fin.despesa_cota_resumo",
+}
+_SQL_DELETE = {
+    "fin.despesa_cota": "DELETE FROM fin.despesa_cota",
+    "fin.remuneracao": "DELETE FROM fin.remuneracao",
+    "fin.declaracao_patrimonio": "DELETE FROM fin.declaracao_patrimonio",
+    "fin.doacao_campanha": "DELETE FROM fin.doacao_campanha",
+    "fin.certidao": "DELETE FROM fin.certidao",
+    "fin.despesa_cota_fornecedor": "DELETE FROM fin.despesa_cota_fornecedor",
+    "fin.despesa_cota_resumo": "DELETE FROM fin.despesa_cota_resumo",
 }
 
 
 def _protege_contra_encolhimento(conn: Connection, tabela: str, novas: int) -> None:
     """Levanta RuntimeError (sem tocar no banco) se a carga reduziria `tabela` a menos de FRACAO_MINIMA do que existe."""
-    existentes = int(conn.execute(text(_SQL_DA_TABELA[tabela][0])).scalar() or 0)
+    existentes = int(conn.execute(text(_SQL_CONTAGEM[tabela])).scalar() or 0)
     if existentes < MINIMO_PARA_GUARDA or novas >= existentes * FRACAO_MINIMA:
         return
     if os.environ.get(VARIAVEL_ACEITAR_ENCOLHIMENTO) == "1":
@@ -134,8 +139,39 @@ def _substituir(conn: Connection, tabelas: List[Tuple[str, str, List[Dict[str, A
     for tabela, _insercao, linhas in tabelas:
         _protege_contra_encolhimento(conn, tabela, len(linhas))
     for tabela, insercao, linhas in tabelas:
-        conn.execute(text(_SQL_DA_TABELA[tabela][1]))
+        conn.execute(text(_SQL_DELETE[tabela]))
         _inserir(conn, insercao, linhas)
+
+
+def _carga_simples(
+    conn: Connection,
+    processed_dir: Path,
+    *,
+    arquivo: str,
+    aceita: Callable[[Any], bool],
+    chave_ausente: str,
+    montar: Callable[[Any, ResolvedorDePessoas, int], Tuple[List[Dict[str, Any]], Dict[str, int]]],
+    fonte: str,
+    rotulo: str,
+    chave_total: str,
+    tabela: str,
+    insercao: str,
+) -> Dict[str, int]:
+    """
+    Roteiro das cargas que trocam uma tabela inteira: lê o arquivo, monta as linhas, e só substitui a tabela se alguma
+    linha serviu (arquivo ausente, de formato inválido ou sem nenhum registro utilizável nunca apaga o que já está lá).
+    """
+    dados = _arquivo(processed_dir, arquivo)
+    if not aceita(dados):
+        if dados is not None:
+            logger.warning("%s com formato ou proveniência inválidos; carga pulada.", arquivo)
+        return {chave_ausente: 1}
+    linhas, contagem = montar(dados, ResolvedorDePessoas(conn), _fontes(conn)[fonte])
+    if not linhas:
+        logger.warning("%s sem nenhum registro utilizável (%s); o banco não foi alterado.", rotulo, contagem)
+        return {**contagem, chave_total: 0}
+    _substituir(conn, [(tabela, insercao, linhas)])
+    return {**contagem, chave_total: len(linhas)}
 
 
 # ── CEAP ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -327,27 +363,22 @@ def linhas_da_remuneracao(
 
 
 def carregar_remuneracao(conn: Connection, processed_dir: Path) -> Dict[str, int]:
-    corpo = _arquivo(processed_dir, REMUNERACAO_ARQUIVO)
-    if registros_da_remuneracao(corpo) is None:
-        if corpo is not None:
-            logger.warning("%s sem proveniência oficial; carga pulada.", REMUNERACAO_ARQUIVO)
-        return {"arquivo_ausente_ou_sem_proveniencia": 1}
-    linhas, contagem = linhas_da_remuneracao(corpo, ResolvedorDePessoas(conn), _fontes(conn)[FONTE_REMUNERACAO])
-    if not linhas:
-        logger.warning("Remuneração sem nenhum registro utilizável (%s); o banco não foi alterado.", contagem)
-        return {**contagem, "meses": 0}
-    _substituir(
+    return _carga_simples(
         conn,
-        [
-            (
-                "fin.remuneracao",
-                "INSERT INTO fin.remuneracao (pessoa_id, ano, mes, salario_bruto, salario_liquido, fonte_id) "
-                "VALUES (:p, :ano, :mes, :bruto, :liquido, :f)",
-                linhas,
-            )
-        ],
+        processed_dir,
+        arquivo=REMUNERACAO_ARQUIVO,
+        aceita=lambda dados: registros_da_remuneracao(dados) is not None,
+        chave_ausente="arquivo_ausente_ou_sem_proveniencia",
+        montar=linhas_da_remuneracao,
+        fonte=FONTE_REMUNERACAO,
+        rotulo="Remuneração",
+        chave_total="meses",
+        tabela="fin.remuneracao",
+        insercao=(
+            "INSERT INTO fin.remuneracao (pessoa_id, ano, mes, salario_bruto, salario_liquido, fonte_id) "
+            "VALUES (:p, :ano, :mes, :bruto, :liquido, :f)"
+        ),
     )
-    return {**contagem, "meses": len(linhas)}
 
 
 # ── TSE: patrimônio, doações e certidões ─────────────────────────────────────────────────────────────────────────────
@@ -373,25 +404,22 @@ def linhas_do_patrimonio(
 
 
 def carregar_patrimonio(conn: Connection, processed_dir: Path) -> Dict[str, int]:
-    declaracoes = _arquivo(processed_dir, PATRIMONIO_ARQUIVO)
-    if not isinstance(declaracoes, list):
-        return {"arquivo_ausente": 1}
-    linhas, contagem = linhas_do_patrimonio(declaracoes, ResolvedorDePessoas(conn), _fontes(conn)[FONTE_TSE])
-    if not linhas:
-        logger.warning("Patrimônio sem nenhum registro utilizável (%s); o banco não foi alterado.", contagem)
-        return {**contagem, "declaracoes": 0}
-    _substituir(
+    return _carga_simples(
         conn,
-        [
-            (
-                "fin.declaracao_patrimonio",
-                "INSERT INTO fin.declaracao_patrimonio (pessoa_id, ano_eleicao, valor_declarado, quantidade_bens, detalhes, "
-                "fonte_id) VALUES (:p, :ano, :valor, :qtd, :det, :f)",
-                linhas,
-            )
-        ],
+        processed_dir,
+        arquivo=PATRIMONIO_ARQUIVO,
+        aceita=lambda dados: isinstance(dados, list),
+        chave_ausente="arquivo_ausente",
+        montar=linhas_do_patrimonio,
+        fonte=FONTE_TSE,
+        rotulo="Patrimônio",
+        chave_total="declaracoes",
+        tabela="fin.declaracao_patrimonio",
+        insercao=(
+            "INSERT INTO fin.declaracao_patrimonio (pessoa_id, ano_eleicao, valor_declarado, quantidade_bens, detalhes, "
+            "fonte_id) VALUES (:p, :ano, :valor, :qtd, :det, :f)"
+        ),
     )
-    return {**contagem, "declaracoes": len(linhas)}
 
 
 def linhas_das_doacoes(
@@ -422,25 +450,22 @@ def linhas_das_doacoes(
 
 
 def carregar_doacoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
-    prestacoes = _arquivo(processed_dir, DOACOES_ARQUIVO)
-    if not isinstance(prestacoes, list):
-        return {"arquivo_ausente": 1}
-    linhas, contagem = linhas_das_doacoes(prestacoes, ResolvedorDePessoas(conn), _fontes(conn)[FONTE_TSE])
-    if not linhas:
-        logger.warning("Doações sem nenhuma linha utilizável (%s); o banco não foi alterado.", contagem)
-        return {**contagem, "linhas": 0}
-    _substituir(
+    return _carga_simples(
         conn,
-        [
-            (
-                "fin.doacao_campanha",
-                "INSERT INTO fin.doacao_campanha (pessoa_id, ano_eleicao, doador_nome, doador_documento, valor, tipo_receita, "
-                "fonte_id) VALUES (:p, :ano, :nome, :doc, :valor, :tipo, :f)",
-                linhas,
-            )
-        ],
+        processed_dir,
+        arquivo=DOACOES_ARQUIVO,
+        aceita=lambda dados: isinstance(dados, list),
+        chave_ausente="arquivo_ausente",
+        montar=linhas_das_doacoes,
+        fonte=FONTE_TSE,
+        rotulo="Doações",
+        chave_total="linhas",
+        tabela="fin.doacao_campanha",
+        insercao=(
+            "INSERT INTO fin.doacao_campanha (pessoa_id, ano_eleicao, doador_nome, doador_documento, valor, tipo_receita, "
+            "fonte_id) VALUES (:p, :ano, :nome, :doc, :valor, :tipo, :f)"
+        ),
     )
-    return {**contagem, "linhas": len(linhas)}
 
 
 def linhas_das_certidoes(
@@ -466,25 +491,22 @@ def linhas_das_certidoes(
 
 
 def carregar_certidoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
-    ocorrencias = _arquivo(processed_dir, CERTIDOES_ARQUIVO)
-    if not isinstance(ocorrencias, list):
-        return {"arquivo_ausente": 1}
-    linhas, contagem = linhas_das_certidoes(ocorrencias, ResolvedorDePessoas(conn), _fontes(conn)[FONTE_TSE])
-    if not linhas:
-        logger.warning("Certidões sem nenhum registro utilizável (%s); o banco não foi alterado.", contagem)
-        return {**contagem, "certidoes": 0}
-    _substituir(
+    return _carga_simples(
         conn,
-        [
-            (
-                "fin.certidao",
-                "INSERT INTO fin.certidao (pessoa_id, orgao, tipo, situacao, detalhes, numero_processo, fonte_id) "
-                "VALUES (:p, :orgao, :tipo, :situacao, :det, :proc, :f)",
-                linhas,
-            )
-        ],
+        processed_dir,
+        arquivo=CERTIDOES_ARQUIVO,
+        aceita=lambda dados: isinstance(dados, list),
+        chave_ausente="arquivo_ausente",
+        montar=linhas_das_certidoes,
+        fonte=FONTE_TSE,
+        rotulo="Certidões",
+        chave_total="certidoes",
+        tabela="fin.certidao",
+        insercao=(
+            "INSERT INTO fin.certidao (pessoa_id, orgao, tipo, situacao, detalhes, numero_processo, fonte_id) "
+            "VALUES (:p, :orgao, :tipo, :situacao, :det, :proc, :f)"
+        ),
     )
-    return {**contagem, "certidoes": len(linhas)}
 
 
 CARGAS: Tuple[Tuple[str, Callable[[Connection, Path], Dict[str, int]]], ...] = (

@@ -319,3 +319,30 @@ def test_autor_com_emendas_de_tipos_diferentes_aparece_uma_vez(client, db):
 def test_mensagens_da_validacao_do_termo(client, emendas, rota, termo, mensagem):
     resposta = client.get(f"{BASE}/{rota}/{termo}")
     assert resposta.status_code == 400 and resposta.json()["detail"] == mensagem
+
+
+@pytest.mark.parametrize("termo", ["Distrito Federal", "distrito federal", "DF"])
+def test_distrito_federal_por_extenso_vale_como_a_sigla(client, db, termo):
+    _emenda(
+        db, "ANA", "INDIVIDUAL", codigo_emenda="1", localidade_destino="DISTRITO FEDERAL (UF)", uf="DF", valor_pago=1
+    )
+    _emenda(db, "BIA", "INDIVIDUAL", codigo_emenda="2", localidade_destino="BRASÍLIA - DF", uf="DF", valor_pago=2)
+    _emenda(
+        db, "CIA", "INDIVIDUAL", codigo_emenda="3", localidade_destino="FEDERAL DE ALGO - GO", uf="GO", valor_pago=4
+    )
+    db.commit()
+    dados = client.get(f"{BASE}/localidade/{termo}").json()
+    assert dados["total_emendas_encontradas"] == 2 and dados["total_entregue_pago_brl"] == 3.0
+
+
+def test_nome_de_estado_por_extenso_busca_pela_uf_e_nao_pelo_trecho(client, db):
+    _emenda(db, "ANA", "INDIVIDUAL", codigo_emenda="1", localidade_destino="PARÁ (UF)", uf="PA", valor_pago=1)
+    _emenda(db, "BIA", "INDIVIDUAL", codigo_emenda="2", localidade_destino="BELÉM - PA", uf="PA", valor_pago=2)
+    _emenda(db, "CIA", "INDIVIDUAL", codigo_emenda="3", localidade_destino="PARANÁ (UF)", uf="PR", valor_pago=4)
+    _emenda(db, "DAN", "INDIVIDUAL", codigo_emenda="4", localidade_destino="JOÃO PESSOA - PB", uf="PB", valor_pago=8)
+    db.commit()
+    assert client.get(f"{BASE}/localidade/Pará").json()["total_emendas_encontradas"] == 2
+    assert client.get(f"{BASE}/localidade/PARA").json()["total_emendas_encontradas"] == 2  # sem acento, por extenso
+    assert client.get(f"{BASE}/localidade/Para").json()["total_emendas_encontradas"] == 2  # não casa PARANÁ nem PARAÍBA
+    # um trecho que não é o nome inteiro de um estado continua sendo busca por nome
+    assert client.get(f"{BASE}/localidade/belem").json()["total_emendas_encontradas"] == 1

@@ -91,7 +91,7 @@ def custos_ceap(db: Session, pessoas: Sequence[int]) -> Optional[Dict[str, Any]]
     ).all()
     fornecedores = db.execute(
         text(
-            "SELECT (array_agg(nome ORDER BY valor_total DESC, nome))[1] AS nome, max(cnpj) AS cnpj, "
+            "SELECT (array_agg(nome ORDER BY valor_total DESC, nome DESC))[1] AS nome, max(cnpj) AS cnpj, "
             "sum(valor_total) AS total, "
             "CASE WHEN bool_or(notas IS NULL) THEN NULL ELSE sum(notas) END AS notas FROM fin.despesa_cota_fornecedor "
             "WHERE pessoa_id = ANY(:ids) GROUP BY grupo ORDER BY total DESC, nome LIMIT 10"
@@ -404,6 +404,20 @@ def doacoes_de_campanha(db: Session, pessoas: Sequence[int]) -> List[Dict[str, A
 DOADOR_ANONIMO = "Doador não identificado"  # o mesmo rótulo que o ETL grava quando a fonte não informa o nome
 
 
+def _chave_do_doador(doacao: Dict[str, Any]) -> Tuple[Any, ...]:
+    """
+    Quem é o doador de um recibo: o recibo inteiro quando não há nome nem documento (cada um é um desconhecido), o CNPJ
+    sem pontuação quando há 14 dígitos (o mesmo CNPJ com e sem pontuação é um doador só) e, senão, o par nome e documento.
+    """
+    documento = doacao["cpf_cnpj_doador"]
+    if documento is None and doacao["nome_doador"] == DOADOR_ANONIMO:
+        return ("recibo", doacao["id"])
+    digitos = re.sub(r"\D", "", documento or "")
+    if len(digitos) == 14:
+        return ("cnpj", digitos)
+    return (doacao["nome_doador"], documento)
+
+
 def resumo_das_doacoes(doacoes: Sequence[Dict[str, Any]], ano_eleicao: Optional[int] = None) -> Dict[str, Any]:
     """
     Resumo de UMA campanha da lista (já ordenada por valor): a eleição pedida ou, sem pedido, a mais recente. Traz as
@@ -431,14 +445,7 @@ def resumo_das_doacoes(doacoes: Sequence[Dict[str, Any]], ano_eleicao: Optional[
     total = float(sum(d["valor_doado"] for d in da_campanha))
     por_doador: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
     for d in da_campanha:  # o tipo do doador é o do maior recibo
-        anonimo = d["cpf_cnpj_doador"] is None and d["nome_doador"] == DOADOR_ANONIMO
-        chave: Tuple[Any, ...]
-        if anonimo:
-            chave = ("recibo", d["id"])
-        elif len(re.sub(r"\D", "", d["cpf_cnpj_doador"] or "")) == 14:  # o mesmo CNPJ, com ou sem pontuação
-            chave = ("cnpj", re.sub(r"\D", "", d["cpf_cnpj_doador"]))
-        else:
-            chave = (d["nome_doador"], d["cpf_cnpj_doador"])
+        chave = _chave_do_doador(d)
         atual = por_doador.get(chave)
         if atual is None:
             por_doador[chave] = {**d, "maior": d["valor_doado"]}

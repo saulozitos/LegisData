@@ -5,7 +5,7 @@ Os totais e as quebras (tipo de autor, área, ano, UF) são calculados no banco 
 detalhada é limitada. O tipo de autor e a UF de destino já vêm classificados pela carga do ETL.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from app.core.errors import ErroDeDominio
 from app.core.names import strip_accents
@@ -271,8 +271,9 @@ def resumo(db: Session) -> Dict[str, Any]:
 
 def _termo_valido(valor: str, sujeito: str, complemento: str) -> str:
     """
-    Termo da busca sem espaços nas pontas; levanta 400 para caractere nulo ou menos de 2 caracteres. `sujeito` abre a
-    mensagem do caractere inválido ("A localidade") e `complemento` fecha a do tamanho ("da localidade").
+    Termo da busca sem espaços nas pontas; levanta 400 para caractere nulo ou menos de `TAMANHO_MINIMO_DA_BUSCA`
+    caracteres. `sujeito` abre a mensagem do caractere inválido ("A localidade") e `complemento` fecha a do tamanho
+    ("da localidade").
     """
     termo = valor.strip()
     if "\x00" in termo:
@@ -293,13 +294,21 @@ def _areas(db: Session, ids: List[int]) -> List[Any]:
     ).all()
 
 
+def _sigla_da_busca(termo: str) -> Optional[str]:
+    """UF que o termo nomeia (a sigla ou o nome do estado por extenso, sem acento nem caixa), ou None."""
+    if termo.upper() in _UFS:
+        return termo.upper()
+    return _ESTADOS_MAP.get(strip_accents(termo).upper())
+
+
 def _ids_da_localidade(db: Session, termo: str) -> List[int]:
     """
     Emendas cujo destino casa com a busca. Sigla de estado (SP, MG...) vale pela coluna `uf`, que cobre o estado inteiro
     ("SÃO PAULO (UF)") e os seus municípios ("CAMPINAS - SP"); "AL" não pode virar um trecho que casa SALVADOR e NATAL.
-    Qualquer outro termo é busca por trecho do nome, sem acento nem caixa.
+    O nome do estado por extenso ("Distrito Federal", "São Paulo") vale como a sigla. Qualquer outro termo é busca por
+    trecho do nome, sem acento nem caixa.
     """
-    sigla = termo.upper() if termo.upper() in _UFS else None
+    sigla = _sigla_da_busca(termo)
     linhas = db.execute(
         text(
             "SELECT id FROM fin.emenda WHERE (CAST(:sigla AS text) IS NOT NULL AND uf = CAST(:sigla AS text)) "

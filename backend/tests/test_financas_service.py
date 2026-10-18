@@ -381,3 +381,46 @@ def test_financiamento_da_campanha_traz_o_bloco_do_dossie_e_o_vazio():
 def test_emendas_detalhadas_sem_pessoa_devolve_o_vazio_nomeado(db):
     assert fs.emendas_detalhadas(db, []) == fs.vazio_emendas_detalhadas()
     assert fs.vazio_emendas_detalhadas()["possui_dados"] is False
+
+
+def test_vazio_de_emendas_detalhadas_tem_as_mesmas_chaves_do_caminho_cheio(db, pessoa):
+    inserir_fin(
+        db,
+        "emenda",
+        pessoa_id=pessoa,
+        autor_texto="FULANO",
+        tipo_autor="INDIVIDUAL",
+        autor_situacao="IDENTIFICADO",
+        ano=2024,
+        codigo_emenda="E9",
+        tipo_emenda="INDIVIDUAL",
+        valor_empenhado=10,
+        valor_pago=5,
+        localidade_destino="SP",
+        fonte_id=fonte_id(db, "PORTAL_TRANSPARENCIA"),
+    )
+    db.commit()
+    cheio = fs.emendas_detalhadas(db, [pessoa])
+    assert cheio["possui_dados"] is True and set(fs.vazio_emendas_detalhadas()) == set(cheio)
+    assert fs.vazio_emendas_detalhadas() is not fs.vazio_emendas_detalhadas()
+
+
+def test_fornecedor_com_o_mesmo_valor_em_cadastros_irmaos_mostra_o_nome_de_forma_fixa(db, pessoa):
+    irma = db.execute(text("INSERT INTO core.pessoa (nome_exibicao) VALUES ('Fulano irma') RETURNING id")).scalar_one()
+    fonte = fonte_id(db, "CAMARA_CSV")
+    inserir_fin(db, "despesa_cota", pessoa_id=pessoa, ano=2024, tipo_despesa="T", valor_liquido=100, fonte_id=fonte)
+    for dono, nome in ((pessoa, "ALFA LTDA"), (irma, "ALFA LIMITADA")):
+        inserir_fin(
+            db,
+            "despesa_cota_fornecedor",
+            pessoa_id=dono,
+            nome=nome,
+            cnpj="02558157000162",
+            valor_total=50,
+            notas=1,
+            fonte_id=fonte,
+        )
+    db.commit()
+    for ordem in ([pessoa, irma], [irma, pessoa]):
+        forn = fs.custos_ceap(db, ordem)["maiores_fornecedores"]
+        assert forn[0]["nome_fornecedor"] == "ALFA LTDA"  # o maior nome, igual ao que o ETL escolhe no empate

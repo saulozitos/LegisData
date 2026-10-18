@@ -220,3 +220,11 @@ def test_loader_legado_tambem_nao_grava_cpf_no_nome_do_doador_nem_nos_detalhes_d
     escrever(tmp_path, "certidoes_tse.json", [ocorrencia(detalhes="Réu 111.222.333-44 em processo")])
     tse_loaders.carregar_certidoes_tse(session, tmp_path)
     assert session.query(CertidaoJudicial).one().details == "Réu em processo"
+
+
+def test_loader_legado_mascara_o_cpf_completo_do_doador(session, politicos, tmp_path):
+    registro = prestacao(camara_id=1, valor=10.0)
+    registro["doadores"][0]["cpf_cnpj_doador"] = "111.222.333-44"
+    escrever(tmp_path, "tse_doacoes_campanha.json", [registro])
+    tse_loaders.carregar_doacoes(session, tmp_path)
+    assert session.query(DoacaoCampanha).one().donor_cpf_cnpj == "***.222.333-**"

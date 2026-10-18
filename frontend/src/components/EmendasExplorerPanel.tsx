@@ -434,7 +434,7 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
                 value={localidadeInput}
                 maxLength={TERMO_MAXIMO}
                 onChange={(e) => setLocalidadeInput(e.target.value)}
-                placeholder="Ex: Campinas, Belo Horizonte, Recife, SP, BA..."
+                placeholder="Ex: Campinas, Belo Horizonte, Recife, SP, Bahia..."
                 className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-slate-700 rounded-2xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 transition shadow-inner"
                 aria-label="Pesquisar por município ou estado"
               />
@@ -464,7 +464,7 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
           {debouncedLocalidade.length < TERMO_MINIMO ? (
             <EmptyState
               title={`Digite ao menos ${TERMO_MINIMO} letras`}
-              message="Informe o nome de um município ou a sigla do estado (ex: SP, MG, Recife)."
+              message="Informe o nome de um município ou o estado, pela sigla ou por extenso (ex: SP, Minas Gerais, Recife)."
             />
           ) : localidadeQuery.loading ? (
             <LoadingState label={`Buscando emendas destinadas a "${debouncedLocalidade}"...`} />
