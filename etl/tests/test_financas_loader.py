@@ -2,7 +2,6 @@
 
 import json
 from decimal import Decimal
-from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import text
@@ -19,7 +18,7 @@ from etl.pipelines.loader_helpers import (
     tipo_do_autor,
     uf_da_localidade,
 )
-from etl.pipelines.pessoa_resolver import ResolvedorDePessoas
+from etl.pipelines.pessoa_resolver import Resolucao, ResolvedorDePessoas
 
 # ── funções puras ─────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -1171,7 +1170,10 @@ class _SempreAPessoa:
     """Resolvedor sem banco: todo registro é da pessoa 1."""
 
     def resolver(self, item, ano=None):
-        return SimpleNamespace(pessoa_id=1)
+        return Resolucao(1, "IDENTIFICADO")
+
+    def por_nome(self, nomes, ano=None):
+        return Resolucao(1, "IDENTIFICADO")
 
     def por_identificador(self, camara_id=None, senado_id=None):
         return 1
@@ -1315,3 +1317,178 @@ def test_ceap_que_esvaziaria_fornecedores_ou_resumo_aborta_sem_alterar_o_banco(
         with pg_engine.begin() as conn:
             fin.carregar_ceap(conn, tmp_path)
     assert _contar(pg_engine, tabela) == antes
+
+
+# ── 5ª revisão: CPF em qualquer grafia, desempate fixo, fornecedor canônico, quantidade desconhecida ──────────────────
+
+
+@pytest.mark.parametrize(
+    "bruto, esperado",
+    [
+        ("CPF 123456789-00", "CPF"),
+        ("CPF-123.456.789-00", "CPF-"),  # hífen de rótulo colado
+        ("nº.12345678900", "no."),
+        ("Réu,012.345.678-00", "Réu,"),
+        ("SÓCIO-012.345.678-00", "SÓCIO-"),
+        ("CPF 123 456 789 00", "CPF"),
+        ("CPF 123.456.789.00", "CPF"),
+        ("CPF 123,456,789-00", "CPF"),
+        ("Réu 9876543200", "Réu"),  # CPF que perdeu o zero à esquerda
+        ("CPF: 012.345.678–00.", "CPF: ."),  # travessão
+        ("CPF 012.345.678\u201000", "CPF"),  # hífen Unicode U+2010
+        ("CPF 012.345.678\u221200", "CPF"),  # sinal de menos U+2212
+        ("CPF 012.345.678:00", "CPF"),
+        ("012\u00a0345\u00a0678\u00a000 fim", "fim"),  # espaço sem quebra
+    ],
+)
+def test_texto_livre_tira_o_cpf_em_qualquer_grafia(bruto, esperado):
+    assert texto_sem_cpf(bruto) == esperado
+
+
+@pytest.mark.parametrize(
+    "texto_livre",
+    [
+        "R$ 1.234.567,89",
+        "valor 12.345.678.901,00",  # número maior com casas decimais
+        "R$ 12345678900",
+        "Empresa 12.345.678/0001-95",
+        "Processo 0001234-56.2020.8.26.0100",
+        "Casa de 120 m2, 3 quartos, ano 2015",
+    ],
+)
+def test_texto_livre_preserva_valores_cnpj_e_numeros_que_nao_sao_cpf(texto_livre):
+    assert texto_sem_cpf(texto_livre) == texto_livre
+
+
+@pytest.mark.parametrize(
+    "nome", ["JOAO 012.345.678\u201000", "JOAO 012.345.678\u221200", "JOAO 012.345.678–00", "JOAO 012.345.678:00"]
+)
+def test_nome_sem_cpf_tira_cpf_com_hifen_unicode_travessao_e_dois_pontos(nome):
+    assert nome_sem_cpf(nome) == "JOAO" and nome_do_fornecedor(nome) == "JOAO"
+
+
+def test_nome_nunca_grava_a_repr_de_dict_ou_lista():
+    assert nome_sem_cpf({"a": 1}) is None and nome_sem_cpf(["x"]) is None
+    assert nome_do_fornecedor({"a": 1}) == "Fornecedor não identificado"
+
+
+def test_documento_do_doador_aceita_a_mascara_com_digitos_de_outro_alfabeto_como_ascii():
+    assert documento_do_doador("***.١٢٣.٤٥٦-**") == "***.123.456-**"
+
+
+def _remuneracao(*brutos_e_liquidos):
+    return _oficial(
+        registros=[
+            {"camara_id": 1, "ano": 2024, "mes": 1, "salario_bruto": b, "salario_liquido": liq}
+            for b, liq in brutos_e_liquidos
+        ]
+    )
+
+
+@pytest.mark.parametrize("inverter", [False, True])
+def test_remuneracao_com_o_mesmo_bruto_desempata_pelo_liquido_em_qualquer_ordem(inverter):
+    pares = [(100, 40), (100, 70), (100, None)]
+    if inverter:
+        pares.reverse()
+    linhas, _ = fin.linhas_da_remuneracao(_remuneracao(*pares), _SempreAPessoa(), 1)
+    assert [x["liquido"] for x in linhas] == [70]
+
+
+@pytest.mark.parametrize("inverter", [False, True])
+def test_patrimonio_e_certidao_empatados_desempatam_pelo_conteudo_em_qualquer_ordem(inverter):
+    declaracoes = [
+        _oficial(camara_id=1, ano_eleicao=2022, valor_declarado_brl=10, quantidade_bens=q, detalhes_bens=d)
+        for q, d in ((1, "b"), (3, "a"), (3, "c"))
+    ]
+    ocorrencias = [
+        _oficial(camara_id=1, orgao="TSE", tipo_certidao="T", status_ficha="ok", detalhes=d, numero_processo=n)
+        for d, n in (("x", "1"), ("x", "9"), ("w", "5"))
+    ]
+    if inverter:
+        declaracoes.reverse()
+        ocorrencias.reverse()
+    patrimonio, _ = fin.linhas_do_patrimonio(declaracoes, _SempreAPessoa(), 1)
+    certidoes, _ = fin.linhas_das_certidoes(ocorrencias, _SempreAPessoa(), 1)
+    assert [(x["qtd"], x["det"]) for x in patrimonio] == [(3, "c")]
+    assert [(x["det"], x["proc"]) for x in certidoes] == [("x", "9")]
+
+
+@pytest.mark.parametrize("inverter", [False, True])
+def test_doacoes_com_prestacoes_identicas_em_tamanho_e_soma_desempatam_pelo_conteudo(inverter):
+    def prestacao(nome):
+        return _oficial(
+            camara_id=1, ano_eleicao=2022, doadores=[{"nome_doador": nome, "valor_doado": 10, "tipo_receita": "r"}]
+        )
+
+    prestacoes = [prestacao("Ana"), prestacao("Beto")]
+    if inverter:
+        prestacoes.reverse()
+    linhas, _ = fin.linhas_das_doacoes(prestacoes, _SempreAPessoa(), 1)
+    assert [x["nome"] for x in linhas] == ["Beto"]
+
+
+def test_somar_empatado_decide_pelo_conteudo_e_soma_desconhecido_como_desconhecido():
+    a = {"p": 1, "grupo": "g", "nome": "AAA", "valor": Decimal(10), "notas": 2, "f": 1}
+    b = {**a, "nome": "BBB"}
+    assert fin._somar([a, b], ("p", "grupo"), ("valor", "notas"))[0][0]["nome"] == "BBB"
+    assert fin._somar([b, a], ("p", "grupo"), ("valor", "notas"))[0][0]["nome"] == "BBB"
+    camara, senado = {**a, "f": 1}, {**a, "f": 2, "notas": None}
+    somado = fin._somar([camara, senado], ("p", "grupo"), ("valor", "notas"))[0][0]
+    assert somado["valor"] == Decimal(20) and somado["notas"] is None  # parcial não vale como total
+
+
+def test_ler_ceap_e_a_regra_unica_de_elegibilidade_e_tira_do_resumo_a_entrada_sem_gasto():
+    assert fin.ler_ceap("x") == (None, "sem_proveniencia")
+    assert fin.ler_ceap({"camara_id": 1, "por_ano_tipo": {"2023": {"T": 1}}}) == (None, "sem_proveniencia")
+    assert fin.ler_ceap(_ceap(camara_id=None)) == (None, "sem_identificador")
+    assert fin.ler_ceap(_ceap(por_ano_tipo={})) == (None, "sem_detalhe_por_ano")
+    valores, motivo = fin.ler_ceap(_ceap())
+    assert motivo is None and valores[(2023, "TELEFONIA")] == Decimal("100.5")
+    # entrada cujos anos estão fora da janela não soma gasto: a quantidade de notas dela não entra no resumo
+    fora = _ceap(por_ano_tipo={"1800": {"T": 5}}, total_notas=999)
+    _d, _f, resumos, _c = fin.linhas_da_ceap({"A": fora}, _SempreAPessoa(), {"CAMARA_CSV": 1, "SENADO_API": 2})
+    assert resumos == []
+
+
+def test_ceap_fornecedor_com_quantidade_desconhecida_grava_notas_nulas_e_nao_zero(pg_engine, banco, tmp_path):
+    forn = {
+        "A": {"nome": "POSTO SOL", "cnpj_cpf": "02.558.157/0001-62", "total": 100.0},
+        "B": {"nome": "OUTRO", "cnpj_cpf": "27.456.163/0001-30", "total": 5.0, "notas": 2},
+        "C": {"nome": "NEGATIVO", "cnpj_cpf": "11.222.333/0001-81", "total": 5.0, "notas": -4},
+    }
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"A": _ceap(fornecedores=forn)})
+    with pg_engine.begin() as conn:
+        fin.carregar_ceap(conn, tmp_path)
+    with pg_engine.connect() as conn:
+        linhas = {r[0]: r[1] for r in conn.execute(text("SELECT nome, notas FROM fin.despesa_cota_fornecedor"))}
+    assert linhas == {"POSTO SOL": None, "OUTRO": 2, "NEGATIVO": None}
+
+
+def test_ceap_mesmo_cnpj_com_nomes_diferentes_em_entradas_repetidas_da_mesma_fonte_nao_dobra(
+    pg_engine, banco, tmp_path
+):
+    def entrada(nome):
+        forn = {"V": {"nome": nome, "cnpj_cpf": "02.558.157/0001-62", "total": 100.0, "notas": 4}}
+        return _ceap(camara_id=500, por_ano_tipo={"2023": {"T": 100.0}}, total_notas=4, fornecedores=forn)
+
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"A": entrada("POSTO SOL LTDA"), "B": entrada("POSTO SOL")})
+    with pg_engine.begin() as conn:
+        fin.carregar_ceap(conn, tmp_path)
+    with pg_engine.connect() as conn:
+        linhas = [
+            tuple(r) for r in conn.execute(text("SELECT nome, valor_total, notas FROM fin.despesa_cota_fornecedor"))
+        ]
+    assert linhas == [("POSTO SOL LTDA", Decimal("100.00"), 4)]  # a mesma fonte repetida não soma duas vezes
+
+
+def test_ceap_resumo_parcial_nao_e_gravado_e_e_contado(pg_engine, banco, tmp_path):
+    base = {"por_ano_tipo": {"2023": {"T": 100.0}}, "fornecedores": {}}
+    ceap = {
+        "CAMARA": _ceap(camara_id=500, total_notas=500, **base),
+        "SENADO": _ceap(camara_id=None, senado_id=501, total_notas=None, **base),
+    }
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, ceap)
+    with pg_engine.begin() as conn:
+        resultado = fin.carregar_ceap(conn, tmp_path)
+    assert resultado["resumo_incompleto"] == 1 and _contar(pg_engine, "despesa_cota_resumo") == 0
+    assert _contar(pg_engine, "despesa_cota") == 1  # o gasto das duas fontes continua gravado

@@ -42,6 +42,8 @@ const AUTORES_SUGESTOES = [
 
 // a API exige ao menos 2 caracteres (um termo curto casaria quase tudo)
 const TERMO_MINIMO = 2;
+// Mesmo limite do backend (a busca com mais de 100 caracteres volta 422)
+const TERMO_MAXIMO = 100;
 
 const LOCALIDADES_SUGESTOES = [
   "Campinas", "Recife", "Salvador", "Belo Horizonte", "Curitiba", "Manaus", "PA", "MA", "AL"
@@ -430,6 +432,7 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
               <input
                 type="text"
                 value={localidadeInput}
+                maxLength={TERMO_MAXIMO}
                 onChange={(e) => setLocalidadeInput(e.target.value)}
                 placeholder="Ex: Campinas, Belo Horizonte, Recife, SP, BA..."
                 className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-slate-700 rounded-2xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 transition shadow-inner"
@@ -675,6 +678,16 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
                       <p className="text-xs text-slate-400 mt-1 max-w-2xl">
                         {autorQuery.data.perfil_autor?.descricao_amigavel}
                       </p>
+                      {(autorQuery.data.quantidade_autores ?? 1) > 1 && (
+                        <p className="text-xs text-amber-300 mt-2 max-w-2xl">
+                          Esta busca reuniu {autorQuery.data.quantidade_autores} autores (
+                          {(autorQuery.data.autores_encontrados ?? []).map((a) => a.nome_amigavel).join(", ")}
+                          {(autorQuery.data.quantidade_autores ?? 0) > (autorQuery.data.autores_encontrados ?? []).length
+                            ? " e outros"
+                            : ""}
+                          ). Os totais abaixo somam todos eles.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>

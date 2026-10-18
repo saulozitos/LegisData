@@ -1118,10 +1118,10 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     }
 
     # H. Custo do Mandato (CEAP): schema fin
-    custos_ceap = financas_service.custos_ceap(db, pessoas) or dict(financas_service.VAZIO_CEAP)
+    custos_ceap = financas_service.custos_ceap(db, pessoas) or financas_service.vazio_ceap()
 
     # I. Trilha do Dinheiro (Emendas Parlamentares)
-    emendas_parlamentares = financas_service.emendas_do_parlamentar(db, pessoas) or dict(financas_service.VAZIO_EMENDAS)
+    emendas_parlamentares = financas_service.emendas_do_parlamentar(db, pessoas) or financas_service.vazio_emendas()
 
     # J. Raio-X Judicial e Ficha Limpa
     ficha_limpa = _enrich_judicial_records(pol, financas_service.certidoes(db, pessoas), db)
@@ -1132,11 +1132,11 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
 
     financiamento_campanha = {
         "possui_dados": len(doacoes_db) > 0,
-        "ano_eleicao": doacoes_db[0]["ano_eleicao"] if doacoes_db else None,
+        "ano_eleicao": resumo_doacoes["ano_eleicao"],
         "total_arrecadado": resumo_doacoes["total"],
         "total_doadores": resumo_doacoes["quantidade"],
         "top_doadores": resumo_doacoes["top_5"],
-        "todas_doacoes": doacoes_db,
+        "todas_doacoes": resumo_doacoes["doacoes"],
     }
 
     # L. Indicadores avançados — calculados somente com dados reais; sem insumo, retornam null
@@ -1432,5 +1432,6 @@ def get_politician_doacoes(politician_id: str, db: Session = Depends(get_db)):
         "total_arrecadado": resumo["total"],
         "total_doadores": resumo["quantidade"],
         "top_5": resumo["top_5"],
-        "doacoes": doacoes,
+        "ano_eleicao": resumo["ano_eleicao"],
+        "doacoes": resumo["doacoes"],
     }

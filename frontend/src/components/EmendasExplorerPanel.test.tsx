@@ -233,4 +233,43 @@ describe("EmendasExplorerPanel", () => {
     expect(await screen.findByText(/Digite ao menos 2 letras/i)).toBeInTheDocument();
     expect(api.getEmendasPorLocalidade).not.toHaveBeenCalled();
   });
+
+  it("o campo de busca limita o termo a 100 caracteres, como o backend", async () => {
+    vi.mocked(api.getEmendasResumo).mockResolvedValue(mockResumo);
+    vi.mocked(api.getEmendasPorLocalidade).mockResolvedValue(mockLocalidade);
+
+    render(<EmendasExplorerPanel />);
+    await screen.findByText(/Explorador Nacional de Emendas Orçamentárias/i);
+    fireEvent.click(screen.getByRole("button", { name: /Busca por Cidade\/UF/i }));
+    expect(screen.getByLabelText(/Pesquisar por município ou estado/i)).toHaveAttribute("maxlength", "100");
+  });
+
+  it("avisa quando a busca por autor reuniu mais de um autor", async () => {
+    vi.mocked(api.getEmendasResumo).mockResolvedValue(mockResumo);
+    vi.mocked(api.getEmendasPorAutor).mockResolvedValue({
+      ...mockAutor,
+      quantidade_autores: 2,
+      autores_encontrados: [
+        { nome_amigavel: "Bancada da Bahia", categoria: "Bancada Estadual", quantidade: 3 },
+        { nome_amigavel: "Bancada de Goiás", categoria: "Bancada Estadual", quantidade: 1 },
+      ],
+    });
+
+    render(<EmendasExplorerPanel />);
+    await screen.findByText(/Explorador Nacional de Emendas Orçamentárias/i);
+    fireEvent.click(screen.getByRole("button", { name: /Bancadas & Relator/i }));
+    expect(await screen.findByText(/reuniu 2 autores/i)).toBeInTheDocument();
+    expect(screen.getByText(/Bancada da Bahia, Bancada de Goiás/i)).toBeInTheDocument();
+  });
+
+  it("autor único não mostra o aviso de vários autores", async () => {
+    vi.mocked(api.getEmendasResumo).mockResolvedValue(mockResumo);
+    vi.mocked(api.getEmendasPorAutor).mockResolvedValue({ ...mockAutor, quantidade_autores: 1 });
+
+    render(<EmendasExplorerPanel />);
+    await screen.findByText(/Explorador Nacional de Emendas Orçamentárias/i);
+    fireEvent.click(screen.getByRole("button", { name: /Bancadas & Relator/i }));
+    await screen.findByText(/Recurso da CMO/i);
+    expect(screen.queryByText(/reuniu/i)).not.toBeInTheDocument();
+  });
 });

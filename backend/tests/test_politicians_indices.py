@@ -123,7 +123,7 @@ def test_ceap_endpoint_totals_by_year_and_type_from_fin(client, db, seed):
 
 def test_ceap_endpoint_without_any_data_is_empty(client, seed):
     body = client.get(f"{BASE}/{seed.lula_fonte.id}/ceap").json()
-    assert body["total_gasto"] == 0.0 and body["despesas"] == []
+    assert body["total_gasto"] is None and body["possui_dados"] is False and body["despesas"] == []
 
 
 def test_emendas_endpoint_lists_only_the_authors_emendas(client, db, seed):

@@ -110,7 +110,9 @@ export default function CeapTab({ dossier }: CeapTabProps) {
                       {dossier?.custos_ceap?.maiores_fornecedores?.[0]?.nome_fornecedor || "Nenhum"}
                     </span>
                     <span className="text-[10px] font-mono text-emerald-400 mt-1 block">
-                      R$ {(dossier?.custos_ceap?.maiores_fornecedores?.[0]?.total_recebido || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {dossier?.custos_ceap?.maiores_fornecedores?.[0]
+                        ? `R$ ${dossier.custos_ceap.maiores_fornecedores[0].total_recebido.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+                        : "n/d"}
                     </span>
                   </div>
                 </div>
@@ -208,7 +210,7 @@ export default function CeapTab({ dossier }: CeapTabProps) {
                               </td>
                               <td className="py-2.5 px-2 text-center font-mono text-slate-400">
                                 <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px]">
-                                  {f.num_notas}
+                                  {f.num_notas ?? "n/d"}
                                 </span>
                               </td>
                               <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-400 whitespace-nowrap">

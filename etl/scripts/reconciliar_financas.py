@@ -4,7 +4,8 @@ Reconciliação (somente leitura) dos arquivos oficiais do ETL com o schema `fin
 Compara, por ano, o total que está no arquivo com o total gravado no banco:
 - emendas: todas as linhas entram (autor sem pessoa fica com `pessoa_id` nulo), então a diferença esperada é zero;
 - CEAP, remuneração e doações: só entra quem tem pessoa em `core`; a diferença é o valor de quem não foi vinculado
-  e vem listada com o número de parlamentares/prestações de fora.
+  e vem listada com o número de parlamentares/prestações de fora. Registros repetidos na mesma fonte (variantes do nome,
+  duas folhas no mesmo mês, prestação duplicada) gravam uma linha só: o que o loader descartou também entra na diferença.
 
 Uso: python -m etl.scripts.reconciliar_financas [--json]
 Sai com código 1 quando as emendas divergem ou quando um total do banco passa do total do arquivo.
@@ -24,11 +25,8 @@ from etl.pipelines.financas_loader import (
     DOACOES_ARQUIVO,
     EMENDAS_ARQUIVO,
     REMUNERACAO_ARQUIVO,
-    ler_doacoes,
-    ler_emenda,
-    ler_remuneracao,
-    valores_da_ceap,
 )
+from etl.pipelines.loader_helpers import ler_ceap, ler_doacoes, ler_emenda, ler_remuneracao
 from etl.utils.bootstrap import ensure_backend_on_path
 from etl.utils.datafiles import load_json
 from etl.utils.provenance import is_trusted
@@ -44,9 +42,8 @@ CENTAVO = Decimal("0.01")
 def totais_ceap_do_arquivo(ceap: Any) -> Dict[int, Decimal]:
     totais: Dict[int, Decimal] = defaultdict(Decimal)
     for dados in ceap.values() if isinstance(ceap, dict) else []:
-        if not isinstance(dados, dict) or not is_trusted(dados):
-            continue
-        for (ano, _tipo), valor in valores_da_ceap(dados).items():  # a mesma regra do loader
+        valores, _motivo = ler_ceap(dados)  # a mesma regra de elegibilidade do loader
+        for (ano, _tipo), valor in (valores or {}).items():
             totais[ano] += valor
     return totais
 

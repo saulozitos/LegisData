@@ -503,3 +503,32 @@ def test_dossier_vote_summary_ignores_other_options(client, seed):
     """Obstrução e Art. 17 não entram em nenhum dos três grupos."""
     resumo = client.get(f"{BASE}/{seed.beltrano.id}").json()["resumo_votos"]
     assert sum(g["total"] for g in resumo.values()) == 0
+
+
+def test_financiamento_considera_so_a_campanha_mais_recente_e_conta_doadores_distintos(client, db, seed, financas):
+    pessoa = pessoa_do(db, seed.fulano)
+    for ano, nome, valor in ((2018, "Doador Antigo", 9000), (2022, "Fulana Doadora", 250)):
+        inserir_fin(
+            db,
+            "doacao_campanha",
+            pessoa_id=pessoa,
+            ano_eleicao=ano,
+            doador_nome=nome,
+            doador_documento="***.654.321-**" if nome == "Fulana Doadora" else None,
+            valor=valor,
+            fonte_id=fonte_id(db, "TSE"),
+        )
+    db.commit()
+    campanha = client.get(f"{BASE}/{seed.fulano.id}").json()["financiamento_campanha"]
+    assert campanha["ano_eleicao"] == 2022 and campanha["total_arrecadado"] == 750.0
+    assert campanha["total_doadores"] == 1  # a campanha de 2022 tem um doador (dois recibos), a de 2018 não entra
+    assert {d["ano_eleicao"] for d in campanha["todas_doacoes"]} == {2022}
+    assert campanha["top_doadores"][0]["valor_doado"] == 750.0 and campanha["top_doadores"][0]["percentual"] == 100.0
+    avulsa = client.get(f"{BASE}/{seed.fulano.id}/doacoes").json()
+    assert avulsa["ano_eleicao"] == 2022 and avulsa["total_arrecadado"] == 750.0
+    assert {d["ano_eleicao"] for d in avulsa["doacoes"]} == {2022}
+
+
+def test_ceap_avulsa_sem_despesa_devolve_gasto_desconhecido_e_nao_zero(client, seed):
+    ceap = client.get(f"{BASE}/{seed.beltrano.id}/ceap").json()
+    assert ceap["possui_dados"] is False and ceap["total_gasto"] is None and ceap["despesas"] == []

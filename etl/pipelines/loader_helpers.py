@@ -6,6 +6,7 @@ Separadas do `db_loader` para poderem ser testadas sem Postgres e reutilizadas p
 import math
 import re
 import unicodedata
+from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -19,6 +20,7 @@ from etl.utils.names import (
     first_signatory,
     normalize_name_tokens,
 )
+from etl.utils.provenance import is_trusted
 
 # Início da 57ª legislatura (1º/fev/2023): único limite inferior de observação que se conhece para quem está
 # "em exercício" quando a fonte não informa a data de filiação/mandato.
@@ -433,14 +435,14 @@ UF_POR_NOME = {
 }
 _UFS = frozenset(UF_POR_NOME.values())
 # CPF solto no nome (MEI vem como "NOME 012.345.678-00" ou "NOME 09876543200"): 10 ou 11 dígitos, juntos ou separados por
-# até 3 caracteres entre ponto, hífen, barra, vírgula, sublinhado e espaço (por exemplo " - "). Dígitos de outros alfabetos
-# e de largura total viram ASCII antes (`_ascii`). O CNPJ formatado vem primeiro na alternância para não ser lido
+# até 3 caracteres entre ponto, hífen, barra, vírgula, dois-pontos, sublinhado e espaço (por exemplo " - "). Dígitos de
+# outros alfabetos, de largura total e hífens Unicode viram ASCII antes (`_ascii`). O CNPJ formatado vem primeiro na alternância para não ser lido
 # como um CPF parcial; CNPJ sem pontuação (14 dígitos) nunca casa porque a sequência exige 10 ou 11 no total.
 _SEQUENCIA_CPF = re.compile(
     r"(?<![0-9])(?P<cnpj>[0-9]{2}\.[0-9]{3}\.[0-9]{3}/[0-9]{4}-[0-9]{2})(?![0-9])"
-    r"|(?<![0-9])(?:[0-9][\s.\-/_,]{0,3}){9,10}[0-9](?![0-9])"
+    r"|(?<![0-9])(?:[0-9][\s.\-/_,:]{0,3}){9,10}[0-9](?![0-9])"
 )
-_MASCARA_CPF = re.compile(r"^\*{3}\.\d{3}\.\d{3}-\*{2}$")
+_MASCARA_CPF = re.compile(r"^\*{3}\.[0-9]{3}\.[0-9]{3}-\*{2}$")
 TIPOS_DE_AUTOR_INSTITUCIONAL = ("BANCADA_ESTADUAL", "COMISSAO_INSTITUCIONAL", "RELATOR_GERAL")
 
 
@@ -460,9 +462,22 @@ def cnpj_do_fornecedor(valor: Any) -> Optional[str]:
 
 
 def _ascii(valor: Any) -> str:
-    """Texto com qualquer dígito Unicode (árabe-índico, largura total...) trocado pelo dígito ASCII equivalente."""
+    """
+    Texto com qualquer dígito Unicode (árabe-índico, largura total...) trocado pelo dígito ASCII equivalente, hífens
+    Unicode (U+2010, travessão, sinal de menos) trocados por '-' e espaços Unicode por espaço comum.
+    """
     normal = unicodedata.normalize("NFKC", str(valor or ""))
-    return "".join(str(unicodedata.decimal(c)) if unicodedata.decimal(c, None) is not None else c for c in normal)
+    saida = []
+    for c in normal:
+        if unicodedata.decimal(c, None) is not None:
+            saida.append(str(unicodedata.decimal(c)))
+        elif unicodedata.category(c) == "Pd" or c == "\u2212":
+            saida.append("-")
+        elif unicodedata.category(c) in ("Zs", "Zl", "Zp"):
+            saida.append(" ")
+        else:
+            saida.append(c)
+    return "".join(saida)
 
 
 def _sem_cpf(achado: "re.Match[str]") -> str:
@@ -472,25 +487,31 @@ def _sem_cpf(achado: "re.Match[str]") -> str:
 
 def nome_do_fornecedor(valor: Any) -> str:
     """Nome do fornecedor sem CPF embutido (MEI aparece como 'NOME 09876543200' na fonte); vazio vira o rótulo padrão."""
-    limpo = " ".join(_SEQUENCIA_CPF.sub(_sem_cpf, _ascii(valor)).split())
+    limpo = " ".join(_SEQUENCIA_CPF.sub(_sem_cpf, _ascii(texto(valor))).split())
     return limpo or "Fornecedor não identificado"
 
 
 def nome_sem_cpf(valor: Any) -> Optional[str]:
     """Nome de pessoa ou empresa sem CPF embutido; None quando não sobra nada."""
-    limpo = " ".join(_SEQUENCIA_CPF.sub(_sem_cpf, _ascii(valor)).split())
+    limpo = " ".join(_SEQUENCIA_CPF.sub(_sem_cpf, _ascii(texto(valor))).split())
     return limpo or None
 
 
-# CPF em texto livre (descrição de bens, detalhes de certidão): só o formato com pontuação e as 11 posições seguidas, para
-# não cortar valores em reais ("R$ 1.234.567,89" tem vírgula; "R$ 12345678900" é precedido do símbolo da moeda).
+# CPF em texto livre (descrição de bens, detalhes de certidão): 10 ou 11 dígitos com até 3 separadores entre eles, como na
+# regra dos nomes, mas sem cortar valores em reais nem números maiores:
+#  - "R$ 12345678900" (precedido do símbolo da moeda) é preservado;
+#  - o lookbehind recusa começo no meio de um número ("1.234.567.890,00": dígito + ponto/vírgula/hífen antes) e o
+#    lookahead recusa fim antes de casa decimal ("890,00") ou de mais um dígito;
+#  - CNPJ formatado vem primeiro na alternância e nunca é cortado.
+# CPF colado a letra, vírgula, ponto ou hífen de rótulo ("CPF-012.345.678-00", "Réu,012.345.678-00") é removido.
 _CPF_EM_TEXTO = re.compile(
-    r"(?P<moeda>R\$\s*)?(?<![0-9.,\-])(?:[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}|[0-9]{11})(?![0-9.,\-]*[0-9])"
+    r"(?P<moeda>R\$\s*)?(?:(?<![0-9])(?P<cnpj>[0-9]{2}\.[0-9]{3}\.[0-9]{3}/[0-9]{4}-[0-9]{2})(?![0-9])"
+    r"|(?<![0-9])(?<![0-9][.,\-])(?:[0-9][\s.\-/_,:]{0,3}){9,10}[0-9](?![0-9])(?![.,][0-9]))"
 )
 
 
 def _tira_cpf_do_texto(achado: "re.Match[str]") -> str:
-    return achado.group(0) if achado.group("moeda") else " "
+    return achado.group(0) if achado.group("moeda") or achado.group("cnpj") else " "
 
 
 def texto_sem_cpf(valor: Any) -> Optional[str]:
@@ -515,7 +536,12 @@ def documento_do_doador(valor: Any) -> Optional[str]:
     bruto = texto(valor)
     if bruto is None:
         return None
-    if _MASCARA_CPF.fullmatch(bruto) or _CNPJ_CANONICO.fullmatch(bruto):
+    mascara = _ascii(
+        bruto
+    )  # a máscara da fonte com dígitos de outro alfabeto vira ASCII (o CHECK do banco só aceita [0-9])
+    if _MASCARA_CPF.fullmatch(mascara):
+        return mascara
+    if _CNPJ_CANONICO.fullmatch(bruto):
         return bruto
     if "*" in bruto:
         return None
@@ -551,3 +577,105 @@ def uf_da_localidade(localidade: Any) -> Optional[str]:
         return UF_POR_NOME.get(normalize_name_tokens(bruto[:-4]).upper())
     sufixo = re.search(r"\s-\s([A-Z]{2})$", bruto)
     return sufixo.group(1) if sufixo and sufixo.group(1) in _UFS else None
+
+
+# ── Elegibilidade dos registros das fontes de finanças: regra única do loader e da reconciliação ─────────────────────
+def valores_da_ceap(dados: Dict[str, Any]) -> Dict[Tuple[int, str], Decimal]:
+    """Total por (ano, tipo de despesa) de um parlamentar do arquivo. A reconciliação usa a mesma regra do loader."""
+    totais: Dict[Tuple[int, str], Decimal] = defaultdict(Decimal)
+    por_ano_tipo = dados.get("por_ano_tipo")
+    for ano, tipos in (por_ano_tipo if isinstance(por_ano_tipo, dict) else {}).items():
+        ano_ok = inteiro_em(ano, ANO_MINIMO, ANO_MAXIMO)
+        for tipo, valor in (tipos if isinstance(tipos, dict) else {}).items():
+            valor_dec = decimal_de(valor)
+            nome_tipo = texto(tipo)
+            if ano_ok is not None and valor_dec is not None and nome_tipo:
+                totais[(ano_ok, nome_tipo)] += valor_dec
+    return totais
+
+
+def ler_ceap(dados: Any) -> Tuple[Optional[Dict[Tuple[int, str], Decimal]], Optional[str]]:
+    """
+    Totais por (ano, tipo) de um parlamentar do arquivo, ou (None, motivo) quando ele não entra: "sem_proveniencia",
+    "sem_identificador" (sem id não há como saber a fonte, Câmara ou Senado) ou "sem_detalhe_por_ano". É a regra única
+    de elegibilidade: a reconciliação usa esta mesma função.
+    """
+    if not isinstance(dados, dict) or not is_trusted(dados):
+        return None, "sem_proveniencia"
+    if not (dados.get("camara_id") or dados.get("senado_id")):
+        return None, "sem_identificador"
+    por_ano_tipo = dados.get("por_ano_tipo")
+    if not isinstance(por_ano_tipo, dict) or not por_ano_tipo:
+        return None, "sem_detalhe_por_ano"
+    return valores_da_ceap(dados), None
+
+
+def ler_emenda(emenda: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Campos de uma emenda do arquivo, ou (None, motivo) quando ela não entra: "sem_proveniencia" ou "invalidas".
+    É a regra única de elegibilidade: a reconciliação usa esta mesma função para somar o que o arquivo deveria ter no banco.
+    """
+    if not isinstance(emenda, dict) or not is_trusted(emenda):
+        return None, "sem_proveniencia"
+    ano = inteiro_em(emenda.get("ano"), ANO_MINIMO, ANO_MAXIMO)
+    tipo_emenda, autor = texto(emenda.get("tipo_emenda")), texto(emenda.get("politician_name"))
+    local = texto(emenda.get("localidade_destino"))
+    empenhado = decimal_de(emenda.get("valor_empenhado"), LIMITE_EMENDA)
+    pago = decimal_de(emenda.get("valor_pago"), LIMITE_EMENDA)
+    # valor pago desconhecido não vira zero: a emenda sem os dois valores fica de fora e é contada
+    if ano is None or not (tipo_emenda and autor and local) or empenhado is None or pago is None:
+        return None, "invalidas"
+    return {
+        "ano": ano,
+        "codigo": texto(emenda.get("codigo_emenda")),
+        "tipo_emenda": tipo_emenda,
+        "autor": autor,
+        "local": local,
+        "funcao": texto(emenda.get("funcao")),
+        "cod_autor": texto(emenda.get("autor_codigo")),
+        "empenhado": empenhado,
+        "pago": pago,
+    }, None
+
+
+def ler_remuneracao(registro: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Campos de um mês de remuneração, ou (None, "invalidas"). Regra única de elegibilidade (loader e reconciliação)."""
+    if not isinstance(registro, dict):
+        return None, "invalidas"
+    ano, mes = inteiro_em(registro.get("ano"), ANO_MINIMO, ANO_MAXIMO), inteiro_em(registro.get("mes"), 1, 12)
+    bruto = decimal_de(registro.get("salario_bruto"), LIMITE_REMUNERACAO)
+    if ano is None or mes is None or bruto is None:
+        return None, "invalidas"
+    return {
+        "ano": ano,
+        "mes": mes,
+        "bruto": bruto,
+        "liquido": decimal_de(registro.get("salario_liquido"), LIMITE_REMUNERACAO),
+    }, None
+
+
+def ler_doacoes(item: Any) -> Tuple[Optional[int], List[Dict[str, Any]], Optional[str]]:
+    """
+    (ano, linhas de doador, motivo) de uma prestação do arquivo. Sem ano ou sem lista de doadores o motivo é "invalidas";
+    sem proveniência, "sem_proveniencia". Regra única de elegibilidade (loader e reconciliação).
+    """
+    if not isinstance(item, dict) or not is_trusted(item):
+        return None, [], "sem_proveniencia"
+    ano = inteiro_em(item.get("ano_eleicao"), ANO_MINIMO, ANO_MAXIMO)
+    if ano is None or not isinstance(item.get("doadores"), list):
+        return None, [], "invalidas"
+    linhas = []
+    for doador in item["doadores"]:
+        valor = decimal_de(doador.get("valor_doado"), LIMITE_TSE) if isinstance(doador, dict) else None
+        if valor is None:
+            continue
+        linhas.append(
+            {
+                "ano": ano,
+                "nome": nome_sem_cpf(doador.get("nome_doador")) or "Doador não identificado",
+                "doc": documento_do_doador(doador.get("cpf_cnpj_doador")),
+                "valor": valor,
+                "tipo": texto(doador.get("tipo_receita")),
+            }
+        )
+    return ano, linhas, None

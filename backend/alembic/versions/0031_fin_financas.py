@@ -71,7 +71,7 @@ def upgrade() -> None:
             nome text NOT NULL,
             cnpj char(14) CHECK (cnpj IS NULL OR cnpj ~ '^[0-9]{14}$'),
             valor_total numeric(14,2) NOT NULL,
-            notas integer NOT NULL CHECK (notas >= 0),
+            notas integer CHECK (notas >= 0),
             fonte_id smallint NOT NULL REFERENCES etl.fonte(id),
             atualizado_em timestamptz NOT NULL DEFAULT now(),
             UNIQUE NULLS NOT DISTINCT (pessoa_id, nome, cnpj)

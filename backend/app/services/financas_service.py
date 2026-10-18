@@ -11,7 +11,7 @@ Nada aqui inventa dado: sem linha no banco a função devolve None (ou lista vaz
 import re
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from app.core.numeros import opt_float as _opt_float
 from app.core.numeros import pct as _pct
@@ -91,7 +91,8 @@ def custos_ceap(db: Session, pessoas: Sequence[int]) -> Optional[Dict[str, Any]]
     fornecedores = db.execute(
         text(
             "SELECT (array_agg(nome ORDER BY valor_total DESC, nome))[1] AS nome, max(cnpj) AS cnpj, "
-            "sum(valor_total) AS total, sum(notas) AS notas FROM fin.despesa_cota_fornecedor "
+            "sum(valor_total) AS total, "
+            "CASE WHEN bool_or(notas IS NULL) THEN NULL ELSE sum(notas) END AS notas FROM fin.despesa_cota_fornecedor "
             "WHERE pessoa_id = ANY(:ids) GROUP BY coalesce(cnpj, nome) ORDER BY total DESC, nome LIMIT 10"
         ),
         {"ids": ids},
@@ -114,21 +115,23 @@ def custos_ceap(db: Session, pessoas: Sequence[int]) -> Optional[Dict[str, Any]]
                 "nome_fornecedor": r.nome,
                 "cnpj_cpf": formatar_cnpj(r.cnpj),
                 "total_recebido": round(float(r.total), 2),
-                "num_notas": int(r.notas),
+                "num_notas": int(r.notas) if r.notas is not None else None,  # parcela desconhecida: total desconhecido
             }
             for r in fornecedores
         ],
     }
 
 
-VAZIO_CEAP: Dict[str, Any] = {
-    "possui_dados": False,
-    "gasto_total_recente": 0.0,
-    "total_notas": None,
-    "gastos_por_tipo": [],
-    "gastos_por_ano": [],
-    "maiores_fornecedores": [],
-}
+def vazio_ceap() -> Dict[str, Any]:
+    """Resposta da CEAP de quem não tem dado, num dict novo a cada chamada (as listas não são compartilhadas)."""
+    return {
+        "possui_dados": False,
+        "gasto_total_recente": 0.0,
+        "total_notas": None,
+        "gastos_por_tipo": [],
+        "gastos_por_ano": [],
+        "maiores_fornecedores": [],
+    }
 
 
 def ceap_por_ano_e_tipo(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
@@ -152,7 +155,8 @@ def ceap_por_ano_e_tipo(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
             text("SELECT sum(valor_liquido) FROM fin.despesa_cota WHERE pessoa_id = ANY(:ids)"), {"ids": ids}
         ).scalar()
     return {
-        "total_gasto": round(float(total), 2) if total is not None else 0.0,
+        "possui_dados": total is not None,
+        "total_gasto": round(float(total), 2) if total is not None else None,  # sem despesa o gasto é desconhecido
         "total_notas": _total_notas(db, ids) if ids else None,
         "despesas": [{"ano": r.ano, "tipo": r.tipo_despesa, "valor": round(float(r.valor), 2)} for r in linhas],
     }
@@ -225,17 +229,19 @@ def emendas_do_parlamentar(db: Session, pessoas: Sequence[int]) -> Optional[Dict
     }
 
 
-VAZIO_EMENDAS: Dict[str, Any] = {
-    "possui_dados": False,
-    "total_empenhado": 0.0,
-    "total_pago": 0.0,
-    "percentual_execucao": 0.0,
-    "destinos_principais": [],
-    "distribuicao_por_tipo": [],
-    "distribuicao_por_area": [],
-    "total_emendas": 0,
-    "lista_emendas": [],
-}
+def vazio_emendas() -> Dict[str, Any]:
+    """Resposta das emendas de quem não tem nenhuma, num dict novo a cada chamada."""
+    return {
+        "possui_dados": False,
+        "total_empenhado": 0.0,
+        "total_pago": 0.0,
+        "percentual_execucao": 0.0,
+        "destinos_principais": [],
+        "distribuicao_por_tipo": [],
+        "distribuicao_por_area": [],
+        "total_emendas": 0,
+        "lista_emendas": [],
+    }
 
 
 def emendas_detalhadas(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
@@ -385,20 +391,40 @@ def doacoes_de_campanha(db: Session, pessoas: Sequence[int]) -> List[Dict[str, A
 
 
 def resumo_das_doacoes(doacoes: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
-    """Total, quantidade e os 5 maiores doadores (com a participação de cada um) de uma lista já ordenada por valor."""
-    total = float(sum(d["valor_doado"] for d in doacoes))
+    """
+    Resumo da campanha mais recente da lista (já ordenada por valor): a eleição, as doações dela, o total, a quantidade de
+    doadores distintos e os 5 maiores (com a participação de cada um). Eleições diferentes nunca se misturam no total.
+    """
+    if not doacoes:
+        return {"ano_eleicao": None, "doacoes": [], "total": 0.0, "quantidade": 0, "top_5": []}
+    ano = max(d["ano_eleicao"] for d in doacoes)
+    da_campanha = [d for d in doacoes if d["ano_eleicao"] == ano]
+    total = float(sum(d["valor_doado"] for d in da_campanha))
+    por_doador: Dict[Tuple[Any, Any], Dict[str, Any]] = {}
+    for d in da_campanha:  # um doador com vários recibos conta uma vez; o tipo é o do maior recibo
+        chave = (d["nome_doador"], d["cpf_cnpj_doador"])
+        atual = por_doador.get(chave)
+        if atual is None:
+            por_doador[chave] = {**d, "maior": d["valor_doado"]}
+            continue
+        atual["valor_doado"] += d["valor_doado"]
+        if d["valor_doado"] > atual["maior"]:
+            atual["maior"], atual["tipo_receita"] = d["valor_doado"], d["tipo_receita"]
+    maiores = sorted(por_doador.values(), key=lambda x: (-x["valor_doado"], x["nome_doador"] or ""))[:5]
     return {
+        "ano_eleicao": ano,
+        "doacoes": da_campanha,
         "total": round(total, 2),
-        "quantidade": len(doacoes),
+        "quantidade": len(por_doador),
         "top_5": [
             {
                 "nome_doador": d["nome_doador"],
                 "cpf_cnpj_doador": d["cpf_cnpj_doador"],
-                "valor_doado": d["valor_doado"],
+                "valor_doado": round(d["valor_doado"], 2),
                 "tipo_receita": d["tipo_receita"],
                 "percentual": _pct(d["valor_doado"], total),
             }
-            for d in doacoes[:5]
+            for d in maiores
         ],
     }
 

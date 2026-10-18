@@ -60,7 +60,13 @@ def test_ceap_sem_resumo_de_notas_devolve_notas_desconhecidas_e_nao_zero(db, pes
 
 def test_ceap_sem_pessoa_ou_sem_linhas(db, pessoa):
     assert fs.custos_ceap(db, []) is None and fs.custos_ceap(db, [pessoa]) is None
-    assert fs.ceap_por_ano_e_tipo(db, []) == {"total_gasto": 0.0, "total_notas": None, "despesas": []}
+    assert fs.ceap_por_ano_e_tipo(db, []) == {
+        "possui_dados": False,
+        "total_gasto": None,  # sem despesa o gasto é desconhecido, não zero
+        "total_notas": None,
+        "despesas": [],
+    }
+    assert fs.ceap_por_ano_e_tipo(db, [pessoa])["total_gasto"] is None
 
 
 def test_remuneracao_sem_registro_nao_inventa_total_zero(db, pessoa):
@@ -131,7 +137,47 @@ def test_doacoes_e_certidoes_vem_ordenadas(db, pessoa):
 
 
 def test_vazio_ceap_nao_inventa_zero_de_notas():
-    assert fs.VAZIO_CEAP["total_notas"] is None and fs.VAZIO_CEAP["possui_dados"] is False
+    assert fs.vazio_ceap()["total_notas"] is None and fs.vazio_ceap()["possui_dados"] is False
+
+
+def test_vazios_sao_dicts_novos_a_cada_chamada():
+    fs.vazio_ceap()["gastos_por_tipo"].append("sujeira")
+    fs.vazio_emendas()["lista_emendas"].append("sujeira")
+    assert fs.vazio_ceap()["gastos_por_tipo"] == [] and fs.vazio_emendas()["lista_emendas"] == []
+
+
+def test_ceap_fornecedor_com_quantidade_de_notas_desconhecida_nao_mostra_zero(db, pessoa):
+    fonte = fonte_id(db, "CAMARA_CSV")
+    for nome, notas in (("Sol", None), ("Lua", 3)):
+        inserir_fin(
+            db,
+            "despesa_cota_fornecedor",
+            pessoa_id=pessoa,
+            nome=nome,
+            cnpj=None,
+            valor_total=10,
+            notas=notas,
+            fonte_id=fonte,
+        )
+    inserir_fin(db, "despesa_cota", pessoa_id=pessoa, ano=2024, tipo_despesa="T", valor_liquido=20, fonte_id=fonte)
+    db.commit()
+    fornecedores = {f["nome_fornecedor"]: f["num_notas"] for f in fs.custos_ceap(db, [pessoa])["maiores_fornecedores"]}
+    assert fornecedores == {"Sol": None, "Lua": 3}
+    # o mesmo CNPJ com uma parcela desconhecida também fica desconhecido
+    for nome, notas in (("Posto A", 2), ("Posto B", None)):
+        inserir_fin(
+            db,
+            "despesa_cota_fornecedor",
+            pessoa_id=pessoa,
+            nome=nome,
+            cnpj="02558157000162",
+            valor_total=50,
+            notas=notas,
+            fonte_id=fonte_id(db, "SENADO_API") if nome == "Posto B" else fonte,
+        )
+    db.commit()
+    posto = [f for f in fs.custos_ceap(db, [pessoa])["maiores_fornecedores"] if f["cnpj_cpf"]][0]
+    assert posto["total_recebido"] == 100.0 and posto["num_notas"] is None
 
 
 def test_total_de_notas_parcial_e_desconhecido(db, pessoa):
@@ -194,13 +240,42 @@ def test_remuneracao_devolve_so_os_ultimos_12_meses_do_mais_recente_para_o_mais_
     )
 
 
+def _doacao(nome, valor, ano=2022, doc=None, tipo=None):
+    return {
+        "ano_eleicao": ano,
+        "nome_doador": nome,
+        "cpf_cnpj_doador": doc,
+        "valor_doado": float(valor),
+        "tipo_receita": tipo,
+    }
+
+
 def test_resumo_das_doacoes_soma_tudo_mas_lista_so_os_cinco_maiores_com_a_participacao_de_cada_um():
-    doacoes = [
-        {"nome_doador": f"D{i}", "cpf_cnpj_doador": None, "valor_doado": float(valor), "tipo_receita": None}
-        for i, valor in enumerate((50, 20, 10, 10, 5, 3, 2))
-    ]
+    doacoes = [_doacao(f"D{i}", valor) for i, valor in enumerate((50, 20, 10, 10, 5, 3, 2))]
     resumo = fs.resumo_das_doacoes(doacoes)
-    assert resumo["total"] == 100.0 and resumo["quantidade"] == 7
+    assert resumo["total"] == 100.0 and resumo["quantidade"] == 7 and resumo["ano_eleicao"] == 2022
     assert [d["nome_doador"] for d in resumo["top_5"]] == ["D0", "D1", "D2", "D3", "D4"]
     assert resumo["top_5"][0]["percentual"] == 50.0
-    assert fs.resumo_das_doacoes([]) == {"total": 0.0, "quantidade": 0, "top_5": []}
+    vazio = {"ano_eleicao": None, "doacoes": [], "total": 0.0, "quantidade": 0, "top_5": []}
+    assert fs.resumo_das_doacoes([]) == vazio
+
+
+def test_resumo_das_doacoes_so_considera_a_campanha_mais_recente():
+    doacoes = [_doacao("Antigo", 900, ano=2018), _doacao("Novo", 100, ano=2022), _doacao("Outro", 50, ano=2022)]
+    resumo = fs.resumo_das_doacoes(doacoes)
+    assert resumo["ano_eleicao"] == 2022 and resumo["total"] == 150.0 and resumo["quantidade"] == 2
+    assert [d["nome_doador"] for d in resumo["doacoes"]] == ["Novo", "Outro"]
+    assert [d["nome_doador"] for d in resumo["top_5"]] == ["Novo", "Outro"]
+
+
+def test_resumo_das_doacoes_conta_doador_distinto_e_soma_os_recibos_dele():
+    doacoes = [
+        _doacao("Ana", 60, doc="***.111.222-**", tipo="Cheque"),
+        _doacao("Beto", 30),
+        _doacao("Ana", 10, doc="***.111.222-**", tipo="PIX"),
+    ]
+    resumo = fs.resumo_das_doacoes(doacoes)
+    assert resumo["quantidade"] == 2 and resumo["total"] == 100.0
+    ana = resumo["top_5"][0]
+    assert ana["nome_doador"] == "Ana" and ana["valor_doado"] == 70.0 and ana["percentual"] == 70.0
+    assert ana["tipo_receita"] == "Cheque"  # o tipo é o do maior recibo

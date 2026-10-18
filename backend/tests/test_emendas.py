@@ -244,3 +244,36 @@ def test_termo_com_caractere_nulo_e_rejeitado_sem_erro_de_servidor(client, emend
 def test_a_resposta_nao_traz_classificacao_de_recurso_inventada(client, emendas):
     emenda = client.get(f"{BASE}/localidade/MG").json()["emendas"][0]
     assert "tipo_recurso" not in emenda
+
+
+def test_sigla_de_estado_busca_pela_uf_e_nao_pelo_trecho_do_nome(client, db):
+    _emenda(db, "ANA", "INDIVIDUAL", codigo_emenda="1", localidade_destino="ALAGOAS (UF)", uf="AL", valor_pago=1)
+    _emenda(db, "BIA", "INDIVIDUAL", codigo_emenda="2", localidade_destino="MACEIO - AL", uf="AL", valor_pago=2)
+    _emenda(db, "CIA", "INDIVIDUAL", codigo_emenda="3", localidade_destino="SALVADOR - BA", uf="BA", valor_pago=4)
+    _emenda(db, "DAN", "INDIVIDUAL", codigo_emenda="4", localidade_destino="PORTO ALEGRE - RS", uf="RS", valor_pago=8)
+    _emenda(db, "EVA", "INDIVIDUAL", codigo_emenda="5", localidade_destino="Nacional", uf=None, valor_pago=16)
+    db.commit()
+    for termo in ("AL", "al"):
+        dados = client.get(f"{BASE}/localidade/{termo}").json()
+        assert dados["total_emendas_encontradas"] == 2 and dados["total_entregue_pago_brl"] == 3.0
+    # nome de município continua sendo busca por trecho
+    assert client.get(f"{BASE}/localidade/salvador").json()["total_emendas_encontradas"] == 1
+
+
+def test_busca_por_autor_que_reune_varios_autores_avisa_e_lista_quem_casou(client, db):
+    _emenda(db, "ANA SILVA", "INDIVIDUAL", codigo_emenda="1", valor_pago=900)
+    _emenda(db, "BIA SILVA", "INDIVIDUAL", codigo_emenda="2", valor_pago=100)
+    _emenda(db, "BIA SILVA", "INDIVIDUAL", codigo_emenda="3", valor_pago=50)
+    db.commit()
+    dados = client.get(f"{BASE}/autor/silva").json()
+    assert dados["quantidade_autores"] == 2 and dados["total_emendas_enviadas"] == 3
+    assert [a["nome_tecnico"] for a in dados["autores_encontrados"]] == ["ANA SILVA", "BIA SILVA"]
+    assert [a["quantidade"] for a in dados["autores_encontrados"]] == [1, 2]
+    unico = client.get(f"{BASE}/autor/ana silva").json()
+    assert unico["quantidade_autores"] == 1
+
+
+@pytest.mark.parametrize("rota", ["localidade", "autor"])
+def test_404_da_busca_nao_repete_o_termo_digitado(client, emendas, rota):
+    resposta = client.get(f"{BASE}/{rota}/zzzNaoExiste")
+    assert resposta.status_code == 404 and "zzzNaoExiste" not in resposta.text

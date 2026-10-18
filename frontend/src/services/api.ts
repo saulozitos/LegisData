@@ -916,7 +916,7 @@ export interface CeapFornecedor {
   nome_fornecedor: string;
   cnpj_cpf: string | null;
   total_recebido: number;
-  num_notas: number;
+  num_notas: number | null;
 }
 
 export interface CeapGastoAno {
@@ -2007,6 +2007,8 @@ export interface EmendasAutorResponse {
     descricao_amigavel: string;
     icone: string;
   };
+  quantidade_autores?: number;
+  autores_encontrados?: Array<{ nome_amigavel: string; categoria: string; quantidade: number }>;
   total_emendas_enviadas: number;
   total_reservado_empenhado_brl: number;
   total_entregue_pago_brl: number;

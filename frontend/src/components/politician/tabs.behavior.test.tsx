@@ -200,9 +200,13 @@ describe('CeapTab', () => {
 
   it('o período do selo vem dos anos que existem nos dados', () => {
     const d = fullDossier();
+    d.custos_ceap.gastos_por_ano = [
+      { ano: 2022, total_gasto: 10 },
+      { ano: 2024, total_gasto: 20 },
+      { ano: 2023, total_gasto: 30 },
+    ];
     render(<CeapTab dossier={d} />);
-    const anos = d.custos_ceap.gastos_por_ano.map((g) => g.ano);
-    expect(screen.getByText(`Gastos de ${Math.min(...anos)}–${Math.max(...anos)}`)).toBeInTheDocument();
+    expect(screen.getByText('Gastos de 2022–2024')).toBeInTheDocument();
   });
 
   it('com um único ano o selo mostra só esse ano, sem intervalo', () => {
@@ -226,6 +230,24 @@ describe('CeapTab', () => {
     d.custos_ceap.total_notas = 0;
     render(<CeapTab dossier={d} />);
     expect(screen.getByText('0 comprovantes fiscais')).toBeInTheDocument();
+  });
+
+  it('fornecedor sem quantidade de notas mostra "n/d" e nunca 0', () => {
+    const d = fullDossier();
+    d.custos_ceap.maiores_fornecedores = [
+      { nome_fornecedor: 'Gráfica Alfa LTDA', cnpj_cpf: '12345678000190', total_recebido: 300000, num_notas: null },
+    ];
+    render(<CeapTab dossier={d} />);
+    expect(screen.getByText('n/d')).toBeInTheDocument();
+  });
+
+  it('sem fornecedores o card do maior fornecedor mostra "n/d" e não R$ 0,00', () => {
+    const d = fullDossier();
+    d.custos_ceap.maiores_fornecedores = [];
+    render(<CeapTab dossier={d} />);
+    const card = screen.getByText('Maior Fornecedor Único').parentElement as HTMLElement;
+    expect(card.textContent).not.toMatch(/R\$ 0,00/);
+    expect(card.textContent).toMatch(/n\/d/);
   });
 
   it('média mensal ausente mostra "Indisponível"', () => {
