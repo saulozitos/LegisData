@@ -9,6 +9,7 @@ import threading
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
+from app.core.config import settings
 from app.core.errors import ErroDeDominio
 from app.core.names import strip_accents
 from app.core.numeros import pct
@@ -23,8 +24,9 @@ TAMANHO_MINIMO_DA_BUSCA = 3
 AREA_SEM_FUNCAO = "Outros"
 # Uma busca por trecho que não termina neste prazo é cancelada pelo banco e vira pedido de termo mais específico.
 TEMPO_MAXIMO_DA_BUSCA_MS = 8000
-# Buscas ao mesmo tempo, por processo: além disso a API responde 503 em vez de esgotar o pool de conexões.
-MAX_BUSCAS_SIMULTANEAS = 3
+# Buscas ao mesmo tempo, por processo (configurável, sempre abaixo do pool): além disso a API responde 503 em vez de
+# esgotar o pool de conexões.
+MAX_BUSCAS_SIMULTANEAS = settings.EMENDAS_MAX_BUSCAS_SIMULTANEAS
 
 DICIONARIO_ORCAMENTO = {
     "termos": {
@@ -291,27 +293,37 @@ def resumo(db: Session) -> Dict[str, Any]:
     }
 
 
-def _termo_valido(valor: str, sujeito: str, complemento: str, aceita_sigla: bool = False) -> str:
+def _termo_valido(db: Session, valor: str, sujeito: str, complemento: str, aceita_sigla: bool = False) -> str:
     """
     Termo da busca sem espaços nas pontas; levanta 400 para caractere nulo ou menos de `TAMANHO_MINIMO_DA_BUSCA`
     caracteres. `sujeito` abre a mensagem do caractere inválido ("A localidade") e `complemento` fecha a do tamanho
     ("da localidade"). Com `aceita_sigla`, a sigla de um estado (2 letras) vale: ela filtra pela coluna `uf`, sem varrer
     o texto.
+
+    O tamanho que conta é o do termo NORMALIZADO pelo banco (`ref.normalizar_texto`: sem acento, minúsculo, espaços
+    colapsados), que é o que a busca compara: três acentos combinantes têm 3 caracteres brutos e 0 normalizados, e um
+    `LIKE '%%'` casaria a tabela inteira.
     """
     termo = valor.strip()
     if "\x00" in termo:
         raise ErroDeDominio(400, f"{sujeito} contém caractere inválido.")
-    if len(termo) < TAMANHO_MINIMO_DA_BUSCA and not (aceita_sigla and _sigla_da_busca(termo)):
-        extra = " ou a sigla do estado" if aceita_sigla else ""
-        raise ErroDeDominio(400, f"Informe ao menos {TAMANHO_MINIMO_DA_BUSCA} caracteres {complemento}{extra}.")
+    if aceita_sigla and _sigla_da_busca(termo):
+        return termo
+    extra = " ou a sigla do estado" if aceita_sigla else ""
+    curto = ErroDeDominio(400, f"Informe ao menos {TAMANHO_MINIMO_DA_BUSCA} caracteres {complemento}{extra}.")
+    if len(termo) < TAMANHO_MINIMO_DA_BUSCA:
+        raise curto
+    if db.execute(_TAMANHO_NORMALIZADO, {"t": termo}).scalar_one() < TAMANHO_MINIMO_DA_BUSCA:
+        raise curto
     return termo
 
 
+_TAMANHO_NORMALIZADO = text("SELECT length(ref.normalizar_texto(:t))")
+
+
 def _sigla_da_busca(termo: str) -> Optional[str]:
-    """UF que o termo nomeia (a sigla ou o nome do estado por extenso, sem acento nem caixa), ou None."""
-    if termo.upper() in _UFS:
-        return termo.upper()
-    return _ESTADOS_MAP.get(strip_accents(termo).upper())
+    """Sigla do estado que o termo é (duas letras, sem caixa), ou None. O nome por extenso é busca por trecho."""
+    return termo.upper() if len(termo) == 2 and termo.upper() in _UFS else None
 
 
 def _estagio(valor_pago: Any) -> str:
@@ -337,8 +349,9 @@ def _item_da_emenda(r: Any) -> Dict[str, Any]:
 # temporária é criada por requisição. `:modo` escolhe o filtro e, como o psycopg2 entrega o valor como literal, o
 # planejador descarta o ramo que não vale e pode usar os índices trigram. Sigla de estado (SP, MG...) filtra pela coluna
 # `uf`, que cobre o estado inteiro ("SÃO PAULO (UF)") e os seus municípios ("CAMPINAS - SP"); "AL" não pode virar um
-# trecho que casa SALVADOR e NATAL. O nome do estado por extenso vale como a sigla; qualquer outro termo é busca por
-# trecho do nome, sem acento nem caixa.
+# trecho que casa SALVADOR e NATAL. Qualquer outro termo, inclusive o nome do estado por extenso, é busca por trecho do
+# nome, sem acento nem caixa: "São Paulo" acha a capital e o estado, mas não Campinas, e um município homônimo de estado
+# ("Tocantins", em Minas Gerais) continua alcançável.
 _BUSCA = text(
     """
     WITH alvo AS MATERIALIZED (
@@ -410,8 +423,8 @@ def _executa_busca(db: Session, modo: str, termo: str, limite: int) -> Dict[str,
 
 
 def por_localidade(db: Session, localidade: str, limite: int) -> Dict[str, Any]:
-    """Emendas destinadas a uma cidade ou estado (sigla ou nome do estado, ou trecho do nome sem acento nem caixa)."""
-    termo = _termo_valido(localidade, "A localidade", "da localidade", aceita_sigla=True)
+    """Emendas destinadas a uma cidade ou estado (a sigla da UF, ou um trecho do nome sem acento nem caixa)."""
+    termo = _termo_valido(db, localidade, "A localidade", "da localidade", aceita_sigla=True)
     dados = _executa_busca(db, "localidade", termo, limite)
     total = dados["total"]
     if not total["n"] or not dados["linhas"]:
@@ -434,7 +447,7 @@ def por_localidade(db: Session, localidade: str, limite: int) -> Dict[str, Any]:
 
 def por_autor(db: Session, autor: str, limite: int) -> Dict[str, Any]:
     """Emendas de um autor (parlamentar, comissão ou bancada), pelo trecho do nome ou pelo código do autor."""
-    termo = _termo_valido(autor, "O autor", "do autor")
+    termo = _termo_valido(db, autor, "O autor", "do autor")
     dados = _executa_busca(db, "autor", termo, limite)
     total = dados["total"]
     if not total["n"] or not dados["linhas"]:

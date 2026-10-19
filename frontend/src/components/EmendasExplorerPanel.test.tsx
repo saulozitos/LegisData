@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import EmendasExplorerPanel from "./EmendasExplorerPanel";
 import * as api from "@/services/api";
+import { ApiError } from "@/lib/errors";
 
 vi.mock("@/services/api", () => ({
   getEmendasResumo: vi.fn(),
@@ -331,5 +332,42 @@ describe("EmendasExplorerPanel", () => {
     fireEvent.change(screen.getByLabelText(/Pesquisar por autor institucional/i), { target: { value: " ab " } });
     expect(await screen.findByText(/Digite ao menos 3 letras/i)).toBeInTheDocument();
     expect(api.getEmendasPorAutor).not.toHaveBeenCalled();
+  });
+
+  it("busca ampla demais (400) mostra a orientação da API e não oferece repetir a mesma busca", async () => {
+    vi.mocked(api.getEmendasResumo).mockResolvedValue(mockResumo);
+    vi.mocked(api.getEmendasPorLocalidade).mockRejectedValue(
+      new ApiError("A busca é ampla demais; informe um termo mais específico.", "/emendas/localidade/x", 400)
+    );
+    render(<EmendasExplorerPanel />);
+    await screen.findByText(/Explorador Nacional de Emendas Orçamentárias/i);
+    fireEvent.click(screen.getByRole("button", { name: /Busca por Cidade\/UF/i }));
+    fireEvent.change(screen.getByLabelText(/Pesquisar por município ou estado/i), { target: { value: "silva" } });
+    expect(await screen.findByText(/A busca é ampla demais; informe um termo mais específico\./)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Tentar novamente/i })).not.toBeInTheDocument();
+  });
+
+  it("muitas buscas em andamento (503) mostra a orientação e permite tentar de novo", async () => {
+    vi.mocked(api.getEmendasResumo).mockResolvedValue(mockResumo);
+    vi.mocked(api.getEmendasPorAutor).mockRejectedValue(
+      new ApiError("Há muitas buscas em andamento; tente de novo em instantes.", "/emendas/autor/x", 503)
+    );
+    render(<EmendasExplorerPanel />);
+    await screen.findByText(/Explorador Nacional de Emendas Orçamentárias/i);
+    fireEvent.click(screen.getByRole("button", { name: /Bancadas & Relator/i }));
+    fireEvent.change(screen.getByLabelText(/Pesquisar por autor institucional/i), { target: { value: "bancada" } });
+    expect(await screen.findByText(/Há muitas buscas em andamento/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Tentar novamente/i })).toBeInTheDocument();
+  });
+
+  it("outro erro mantém a mensagem genérica e o botão de tentar de novo", async () => {
+    vi.mocked(api.getEmendasResumo).mockResolvedValue(mockResumo);
+    vi.mocked(api.getEmendasPorLocalidade).mockRejectedValue(new ApiError("A API respondeu com status 500.", "/x", 500));
+    render(<EmendasExplorerPanel />);
+    await screen.findByText(/Explorador Nacional de Emendas Orçamentárias/i);
+    fireEvent.click(screen.getByRole("button", { name: /Busca por Cidade\/UF/i }));
+    fireEvent.change(screen.getByLabelText(/Pesquisar por município ou estado/i), { target: { value: "silva" } });
+    expect(await screen.findByText(/Não foi possível carregar as emendas para a localidade solicitada\./)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Tentar novamente/i })).toBeInTheDocument();
   });
 });

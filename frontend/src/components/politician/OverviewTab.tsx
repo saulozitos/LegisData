@@ -29,7 +29,7 @@ import {
   PieChart as LucidePieChart,
 } from "lucide-react";
 import type { PoliticoDossier } from "@/services/api";
-import { fmtNum, isNum } from "@/lib/format";
+import { fmtNum, fmtPct, isNum } from "@/lib/format";
 import PartyLink from "@/components/PartyLink";
 import { safeExternalUrl } from "@/lib/safeUrl";
 import { formatCpfCnpj, gradeBadgeClass, riskBadgeClass, compatBadgeClass, orUnavailable } from "./format";
@@ -111,7 +111,7 @@ export default function OverviewTab({ dossier, onChangeTab, onSelectParty }: Ove
                         </span>
                       </div>
                       <div className="text-xs font-mono font-bold text-slate-200">
-                        HHI: {fmtNum(indices.concentracao_ceap.indice_hhi, 0)} ({fmtNum(indices.concentracao_ceap.percentual_maior_fornecedor, 1)}% top)
+                        HHI: {fmtNum(indices.concentracao_ceap.indice_hhi, 0)} ({fmtPct(indices.concentracao_ceap.percentual_maior_fornecedor, 1)} top)
                       </div>
                       <p className="text-[10px] text-slate-400 line-clamp-2">
                         {indices.concentracao_ceap.diagnostico}

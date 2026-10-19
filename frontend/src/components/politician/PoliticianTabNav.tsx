@@ -124,9 +124,11 @@ export default function PoliticianTabNav({ dossier, activeTab, onChange }: Polit
               }`}
             >
               <Receipt className="w-3.5 h-3.5" aria-hidden="true" /> Custos do Mandato (CEAP)
-              {dossier?.custos_ceap?.gasto_total_recente ? (
+              {isNum(dossier?.custos_ceap?.gasto_total_recente) ? (
                 <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300">
-                  R$ {fmtNum(dossier.custos_ceap.gasto_total_recente / 1000, 0)}k
+                  {dossier.custos_ceap.gasto_total_recente >= 1000
+                    ? `R$ ${fmtNum(dossier.custos_ceap.gasto_total_recente / 1000, 0)}k`
+                    : `R$ ${fmtNum(dossier.custos_ceap.gasto_total_recente, 0)}`}
                 </span>
               ) : null}
             </button>

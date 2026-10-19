@@ -78,6 +78,7 @@ def test_deploy_repassa_a_liberacao_de_encolhimento_vazia_por_padrao_e_tolera_so
     corpo = texto[inicio : inicio + texto[inicio:].index("\n}\n")]
     # a variável é repassada DENTRO de `um_comando` (não solta no script) e vazia quando o operador não a define
     assert re.search(r"-e LEGISDATA_ACEITAR_ENCOLHIMENTO=\"\$\{LEGISDATA_ACEITAR_ENCOLHIMENTO:-\}\"", corpo)
-    # só as finanças são toleradas, com qualquer espaçamento ou aspas
-    assert re.search(r"toleradas\s*=\s*\(\s*['\"]financas['\"]\s*,?\s*\)", texto)
-    assert not re.search(r"toleradas\s*=\s*\([^)]*['\"](series|presidencia|composicao|pnad)['\"]", texto)
+    # só as finanças são toleradas, com qualquer espaçamento ou aspas: a tupla inteira tem de ser ("financas",)
+    tuplas = re.findall(r"toleradas\s*=\s*\(([^)]*)\)", texto)
+    assert len(tuplas) == 1
+    assert [x.strip().strip("'\"") for x in tuplas[0].split(",") if x.strip()] == ["financas"]

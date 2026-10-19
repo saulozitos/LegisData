@@ -93,6 +93,11 @@ def test_default_pool_stays_below_postgres_connection_limit():
     assert workers * (s.DB_POOL_SIZE + s.DB_MAX_OVERFLOW) <= 100
 
 
+def test_concurrent_emendas_searches_stay_below_the_connection_pool():
+    s = make_settings(DATABASE_URL="postgresql://u:p@h/db")
+    assert 1 <= s.EMENDAS_MAX_BUSCAS_SIMULTANEAS < s.DB_POOL_SIZE + s.DB_MAX_OVERFLOW
+
+
 def test_vercel_cors_regex_is_restricted_to_the_project():
     regex = make_settings(DATABASE_URL="postgresql://u:p@h/db").CORS_ORIGIN_REGEX
     assert re.match(regex, "https://legisdata.vercel.app")

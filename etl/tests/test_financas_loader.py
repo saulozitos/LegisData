@@ -574,10 +574,18 @@ def test_arquivo_ruim_nunca_apaga_nenhuma_das_seis_tabelas(pg_engine, banco, tmp
         resultado = FUNCAO_DA_CARGA[carga](conn, tmp_path)
     assert _fotografia(pg_engine, carga) == antes
     # a carga relatou POR QUE não gravou: arquivo que não existe é uma coisa, arquivo que existe e não serve é outra
+    sem_proveniencia_no_arquivo = carga == "remuneracao" and ruim in (
+        "vazio",
+        "sintetico",
+    )  # o arquivo inteiro é recusado
     if ruim == "ausente":
         assert resultado == {"arquivo_ausente": 1}
-    elif ruim == "tipo_errado":
+    elif ruim == "tipo_errado" or sem_proveniencia_no_arquivo:
         assert resultado == {"formato_invalido": 1}
+    elif ruim == "sintetico":
+        assert resultado["sem_proveniencia"] == 1  # o registro marcado como sintético é contado e descartado
+    else:  # vazio ou vazio com proveniência: o arquivo serve, mas não tem nenhum registro utilizável
+        assert resultado.get("sem_proveniencia", 0) == 0 and "formato_invalido" not in resultado
     assert not _gravou(resultado)
 
 

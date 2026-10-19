@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "5"))
     DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "5"))
     DB_POOL_TIMEOUT: int = int(os.getenv("DB_POOL_TIMEOUT", "30"))
+    # Buscas de emendas ao mesmo tempo, por worker: precisa ficar abaixo do pool (DB_POOL_SIZE + DB_MAX_OVERFLOW), ou as
+    # buscas lentas seguram todas as conexões e o resto da API espera o DB_POOL_TIMEOUT.
+    EMENDAS_MAX_BUSCAS_SIMULTANEAS: int = int(os.getenv("EMENDAS_MAX_BUSCAS_SIMULTANEAS", "3"))
 
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
     # Regex adicional para previews do projeto na Vercel (restrito ao projeto, não a qualquer *.vercel.app)

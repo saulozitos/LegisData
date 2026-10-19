@@ -386,8 +386,10 @@ def declaracoes_na_janela_da_remuneracao(
     Declarações de bens (da mais antiga para a mais nova) que cobrem o MESMO período do subsídio registrado, cortado nas
     DUAS pontas: a base é a última declarada até o primeiro ano da remuneração e o fim é a última declarada até o último
     ano dela. Comparar o patrimônio desde uma declaração de 1998 com um subsídio que só existe desde 2019 inflaria a
-    razão; comparar uma declaração de 2026 com um subsídio que parou em 2023 também. Sem base, sem fim posterior à base,
-    ou sem remuneração, a lista é vazia (a comparação não é possível).
+    razão; comparar uma declaração de 2026 com um subsídio que parou em 2023 também. A base também precisa estar colada
+    no início do subsídio (no máximo um ano antes do primeiro ano registrado): com uma base mais antiga o patrimônio
+    cresceu em anos cujo subsídio a fonte não tem, e a razão sairia inflada. Sem base, sem fim posterior à base, com base
+    distante do início ou sem remuneração, a lista é vazia (a comparação não é possível).
     """
     if primeiro_ano_remuneracao is None or ultimo_ano_remuneracao is None:
         return []
@@ -395,6 +397,8 @@ def declaracoes_na_janela_da_remuneracao(
     if not ate_a_base:
         return []
     base = ate_a_base[-1]
+    if primeiro_ano_remuneracao > base["ano"] + 1:
+        return []
     janela = [base] + [d for d in declaracoes if base["ano"] < d["ano"] <= ultimo_ano_remuneracao]
     return janela if len(janela) >= 2 else []
 
@@ -402,18 +406,19 @@ def declaracoes_na_janela_da_remuneracao(
 def subsidio_na_janela(db: Session, pessoas: Sequence[int], depois_do_ano: int, ate_o_ano: int) -> Optional[float]:
     """
     Subsídio bruto registrado nos anos `depois_do_ano < ano <= ate_o_ano`: o ano da declaração-base fica de fora porque a
-    declaração dele já traz o patrimônio acumulado até ali. None sem remuneração na faixa (desconhecido, não zero).
+    declaração dele já traz o patrimônio acumulado até ali. None (desconhecido, não zero) sem remuneração na faixa ou
+    com algum ano da faixa sem registro: um buraco no meio deixaria o divisor menor que o período do patrimônio.
     """
     if not pessoas:
         return None
-    soma, qtd = db.execute(
+    soma, anos = db.execute(
         text(
-            "SELECT sum(salario_bruto), count(*) FROM fin.remuneracao "
+            "SELECT sum(salario_bruto), count(DISTINCT ano) FROM fin.remuneracao "
             "WHERE pessoa_id = ANY(:ids) AND ano > :depois AND ano <= :ate"
         ),
         {"ids": list(pessoas), "depois": depois_do_ano, "ate": ate_o_ano},
     ).one()
-    return float(soma) if qtd else None
+    return float(soma) if anos and anos == ate_o_ano - depois_do_ano else None
 
 
 # ── TSE ──────────────────────────────────────────────────────────────────────────────────────────────────────────────

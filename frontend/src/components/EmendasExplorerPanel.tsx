@@ -22,6 +22,7 @@ import {
 } from "@/services/api";
 import { useApi } from "@/hooks/useApi";
 import { useDebounce } from "@/hooks/useDebounce";
+import { ApiError } from "@/lib/errors";
 import { fmtBRL, fmtNum, fmtPct } from "@/lib/format";
 import { EmptyState, ErrorState, LoadingState } from "@/components/StateViews";
 
@@ -50,6 +51,12 @@ const SIGLAS_DE_ESTADO = new Set([
 const localidadeValida = (termo: string) => termo.length >= TERMO_MINIMO || SIGLAS_DE_ESTADO.has(termo.toUpperCase());
 // Mesmo limite do backend (a busca com mais de 100 caracteres volta 422)
 const TERMO_MAXIMO = 100;
+
+// 400 (busca ampla demais) e 503 (muitas buscas em andamento) trazem a orientação da API. No 400 repetir a mesma busca
+// só ocupa o servidor por mais 8 s, então o botão de tentar de novo some: o caminho é mudar o termo.
+const mensagemDaBusca = (erro: Error | null, padrao: string): string =>
+  erro instanceof ApiError && (erro.status === 400 || erro.status === 503) ? erro.message : padrao;
+const podeTentarDeNovo = (erro: Error | null): boolean => !(erro instanceof ApiError && erro.status === 400);
 
 const LOCALIDADES_SUGESTOES = [
   "Campinas", "Recife", "Salvador", "Belo Horizonte", "Curitiba", "Manaus", "PA", "MA", "AL"
@@ -477,8 +484,8 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
           ) : localidadeQuery.error ? (
             <ErrorState
               title="Erro ao consultar localidade"
-              message="Não foi possível carregar as emendas para a localidade solicitada."
-              onRetry={localidadeQuery.retry}
+              message={mensagemDaBusca(localidadeQuery.error, "Não foi possível carregar as emendas para a localidade solicitada.")}
+              onRetry={podeTentarDeNovo(localidadeQuery.error) ? localidadeQuery.retry : undefined}
             />
           ) : !localidadeQuery.data || localidadeQuery.data.total_emendas_encontradas === 0 ? (
             <EmptyState
@@ -669,8 +676,8 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
           ) : autorQuery.error ? (
             <ErrorState
               title="Erro ao consultar autor institucional"
-              message="Não foi possível carregar os dados para este autor institucional."
-              onRetry={autorQuery.retry}
+              message={mensagemDaBusca(autorQuery.error, "Não foi possível carregar os dados para este autor institucional.")}
+              onRetry={podeTentarDeNovo(autorQuery.error) ? autorQuery.retry : undefined}
             />
           ) : !autorQuery.data ? (
             <EmptyState

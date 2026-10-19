@@ -1134,8 +1134,8 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     # 1. ROI do Cidadão: assiduidade (30%) + entrega legislativa em pontos IALP (40%) + custo por ponto IALP (30%).
     # A entrega vem do IALP (tipo x papel do autor x andamento), não da contagem de proposições: assinar
     # requerimentos ou apoiar projetos de outros vale pouco, e só avanço na tramitação pontua de verdade.
-    total_gasto_mandato = float(custos_ceap.get("gasto_total_recente") or 0.0)
-    custo_total_operacional = total_gasto_mandato + salario_acumulado_registrado
+    # CEAP sem dado é None (não "gasto zero"): o custo só existe quando a CEAP, o subsídio e as sessões existem
+    gasto_ceap: Optional[float] = custos_ceap.get("gasto_total_recente")
     # os pontos vêm da base inteira (não da lista truncada) e do mesmo cálculo dos rankings de autores e de ausências
     pontos_ialp = round(pontos_ialp_pessoa(db, pessoa_id) if pessoa_id is not None else total_score_ponderado, 1)
     projetos_autoria_estrutural = sum(
@@ -1143,9 +1143,10 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         for m in materias_propostas
         if m["papel_autoria"] == "AUTOR_PRINCIPAL" and m["tipo"] in ("PEC", "PLP", "PL", "MPV")
     )
-    roi_dados_ok = bool(custos_ceap.get("possui_dados")) and salario_acumulado_registrado > 0 and total_sessoes > 0
+    roi_dados_ok = gasto_ceap is not None and salario_acumulado_registrado > 0 and total_sessoes > 0
+    custo_total_operacional = (gasto_ceap or 0.0) + salario_acumulado_registrado if roi_dados_ok else None
     roi = calcular_roi(
-        custo_total=custo_total_operacional,
+        custo_total=custo_total_operacional or 0.0,
         pontos_ialp=pontos_ialp,
         taxa_presenca=taxa_presenca,
         dados_suficientes=roi_dados_ok,
@@ -1153,7 +1154,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     roi_cidadao = {
         "score": roi["score"],
         "nota": roi["nota"],
-        "custo_total_operacional": round(custo_total_operacional, 2) if roi_dados_ok else None,
+        "custo_total_operacional": round(custo_total_operacional, 2) if custo_total_operacional is not None else None,
         "pontos_ialp": pontos_ialp,
         # abaixo de 1 ponto o custo "por ponto" seria o custo total: não é exibido
         "custo_por_ponto_ialp": roi["custo_por_ponto"] if pontos_ialp >= PISO_DE_PONTOS else None,
@@ -1164,11 +1165,12 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
 
     # 2. Concentração de Fornecedores da CEAP (Índice HHI)
     maiores_forn = custos_ceap.get("maiores_fornecedores") or []
-    total_gasto_ceap = float(custos_ceap.get("gasto_total_recente") or 0.0)
-    if total_gasto_ceap > 0 and maiores_forn:
-        hhi = sum(((f["total_recebido"] / total_gasto_ceap * 100.0) ** 2) for f in maiores_forn)
+    hhi: Optional[float]
+    top1_pct: Optional[float]
+    if gasto_ceap and gasto_ceap > 0 and maiores_forn:
+        hhi = sum(((f["total_recebido"] / gasto_ceap * 100.0) ** 2) for f in maiores_forn)
         top1_forn = maiores_forn[0]
-        top1_pct = round(top1_forn["total_recebido"] / total_gasto_ceap * 100.0, 1)
+        top1_pct = round(top1_forn["total_recebido"] / gasto_ceap * 100.0, 1)
 
         if hhi >= 3500 or top1_pct >= 45.0:
             nivel_risco_ceap = "ALERTA"
@@ -1180,14 +1182,14 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             nivel_risco_ceap = "BAIXO"
             diag_hhi = "Gastos bem distribuídos entre múltiplos fornecedores sem dependência hegemônica."
     else:
-        hhi = 0.0
-        top1_pct = 0.0
+        hhi = None  # sem despesa não há concentração a medir: desconhecido, não zero
+        top1_pct = None
         top1_forn = None
         nivel_risco_ceap = None
         diag_hhi = "Sem despesas registradas para calcular concentração."
 
     concentracao_ceap = {
-        "indice_hhi": round(hhi, 1),
+        "indice_hhi": round(hhi, 1) if hhi is not None else None,
         "nivel_risco": nivel_risco_ceap,
         "percentual_maior_fornecedor": top1_pct,
         "maior_fornecedor": top1_forn["nome_fornecedor"] if top1_forn else None,

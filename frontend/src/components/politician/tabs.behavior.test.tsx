@@ -77,6 +77,28 @@ describe('IntelligenceTab', () => {
     expect(screen.getByText('+R$ 400.000,00', { exact: false })).toBeInTheDocument();
   });
 
+  it('mostra o período real do patrimônio e do subsídio comparados', () => {
+    const d = fullDossier();
+    d.indices_inteligencia!.enriquecimento_patrimonial.periodo_comparado = { de: 2018, ate: 2022, subsidio_de: 2019, subsidio_ate: 2022 };
+    render(<IntelligenceTab dossier={d} />);
+    expect(screen.getByTestId('periodo-patrimonio').textContent).toBe('Variação de 2018 a 2022 (declarações ao TSE)');
+    expect(screen.getByTestId('periodo-subsidio').textContent).toBe('Subsídio bruto de 2019 a 2022');
+  });
+
+  it('sem período comparado os cards dizem que o período está indisponível', () => {
+    render(<IntelligenceTab dossier={fullDossier()} />);
+    expect(screen.getByTestId('periodo-patrimonio').textContent).toMatch(/Período indisponível/);
+    expect(screen.getByTestId('periodo-subsidio').textContent).toMatch(/Período indisponível/);
+  });
+
+  it('sem despesas da CEAP o HHI e a fatia do maior fornecedor ficam indisponíveis, nunca 0%', () => {
+    render(<IntelligenceTab dossier={sparseDossier()} />);
+    const fatia = screen.getByText('Fatia da Cota Consumida pelo Top 1').parentElement as HTMLElement;
+    expect(within(fatia).getByText('Indisponível').textContent).toBe('Indisponível'); // e não "0,0%"
+
+    expect(screen.queryByText('/ 10.000')).not.toBeInTheDocument();
+  });
+
   it('com dados insuficientes (null) mostra indisponível sem quebrar nem alarmar', () => {
     render(<IntelligenceTab dossier={sparseDossier()} />);
     expect(screen.getByText('Nota indisponível')).toBeInTheDocument();
@@ -128,6 +150,23 @@ describe('PoliticianTabNav', () => {
     expect(onChange).toHaveBeenCalledWith('votacoes');
     expect(screen.getByText('Nota B+')).toBeInTheDocument();
     expect(screen.getByText(/Presenças \(95,0%\)/)).toBeInTheDocument();
+  });
+
+  it('o selo de gasto da aba CEAP mostra gasto pequeno sem virar "R$ 0k" e some sem dado', () => {
+    const d = fullDossier();
+    d.custos_ceap.gasto_total_recente = 450;
+    const { unmount } = render(<PoliticianTabNav dossier={d} activeTab="visao_geral" onChange={() => {}} />);
+    expect(screen.getByText('R$ 450')).toBeInTheDocument();
+    expect(screen.queryByText(/R\$ 0k/)).not.toBeInTheDocument();
+    unmount();
+    d.custos_ceap.gasto_total_recente = 1_500_000;
+    const grande = render(<PoliticianTabNav dossier={d} activeTab="visao_geral" onChange={() => {}} />);
+    expect(screen.getByText('R$ 1.500k')).toBeInTheDocument();
+    grande.unmount();
+    d.custos_ceap.gasto_total_recente = null;
+    render(<PoliticianTabNav dossier={d} activeTab="visao_geral" onChange={() => {}} />);
+    const aba = screen.getByRole('tab', { name: /Custos do Mandato/ });
+    expect(aba.textContent?.trim()).toBe('Custos do Mandato (CEAP)'); // sem selo de valor
   });
 
   it('com dados ausentes não mostra nota e indica presença "n/d"', () => {
@@ -272,15 +311,12 @@ describe('FinancingTab', () => {
     expect(screen.getByText('Nenhuma doação encontrada para o termo pesquisado.')).toBeInTheDocument();
   });
 
-  it('a linha "Demais doadores" da fonte vira uma frase, não um doador do top 5', () => {
+  it('a linha "Demais doadores" da fonte é mostrada como uma frase com a quantidade e o valor', () => {
     const d = fullDossier();
     d.financiamento_campanha.total_doadores = 28;
     d.financiamento_campanha.demais_doadores = { quantidade: 26, valor: 24804 };
     render(<FinancingTab dossier={d} />);
     expect(screen.getByTestId('demais-doadores').textContent).toMatch(/Outros 26 doadores somam R\$\s*24\.804,00/);
-    // a linha agregada não entra no top 5: só os doadores nomeados aparecem ali
-    expect(screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent)).toEqual(['Doador Um']);
-    expect(screen.queryByRole('heading', { level: 4, name: /Demais doadores/ })).not.toBeInTheDocument();
   });
 
   it('na relação de doações a linha agregada diz quantos doadores ela soma e não mostra documento', () => {

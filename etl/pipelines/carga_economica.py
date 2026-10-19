@@ -40,12 +40,20 @@ def descricao_do_erro(exc: Exception) -> str:
     """
     Texto do erro que pode ir para o log e para a saída do deploy. O erro do Postgres traz um `DETAIL: Failing row
     contains (...)` com os valores da linha (o `hide_parameters` do engine não o esconde), então dele só saem o tipo, a
-    mensagem principal e o nome da restrição. Os demais erros (as mensagens da própria carga) saem como são.
+    mensagem principal e o nome da restrição (para erro de dado, classe 22, só o tipo, o SQLSTATE e a coluna). Os demais erros (as mensagens da própria carga) saem como são.
     """
     if isinstance(exc, DBAPIError):
         diag = getattr(exc.orig, "diag", None)
-        principal = getattr(diag, "message_primary", None) or "erro do banco"
+        sqlstate = getattr(exc.orig, "pgcode", None) or ""
         restricao = getattr(diag, "constraint_name", None)
+        coluna = getattr(diag, "column_name", None)
+        if sqlstate.startswith("22"):
+            # erro de dado (classe 22): a mensagem principal costuma citar o valor ofendido, ex. `invalid input syntax
+            # for type integer: "<valor>"`. Ficam o tipo, o SQLSTATE e, se houver, a coluna.
+            return f"{type(exc).__name__}: erro de dado (SQLSTATE {sqlstate})" + (
+                f" na coluna {coluna}" if coluna else ""
+            )
+        principal = getattr(diag, "message_primary", None) or "erro do banco"
         return f"{type(exc).__name__}: {principal}" + (f" (restrição {restricao})" if restricao else "")
     return str(exc)
 

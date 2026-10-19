@@ -317,7 +317,18 @@ async function fetchJson<T>(endpoint: string, signal?: AbortSignal): Promise<T> 
     throw new ApiError("Não foi possível conectar à API.", endpoint);
   }
   if (!res.ok) {
-    throw new ApiError(`A API respondeu com status ${res.status}.`, endpoint, res.status);
+    // 400 e 503 trazem uma orientação ao usuário em `detail` (ex.: "informe um termo mais específico"); os demais
+    // status mantêm a mensagem genérica, sem repassar texto de erro interno.
+    let detail: string | null = null;
+    if (res.status === 400 || res.status === 503) {
+      try {
+        const corpo = (await res.json()) as { detail?: unknown };
+        detail = typeof corpo.detail === "string" ? corpo.detail : null;
+      } catch {
+        detail = null;
+      }
+    }
+    throw new ApiError(detail ?? `A API respondeu com status ${res.status}.`, endpoint, res.status);
   }
   try {
     return (await res.json()) as T;
@@ -1092,9 +1103,9 @@ export interface RoiCidadaoData {
 }
 
 export interface ConcentracaoCeapData {
-  indice_hhi: number;
+  indice_hhi: number | null;
   nivel_risco: "ALERTA" | "MODERADO" | "BAIXO" | null;
-  percentual_maior_fornecedor: number;
+  percentual_maior_fornecedor: number | null;
   maior_fornecedor: string | null;
   cnpj_maior_fornecedor: string | null;
   diagnostico: string;

@@ -155,7 +155,7 @@ export function sparseDossier(): PoliticoDossier {
     basometro: { taxa_governismo_pct: null, total_votacoes_analisadas: 0, votos_alinhados: null, votos_divergentes: null, classificacao: null },
     indices_inteligencia: {
       roi_cidadao: { score: null, nota: null, custo_total_operacional: null, pontos_ialp: null, custo_por_ponto_ialp: null, projetos_estruturantes: 0, diagnostico: 'Dados insuficientes.' },
-      concentracao_ceap: { indice_hhi: 0, nivel_risco: null, percentual_maior_fornecedor: 0, maior_fornecedor: null, cnpj_maior_fornecedor: null, diagnostico: 'Sem despesas.' },
+      concentracao_ceap: { indice_hhi: null, nivel_risco: null, percentual_maior_fornecedor: null, maior_fornecedor: null, cnpj_maior_fornecedor: null, diagnostico: 'Sem despesas.' },
       enriquecimento_patrimonial: { delta_patrimonio: null, salario_acumulado_estimado: null, razao_patrimonio_renda: null, compatibilidade: null, diagnostico: 'Dados insuficientes.' },
       estabilidade_partidaria: { total_trocas: 0, anos_medio_por_partido: null, classificacao: null, taxa_governismo_pct: null, diagnostico: 'Sem filiações.' },
       eficiencia_emendas: { taxa_conversao_pct: null, total_empenhado: 0, total_pago: 0, percentual_pix: 0, municipio_predileto: null, concentracao_municipio_predileto_pct: 0, classificacao: null, diagnostico: 'Sem emendas.' },

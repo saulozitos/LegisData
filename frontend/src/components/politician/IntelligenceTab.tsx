@@ -13,7 +13,7 @@ import {
   Gauge,
 } from "lucide-react";
 import type { PoliticoDossier } from "@/services/api";
-import { fmtNum, isNum } from "@/lib/format";
+import { fmtNum, fmtPct, isNum } from "@/lib/format";
 import { formatMoney, formatCpfCnpj, gradeBadgeClass, riskBadgeClass, compatBadgeClass, orUnavailable } from "./format";
 import { EmptyState } from "@/components/StateViews";
 
@@ -24,6 +24,7 @@ interface IntelligenceTabProps {
 export default function IntelligenceTab({ dossier }: IntelligenceTabProps) {
   const indices = dossier.indices_inteligencia;
   if (!indices) return <EmptyState title="Inteligência cívica indisponível" />;
+  const periodo = indices.enriquecimento_patrimonial.periodo_comparado;
   return (
             <div className="space-y-6">
               {/* Header do Painel de Inteligência */}
@@ -170,7 +171,7 @@ export default function IntelligenceTab({ dossier }: IntelligenceTabProps) {
                     <span className="text-sm font-black font-mono text-amber-400">
                       {fmtNum(indices.concentracao_ceap.indice_hhi, 0)}
                     </span>
-                    <span className="text-[10px] text-slate-400">/ 10.000</span>
+                    {isNum(indices.concentracao_ceap.indice_hhi) && <span className="text-[10px] text-slate-400">/ 10.000</span>}
                   </div>
                 </div>
 
@@ -196,7 +197,7 @@ export default function IntelligenceTab({ dossier }: IntelligenceTabProps) {
                       Fatia da Cota Consumida pelo Top 1
                     </span>
                     <div className="text-2xl font-black font-mono text-amber-400">
-                      {fmtNum(indices.concentracao_ceap.percentual_maior_fornecedor, 1)}%
+                      {fmtPct(indices.concentracao_ceap.percentual_maior_fornecedor, 1)}
                     </div>
                     <span className="text-[10px] text-slate-400 block">
                       Escala antitruste: Acima de 45% ou HHI {'>'} 2.500 aciona alerta de concentração
@@ -253,8 +254,10 @@ export default function IntelligenceTab({ dossier }: IntelligenceTabProps) {
                       {isNum(indices.enriquecimento_patrimonial.delta_patrimonio) && indices.enriquecimento_patrimonial.delta_patrimonio >= 0 ? "+" : ""}
                       {formatMoney(indices.enriquecimento_patrimonial.delta_patrimonio)}
                     </span>
-                    <span className="text-[10px] text-slate-400 block">
-                      Diferença entre primeira e última declaração
+                    <span className="text-[10px] text-slate-400 block" data-testid="periodo-patrimonio">
+                      {periodo
+                        ? `Variação de ${periodo.de} a ${periodo.ate} (declarações ao TSE)`
+                        : "Período indisponível: sem declarações que cubram o subsídio registrado"}
                     </span>
                   </div>
 
@@ -265,8 +268,10 @@ export default function IntelligenceTab({ dossier }: IntelligenceTabProps) {
                     <span className="text-lg font-black font-mono text-cyan-400 block">
                       {formatMoney(indices.enriquecimento_patrimonial.salario_acumulado_estimado)}
                     </span>
-                    <span className="text-[10px] text-slate-400 block">
-                      Soma estimada de subsídios oficiais recebidos
+                    <span className="text-[10px] text-slate-400 block" data-testid="periodo-subsidio">
+                      {periodo
+                        ? `Subsídio bruto de ${periodo.subsidio_de} a ${periodo.subsidio_ate}`
+                        : "Período indisponível: soma dos subsídios oficiais registrados"}
                     </span>
                   </div>
 
