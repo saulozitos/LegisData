@@ -102,9 +102,11 @@ def test_carga_economica_isola_cada_loader_e_relata_as_falhas_no_fim(monkeypatch
     monkeypatch.setattr("etl.pipelines.presidencia_loader.carregar", ok("presidencia"))
     monkeypatch.setattr("etl.pipelines.composicao_loader.carregar", quebra)
     monkeypatch.setattr("etl.pipelines.pnad_loader.carregar", ok("pnad"))
+    monkeypatch.setattr("etl.pipelines.financas_loader.carregar", ok("financas"))
     with pytest.raises(RuntimeError, match="Composição do Congresso.*y-1999"):
         cli._load_economia()
-    assert chamadas == ["series", "presidencia", "composicao", "pnad"]  # a PNAD rodou apesar da falha da composição
+    # a PNAD e as finanças rodaram apesar da falha da composição
+    assert chamadas == ["series", "presidencia", "composicao", "pnad", "financas"]
 
 
 def test_carga_economica_sem_falha_nao_levanta_e_com_duas_falhas_relata_as_duas(monkeypatch):
@@ -114,7 +116,7 @@ def test_carga_economica_sem_falha_nao_levanta_e_com_duas_falhas_relata_as_duas(
 
         return _
 
-    for modulo in ("economia_loader", "presidencia_loader", "composicao_loader", "pnad_loader"):
+    for modulo in ("economia_loader", "presidencia_loader", "composicao_loader", "pnad_loader", "financas_loader"):
         monkeypatch.setattr(f"etl.pipelines.{modulo}.carregar", lambda engine: {})
     cli._load_economia()  # nenhuma falha: sem exceção
 
@@ -135,6 +137,7 @@ def test_composicao_nao_roda_se_os_mandatos_presidenciais_falharam(monkeypatch):
     monkeypatch.setattr("etl.pipelines.presidencia_loader.carregar", quebra)
     monkeypatch.setattr("etl.pipelines.composicao_loader.carregar", lambda engine: chamadas.append("composicao") or {})
     monkeypatch.setattr("etl.pipelines.pnad_loader.carregar", lambda engine: chamadas.append("pnad") or {})
+    monkeypatch.setattr("etl.pipelines.financas_loader.carregar", lambda engine: {})
     with pytest.raises(RuntimeError) as erro:
         cli._load_economia()
     assert "sem arquivo de presidentes" in str(erro.value) and "não executada" in str(erro.value)

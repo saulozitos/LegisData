@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from app.core.data_files import FIRST_SERIES_YEAR, mandate_year_range
 from app.core.database import get_db
+from app.core.numeros import opt_float as _opt_float
 from app.models import (
     AnnualSocialIndicator,
     CargoPoliticoEnum,
@@ -751,11 +752,6 @@ def get_federal_transfers(
         "regioes_resumo": regioes_sum,
         "por_uf": items,
     }
-
-
-def _opt_float(value) -> Optional[float]:
-    """Decimal/float -> float preservando zero (apenas None vira None)."""
-    return float(value) if value is not None else None
 
 
 @router.get("/social-indicators")

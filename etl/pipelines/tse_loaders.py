@@ -6,6 +6,11 @@ Mantidas fora de `db_loader.py` para isolar a lógica. Todas são idempotentes:
 - certidões: chave natural (político, órgão, tipo de certidão), atualizada se já existir;
 - eleições: chave natural (ano, UF, turno).
 Só registros com proveniência oficial (`fonte` e `is_synthetic == False`) são carregados.
+
+ESCRITA LEGADA: doações e certidões daqui vão para tabelas do `public` que a API não lê mais (o dossiê lê `fin`, carregado
+por `financas_loader.carregar_doacoes` e `carregar_certidoes`, de mesmo nome por serem a mesma fonte). Ficam só até a
+limpeza das tabelas legadas (Fase 9 do plano de refatoração do banco); não corrija regra de negócio aqui esperando que
+ela chegue ao dossiê. As eleições por UF seguem valendo.
 """
 
 import csv
@@ -26,10 +31,11 @@ from app.models import (  # noqa: E402
     StatePresidentialElectionResult,
 )
 
-from etl.pipelines.loader_helpers import _dec  # noqa: E402
+from etl.pipelines.loader_helpers import _dec, documento_do_doador, nome_sem_cpf, texto_sem_cpf  # noqa: E402
 from etl.utils.datafiles import load_json  # noqa: E402
 from etl.utils.names import build_unique_name_map, normalize_name_tokens  # noqa: E402
 from etl.utils.provenance import is_trusted  # noqa: E402
+from etl.utils.rotulos import DOADOR_NAO_IDENTIFICADO  # noqa: E402
 
 logger = logging.getLogger("TSELoaders")
 
@@ -96,8 +102,8 @@ def carregar_doacoes(session: Session, data_dir: Path) -> Dict[str, int]:
                 DoacaoCampanha(
                     politician_id=pol_id,
                     election_year=ano,
-                    donor_name=str(d.get("nome_doador") or "Doador não identificado")[:255],
-                    donor_cpf_cnpj=(d.get("cpf_cnpj_doador") or None),
+                    donor_name=(nome_sem_cpf(d.get("nome_doador")) or DOADOR_NAO_IDENTIFICADO)[:255],
+                    donor_cpf_cnpj=documento_do_doador(d.get("cpf_cnpj_doador")),
                     amount_donated=valor,
                     donation_type=(d.get("tipo_receita") or None),
                 )
@@ -138,7 +144,7 @@ def carregar_certidoes_tse(session: Session, data_dir: Path) -> Dict[str, int]:
         chave = (pol_id, item["orgao"], item["tipo_certidao"][:50])
         valores = dict(
             status=item["status_ficha"][:50],
-            details=item.get("detalhes"),
+            details=texto_sem_cpf(item.get("detalhes")),
             process_number=(item.get("numero_processo") or None),
         )
         atual = existentes.get(chave)

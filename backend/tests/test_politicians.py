@@ -1,25 +1,19 @@
 from datetime import date
 
 import pytest
-from app.api.v1.politicians import (
-    _get_processed_ceap,
-    _get_processed_emendas,
-    _mask_document,
-    _normalize_name,
-)
+from app.api.v1.politicians import _normalize_name
 from app.core.query_utils import escape_like as _escape_like
 from app.models import (
     AttendanceRecord,
     CasaLegislativaEnum,
-    CertidaoJudicial,
     Politician,
-    PoliticianRemuneration,
     ProcessoJudicial,
     TipoPresencaEnum,
 )
+from app.services import financas_service
 from sqlalchemy import text
 
-from .conftest import criar_mandato_presidencial, write_json
+from .conftest import criar_mandato_presidencial, fonte_id, inserir_fin, pessoa_do
 
 BASE = "/api/v1/politicians"
 
@@ -35,66 +29,6 @@ def test_normalize_name():
 
 def test_escape_like_neutralizes_wildcards():
     assert _escape_like("100%_ok\\") == "100\\%\\_ok\\\\"
-
-
-@pytest.mark.parametrize(
-    "raw,expected",
-    [
-        ("123.456.789-01", "***.456.789-**"),
-        ("12345678901", "***.456.789-**"),
-        ("12.345.678/0001-95", "12.345.678/0001-95"),  # CNPJ é dado público
-        ("***.456.789-**", "***.456.789-**"),  # já mascarado pelo ETL: idempotente
-        ("123456", "**3456"),
-        ("123", "***"),
-        (None, None),
-        ("", ""),
-    ],
-)
-def test_mask_document(raw, expected):
-    assert _mask_document(raw) == expected
-
-
-# ---------------------------------------------------------------------------
-# Arquivos processados do ETL (nome normalizado EXATO)
-# ---------------------------------------------------------------------------
-def test_processed_ceap_matches_exact_normalized_name(data_dir):
-    write_json(data_dir, "despesas_ceap_2019_2026.json", {"JOAO DA SILVA": {"total_gasto": 1000}})
-    assert _get_processed_ceap("João da Silva")["total_gasto"] == 1000
-    assert _get_processed_ceap("Fulano", civil_name="JOÃO DA SILVA")["total_gasto"] == 1000
-
-
-@pytest.mark.parametrize("name", ["ANA", "SILVA", "JOAO", "", "JOAO DA SILVA JUNIOR"])
-def test_processed_ceap_never_matches_by_substring(data_dir, name):
-    write_json(
-        data_dir, "despesas_ceap_2019_2026.json", {"JOAO DA SILVA": {"total_gasto": 1}, "MARIANA": {"total_gasto": 2}}
-    )
-    assert _get_processed_ceap(name) is None
-
-
-def test_processed_files_missing_then_created_are_not_poisoned_by_cache(data_dir):
-    assert _get_processed_ceap("Joao") is None
-    assert _get_processed_emendas("Joao") == []
-    write_json(data_dir, "despesas_ceap_2019_2026.json", {"JOAO": {"total_gasto": 7}})
-    write_json(data_dir, "emendas_parlamentares_2019_2026.json", [{"politician_name": "Joao", "valor": 5}])
-    assert _get_processed_ceap("Joao")["total_gasto"] == 7  # antes: cache vazio ficava fixo até reiniciar
-    assert _get_processed_emendas("Joao") == [{"politician_name": "Joao", "valor": 5}]
-
-
-def test_processed_emendas_exact_match_and_no_substring(data_dir):
-    write_json(
-        data_dir,
-        "emendas_parlamentares_2019_2026.json",
-        [{"politician_name": "JOAO DA SILVA", "valor": 5000}, {"politician_name": "MARIANA", "valor": 1}],
-    )
-    assert [e["valor"] for e in _get_processed_emendas("João da Silva")] == [5000]
-    assert _get_processed_emendas("ANA") == []
-    assert _get_processed_emendas("") == []
-
-
-def test_processed_files_with_unexpected_shape_are_ignored(data_dir):
-    write_json(data_dir, "despesas_ceap_2019_2026.json", ["não é dict"])
-    write_json(data_dir, "emendas_parlamentares_2019_2026.json", {"nao": "lista"})
-    assert _get_processed_ceap("x") is None and _get_processed_emendas("x") == []
 
 
 # ---------------------------------------------------------------------------
@@ -251,17 +185,21 @@ def test_dossier_does_not_expose_politician_cpf(client, seed):
     assert "12345678901" not in client.get(f"{BASE}/{seed.fulano.id}").text
 
 
-def test_dossier_masks_third_party_documents_everywhere(client, seed):
+def test_dossier_exposes_only_cnpj_and_masked_cpf(client, seed, financas):
+    """Fornecedor só aparece com CNPJ formatado; o documento do doador chega mascarado (a proteção contra CPF fica no
+    ETL e no CHECK da tabela, testados em test_fin_schema e test_financas_loader)."""
     body = client.get(f"{BASE}/{seed.fulano.id}").json()
-    supplier = body["custos_ceap"]["maiores_fornecedores"][0]
-    assert supplier["cnpj_cpf"] == "***.456.789-**"
-    assert all(d["cnpj_cpf"] == "***.456.789-**" for d in body["custos_ceap"]["despesas_recentes"])
+    assert body["custos_ceap"]["maiores_fornecedores"][0]["cnpj_cpf"] == "12.345.678/0001-99"
     donor = body["financiamento_campanha"]["top_doadores"][0]
     assert donor["cpf_cnpj_doador"] == "***.654.321-**"
-    assert body["indices_inteligencia"]["concentracao_ceap"]["cnpj_maior_fornecedor"] == "***.456.789-**"
-    for sub, key in (("ceap", "despesas"), ("doacoes", "doacoes")):
-        raw = client.get(f"{BASE}/{seed.fulano.id}/{sub}").text
-        assert "98765432100" not in raw and "123.456.789-01" not in raw
+    assert body["indices_inteligencia"]["concentracao_ceap"]["cnpj_maior_fornecedor"] == "12.345.678/0001-99"
+    ceap = client.get(
+        f"{BASE}/{seed.fulano.id}/ceap"
+    ).json()  # só totais por ano e tipo: nenhum documento de fornecedor
+    assert (
+        ceap["despesas"] == [{"ano": 2024, "tipo": "Combustível", "valor": 150.0}] and "cnpj" not in str(ceap).lower()
+    )
+    assert "***.654.321-**" in client.get(f"{BASE}/{seed.fulano.id}/doacoes").text
 
 
 def test_dossier_missing_data_is_null_never_invented(client, seed):
@@ -299,33 +237,38 @@ def test_dossier_votes_and_thematic_alignment_are_aggregated(client, seed):
     assert body["materias_propostas"][0]["url_oficial"].endswith("idProposicao=999")
 
 
-def test_dossier_ceap_totals_come_from_the_database(client, seed):
+def test_dossier_ceap_totals_come_from_the_database(client, seed, financas):
     ceap = client.get(f"{BASE}/{seed.fulano.id}").json()["custos_ceap"]
     assert ceap["possui_dados"] is True and ceap["gasto_total_recente"] == 150.0 and ceap["total_notas"] == 2
     assert ceap["gastos_por_tipo"] == [{"tipo_despesa": "Combustível", "total_gasto": 150.0, "percentual": 100.0}]
 
 
-def test_dossier_ceap_falls_back_to_etl_file_by_exact_name_only(client, seed, data_dir):
-    write_json(
-        data_dir,
-        "despesas_ceap_2019_2026.json",
-        {
-            "BELTRANO": {
-                "total_gasto": 900,
-                "total_notas": 3,
-                "por_tipo": {"Passagem": 900},
-                "fornecedores": {"a": {"nome": "Cia", "cnpj_cpf": "123.456.789-01", "total": 900, "notas": 3}},
-                "por_ano": {"2024": 900},
-            },
-            "MARIANA BELTRANO": {"total_gasto": 5},
-        },
+def test_dossier_ceap_exposes_year_totals_and_suppliers_with_cnpj_only(client, seed, financas):
+    ceap = client.get(f"{BASE}/{seed.fulano.id}").json()["custos_ceap"]
+    assert ceap["gastos_por_ano"] == [{"ano": 2024, "total_gasto": 150.0}]
+    assert ceap["maiores_fornecedores"] == [
+        {"nome_fornecedor": "Posto X", "cnpj_cpf": "12.345.678/0001-99", "total_recebido": 150.0, "num_notas": 2}
+    ]
+
+
+def test_dossier_reaches_finance_stored_on_the_duplicate_with_the_official_id(client, db, seed):
+    """O dado fica no cadastro com `CAMARA_ID`; o dossiê (endereçado pelo cadastro do legado) chega nele pelo id."""
+    pessoa_com_id = db.execute(
+        text("INSERT INTO core.pessoa (nome_exibicao) VALUES ('Beltrano') RETURNING id")
+    ).scalar_one()
+    db.execute(
+        text(
+            "INSERT INTO core.pessoa_identificador (pessoa_id, fonte_id, tipo, valor) VALUES (:p, :f, 'CAMARA_ID', '333')"
+        ),
+        {"p": pessoa_com_id, "f": fonte_id(db, "CAMARA_CSV")},
     )
+    inserir_fin(db, "despesa_cota", pessoa_id=pessoa_com_id, ano=2024, tipo_despesa="Passagem", valor_liquido=900)
+    db.commit()
     beltrano = client.get(f"{BASE}/{seed.beltrano.id}").json()["custos_ceap"]
     assert beltrano["possui_dados"] is True and beltrano["gasto_total_recente"] == 900.0
-    assert beltrano["maiores_fornecedores"][0]["cnpj_cpf"] == "***.456.789-**"
-    # "Lula da Fonte" não herda nada de nomes parecidos
+    # quem tem outro identificador não herda nada
     lula = client.get(f"{BASE}/{seed.lula_fonte.id}").json()["custos_ceap"]
-    assert lula["possui_dados"] is False and lula["gasto_total_recente"] in (0, 0.0, None)
+    assert lula["possui_dados"] is False and lula["gasto_total_recente"] is None  # sem dado não é "gasto zero"
 
 
 def test_dossier_for_politician_without_any_data_has_empty_sections(client, db, seed):
@@ -334,7 +277,8 @@ def test_dossier_for_politician_without_any_data_has_empty_sections(client, db, 
     db.commit()
     body = client.get(f"{BASE}/{novo.id}").json()
     assert body["perfil"]["cargo_atual"] == "PARLAMENTAR" and body["trajetoria_mandatos"] == []
-    assert body["custos_ceap"]["possui_dados"] is False
+    assert body["custos_ceap"]["possui_dados"] is False and body["custos_ceap"]["total_notas"] is None
+    assert body["remuneracao"]["resumo"]["total_bruto_2023"] is None  # sem folha registrada o total é desconhecido
     assert body["emendas_parlamentares"]["possui_dados"] is False
     assert body["financiamento_campanha"]["possui_dados"] is False
     assert body["materias_propostas"] == [] and body["votacoes_principais"] == []
@@ -394,10 +338,14 @@ def test_name_based_certidoes_hack_is_gone_real_processes_are_shown(client, db, 
 
 
 def test_certidoes_never_get_invented_numbers_dates_or_codes(client, db, seed):
-    db.add(
-        CertidaoJudicial(
-            politician_id=seed.beltrano.id, court_agency="TSE", certificate_type="Eleitoral", status="Positiva"
-        )
+    inserir_fin(
+        db,
+        "certidao",
+        pessoa_id=pessoa_do(db, seed.beltrano),
+        orgao="TSE",
+        tipo="Eleitoral",
+        situacao="Positiva",
+        fonte_id=fonte_id(db, "TSE"),
     )
     db.commit()
     data = client.get(f"{BASE}/{seed.beltrano.id}/certidoes").json()
@@ -414,38 +362,54 @@ def test_certidoes_never_get_invented_numbers_dates_or_codes(client, db, seed):
 
 
 def test_certidoes_with_real_values_are_passed_through(client, db, seed):
-    db.add(
-        CertidaoJudicial(
-            politician_id=seed.beltrano.id,
-            court_agency="STJ",
-            certificate_type="Criminal",
-            status="Nada Consta",
-            process_number="123",
-            issue_date="2024-02-01",
-            auth_code="ABC",
-            proof_url="https://x",
-        )
+    inserir_fin(
+        db,
+        "certidao",
+        pessoa_id=pessoa_do(db, seed.beltrano),
+        orgao="TSE",
+        tipo="Registro 2018",
+        situacao="Declarada: registro indeferido",
+        detalhes="Eleição 2018",
+        numero_processo="123",
+        fonte_id=fonte_id(db, "TSE"),
     )
     db.commit()
     cert = client.get(f"{BASE}/{seed.beltrano.id}/certidoes").json()["certidoes"][0]
-    assert (cert["numero_processo"], cert["data_emissao"], cert["codigo_autenticidade"]) == ("123", "2024-02-01", "ABC")
+    assert (cert["numero_processo"], cert["detalhes"], cert["status_ficha"]) == (
+        "123",
+        "Eleição 2018",
+        "Declarada: registro indeferido",
+    )
+    assert cert["data_emissao"] is None and cert["codigo_autenticidade"] is None  # o TSE não informa
 
 
 def test_remuneration_summary_uses_latest_year_with_data(client, db, seed):
+    inserir_fin(  # um ano anterior com valores bem diferentes: não pode entrar nos totais do ano de referência
+        db,
+        "remuneracao",
+        pessoa_id=pessoa_do(db, seed.fulano),
+        ano=2023,
+        mes=12,
+        salario_bruto=1000,
+        salario_liquido=900,
+        cota_ceap=7000,
+        auxilio_moradia=111,
+        outros_beneficios=222,
+        fonte_id=fonte_id(db, "CAMARA_PORTAL"),
+    )
     for month, ceap in ((1, 100), (2, 300)):
-        db.add(
-            PoliticianRemuneration(
-                politician_id=seed.fulano.id,
-                mandate_id=seed.mandate_fulano.id,
-                reference_year=2024,
-                reference_month=month,
-                gross_salary=40000,
-                net_salary=30000,
-                parliamentary_quota_ceap=ceap,
-                housing_allowance=10,
-                other_benefits=5,
-                data_source="Portal",
-            )
+        inserir_fin(
+            db,
+            "remuneracao",
+            pessoa_id=pessoa_do(db, seed.fulano),
+            ano=2024,
+            mes=month,
+            salario_bruto=40000,
+            salario_liquido=30000,
+            cota_ceap=ceap,
+            auxilio_moradia=10,
+            outros_beneficios=5,
+            fonte_id=fonte_id(db, "CAMARA_PORTAL"),
         )
     db.commit()
     summary = client.get(f"{BASE}/{seed.fulano.id}").json()["remuneracao"]["resumo"]
@@ -453,6 +417,9 @@ def test_remuneration_summary_uses_latest_year_with_data(client, db, seed):
     assert summary["salario_bruto_atual"] == 40000.0
     assert summary["media_ceap_mensal"] == 200.0
     assert summary["total_ceap_2023"] == 400.0 and summary["total_beneficios_2023"] == 30.0
+    assert summary["total_bruto_2023"] == 80000.0  # só 2024; os 1.000 de 2023 ficam de fora
+    acumulado = financas_service.remuneracao(db, [pessoa_do(db, seed.fulano)])["acumulado"]
+    assert acumulado == 81000.0  # o acumulado, sim, soma todos os anos
 
 
 def test_attendance_rate_is_computed_from_real_records(client, db, seed):
@@ -478,7 +445,7 @@ def test_attendance_rate_is_computed_from_real_records(client, db, seed):
     assert att["taxa_presenca_pct"] is not None and 0 < att["taxa_presenca_pct"] < 100
 
 
-def test_emendas_endpoint_and_dossier_agree(client, seed):
+def test_emendas_endpoint_and_dossier_agree(client, seed, financas):
     emendas = client.get(f"{BASE}/{seed.fulano.id}/emendas").json()
     assert emendas["total_empenhado"] == 100.0 and emendas["total_pago"] == 50.0
     dossier = client.get(f"{BASE}/{seed.fulano.id}").json()["emendas_parlamentares"]
@@ -536,3 +503,58 @@ def test_dossier_vote_summary_ignores_other_options(client, seed):
     """Obstrução e Art. 17 não entram em nenhum dos três grupos."""
     resumo = client.get(f"{BASE}/{seed.beltrano.id}").json()["resumo_votos"]
     assert sum(g["total"] for g in resumo.values()) == 0
+
+
+def test_financiamento_considera_so_a_campanha_mais_recente_e_conta_doadores_distintos(client, db, seed, financas):
+    pessoa = pessoa_do(db, seed.fulano)
+    for ano, nome, valor in ((2018, "Doador Antigo", 9000), (2022, "Fulana Doadora", 250)):
+        inserir_fin(
+            db,
+            "doacao_campanha",
+            pessoa_id=pessoa,
+            ano_eleicao=ano,
+            doador_nome=nome,
+            doador_documento="***.654.321-**" if nome == "Fulana Doadora" else None,
+            valor=valor,
+            fonte_id=fonte_id(db, "TSE"),
+        )
+    db.commit()
+    campanha = client.get(f"{BASE}/{seed.fulano.id}").json()["financiamento_campanha"]
+    assert campanha["ano_eleicao"] == 2022 and campanha["total_arrecadado"] == 750.0
+    assert campanha["total_doadores"] == 1  # a campanha de 2022 tem um doador (dois recibos), a de 2018 não entra
+    assert {d["ano_eleicao"] for d in campanha["todas_doacoes"]} == {2022}
+    assert campanha["top_doadores"][0]["valor_doado"] == 750.0 and campanha["top_doadores"][0]["percentual"] == 100.0
+    avulsa = client.get(f"{BASE}/{seed.fulano.id}/doacoes").json()
+    assert avulsa["ano_eleicao"] == 2022 and avulsa["total_arrecadado"] == 750.0
+    assert {d["ano_eleicao"] for d in avulsa["doacoes"]} == {2022}
+
+
+def test_ceap_avulsa_sem_despesa_devolve_gasto_desconhecido_e_nao_zero(client, seed):
+    ceap = client.get(f"{BASE}/{seed.beltrano.id}/ceap").json()
+    assert ceap["possui_dados"] is False and ceap["total_gasto"] is None and ceap["despesas"] == []
+
+
+def test_doacoes_aceita_pedir_a_eleicao_e_o_dossie_lista_as_disponiveis(client, db, seed, financas):
+    pessoa = pessoa_do(db, seed.fulano)
+    inserir_fin(
+        db,
+        "doacao_campanha",
+        pessoa_id=pessoa,
+        ano_eleicao=2018,
+        doador_nome="Doador Antigo",
+        doador_documento=None,
+        valor=9000,
+        fonte_id=fonte_id(db, "TSE"),
+    )
+    db.commit()
+    dossie = client.get(f"{BASE}/{seed.fulano.id}").json()["financiamento_campanha"]
+    assert dossie["eleicoes_disponiveis"] == [2022, 2018] and dossie["demais_doadores"] is None
+    antiga = client.get(f"{BASE}/{seed.fulano.id}/doacoes?ano_eleicao=2018").json()
+    assert antiga["ano_eleicao"] == 2018 and antiga["total_arrecadado"] == 9000.0 and antiga["possui_dados"] is True
+    assert client.get(f"{BASE}/{seed.fulano.id}/doacoes?ano_eleicao=2010").status_code == 404
+    assert client.get(f"{BASE}/{seed.fulano.id}/doacoes?ano_eleicao=1800").status_code == 422
+
+
+def test_doacoes_sem_nenhuma_doacao_marca_que_nao_ha_dados(client, seed):
+    corpo = client.get(f"{BASE}/{seed.beltrano.id}/doacoes").json()
+    assert corpo["possui_dados"] is False and corpo["ano_eleicao"] is None and corpo["doacoes"] == []

@@ -5,11 +5,14 @@ Separadas do `db_loader` para poderem ser testadas sem Postgres e reutilizadas p
 
 import math
 import re
+import unicodedata
+from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pandas as pd
+from sqlalchemy.exc import DBAPIError
 
 from etl.utils.names import (
     NON_PERSON_AUTHORS,
@@ -17,7 +20,10 @@ from etl.utils.names import (
     chave_sigla,
     first_signatory,
     normalize_name_tokens,
+    normalize_plain,
 )
+from etl.utils.provenance import is_trusted
+from etl.utils.rotulos import DOADOR_NAO_IDENTIFICADO, FORNECEDOR_NAO_IDENTIFICADO
 
 # Início da 57ª legislatura (1º/fev/2023): único limite inferior de observação que se conhece para quem está
 # "em exercício" quando a fonte não informa a data de filiação/mandato.
@@ -29,14 +35,22 @@ SEM_PARTIDO = "S.PART."
 
 def texto(valor: Any) -> Optional[str]:
     """Texto sem espaços nas pontas; vazio ou None viram None."""
-    limpo = str(valor).strip() if valor is not None else ""
+    if valor is None or not isinstance(valor, (str, int, float)):  # dict/list não viram texto (nem a sua repr)
+        return None
+    if isinstance(valor, float) and valor != valor:
+        return None
+    limpo = str(valor).strip()
     return limpo or None
 
 
 def inteiro(valor: Any) -> Optional[int]:
-    """Inteiro ou None para vazio e para o que não converte."""
+    """Inteiro ou None para vazio, bool, número com parte fracionária e o que não converte."""
+    if valor is None or valor == "" or isinstance(valor, bool):
+        return None
     try:
-        return None if valor is None or valor == "" else int(valor)
+        if isinstance(valor, float) and not valor.is_integer():
+            return None
+        return int(valor)
     except (TypeError, ValueError, OverflowError):
         return None
 
@@ -45,6 +59,14 @@ def inteiro_em(valor: Any, minimo: int, maximo: int) -> Optional[int]:
     """Inteiro dentro do intervalo fechado [minimo, maximo]; fora dele ou inválido, None."""
     numero = inteiro(valor)
     return numero if numero is not None and minimo <= numero <= maximo else None
+
+
+LIMITE_INT4 = 2**31 - 1  # colunas `integer` do Postgres: um valor acima derrubaria a carga inteira
+
+
+def contagem_int4(valor: Any) -> Optional[int]:
+    """Contagem não negativa que cabe numa coluna `integer`; negativa, fracionária, inválida ou acima do teto, None."""
+    return inteiro_em(valor, 0, LIMITE_INT4)
 
 
 def normalizar_sigla_presenca(sigla: Any) -> Optional[str]:
@@ -75,9 +97,37 @@ def _dec(value: Any) -> Optional[Decimal]:
     if isinstance(value, str) and not value.strip():
         return None
     try:
-        return Decimal(str(value))
+        numero = Decimal(str(value))
     except InvalidOperation:
         return None
+    return numero if numero.is_finite() else None
+
+
+# Limites (exclusivos) das colunas monetárias do schema fin: numeric(P,2) comporta valores abaixo de 10**(P-2).
+# Janela de anos aceita nas cargas (decisão D8: começa em 1995; o teto barra ano digitado errado)
+ANO_MINIMO = 1995
+ANO_MAXIMO = 2100
+LIMITE_CEAP = Decimal(10) ** 12  # numeric(14,2)
+LIMITE_EMENDA = Decimal(10) ** 14  # numeric(16,2)
+LIMITE_REMUNERACAO = Decimal(10) ** 10  # numeric(12,2)
+LIMITE_TSE = Decimal(10) ** 13  # numeric(15,2)
+
+
+def decimal_de(value: Any, limite: Decimal = LIMITE_CEAP) -> Optional[Decimal]:
+    """Decimal finito e dentro da faixa da coluna (`limite`, exclusivo); qualquer outra coisa vira None."""
+    numero = _dec(value)
+    return numero if numero is not None and abs(numero) < limite else None
+
+
+def soma_na_faixa(valor: Decimal, limite: Decimal) -> Optional[Decimal]:
+    """
+    Total de várias parcelas já arredondado em centavos, ou None se estoura a faixa da coluna. `decimal_de` limita cada
+    parcela; a soma delas (por ano e tipo, por fornecedor, entre fontes, entre linhas repetidas) pode passar do limite
+    e, como o Postgres arredonda antes de conferir, um valor logo abaixo dele também estoura: sem esta conferência o
+    `numeric field overflow` derrubaria a carga inteira por causa de uma linha.
+    """
+    centavos = valor.quantize(Decimal("0.01"))
+    return centavos if abs(centavos) < limite else None
 
 
 def _texto_ou_none(value: Any) -> Optional[str]:
@@ -373,3 +423,536 @@ def linhas_pnad_do_ano(entrada: Dict[str, Any]) -> List[Dict[str, Any]]:
                 }
             )
     return linhas
+
+
+# ── Finanças (schema `fin`) ──────────────────────────────────────────────────────────────────────────────────────────
+UF_POR_NOME = {
+    "ACRE": "AC",
+    "ALAGOAS": "AL",
+    "AMAPA": "AP",
+    "AMAZONAS": "AM",
+    "BAHIA": "BA",
+    "CEARA": "CE",
+    "DISTRITO FEDERAL": "DF",
+    "ESPIRITO SANTO": "ES",
+    "GOIAS": "GO",
+    "MARANHAO": "MA",
+    "MATO GROSSO": "MT",
+    "MATO GROSSO DO SUL": "MS",
+    "MINAS GERAIS": "MG",
+    "PARA": "PA",
+    "PARAIBA": "PB",
+    "PARANA": "PR",
+    "PERNAMBUCO": "PE",
+    "PIAUI": "PI",
+    "RIO DE JANEIRO": "RJ",
+    "RIO GRANDE DO NORTE": "RN",
+    "RIO GRANDE DO SUL": "RS",
+    "RONDONIA": "RO",
+    "RORAIMA": "RR",
+    "SANTA CATARINA": "SC",
+    "SAO PAULO": "SP",
+    "SERGIPE": "SE",
+    "TOCANTINS": "TO",
+}
+_UFS = frozenset(UF_POR_NOME.values())
+# Formas de CPF reconhecidas (o texto já passou por `_ascii`: dígitos, hífens e espaços Unicode viraram ASCII):
+#  - canônica NNN.NNN.NNN-NN, em qualquer vizinhança ("2020-012.345.678-00", "...-00,987..."), até colada a um dígito
+#    anterior ("12012.345.678-00" perde o CPF e deixa o "12"): nunca é valor em reais, então é removida sempre, mesmo
+#    depois de "R$";
+#  - grupos 3-3-3-2 com até 3 caracteres de separação (qualquer um que não seja letra, dígito ou sublinhado, além do
+#    próprio sublinhado) ou sem separação, e 10 dígitos seguidos (CPF que perdeu o zero à esquerda). Em texto livre, o separador antes dos dois últimos dígitos
+#    nunca é só uma vírgula, porque "123.456.789,00" é valor em reais; em nomes não há valor em reais, e a vírgula vale.
+# Data, hora, telefone, lista numerada e número de processo não têm o desenho 3-3-3-2 e ficam intactos. O CNPJ formatado
+# vem primeiro na alternância para não ser lido como CPF parcial; CNPJ sem pontuação (14 dígitos) nunca casa porque a
+# sequência é limitada por não-dígitos.
+_SEP = r"[\W_]{1,3}"
+_SEP_FINAL_TEXTO = r"(?:[^\w,]|_){1,3}"
+_CNPJ_FORMATADO = r"(?<![0-9])(?P<cnpj>[0-9]{2}\.[0-9]{3}\.[0-9]{3}/[0-9]{4}-[0-9]{2})(?![0-9])"
+_CPF_CANONICO = r"[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}(?![0-9])"
+
+
+def _cpf_agrupado(sep_final: str) -> str:
+    return rf"[0-9]{{3}}(?:{_SEP})?[0-9]{{3}}(?:{_SEP})?[0-9]{{3}}(?:{sep_final})?[0-9]{{2}}|[0-9]{{10}}"
+
+
+_SEQUENCIA_CPF = re.compile(rf"{_CNPJ_FORMATADO}|{_CPF_CANONICO}|(?<![0-9])(?:{_cpf_agrupado(_SEP)})(?![0-9])")
+_MASCARA_CPF = re.compile(r"^\*{3}\.[0-9]{3}\.[0-9]{3}-\*{2}$")
+TIPOS_DE_AUTOR_INSTITUCIONAL = ("BANCADA_ESTADUAL", "COMISSAO_INSTITUCIONAL", "RELATOR_GERAL")
+
+
+def so_digitos(valor: Any) -> str:
+    return re.sub(r"[^0-9]", "", _ascii(texto(valor))) if valor is not None else ""
+
+
+def cnpj_do_fornecedor(valor: Any) -> Optional[str]:
+    """
+    Os 14 dígitos de um CNPJ. CPF (11 dígitos), documento truncado e o CNPJ de enchimento que a Câmara usa para
+    lançamentos sem fornecedor ("CELULAR FUNCIONAL", "RAMAL") viram None: CPF nunca é gravado (decisão D3).
+    """
+    digitos = so_digitos(valor)
+    if len(digitos) != 14 or digitos[:12] == "0" * 12:
+        return None
+    return digitos
+
+
+def _ascii(valor: Any) -> str:
+    """
+    Texto com qualquer dígito Unicode (árabe-índico, largura total...) trocado pelo dígito ASCII equivalente, hífens
+    Unicode (U+2010, travessão, sinal de menos) trocados por '-', pontos médios por '.', espaços Unicode por espaço
+    comum, caracteres invisíveis de formatação (largura zero, hífen suave) e marcas combinantes (U+034F, U+0301 que o NFKC
+    não recompôs, seletores de variação) removidos e as "letras" Hangul que só ocupam
+    espaço (U+115F, U+1160, U+3164, U+FFA0) trocadas por espaço, para não esconderem um separador de CPF.
+    """
+    normal = unicodedata.normalize("NFKC", str(valor or ""))
+    saida = []
+    for c in normal:
+        categoria = unicodedata.category(c)
+        if unicodedata.decimal(c, None) is not None:
+            saida.append(str(unicodedata.decimal(c)))
+        elif categoria == "Pd" or c == "\u2212":
+            saida.append("-")
+        elif c in "\u00b7\u2027\u2219\u22c5":
+            saida.append(".")
+        elif categoria in ("Zs", "Zl", "Zp") or c in "\u115f\u1160\u3164\uffa0":
+            saida.append(" ")
+        elif categoria not in (
+            "Cf",
+            "Mn",
+            "Me",
+        ):  # formatação invisível e marcas combinantes não separam dígitos de um CPF
+            saida.append(c)
+    return "".join(saida)
+
+
+def _sem_cpf(achado: "re.Match[str]") -> str:
+    return achado.group(0) if achado.group("cnpj") else " "
+
+
+def nome_do_fornecedor(valor: Any) -> str:
+    """Nome do fornecedor sem CPF embutido (MEI aparece como 'NOME 09876543200' na fonte); vazio vira o rótulo padrão."""
+    return nome_sem_cpf(valor) or FORNECEDOR_NAO_IDENTIFICADO
+
+
+def nome_sem_cpf(valor: Any) -> Optional[str]:
+    """Nome de pessoa ou empresa sem CPF embutido; None quando não sobra nada."""
+    limpo = " ".join(_SEQUENCIA_CPF.sub(_sem_cpf, _ascii(texto(valor))).split())
+    return limpo or None
+
+
+# CPF em texto livre (descrição de bens, detalhes de certidão): as mesmas formas dos nomes, sem cortar valores em reais
+# nem números maiores. A forma canônica sai sempre. Fora dela, a sequência é preservada quando:
+#  - vem precedida de "R$" ("R$ 12345678900"; mas "R$" seguido da forma canônica NÃO protege o CPF);
+#  - são só dígitos corridos (10 ou 11) seguidos de vírgula e 1 ou 2 dígitos ("12345678900,50"); com separadores entre
+#    os grupos ("111 222 333 44,50") o CPF sai. Uma lista de CPFs separados por vírgula também sai, porque o que vem
+#    depois da vírgula tem mais de dois dígitos.
+# O separador antes dos dois últimos dígitos nunca é só uma vírgula (`_SEP_FINAL_TEXTO`), então "1.234.567.890,12" e
+# "123.456.789,00" não casam o desenho 3-3-3-2.
+_CPF_EM_TEXTO = re.compile(
+    rf"(?P<canon>{_CPF_CANONICO})"
+    rf"|(?P<moeda>R\$\s*(?!{_CPF_CANONICO}))?(?:{_CNPJ_FORMATADO}"
+    rf"|(?<![0-9])(?:{_cpf_agrupado(_SEP_FINAL_TEXTO)})(?![0-9]))"
+)
+_CASA_DECIMAL = re.compile(r",[0-9]{1,2}(?![0-9])")
+
+
+def _tira_cpf_do_texto(achado: "re.Match[str]") -> str:
+    if achado.group("canon"):
+        return " "
+    if achado.group("moeda") or achado.group("cnpj"):
+        return achado.group(0)
+    # só dígitos corridos seguidos de vírgula e 1 ou 2 dígitos são valor em reais; com separadores entre os grupos não
+    if achado.group(0).isdigit() and _CASA_DECIMAL.match(achado.string, achado.end()):
+        return achado.group(0)
+    return " "
+
+
+def texto_sem_cpf(valor: Any) -> Optional[str]:
+    """Texto livre da fonte sem CPF embutido (decisão D3); None quando não sobra nada."""
+    bruto = texto(valor)
+    if bruto is None:
+        return None
+    limpo = " ".join(_CPF_EM_TEXTO.sub(_tira_cpf_do_texto, _ascii(bruto)).split())
+    return limpo or None
+
+
+_CNPJ_CANONICO = re.compile(r"(?:[0-9]{14}|[0-9]{2}\.[0-9]{3}\.[0-9]{3}/[0-9]{4}-[0-9]{2})")
+
+
+def documento_do_doador(valor: Any) -> Optional[str]:
+    """
+    Documento do doador como o TSE publica: CNPJ inteiro (14 dígitos, sem pontuação ou no formato NN.NNN.NNN/NNNN-NN)
+    ou CPF já mascarado ('***.060.603-**'). CPF completo (11 dígitos, ou 10 quando perdeu o zero à esquerda) é mascarado
+    aqui. Qualquer outro formato, inclusive máscara parcial e CNPJ com pontuação fora do padrão, vira None: CPF nunca é
+    gravado (decisão D3) e o texto cru nunca passa adiante.
+    """
+    bruto = texto(valor)
+    if bruto is None:
+        return None
+    mascara = _ascii(
+        bruto
+    )  # a máscara da fonte com dígitos de outro alfabeto vira ASCII (o CHECK do banco só aceita [0-9])
+    if _MASCARA_CPF.fullmatch(mascara):
+        return mascara
+    if _CNPJ_CANONICO.fullmatch(bruto):
+        return bruto
+    if "*" in bruto:
+        return None
+    digitos = so_digitos(bruto)
+    if len(digitos) in (10, 11) and re.fullmatch(r"[0-9.\-\s]+", bruto):
+        digitos = digitos.zfill(11)
+        return f"***.{digitos[3:6]}.{digitos[6:9]}-**"
+    return None
+
+
+def tipo_do_autor(autor: Any, tipo_emenda: Any) -> str:
+    """Tipo de autor da emenda: bancada estadual, relator-geral, comissão ou parlamentar individual."""
+    nome = normalize_name_tokens(texto(autor) or "")
+    tipo = texto(tipo_emenda) or ""
+    if "bancada" in nome or tipo == "Emenda de Bancada":
+        return "BANCADA_ESTADUAL"
+    if "relator" in nome or tipo == "Emenda de Relator":
+        return "RELATOR_GERAL"
+    if nome.startswith(("com ", "comissao")) or tipo == "Emenda de Comissão":
+        return "COMISSAO_INSTITUCIONAL"
+    return "INDIVIDUAL"
+
+
+def uf_da_localidade(localidade: Any) -> Optional[str]:
+    """
+    UF do destino da emenda: 'SÃO PAULO (UF)' é o estado e 'CAMPINAS - SP' é um município. Região, 'Nacional',
+    'MÚLTIPLO' e 'Exterior' não têm UF (None).
+    """
+    bruto = texto(localidade)
+    if bruto is None:
+        return None
+    if bruto.upper().endswith("(UF)"):
+        # só acento, caixa e pontuação: `normalize_name_tokens` tira honoríficos e faria "DISTRITO FEDERAL" virar "DISTRITO"
+        return UF_POR_NOME.get(normalize_plain(bruto[:-4]).upper())
+    sufixo = re.search(r"\s-\s([A-Z]{2})$", bruto)
+    return sufixo.group(1) if sufixo and sufixo.group(1) in _UFS else None
+
+
+# ── Elegibilidade dos registros das fontes de finanças: regra única do loader e da reconciliação ─────────────────────
+# Contrato comum: `ler_*(registro) -> (campos | None, motivo | None)`. Com campos, o motivo é None; sem eles, o motivo
+# ("sem_proveniencia", "sem_identificador", "sem_detalhe_por_ano" ou "invalidas") diz por que o registro ficou de fora e
+# vira chave da contagem de cada carga. `ler_registros_da_remuneracao` é a mesma regra no nível do arquivo.
+def _totais_da_ceap(dados: Dict[str, Any]) -> Dict[Tuple[int, str], Decimal]:
+    totais: Dict[Tuple[int, str], Decimal] = defaultdict(Decimal)
+    por_ano_tipo = dados.get("por_ano_tipo")
+    for ano, tipos in (por_ano_tipo if isinstance(por_ano_tipo, dict) else {}).items():
+        ano_ok = inteiro_em(ano, ANO_MINIMO, ANO_MAXIMO)
+        for tipo, valor in (tipos if isinstance(tipos, dict) else {}).items():
+            valor_dec = decimal_de(valor)
+            nome_tipo = texto(tipo)
+            if ano_ok is not None and valor_dec is not None and nome_tipo:
+                totais[(ano_ok, nome_tipo)] += valor_dec
+    return totais
+
+
+def valores_da_ceap(dados: Dict[str, Any]) -> Dict[Tuple[int, str], Decimal]:
+    """Total por (ano, tipo de despesa) de um parlamentar do arquivo, só os que cabem na coluna."""
+    totais = _totais_da_ceap(dados)
+    return {chave: total for chave, valor in totais.items() if (total := soma_na_faixa(valor, LIMITE_CEAP)) is not None}
+
+
+def ler_ceap(dados: Any) -> Tuple[Optional[Dict[Tuple[int, str], Decimal]], Optional[str]]:
+    """
+    Totais por (ano, tipo) de um parlamentar do arquivo, ou (None, motivo) quando ele não entra: "sem_proveniencia",
+    "sem_identificador" (sem id não há como saber a fonte, Câmara ou Senado), "sem_detalhe_por_ano" ou
+    "total_fora_da_faixa" (um total de ano e tipo que não cabe na coluna: gasto parcial não vale como total). É a regra única
+    de elegibilidade: a reconciliação usa esta mesma função.
+    """
+    if not isinstance(dados, dict) or not is_trusted(dados):
+        return None, "sem_proveniencia"
+    if not (dados.get("camara_id") or dados.get("senado_id")):
+        return None, "sem_identificador"
+    por_ano_tipo = dados.get("por_ano_tipo")
+    if not isinstance(por_ano_tipo, dict) or not por_ano_tipo:
+        return None, "sem_detalhe_por_ano"
+    if any(soma_na_faixa(total, LIMITE_CEAP) is None for total in _totais_da_ceap(dados).values()):
+        # o total de um (ano, tipo) que não cabe na coluna deixaria o gasto da pessoa incompleto: ela não entra
+        return None, "total_fora_da_faixa"
+    return valores_da_ceap(dados), None
+
+
+def ler_emenda(emenda: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Campos de uma emenda do arquivo, ou (None, motivo) quando ela não entra: "sem_proveniencia" ou "invalidas".
+    É a regra única de elegibilidade: a reconciliação usa esta mesma função para somar o que o arquivo deveria ter no banco.
+    """
+    if not isinstance(emenda, dict) or not is_trusted(emenda):
+        return None, "sem_proveniencia"
+    ano = inteiro_em(emenda.get("ano"), ANO_MINIMO, ANO_MAXIMO)
+    tipo_emenda, autor = texto(emenda.get("tipo_emenda")), texto(emenda.get("politician_name"))
+    local = texto(emenda.get("localidade_destino"))
+    empenhado = decimal_de(emenda.get("valor_empenhado"), LIMITE_EMENDA)
+    pago = decimal_de(emenda.get("valor_pago"), LIMITE_EMENDA)
+    # valor pago desconhecido não vira zero: a emenda sem os dois valores fica de fora e é contada
+    if ano is None or not (tipo_emenda and autor and local) or empenhado is None or pago is None:
+        return None, "invalidas"
+    return {
+        "ano": ano,
+        "codigo": texto(emenda.get("codigo_emenda")),
+        "tipo_emenda": tipo_emenda,
+        "autor": autor,
+        "local": local,
+        "funcao": texto(emenda.get("funcao")),
+        "cod_autor": texto(emenda.get("autor_codigo")),
+        "empenhado": empenhado,
+        "pago": pago,
+    }, None
+
+
+def ler_remuneracao(registro: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Campos de um mês de remuneração, ou (None, "invalidas"). Regra única de elegibilidade (loader e reconciliação)."""
+    if not isinstance(registro, dict):
+        return None, "invalidas"
+    ano, mes = inteiro_em(registro.get("ano"), ANO_MINIMO, ANO_MAXIMO), inteiro_em(registro.get("mes"), 1, 12)
+    bruto = decimal_de(registro.get("salario_bruto"), LIMITE_REMUNERACAO)
+    if ano is None or mes is None or bruto is None:
+        return None, "invalidas"
+    return {
+        "ano": ano,
+        "mes": mes,
+        "bruto": bruto,
+        "liquido": decimal_de(registro.get("salario_liquido"), LIMITE_REMUNERACAO),
+    }, None
+
+
+TIPO_RECEITA_AGREGADA = "agregado"  # comparado sem caixa: a fonte marca a linha "Demais doadores" com este tipo
+_DEMAIS_DOADORES = re.compile(r"\(\s*([0-9]{1,10})\s*\)\s*$")  # até 10 dígitos: o teto de `integer` é checado depois
+
+
+def _quantidade_agregada(achado: "re.Match[str]") -> Optional[int]:
+    """N de "Demais doadores (N)": de 1 até o teto de `integer`; zero ou acima dele, desconhecido."""
+    numero = contagem_int4(achado.group(1))
+    return numero if numero is not None and numero >= 1 else None
+
+
+def ler_doacoes(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Uma prestação do arquivo: `{"ano": ano, "linhas": [linhas de doador]}`, ou (None, motivo) com "sem_proveniencia" ou
+    "invalidas" (sem ano ou sem lista de doadores). Regra única de elegibilidade (loader e reconciliação).
+    """
+    if not isinstance(item, dict) or not is_trusted(item):
+        return None, "sem_proveniencia"
+    ano = inteiro_em(item.get("ano_eleicao"), ANO_MINIMO, ANO_MAXIMO)
+    if ano is None or not isinstance(item.get("doadores"), list):
+        return None, "invalidas"
+    linhas = []
+    for doador in item["doadores"]:
+        valor = decimal_de(doador.get("valor_doado"), LIMITE_TSE) if isinstance(doador, dict) else None
+        if valor is None:
+            continue
+        tipo = texto(doador.get("tipo_receita"))
+        agregado = (tipo or "").casefold() == TIPO_RECEITA_AGREGADA
+        achado = _DEMAIS_DOADORES.search(texto(doador.get("nome_doador")) or "") if agregado else None
+        linhas.append(
+            {
+                "ano": ano,
+                "nome": nome_sem_cpf(doador.get("nome_doador")) or DOADOR_NAO_IDENTIFICADO,
+                "doc": documento_do_doador(doador.get("cpf_cnpj_doador")),
+                "valor": valor,
+                "tipo": tipo,
+                "agregado": agregado,
+                # a linha agregada vale por todos os doadores que a fonte juntou ("Demais doadores (26)"); nula se não vier N
+                "qtd": (_quantidade_agregada(achado) if achado else None) if agregado else 1,
+            }
+        )
+    return {"ano": ano, "linhas": linhas}, None
+
+
+def ler_patrimonio(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Campos de uma declaração de bens, ou (None, "sem_proveniencia" | "invalidas"). Regra única de elegibilidade."""
+    if not isinstance(item, dict) or not is_trusted(item):
+        return None, "sem_proveniencia"
+    ano = inteiro_em(item.get("ano_eleicao"), ANO_MINIMO, ANO_MAXIMO)
+    valor = decimal_de(item.get("valor_declarado_brl"), LIMITE_TSE)
+    if ano is None or valor is None:
+        return None, "invalidas"
+    return {
+        "ano": ano,
+        "valor": valor,
+        "qtd": contagem_int4(item.get("quantidade_bens")),
+        "det": texto_sem_cpf(item.get("detalhes_bens")),
+    }, None
+
+
+def ler_certidao(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Campos de uma situação de registro do TSE, ou (None, "sem_proveniencia" | "invalidas"). Regra única."""
+    if not isinstance(item, dict) or not is_trusted(item):
+        return None, "sem_proveniencia"
+    orgao, tipo, situacao = texto(item.get("orgao")), texto(item.get("tipo_certidao")), texto(item.get("status_ficha"))
+    if not (orgao and tipo and situacao):
+        return None, "invalidas"
+    return {
+        "orgao": orgao,
+        "tipo": tipo,
+        "situacao": situacao,
+        "det": texto_sem_cpf(item.get("detalhes")),
+        "proc": texto_sem_cpf(item.get("numero_processo")),
+    }, None
+
+
+def ler_registros_da_remuneracao(corpo: Any) -> Tuple[Optional[List[Any]], Optional[str]]:
+    """
+    Nível de arquivo: os meses de remuneração, ou (None, "sem_proveniencia") quando o arquivo não é um objeto ou não
+    tem proveniência oficial (a carga inteira é pulada). Cada mês passa depois por `ler_remuneracao`.
+    """
+    if not isinstance(corpo, dict) or not is_trusted(corpo):
+        return None, "sem_proveniencia"
+    registros = corpo.get("registros")
+    return (registros if isinstance(registros, list) else []), None
+
+
+# ── Consolidação das linhas de finanças: funções puras, testáveis sem Postgres ────────────────────────────────────────
+def grupo_do_fornecedor(cnpj: Optional[str], nome: str) -> str:
+    """
+    Chave do fornecedor: o CNPJ ou, sem ele, o nome. É o espelho Python da coluna gerada `grupo` de
+    `fin.despesa_cota_fornecedor` (`coalesce(cnpj::text, 'nome:' || nome)`); um teste confere que as duas coincidem.
+    """
+    return cnpj or f"nome:{nome}"
+
+
+def fornecedores_do_parlamentar(dados: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Fornecedores de uma entrada, com o mesmo CNPJ em grafias diferentes unido (fica o nome de maior valor)."""
+    agrupados: Dict[str, Dict[str, Any]] = {}
+    lista_fornecedores = dados.get("fornecedores")
+    for item in (lista_fornecedores if isinstance(lista_fornecedores, dict) else {}).values():
+        if not isinstance(item, dict):
+            continue
+        valor_dec = decimal_de(item.get("total"))
+        if valor_dec is None:
+            continue
+        nome, cnpj = nome_do_fornecedor(item.get("nome")), cnpj_do_fornecedor(item.get("cnpj_cpf"))
+        notas = contagem_int4(item.get("notas"))
+        grupo = grupo_do_fornecedor(cnpj, nome)
+        # `maior` é o maior valor de uma única grafia: o nome mostrado é o dela, e no empate vale o nome (não a ordem)
+        acumulado = agrupados.setdefault(
+            grupo, {"grupo": grupo, "nome": nome, "cnpj": cnpj, "valor": Decimal(0), "notas": 0, "maior": valor_dec}
+        )
+        acumulado["valor"] += valor_dec
+        acumulado["notas"] = soma_ou_desconhecido(acumulado["notas"], notas)
+        if (valor_dec, nome) > (acumulado["maior"], acumulado["nome"]):
+            acumulado["nome"], acumulado["maior"] = nome, valor_dec
+    return [
+        {k: v for k, v in x.items() if k != "maior"}
+        for x in agrupados.values()
+        if soma_na_faixa(x["valor"], LIMITE_CEAP) is not None  # fornecedor cuja soma estoura a coluna fica de fora
+    ]
+
+
+def resumos_completos(resumos: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Resumos de quem tem a quantidade de notas conhecida em TODAS as entradas (Câmara e Senado) que somaram gasto. Uma
+    contagem parcial ao lado do gasto completo enganaria, então a pessoa fica sem resumo. Devolve também quantas ficaram.
+    """
+    incompletas = {r["p"] for r in resumos if r["notas"] is None}
+    return [r for r in resumos if r["p"] not in incompletas and r["notas"] is not None], len(incompletas)
+
+
+def chave_de_desempate(linha: Dict[str, Any], *campos: str) -> Tuple[Any, ...]:
+    """
+    Ordem total entre duas linhas que disputam a mesma chave: os campos na ordem dada, com o desconhecido (None) abaixo de
+    qualquer valor. O resultado não depende da ordem em que o arquivo traz as linhas.
+    """
+    return tuple((0, "") if linha[c] is None else (1, linha[c]) for c in campos)
+
+
+def soma_ou_desconhecido(a: Any, b: Any) -> Any:
+    """
+    Soma de duas parcelas; se qualquer uma é desconhecida (None) o total também é: parcial nunca vale como total. Uma
+    soma inteira acima do teto de `integer` também é desconhecida, pois não caberia na coluna.
+    """
+    if a is None or b is None:
+        return None
+    total = a + b
+    return None if isinstance(total, int) and total > LIMITE_INT4 else total
+
+
+def somar_linhas(
+    linhas: List[Dict[str, Any]], chave: Tuple[str, ...], somas: Tuple[str, ...]
+) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Junta linhas de mesma chave e devolve também quantas linhas repetiram a chave na MESMA fonte. Dentro de uma fonte
+    a repetição é o mesmo dado sob outra grafia do nome, então fica a linha de maior valor; entre fontes diferentes
+    (Câmara e Senado) os campos numéricos se somam (desconhecido em qualquer parcela deixa o total desconhecido).
+    Nos empates e na escolha da linha que define os demais campos (nome, fonte) decide o conteúdo da linha, nunca a
+    ordem em que o arquivo ou as fontes aparecem. A escolha é POR TABELA: despesa, fornecedor e resumo de uma mesma
+    pessoa podem sair de entradas repetidas diferentes (caso raro: duas entradas da mesma casa resolvidas para a mesma
+    pessoa). Para o resumo de notas vale a regra mais cautelosa, em `resumos_completos`: qualquer entrada com a
+    quantidade desconhecida tira o resumo da pessoa.
+    """
+
+    def ordem(linha: Dict[str, Any]) -> Tuple[Any, ...]:
+        return chave_de_desempate(linha, *somas, *sorted(set(linha) - set(somas)))
+
+    por_fonte: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
+    repetidas = 0
+    for linha in linhas:
+        k = (tuple(linha[c] for c in chave), linha["f"])
+        atual = por_fonte.get(k)
+        if atual is None:
+            por_fonte[k] = dict(linha)
+            continue
+        repetidas += 1
+        if ordem(linha) > ordem(atual):
+            por_fonte[k] = dict(linha)
+    grupos: Dict[Tuple[Any, ...], List[Dict[str, Any]]] = {}
+    for (k, _fonte), linha in por_fonte.items():
+        grupos.setdefault(k, []).append(linha)
+    unicas = []
+    for candidatas in grupos.values():
+        vencedora = max(candidatas, key=ordem)
+        base = dict(vencedora)
+        for outra in candidatas:
+            if outra is not vencedora:
+                for campo in somas:
+                    base[campo] = soma_ou_desconhecido(base[campo], outra[campo])
+        unicas.append(base)
+    return unicas, repetidas
+
+
+def manter_a_melhor(
+    unicas: Dict[Any, Dict[str, Any]], chave: Any, linha: Dict[str, Any], campos: Tuple[str, ...]
+) -> bool:
+    """
+    Guarda `linha` em `unicas[chave]` e devolve True se a chave já existia (registro repetido). Entre duas linhas da mesma
+    chave vale a de maior `chave_de_desempate(campos)`, nunca a ordem em que o arquivo as traz.
+    """
+    anterior = unicas.get(chave)
+    if anterior is None:
+        unicas[chave] = linha
+        return False
+    if chave_de_desempate(linha, *campos) > chave_de_desempate(anterior, *campos):
+        unicas[chave] = linha
+    return True
+
+
+def chave_da_prestacao(linhas: List[Dict[str, Any]]) -> Tuple[Any, ...]:
+    """Ordem total entre prestações do mesmo (pessoa, ano): quantidade, soma e, no empate, o conteúdo das linhas."""
+    conteudo = sorted((x["nome"], x["doc"] or "", str(x["valor"]), x["tipo"] or "") for x in linhas)
+    return len(linhas), sum((x["valor"] for x in linhas), Decimal(0)), conteudo
+
+
+def descricao_do_erro(exc: Exception) -> str:
+    """
+    Texto do erro que pode ir para o log e para a saída do deploy. O erro do Postgres traz um `DETAIL: Failing row
+    contains (...)` com os valores da linha (o `hide_parameters` do engine não o esconde), então dele só saem o tipo, a
+    mensagem principal e o nome da restrição (para erro de dado, classe 22, só o tipo, o SQLSTATE e a coluna). Os demais erros (as mensagens da própria carga) saem como são.
+    """
+    if isinstance(exc, DBAPIError):
+        diag = getattr(exc.orig, "diag", None)
+        sqlstate = getattr(exc.orig, "pgcode", None) or ""
+        restricao = getattr(diag, "constraint_name", None)
+        coluna = getattr(diag, "column_name", None)
+        if sqlstate.startswith("22"):
+            # erro de dado (classe 22): a mensagem principal costuma citar o valor ofendido, ex. `invalid input syntax
+            # for type integer: "<valor>"`. Ficam o tipo, o SQLSTATE e, se houver, a coluna.
+            return f"{type(exc).__name__}: erro de dado (SQLSTATE {sqlstate})" + (
+                f" na coluna {coluna}" if coluna else ""
+            )
+        principal = getattr(diag, "message_primary", None) or "erro do banco"
+        return f"{type(exc).__name__}: {principal}" + (f" (restrição {restricao})" if restricao else "")
+    return str(exc)

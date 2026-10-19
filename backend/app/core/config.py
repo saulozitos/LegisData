@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 from typing import List
 from urllib.parse import quote_plus
 
@@ -15,28 +14,6 @@ CLOUD_DB_HOST_SUFFIXES = (
     "railway.app",
     "render.com",
 )
-
-
-def get_processed_data_dir() -> Path:
-    """
-    Localiza o diretório de dados processados do ETL com suporte a múltiplos ambientes:
-    - Docker container mount em /etl_data/processed
-    - Docker container mount em /etl/data/processed
-    - Desenvolvimento local a partir da raiz do repositório
-    """
-    candidates = [
-        Path("/etl_data/processed"),
-        Path("/etl/data/processed"),
-        Path(__file__).resolve().parents[3] / "etl" / "data" / "processed",
-        Path(__file__).resolve().parents[2] / "etl" / "data" / "processed",
-    ]
-    for c in candidates:
-        if c.exists():
-            return c
-    return Path("/etl_data/processed")
-
-
-PROCESSED_DATA_DIR = get_processed_data_dir()
 
 
 class Settings(BaseSettings):
@@ -58,6 +35,9 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "5"))
     DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "5"))
     DB_POOL_TIMEOUT: int = int(os.getenv("DB_POOL_TIMEOUT", "30"))
+    # Buscas de emendas ao mesmo tempo, por worker: precisa ficar abaixo do pool (DB_POOL_SIZE + DB_MAX_OVERFLOW), ou as
+    # buscas lentas seguram todas as conexões e o resto da API espera o DB_POOL_TIMEOUT.
+    EMENDAS_MAX_BUSCAS_SIMULTANEAS: int = int(os.getenv("EMENDAS_MAX_BUSCAS_SIMULTANEAS", "3"))
 
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
     # Regex adicional para previews do projeto na Vercel (restrito ao projeto, não a qualquer *.vercel.app)
@@ -86,6 +66,13 @@ class Settings(BaseSettings):
             db_url = (
                 f"postgresql://{quote_plus(self.POSTGRES_USER)}:{quote_plus(pwd or '')}"
                 f"@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            )
+
+        # Fora desta faixa a busca de emendas ou responde 503 sempre (0) ou deixa de proteger o pool (>= pool)
+        if not 1 <= self.EMENDAS_MAX_BUSCAS_SIMULTANEAS < self.DB_POOL_SIZE + self.DB_MAX_OVERFLOW:
+            raise RuntimeError(
+                f"EMENDAS_MAX_BUSCAS_SIMULTANEAS={self.EMENDAS_MAX_BUSCAS_SIMULTANEAS} é inválida: precisa ficar entre 1 "
+                f"e DB_POOL_SIZE + DB_MAX_OVERFLOW - 1 ({self.DB_POOL_SIZE + self.DB_MAX_OVERFLOW - 1})."
             )
 
         self.POSTGRES_PASSWORD = pwd or ""

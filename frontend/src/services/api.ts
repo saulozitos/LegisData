@@ -317,7 +317,18 @@ async function fetchJson<T>(endpoint: string, signal?: AbortSignal): Promise<T> 
     throw new ApiError("Não foi possível conectar à API.", endpoint);
   }
   if (!res.ok) {
-    throw new ApiError(`A API respondeu com status ${res.status}.`, endpoint, res.status);
+    // 400 e 503 trazem uma orientação ao usuário em `detail` (ex.: "informe um termo mais específico"); os demais
+    // status mantêm a mensagem genérica, sem repassar texto de erro interno.
+    let detail: string | null = null;
+    if (res.status === 400 || res.status === 503) {
+      try {
+        const corpo = (await res.json()) as { detail?: unknown };
+        detail = typeof corpo.detail === "string" ? corpo.detail : null;
+      } catch {
+        detail = null;
+      }
+    }
+    throw new ApiError(detail ?? `A API respondeu com status ${res.status}.`, endpoint, res.status);
   }
   try {
     return (await res.json()) as T;
@@ -916,27 +927,21 @@ export interface CeapFornecedor {
   nome_fornecedor: string;
   cnpj_cpf: string | null;
   total_recebido: number;
-  num_notas: number;
+  num_notas: number | null;
 }
 
-export interface CeapDespesaRecente {
+export interface CeapGastoAno {
   ano: number;
-  mes: number | null;
-  tipo_despesa: string;
-  valor_liquido: number;
-  nome_fornecedor: string;
-  cnpj_cpf: string | null;
-  data_emissao: string | null;
-  documento_url: string | null;
+  total_gasto: number;
 }
 
 export interface CustosCeapData {
   possui_dados: boolean;
-  gasto_total_recente: number;
-  total_notas: number;
+  gasto_total_recente: number | null;
+  total_notas: number | null;
   gastos_por_tipo: CeapGastoTipo[];
   maiores_fornecedores: CeapFornecedor[];
-  despesas_recentes: CeapDespesaRecente[];
+  gastos_por_ano: CeapGastoAno[];
 }
 
 export interface EmendaDestinoItem {
@@ -965,9 +970,11 @@ export interface EmendaDetalheItem {
 
 export interface EmendasParlamentaresData {
   possui_dados: boolean;
-  total_empenhado: number;
-  total_pago: number;
-  percentual_execucao: number;
+  /** `null` quando o parlamentar não tem emenda na base: o total é desconhecido, não zero. */
+  total_empenhado: number | null;
+  total_pago: number | null;
+  /** `null` sem emenda ou sem valor empenhado (a taxa não existe). */
+  percentual_execucao: number | null;
   destinos_principais: EmendaDestinoItem[];
   distribuicao_por_tipo: EmendaDistribuicaoItem[];
   distribuicao_por_area: EmendaDistribuicaoItem[];
@@ -1015,6 +1022,10 @@ export interface DoacaoItem {
   cpf_cnpj_doador: string | null;
   valor_doado: number;
   tipo_receita?: string | null;
+  /** Linha "Demais doadores (N)" da fonte: vale por vários doadores, não por um. */
+  agregado: boolean;
+  /** Quantos doadores a linha representa (1 nas normais); null quando a fonte não informa o N de uma linha agregada. */
+  quantidade_doadores: number | null;
 }
 
 export interface TopDoadorItem {
@@ -1027,9 +1038,16 @@ export interface TopDoadorItem {
 
 export interface FinanciamentoCampanhaData {
   possui_dados: boolean;
-  ano_eleicao: number;
-  total_arrecadado: number;
-  total_doadores: number;
+  /** Eleição do resumo; `null` quando o parlamentar não tem nenhuma doação registrada. */
+  ano_eleicao: number | null;
+  /** `null` quando não há doação registrada: o total é desconhecido, não zero. */
+  total_arrecadado: number | null;
+  /** Doadores distintos da campanha (a linha "Demais doadores" soma o N da fonte); `null` se a fonte não informa N. */
+  total_doadores: number | null;
+  /** Linha agregada "Demais doadores (N)" da fonte; `null` quando todos os doadores estão listados. */
+  demais_doadores: { quantidade: number | null; valor: number } | null;
+  /** Eleições com doações registradas, da mais recente para a mais antiga; o resumo é da primeira. */
+  eleicoes_disponiveis: number[];
   top_doadores: TopDoadorItem[];
   todas_doacoes: DoacaoItem[];
 }
@@ -1088,9 +1106,9 @@ export interface RoiCidadaoData {
 }
 
 export interface ConcentracaoCeapData {
-  indice_hhi: number;
+  indice_hhi: number | null;
   nivel_risco: "ALERTA" | "MODERADO" | "BAIXO" | null;
-  percentual_maior_fornecedor: number;
+  percentual_maior_fornecedor: number | null;
   maior_fornecedor: string | null;
   cnpj_maior_fornecedor: string | null;
   diagnostico: string;
@@ -1100,6 +1118,8 @@ export interface EnriquecimentoPatrimonialData {
   delta_patrimonio: number | null;
   salario_acumulado_estimado: number | null;
   razao_patrimonio_renda: number | null;
+  /** Anos das duas declarações comparadas (mesmo período do subsídio registrado); `null` sem comparação. */
+  periodo_comparado?: { de: number; ate: number; subsidio_de: number; subsidio_ate: number; meses_de_subsidio?: number } | null;
   compatibilidade: "COMPATÍVEL" | "MODERADO" | "ATÍPICO" | null;
   diagnostico: string;
 }
@@ -1114,11 +1134,12 @@ export interface EstabilidadePartidariaData {
 
 export interface EficienciaEmendasData {
   taxa_conversao_pct: number | null;
-  total_empenhado: number;
-  total_pago: number;
-  percentual_pix: number;
+  /** `null` sem emenda na base (desconhecido, não zero), igual a `percentual_pix` e à concentração. */
+  total_empenhado: number | null;
+  total_pago: number | null;
+  percentual_pix: number | null;
   municipio_predileto: string | null;
-  concentracao_municipio_predileto_pct: number;
+  concentracao_municipio_predileto_pct: number | null;
   classificacao: string | null;
   diagnostico: string;
 }
@@ -1942,7 +1963,7 @@ export interface EmendasResumoResponse {
     total_emendas: number;
     total_reservado_empenhado_brl: number;
     total_entregue_pago_brl: number;
-    taxa_execucao_pago_pct: number;
+    taxa_execucao_pago_pct: number | null;
   };
   por_tipo_autor: Record<
     string,
@@ -1973,7 +1994,7 @@ export interface EmendasLocalidadeResponse {
   total_emendas_encontradas: number;
   total_reservado_empenhado_brl: number;
   total_entregue_pago_brl: number;
-  taxa_execucao_pct: number;
+  taxa_execucao_pct: number | null;
   divisao_por_area: Array<{
     area: string;
     rotulo: string;
@@ -1983,7 +2004,7 @@ export interface EmendasLocalidadeResponse {
     quantidade: number;
   }>;
   emendas: Array<{
-    codigo_emenda: string;
+    codigo_emenda: string | null;
     ano: number;
     area_tematica: string;
     area_rotulo: string;
@@ -1991,7 +2012,6 @@ export interface EmendasLocalidadeResponse {
     valor_reservado_empenhado: number;
     valor_entregue_pago: number;
     estagio: string;
-    tipo_recurso: string;
     autor: {
       tipo_autor: string;
       categoria: string;
@@ -2014,10 +2034,12 @@ export interface EmendasAutorResponse {
     descricao_amigavel: string;
     icone: string;
   };
+  quantidade_autores: number;
+  autores_encontrados: Array<{ nome_amigavel: string; categoria: string; quantidade: number }>;
   total_emendas_enviadas: number;
   total_reservado_empenhado_brl: number;
   total_entregue_pago_brl: number;
-  taxa_execucao_pct: number;
+  taxa_execucao_pct: number | null;
   top_destinos: Array<{ localidade: string; total_empenhado: number; total_pago: number; quantidade: number }>;
   por_area_tematica: Array<{
     area: string;
@@ -2028,7 +2050,7 @@ export interface EmendasAutorResponse {
     quantidade: number;
   }>;
   emendas: Array<{
-    codigo_emenda: string;
+    codigo_emenda: string | null;
     ano: number;
     localidade_destino: string;
     area_tematica: string;

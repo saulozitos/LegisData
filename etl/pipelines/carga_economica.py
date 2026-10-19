@@ -1,5 +1,6 @@
 """
-Carga única dos dados econômicos e curados no Postgres: séries, mandatos presidenciais, composição do Congresso e PNAD.
+Carga única dos dados econômicos e curados no Postgres: séries, mandatos presidenciais, composição do Congresso, PNAD e finanças
+(CEAP, emendas, remuneração e dados do TSE).
 
 É o ponto de entrada de `run_etl --load-economia` e do deploy automático (e, com `chaves`, da atualização diária,
 que só recarrega séries e mandatos). As cargas são independentes: uma curadoria com problema não impede as demais, e os
@@ -11,11 +12,13 @@ import importlib
 import logging
 from typing import Any, Dict, Iterable, Optional, Tuple
 
+from etl.pipelines.loader_helpers import descricao_do_erro
 from etl.utils.bootstrap import ensure_backend_on_path
 
 ensure_backend_on_path()
 
 from sqlalchemy.engine import Engine  # noqa: E402
+from sqlalchemy.exc import DBAPIError  # noqa: E402
 
 logger = logging.getLogger("CargaEconomica")
 
@@ -30,11 +33,21 @@ CARGAS: Tuple[Tuple[str, str, str, Optional[str]], ...] = (
         "presidencia",
     ),
     ("pnad", "PNAD (classes sociais)", "etl.pipelines.pnad_loader", None),
+    ("financas", "Finanças (fin)", "etl.pipelines.financas_loader", None),
 )
 
 
-def carregar_tudo(engine: Engine, chaves: Optional[Iterable[str]] = None) -> Dict[str, Any]:
-    """Executa as cargas (todas, ou só as `chaves`) e devolve o resultado de cada uma; levanta RuntimeError no fim."""
+def carregar_tudo(
+    engine: Engine, chaves: Optional[Iterable[str]] = None, toleradas: Iterable[str] = ()
+) -> Dict[str, Any]:
+    """
+    Executa as cargas (todas, ou só as `chaves`) e devolve o resultado de cada uma; levanta RuntimeError no fim.
+
+    Uma carga em `toleradas` que falha não levanta: o erro é registrado no log e devolvido como `{"erro": ...}` no
+    resultado dela. O deploy usa isso para as finanças: a API nova continua servindo o que já está em `fin` em vez de
+    deixar o checkout no compose novo com os contêineres antigos no ar.
+    """
+    aceitas = set(toleradas)
     escolhidas = set(chaves) if chaves is not None else None
     nomes = {chave: nome for chave, nome, _, _ in CARGAS}
     resultados: Dict[str, Any] = {}
@@ -51,8 +64,13 @@ def carregar_tudo(engine: Engine, chaves: Optional[Iterable[str]] = None) -> Dic
             resultados[chave] = importlib.import_module(modulo).carregar(engine)
             logger.info("%s: %s", nome, resultados[chave])
         except Exception as exc:  # noqa: BLE001 - isolada de propósito; relatada abaixo
-            logger.error("Carga '%s' falhou: %s", nome, exc, exc_info=True)
-            falhas.append(f"{nome}: {exc}")
+            descricao = descricao_do_erro(exc)
+            # a pilha de um erro do banco repete a mensagem inteira, com os valores da linha: só ela é omitida
+            logger.error("Carga '%s' falhou: %s", nome, descricao, exc_info=not isinstance(exc, DBAPIError))
+            if chave in aceitas:
+                resultados[chave] = {"erro": descricao}
+                continue
+            falhas.append(f"{nome}: {descricao}")
             falharam.add(chave)
     if falhas:
         raise RuntimeError("; ".join(falhas))

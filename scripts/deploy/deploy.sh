@@ -102,6 +102,7 @@ if ! git diff --quiet -- etl/data/processed || [[ -n "$(git ls-files --others --
   git checkout -q -- etl/data/processed
   git clean -fdq -- etl/data/processed
 fi
+COMMIT_ANTERIOR="$(git rev-parse HEAD)"  # o compose deste commit é o que o rollback precisa (o novo pode ter outros volumes)
 git merge --ff-only -q "$ALVO"
 
 # A URL do banco (com a senha) vai por arquivo de ambiente 600, nunca na linha de comando (visível em `ps`)
@@ -111,7 +112,10 @@ trap 'rm -f "$ENV_BANCO"' EXIT
 chmod 600 "$ENV_BANCO"
 printf 'ALEMBIC_DATABASE_URL=%s\nDATABASE_URL=%s\nPOSTGRES_PASSWORD=%s\n' "$URL_BANCO" "$URL_BANCO" "$POSTGRES_PASSWORD" >"$ENV_BANCO"
 um_comando() { # roda um comando Python no contêiner da imagem nova, na rede do compose
+  # LEGISDATA_ACEITAR_ENCOLHIMENTO=1 libera, só nesta execução, uma carga de finanças que reduz uma tabela a menos da metade
   docker run --rm --network "$REDE" --env-file "$ENV_BANCO" -e ENVIRONMENT=production -e DB_SSLMODE=disable \
+    -e LEGISDATA_ACEITAR_ENCOLHIMENTO="${LEGISDATA_ACEITAR_ENCOLHIMENTO:-}" \
+    -e LEGISDATA_FIN_TEM_DADOS="${LEGISDATA_FIN_TEM_DADOS:-}" \
     -e PYTHONPATH=/repo/backend:/repo -v "$RAIZ:/repo:ro" -w /app "$REGISTRO/legisdata-backend:$TAG" "$@" 9>&-
 }
 
@@ -123,10 +127,16 @@ docker run --rm --network "$REDE" --env-file "$ENV_BANCO" -e ENVIRONMENT=product
 TEM_ECO="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select to_regclass('eco.observacao') is not null")"
 if [[ "$TEM_ECO" == "t" && -f "$RAIZ/etl/pipelines/carga_economica.py" ]]; then
   log "carga de séries, mandatos, composição do Congresso e PNAD"
+  # Finanças só é tolerada se `fin` já tem dados: aí a API nova segue servindo o que já estava lá. No primeiro deploy
+  # (fin recém-criado e vazio) uma falha da carga aborta antes do `compose up` e o contêiner antigo continua no ar.
+  LEGISDATA_FIN_TEM_DADOS="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select exists(select 1 from fin.emenda) or exists(select 1 from fin.despesa_cota)")"
+  export LEGISDATA_FIN_TEM_DADOS
   um_comando python -c "
+import os
 from app.core.database import engine
 from etl.pipelines.carga_economica import carregar_tudo
-for chave, resultado in carregar_tudo(engine).items():
+toleradas = ('financas',) if os.environ.get('LEGISDATA_FIN_TEM_DADOS') == 't' else ()
+for chave, resultado in carregar_tudo(engine, toleradas=toleradas).items():
     print(chave, resultado)
 "
 fi
@@ -144,7 +154,14 @@ for _ in $(seq 1 36); do
 done
 if [[ "$estado" != "healthy" ]]; then
   log "API não ficou saudável ($estado); voltando para $ANTERIOR (backup: $DUMP)"
-  IMAGE_TAG="$ANTERIOR" docker compose up -d --no-build backend frontend
+  # com o compose do commit anterior (o novo pode ter tirado volumes de que a imagem antiga precisa); se não der para
+  # lê-lo, com o compose atual
+  if git show "$COMMIT_ANTERIOR:docker-compose.yml" >"$ENV_BANCO.compose" 2>/dev/null; then
+    IMAGE_TAG="$ANTERIOR" docker compose --project-directory "$RAIZ" -f "$ENV_BANCO.compose" up -d --no-build backend frontend
+    rm -f "$ENV_BANCO.compose"
+  else
+    IMAGE_TAG="$ANTERIOR" docker compose up -d --no-build backend frontend
+  fi
   exit 1
 fi
 

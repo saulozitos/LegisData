@@ -14,6 +14,11 @@ export function fmtPct(value: number | null | undefined, digits = 1): string {
   return isNum(value) ? `${fmtNum(value, digits)}%` : UNAVAILABLE_LABEL;
 }
 
+/** "R$ 1.234,56" (espaço comum); valor ausente nunca vira "R$ 0,00". */
+export function fmtReais(value: number | null | undefined): string {
+  return isNum(value) ? `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : UNAVAILABLE_LABEL;
+}
+
 export function fmtBRL(value: number | null | undefined, digits = 2): string {
   return isNum(value)
     ? value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: digits, maximumFractionDigits: digits })

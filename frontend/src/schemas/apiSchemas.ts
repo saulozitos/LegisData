@@ -59,7 +59,7 @@ export const EmendasResumoSchema = z.object({
     total_emendas: z.number(),
     total_reservado_empenhado_brl: z.number(),
     total_entregue_pago_brl: z.number(),
-    taxa_execucao_pago_pct: z.number(),
+    taxa_execucao_pago_pct: z.number().nullable(),
   }),
   por_tipo_autor: z.record(
     z.string(),

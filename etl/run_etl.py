@@ -127,6 +127,8 @@ def _ceap_emendas(ano_inicio: int):
     resumo = run(ano_inicio=ano_inicio)
     if resumo.get("ceap_gravado") is False or resumo.get("emendas_gravado") is False:
         raise RuntimeError(f"CEAP/emendas não gravadas (arquivos anteriores preservados): {resumo}")
+    # a API lê o banco, não os arquivos: o dossiê só enxerga o dado novo depois de `--load-economia` (ou do próximo deploy)
+    logger.info("CEAP/emendas gravadas em arquivo; rode --load-economia para levá-las ao schema fin.")
     return resumo
 
 
@@ -274,7 +276,7 @@ def montar_parser() -> argparse.ArgumentParser:
         ("camara-historico", "Histórico de mandatos dos deputados (posse, licença, suplência, partido) desde 1995"),
         ("load-db", "Carga e upsert no PostgreSQL"),
         ("load-presenca", "Carga de presença e remuneração oficiais no PostgreSQL"),
-        ("load-economia", "Carga das séries econômicas e sociais (eco) e dos metadados dos mandatos presidenciais"),
+        ("load-economia", "Carga das séries econômicas, mandatos, composição, PNAD (eco/leg) e finanças (fin)"),
         ("processos", "Carga do acervo manual de processos judiciais (exige --allow-unverified-legal)"),
     ]:
         p.add_argument(f"--{flag}", action="store_true", help=ajuda)
@@ -392,7 +394,7 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         ),
         Etapa(
             "load_economia",
-            "Carga das séries econômicas, mandatos presidenciais, composição do Congresso e PNAD",
+            "Carga das séries econômicas, mandatos presidenciais, composição do Congresso, PNAD e finanças (fin)",
             _load_economia,
             depende_de_extracao=True,
         ),

@@ -47,9 +47,9 @@ export function fullDossier(): PoliticoDossier {
         { tipo_despesa: 'Passagens aéreas', total_gasto: 400000, percentual: 44.4 },
       ],
       maiores_fornecedores: [{ nome_fornecedor: 'Gráfica Alfa LTDA', cnpj_cpf: '12345678000190', total_recebido: 300000, num_notas: 40 }],
-      despesas_recentes: [
-        { ano: 2024, mes: 3, tipo_despesa: 'Passagens aéreas', valor_liquido: 1500.5, nome_fornecedor: 'Cia Aérea', cnpj_cpf: null, data_emissao: '2024-03-02', documento_url: 'https://camara.leg.br/nf/1' },
-        { ano: 2024, mes: null, tipo_despesa: 'Combustível', valor_liquido: 200, nome_fornecedor: 'Posto', cnpj_cpf: null, data_emissao: null, documento_url: 'javascript:alert(1)' },
+      gastos_por_ano: [
+        { ano: 2024, total_gasto: 500000 },
+        { ano: 2023, total_gasto: 400000 },
       ],
     },
     emendas_parlamentares: {
@@ -73,10 +73,12 @@ export function fullDossier(): PoliticoDossier {
       ano_eleicao: 2022,
       total_arrecadado: 2000000,
       total_doadores: 2,
+      demais_doadores: null,
+      eleicoes_disponiveis: [2022],
       top_doadores: [{ nome_doador: 'Doador Um', cpf_cnpj_doador: '***.456.789-**', valor_doado: 1000000, tipo_receita: 'Fundo Partidário', percentual: 50 }],
       todas_doacoes: [
-        { id: 'd1', ano_eleicao: 2022, nome_doador: 'Doador Um', cpf_cnpj_doador: '12345678901', valor_doado: 1000000, tipo_receita: 'Fundo Partidário' },
-        { id: 'd2', ano_eleicao: 2022, nome_doador: 'Empresa Dois', cpf_cnpj_doador: null, valor_doado: 1000000, tipo_receita: null },
+        { id: 'd1', ano_eleicao: 2022, nome_doador: 'Doador Um', cpf_cnpj_doador: '***.456.789-**', valor_doado: 1000000, tipo_receita: 'Fundo Partidário', agregado: false, quantidade_doadores: 1 },
+        { id: 'd2', ano_eleicao: 2022, nome_doador: 'Empresa Dois', cpf_cnpj_doador: null, valor_doado: 1000000, tipo_receita: null, agregado: false, quantidade_doadores: 1 },
       ],
     },
     basometro: { taxa_governismo_pct: 72, total_votacoes_analisadas: 50, votos_alinhados: 36, votos_divergentes: 14, classificacao: 'GOVERNISTA' },
@@ -153,10 +155,10 @@ export function sparseDossier(): PoliticoDossier {
     basometro: { taxa_governismo_pct: null, total_votacoes_analisadas: 0, votos_alinhados: null, votos_divergentes: null, classificacao: null },
     indices_inteligencia: {
       roi_cidadao: { score: null, nota: null, custo_total_operacional: null, pontos_ialp: null, custo_por_ponto_ialp: null, projetos_estruturantes: 0, diagnostico: 'Dados insuficientes.' },
-      concentracao_ceap: { indice_hhi: 0, nivel_risco: null, percentual_maior_fornecedor: 0, maior_fornecedor: null, cnpj_maior_fornecedor: null, diagnostico: 'Sem despesas.' },
+      concentracao_ceap: { indice_hhi: null, nivel_risco: null, percentual_maior_fornecedor: null, maior_fornecedor: null, cnpj_maior_fornecedor: null, diagnostico: 'Sem despesas.' },
       enriquecimento_patrimonial: { delta_patrimonio: null, salario_acumulado_estimado: null, razao_patrimonio_renda: null, compatibilidade: null, diagnostico: 'Dados insuficientes.' },
       estabilidade_partidaria: { total_trocas: 0, anos_medio_por_partido: null, classificacao: null, taxa_governismo_pct: null, diagnostico: 'Sem filiações.' },
-      eficiencia_emendas: { taxa_conversao_pct: null, total_empenhado: 0, total_pago: 0, percentual_pix: 0, municipio_predileto: null, concentracao_municipio_predileto_pct: 0, classificacao: null, diagnostico: 'Sem emendas.' },
+      eficiencia_emendas: { taxa_conversao_pct: null, total_empenhado: null, total_pago: null, percentual_pix: null, municipio_predileto: null, concentracao_municipio_predileto_pct: null, classificacao: null, diagnostico: 'Sem emendas.' },
     },
   };
 }

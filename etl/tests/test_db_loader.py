@@ -40,7 +40,7 @@ def ambiente(tmp_path, monkeypatch):
     url = os.environ.get("TEST_DATABASE_URL", "postgresql+psycopg2://test:test_pass@localhost:5433/legis_test")
     engine = create_engine(url)
     with engine.begin() as conn:
-        for schema in ("api", "stg", "leg", "param", "etl", "eco", "core", "ref", "public"):
+        for schema in ("api", "stg", "fin", "leg", "param", "etl", "eco", "core", "ref", "public"):
             conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
         conn.execute(text("CREATE SCHEMA public"))
     monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)

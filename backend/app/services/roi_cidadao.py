@@ -31,7 +31,10 @@ DIAGNOSTICO_SEM_DADOS = "Dados insuficientes (CEAP, remuneração e presenças s
 METODOLOGIA = (
     f"Nota = 30% assiduidade + 40% pontos IALP (referência de {PONTOS_IALP_REFERENCIA:.0f} pontos para a nota máxima "
     f"nesta parte) + 30% custo por ponto IALP (zera em R$ {CUSTO_POR_PONTO_REFERENCIA:,.0f} por ponto). O custo soma a "
-    "cota parlamentar (CEAP) e os subsídios brutos registrados."
+    "cota parlamentar (CEAP) e os subsídios brutos registrados. Os pontos IALP são da carreira registrada, mas o custo "
+    "cobre só os anos que as fontes têm (a CEAP e a folha, de 2019 em diante): quem teve mandatos anteriores fica com o "
+    "custo por ponto subestimado. A nota exige CEAP, subsídio e presença; sem folha (como os senadores) ela fica "
+    "indisponível."
 ).replace(",", ".")
 
 

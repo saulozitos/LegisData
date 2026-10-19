@@ -46,13 +46,14 @@ services:
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
       TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
       ADMIN_REFRESH_TOKEN: ${ADMIN_REFRESH_TOKEN:-}
+      # Pool de conexões e buscas de emendas simultâneas por worker (as buscas precisam ficar abaixo do pool)
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-5}
+      EMENDAS_MAX_BUSCAS_SIMULTANEAS: ${EMENDAS_MAX_BUSCAS_SIMULTANEAS:-3}
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    volumes:
-      # Apenas dados do ETL em modo somente leitura (sem montagem de código do disco)
-      - ./etl/data:/etl_data:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/', timeout=4).status == 200 else 1)"]
       interval: 30s

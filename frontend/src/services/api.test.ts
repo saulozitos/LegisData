@@ -51,6 +51,25 @@ describe('fetchJson (via endpoints)', () => {
     expect(err.endpoint).toBe('/analytics/mandates-performance');
   });
 
+  it('400 e 503 levam o texto de orientação da API; os demais status mantêm a mensagem genérica', async () => {
+    const api = await loadApi('');
+    fetchMock.mockResolvedValue(okResponse({ detail: 'A busca é ampla demais; informe um termo mais específico.' }, 400));
+    const ampla = await api.getEmendasPorAutor('silva').catch((e) => e);
+    expect(ampla).toBeInstanceOf(api.ApiError);
+    expect(ampla.status).toBe(400);
+    expect(ampla.message).toBe('A busca é ampla demais; informe um termo mais específico.');
+
+    fetchMock.mockResolvedValue(okResponse({ detail: 'Há muitas buscas em andamento; tente de novo em instantes.' }, 503));
+    expect((await api.getEmendasPorAutor('silva').catch((e) => e)).message).toMatch(/muitas buscas/);
+
+    fetchMock.mockResolvedValue(okResponse({ detail: 'erro interno com detalhes' }, 500));
+    expect((await api.getEmendasPorAutor('silva').catch((e) => e)).message).toBe('A API respondeu com status 500.');
+    fetchMock.mockResolvedValue(okResponse({ detail: [{ msg: 'x' }] }, 400)); // 422/validação não é string
+    expect((await api.getEmendasPorAutor('silva').catch((e) => e)).message).toBe('A API respondeu com status 400.');
+    fetchMock.mockResolvedValue({ ok: false, status: 503, json: () => Promise.reject(new SyntaxError('x')) });
+    expect((await api.getEmendasPorAutor('silva').catch((e) => e)).message).toBe('A API respondeu com status 503.');
+  });
+
   it('converte falha de rede em ApiError sem status', async () => {
     const api = await loadApi('');
     fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));

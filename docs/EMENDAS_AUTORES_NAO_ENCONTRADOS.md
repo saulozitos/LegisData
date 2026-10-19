@@ -643,3 +643,7 @@ basta pesquisar pelo respectivo número no Portal da Transparência do Governo F
 | **COM. DEFESA DO CONSUMIDOR** | 3 | 202350130001, 202350130002, 202350130003 | R$ 125,000.00 | R$ 0.00 | 2023 | Emenda de Comissão Permanente / Mista (RP8) |
 | **COM. LEGISLACAO PARTICIPATIVA** | 1 | 202350340001 | R$ 100,000.00 | R$ 0.00 | 2023 | Emenda de Comissão Permanente / Mista (RP8) |
 | **COM. FINANCAS E TRIBUTACAO** | 1 | 202250170002 | R$ 3,560.00 | R$ 0.00 | 2022 | Emenda de Comissão Permanente / Mista (RP8) |
+
+## Situação após a Entrega 3c (2026-10-16)
+
+Os autores sem pessoa em `core` ficam em `fin.emenda` com `pessoa_id` nulo, o nome oficial da fonte em `autor_texto` e `autor_situacao = 'NAO_CADASTRADO'` (381 emendas no banco de desenvolvimento), conforme a decisão 1 de `DECISOES_E_DUVIDAS_PENDENTES.md`. A API devolve o nome textual; nenhum vínculo é forçado.

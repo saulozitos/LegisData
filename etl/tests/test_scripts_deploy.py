@@ -70,3 +70,39 @@ def test_deploy_descarta_saidas_do_cron_antes_do_merge_e_carrega_tudo_pela_carga
     assert re.search(r"^from etl\.pipelines\.carga_economica import carregar_tudo", carga, re.MULTILINE)
     assert _posicao(texto, r"alembic upgrade head") < _posicao(texto, r"^\s*um_comando python -c ")
     assert _posicao(texto, r"^\s*um_comando python -c ") < _posicao(texto, r"^docker compose up ")
+
+
+def test_deploy_repassa_a_liberacao_de_encolhimento_vazia_por_padrao_e_tolera_so_as_financas():
+    texto = (RAIZ / "scripts" / "deploy" / "deploy.sh").read_text(encoding="utf-8")
+    inicio = _posicao(texto, r"^um_comando\(\) \{")
+    corpo = texto[inicio : inicio + texto[inicio:].index("\n}\n")]
+    # a variável é repassada DENTRO de `um_comando` (não solta no script) e vazia quando o operador não a define
+    assert re.search(r"-e LEGISDATA_ACEITAR_ENCOLHIMENTO=\"\$\{LEGISDATA_ACEITAR_ENCOLHIMENTO:-\}\"", corpo)
+    # só as finanças são toleradas, com qualquer espaçamento ou aspas: a tupla inteira tem de ser ("financas",)
+    tuplas = re.findall(r"toleradas\s*=\s*\(([^)]*)\)", texto)
+    assert len(tuplas) == 1
+    assert [x.strip().strip("'\"") for x in tuplas[0].split(",") if x.strip()] == ["financas"]
+
+
+def test_deploy_so_tolera_falha_das_financas_quando_fin_ja_tem_dados():
+    """No primeiro deploy `fin` nasce vazio: tolerar a falha subiria a API sem dados e com saída 0."""
+    texto = (RAIZ / "scripts" / "deploy" / "deploy.sh").read_text(encoding="utf-8")
+    inicio = _posicao(texto, r"^um_comando\(\) \{")
+    corpo = texto[inicio : inicio + texto[inicio:].index("\n}\n")]
+    assert re.search(r"-e LEGISDATA_FIN_TEM_DADOS=\"\$\{LEGISDATA_FIN_TEM_DADOS:-\}\"", corpo)
+    consulta = _posicao(
+        texto, r"^\s*LEGISDATA_FIN_TEM_DADOS=\"\$\(docker exec politica_postgres psql .*exists\(select 1 from fin\."
+    )
+    assert consulta < _posicao(texto, r"^\s*um_comando python -c ")
+    carga = texto[_posicao(texto, r"^\s*um_comando python -c ") :]
+    assert re.search(r"os\.environ\.get\('LEGISDATA_FIN_TEM_DADOS'\) == 't' else \(\)", carga)
+    assert re.search(r"carregar_tudo\(engine, toleradas=toleradas\)", carga)
+
+
+def test_rollback_do_deploy_sobe_a_tag_anterior_com_o_compose_do_commit_anterior():
+    texto = (RAIZ / "scripts" / "deploy" / "deploy.sh").read_text(encoding="utf-8")
+    guardado = _posicao(texto, r'^COMMIT_ANTERIOR="\$\(git rev-parse HEAD\)"')
+    assert guardado < _posicao(texto, r"^git merge --ff-only ")
+    rollback = texto[_posicao(texto, r'if \[\[ "\$estado" != "healthy" \]\]') :]
+    assert re.search(r'git show "\$COMMIT_ANTERIOR:docker-compose\.yml"', rollback)
+    assert re.search(r'IMAGE_TAG="\$ANTERIOR" docker compose --project-directory "\$RAIZ" -f ', rollback)

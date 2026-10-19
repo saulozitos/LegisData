@@ -1,6 +1,5 @@
 """Fixtures compartilhadas: Postgres de teste, override único de get_db e diretório de dados isolado."""
 
-import json
 import os
 import uuid
 from datetime import date, datetime, timezone
@@ -12,8 +11,6 @@ os.environ.setdefault("ENVIRONMENT", "test")
 
 import pytest  # noqa: E402
 from app import main as main_module  # noqa: E402
-from app.api.v1 import politicians  # noqa: E402
-from app.core import data_files  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.core.database import get_db  # noqa: E402
 from app.core.migrations import upgrade_schema  # noqa: E402
@@ -21,10 +18,6 @@ from app.models import (  # noqa: E402
     Base,
     CargoPoliticoEnum,
     CasaLegislativaEnum,
-    CertidaoJudicial,
-    DespesaCota,
-    DoacaoCampanha,
-    EmendaParlamentar,
     Mandate,
     ParliamentaryVote,
     PartyAffiliation,
@@ -48,16 +41,12 @@ FAR_FUTURE = date(2999, 1, 31)
 
 @pytest.fixture(autouse=True)
 def _isolation(monkeypatch):
-    """Zera estado global entre testes: caches de arquivos, rate limiter e cache do serviço de cidadania."""
+    """Zera estado global entre testes: rate limiter e cache do serviço de cidadania."""
     monkeypatch.setattr(settings, "RATE_LIMIT_PER_MINUTE", 0)
     monkeypatch.setattr(cidadania_service, "_cache_data", None)
     monkeypatch.setattr(cidadania_service, "_cache_timestamp", 0.0)
-    data_files._cache.clear()
-    politicians._json_cache.clear()
     main_module._rate_limiter._hits.clear()
     yield
-    data_files._cache.clear()
-    politicians._json_cache.clear()
     main_module._rate_limiter._hits.clear()
 
 
@@ -84,7 +73,7 @@ def pg_engine():
     engine = create_engine(TEST_DATABASE_URL, pool_pre_ping=True)
     try:
         with engine.begin() as conn:
-            for schema in ("api", "stg", "leg", "param", "etl", "eco", "core", "ref", "public"):
+            for schema in ("api", "stg", "fin", "leg", "param", "etl", "eco", "core", "ref", "public"):
                 conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
             conn.execute(text("CREATE SCHEMA public"))
     except OperationalError as exc:  # pragma: no cover - ambiente sem banco de teste
@@ -115,7 +104,7 @@ def _truncate_sql(pg_engine):
                 text(
                     "SELECT format('%I.%I', n.nspname, c.relname) FROM pg_class c "
                     "JOIN pg_namespace n ON n.oid = c.relnamespace "
-                    "WHERE n.nspname IN ('core', 'leg') AND c.relkind IN ('r', 'p') AND NOT c.relispartition"
+                    "WHERE n.nspname IN ('core', 'leg', 'fin') AND c.relkind IN ('r', 'p') AND NOT c.relispartition"
                 )
             )
         ]
@@ -164,18 +153,6 @@ def client(session_factory):
         main_module.app.dependency_overrides.pop(get_db, None)
 
 
-@pytest.fixture()
-def data_dir(tmp_path, monkeypatch):
-    """Diretório de dados do ETL isolado: nenhum teste depende dos arquivos reais do repositório."""
-    directory = tmp_path / "processed"
-    directory.mkdir()
-    for module in (politicians,):
-        monkeypatch.setattr(module, "DATA_DIR", directory)
-    data_files._cache.clear()
-    politicians._json_cache.clear()
-    return directory
-
-
 def criar_mandato_presidencial(db, nome, inicio, fim, slug, rotulo=None, partido=None):
     """Presidente, mandato de `PRESIDENTE` e identificador público (`mandato_presidencial`); devolve o id do mandato."""
     pessoa = db.execute(text("INSERT INTO core.pessoa (nome_exibicao) VALUES (:n) RETURNING id"), {"n": nome}).scalar()
@@ -214,16 +191,89 @@ def observar_serie(db, codigo, referencia, valor):
     )
 
 
-def write_json(directory, name, payload):
-    path = directory / name
-    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-    return path
-
-
 def write_text(directory, name, content):
     path = directory / name
     path.write_text(content, encoding="utf-8")
     return path
+
+
+@pytest.fixture()
+def pessoa(db):
+    """Uma pessoa em `core.pessoa` (id), para os testes do schema `fin`."""
+    pid = db.execute(text("INSERT INTO core.pessoa (nome_exibicao) VALUES ('Ana') RETURNING id")).scalar_one()
+    db.commit()
+    return pid
+
+
+def pessoa_do(db, politico):
+    """`core.pessoa` do político do legado (a ponte cria o cadastro com o mesmo `uid`)."""
+    sync_legacy_to_core(db)
+    return db.execute(text("SELECT id FROM core.pessoa WHERE uid = :uid"), {"uid": politico.id}).scalar_one()
+
+
+def fonte_id(db, codigo="CAMARA_CSV"):
+    return db.execute(text("SELECT id FROM etl.fonte WHERE codigo = :c"), {"c": codigo}).scalar_one()
+
+
+def inserir_fin(db, tabela, **colunas):
+    """Insere uma linha em `fin.<tabela>`; `fonte_id` entra sozinho (CAMARA_CSV) quando a tabela o exige."""
+    colunas.setdefault("fonte_id", fonte_id(db))
+    nomes = ", ".join(colunas)
+    valores = ", ".join(f":{c}" for c in colunas)
+    db.execute(text(f"INSERT INTO fin.{tabela} ({nomes}) VALUES ({valores})"), colunas)  # nosec B608 - só em teste
+
+
+def semear_financas(db, fulano, lula_fonte):
+    """CEAP, emenda e doação do Fulano e uma certidão do Lula da Fonte, no schema `fin`."""
+    pessoa = pessoa_do(db, fulano)
+    inserir_fin(db, "despesa_cota", pessoa_id=pessoa, ano=2024, tipo_despesa="Combustível", valor_liquido=150)
+    inserir_fin(
+        db, "despesa_cota_fornecedor", pessoa_id=pessoa, nome="Posto X", cnpj="12345678000199", valor_total=150, notas=2
+    )
+    inserir_fin(db, "despesa_cota_resumo", pessoa_id=pessoa, total_notas=2)
+    inserir_fin(
+        db,
+        "emenda",
+        pessoa_id=pessoa,
+        autor_texto="FULANO",
+        tipo_autor="INDIVIDUAL",
+        autor_situacao="IDENTIFICADO",
+        ano=2024,
+        codigo_emenda="E1",
+        tipo_emenda="INDIVIDUAL",
+        valor_empenhado=100,
+        valor_pago=50,
+        localidade_destino="SP",
+        fonte_id=fonte_id(db, "PORTAL_TRANSPARENCIA"),
+    )
+    inserir_fin(
+        db,
+        "doacao_campanha",
+        pessoa_id=pessoa,
+        ano_eleicao=2022,
+        doador_nome="Fulana Doadora",
+        doador_documento="***.654.321-**",
+        valor=500,
+        fonte_id=fonte_id(db, "TSE"),
+    )
+    inserir_fin(
+        db,
+        "certidao",
+        pessoa_id=pessoa_do(db, lula_fonte),
+        orgao="STF",
+        tipo="Criminal",
+        situacao="Nada Consta",
+        fonte_id=fonte_id(db, "TSE"),
+    )
+    db.commit()
+
+
+@pytest.fixture()
+def financas(db, seed):
+    """Finanças do seed em `fin`. Fixture à parte porque criar o cadastro em `core` exige a ponte do legado, e rodá-la
+    antes do teste impede os que acrescentam dados legados depois (a ponte não é reentrante com sessões já projetadas).
+    """
+    semear_financas(db, seed.fulano, seed.lula_fonte)
 
 
 @pytest.fixture()
@@ -286,54 +336,6 @@ def seed(db):
     for pol, party in ((fulano, pt), (lula_fonte, pt), (beltrano, ptb)):
         db.add(PartyAffiliation(politician_id=pol.id, party_id=party.id, start_date=date(2020, 1, 1), is_current=True))
     db.flush()
-
-    db.add(
-        DespesaCota(
-            politician_id=fulano.id,
-            year=2024,
-            month=3,
-            expense_type="Combustível",
-            net_value=100,
-            supplier_name="Posto X",
-            supplier_cnpj_cpf="123.456.789-01",
-        )
-    )
-    db.add(
-        DespesaCota(
-            politician_id=fulano.id,
-            year=2024,
-            month=4,
-            expense_type="Combustível",
-            net_value=50,
-            supplier_name="Posto X",
-            supplier_cnpj_cpf="123.456.789-01",
-        )
-    )
-    db.add(
-        DoacaoCampanha(
-            politician_id=fulano.id,
-            election_year=2022,
-            donor_name="Fulana Doadora",
-            donor_cpf_cnpj="98765432100",
-            amount_donated=500,
-        )
-    )
-    db.add(
-        EmendaParlamentar(
-            politician_id=fulano.id,
-            year=2024,
-            amendment_type="INDIVIDUAL",
-            committed_value=100,
-            paid_value=50,
-            destination_locality="SP",
-            function_area=None,
-        )
-    )
-    db.add(
-        CertidaoJudicial(
-            politician_id=lula_fonte.id, court_agency="STF", certificate_type="Criminal", status="Nada Consta"
-        )
-    )
 
     proposition = Proposition(
         proposition_type=TipoProposicaoEnum.PL,

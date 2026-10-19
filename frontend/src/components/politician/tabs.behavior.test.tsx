@@ -14,6 +14,7 @@ import RemunerationTab from './RemunerationTab';
 import VotesTab from './VotesTab';
 import PoliticianHeaderCard from './PoliticianHeaderCard';
 import PoliticianTabNav from './PoliticianTabNav';
+import { fmtReais } from '@/lib/format';
 import { formatCpfCnpj, formatMoney, getFichaStatus, gradeBadgeClass, riskBadgeClass, compatBadgeClass, orUnavailable, NA_BADGE } from './format';
 
 vi.mock('recharts', async () => (await import('@/test/recharts')).rechartsMock);
@@ -25,6 +26,14 @@ describe('format helpers', () => {
     expect(formatCpfCnpj(null)).toBe('Não informado');
     expect(formatCpfCnpj('***.456.789-**')).toBe('***.456.789-**'); // já mascarado (9 dígitos): preservado
     expect(formatCpfCnpj('abc')).toBe('abc');
+  });
+
+  it('fmtReais mostra Indisponível para ausente e preserva o zero conhecido', () => {
+    expect(fmtReais(null)).toBe('Indisponível');
+    expect(fmtReais(undefined)).toBe('Indisponível');
+    expect(fmtReais(NaN)).toBe('Indisponível');
+    expect(fmtReais(0)).toBe('R$ 0,00');
+    expect(fmtReais(1234.5)).toBe('R$ 1.234,50');
   });
 
   it('formatMoney nunca devolve R$ 0,00 para ausente', () => {
@@ -77,6 +86,36 @@ describe('IntelligenceTab', () => {
     expect(screen.getByText('+R$ 400.000,00', { exact: false })).toBeInTheDocument();
   });
 
+  it('mostra o período real do patrimônio e do subsídio comparados', () => {
+    const d = fullDossier();
+    d.indices_inteligencia!.enriquecimento_patrimonial.periodo_comparado = { de: 2018, ate: 2022, subsidio_de: 2019, subsidio_ate: 2022 };
+    render(<IntelligenceTab dossier={d} />);
+    expect(screen.getByTestId('periodo-patrimonio').textContent).toBe('Variação de 2018 a 2022 (declarações ao TSE)');
+    expect(screen.getByTestId('periodo-subsidio').textContent).toBe('Subsídio bruto de 2019 a 2022');
+  });
+
+  it('mostra quantos meses de folha entraram no subsídio comparado quando a API informa', () => {
+    const d = fullDossier();
+    d.indices_inteligencia!.enriquecimento_patrimonial.periodo_comparado = { de: 2018, ate: 2022, subsidio_de: 2019, subsidio_ate: 2022, meses_de_subsidio: 47 };
+    render(<IntelligenceTab dossier={d} />);
+    expect(screen.getByTestId('periodo-subsidio').textContent).toBe('Subsídio bruto de 2019 a 2022 (47 meses de folha)');
+  });
+
+  it('sem período comparado os cards dizem que o período está indisponível', () => {
+    render(<IntelligenceTab dossier={fullDossier()} />);
+    expect(screen.getByTestId('periodo-patrimonio').textContent).toMatch(/Período indisponível/);
+    expect(screen.getByTestId('periodo-subsidio').textContent).toMatch(/Período indisponível/);
+  });
+
+  it('sem despesas da CEAP o HHI e a fatia do maior fornecedor ficam indisponíveis, nunca 0%', () => {
+    render(<IntelligenceTab dossier={sparseDossier()} />);
+    const fatia = screen.getByText('Fatia da Cota Consumida pelo Top 1').parentElement as HTMLElement;
+    expect(within(fatia).getByText('Indisponível')).toBeInTheDocument();
+    expect(fatia.textContent).not.toMatch(/0,0\s*%/); // desconhecido nunca vira "0,0%"
+
+    expect(screen.queryByText('/ 10.000')).not.toBeInTheDocument();
+  });
+
   it('com dados insuficientes (null) mostra indisponível sem quebrar nem alarmar', () => {
     render(<IntelligenceTab dossier={sparseDossier()} />);
     expect(screen.getByText('Nota indisponível')).toBeInTheDocument();
@@ -111,6 +150,37 @@ describe('OverviewTab', () => {
     expect(document.body.textContent).not.toMatch(/@camara\.leg\.br|3215-5000/);
   });
 
+  it('doadores e arrecadação desconhecidos aparecem como n/d e Indisponível, nunca como zero', () => {
+    const d = fullDossier();
+    d.financiamento_campanha.total_doadores = null;
+    d.financiamento_campanha.total_arrecadado = null;
+    render(<OverviewTab dossier={d} onChangeTab={() => {}} onSelectParty={() => {}} />);
+    const bloco = screen.getByText('Total de Doadores Registrados').parentElement as HTMLElement;
+    expect(bloco.textContent).toContain('n/d doadores');
+    expect(bloco.textContent).not.toMatch(/\b0 doa/);
+    const arrecadado = screen.getByText('Total Arrecadado na Campanha').parentElement as HTMLElement;
+    expect(arrecadado.textContent).toContain('Indisponível');
+    expect(arrecadado.textContent).not.toContain('R$ 0,00');
+  });
+
+  it('sem concentração da CEAP o HHI e o maior fornecedor aparecem como Indisponível, nunca 0%', () => {
+    const d = fullDossier();
+    const ind = d.indices_inteligencia!;
+    ind.concentracao_ceap = { ...ind.concentracao_ceap, indice_hhi: null, percentual_maior_fornecedor: null, nivel_risco: null };
+    render(<OverviewTab dossier={d} onChangeTab={() => {}} onSelectParty={() => {}} />);
+    const linha = screen.getByText(/^HHI:/);
+    expect(linha.textContent).toBe('HHI: Indisponível (Indisponível top)');
+  });
+
+  it('emendas sem dado mostram Indisponível na cota PIX e nas pagas', () => {
+    const d = fullDossier();
+    const ind = d.indices_inteligencia!;
+    ind.eficiencia_emendas = { ...ind.eficiencia_emendas, taxa_conversao_pct: null, percentual_pix: null, total_empenhado: null, total_pago: null };
+    render(<OverviewTab dossier={d} onChangeTab={() => {}} onSelectParty={() => {}} />);
+    expect(screen.getByText(/^Quota PIX:/).textContent).toBe('Quota PIX: Indisponível');
+    expect(document.body.textContent).not.toMatch(/Quota PIX: 0/);
+  });
+
   it('nota do ROI com score nulo não derruba a visão geral', () => {
     render(<OverviewTab dossier={sparseDossier()} onChangeTab={() => {}} />);
     expect(screen.getByText('Nota indisponível')).toBeInTheDocument();
@@ -128,6 +198,35 @@ describe('PoliticianTabNav', () => {
     expect(onChange).toHaveBeenCalledWith('votacoes');
     expect(screen.getByText('Nota B+')).toBeInTheDocument();
     expect(screen.getByText(/Presenças \(95,0%\)/)).toBeInTheDocument();
+  });
+
+  it('o selo de gasto da aba CEAP mostra gasto pequeno sem virar "R$ 0k" e some sem dado', () => {
+    const d = fullDossier();
+    d.custos_ceap.gasto_total_recente = 450;
+    const { unmount } = render(<PoliticianTabNav dossier={d} activeTab="visao_geral" onChange={() => {}} />);
+    expect(screen.getByText('R$ 450')).toBeInTheDocument();
+    expect(screen.queryByText(/R\$ 0k/)).not.toBeInTheDocument();
+    unmount();
+    d.custos_ceap.gasto_total_recente = 1_500_000;
+    const grande = render(<PoliticianTabNav dossier={d} activeTab="visao_geral" onChange={() => {}} />);
+    expect(screen.getByText('R$ 1.500k')).toBeInTheDocument();
+    grande.unmount();
+    d.custos_ceap.gasto_total_recente = null;
+    render(<PoliticianTabNav dossier={d} activeTab="visao_geral" onChange={() => {}} />);
+    const aba = screen.getByRole('tab', { name: /Custos do Mandato/ });
+    expect(aba.textContent?.trim()).toBe('Custos do Mandato (CEAP)'); // sem selo de valor
+  });
+
+  it.each([
+    [0, 'R$ 0'], // gasto zero conhecido é um dado: aparece como zero, não some
+    [999, 'R$ 999'],
+    [1000, 'R$ 1k'], // o limite é inclusivo
+    [1499, 'R$ 1k'],
+  ])('o selo de gasto da aba CEAP trata o limite de mil: %s vira %s', (gasto, esperado) => {
+    const d = fullDossier();
+    d.custos_ceap.gasto_total_recente = gasto;
+    render(<PoliticianTabNav dossier={d} activeTab="visao_geral" onChange={() => {}} />);
+    expect(screen.getByRole('tab', { name: /Custos do Mandato/ }).textContent).toContain(esperado);
   });
 
   it('com dados ausentes não mostra nota e indica presença "n/d"', () => {
@@ -174,18 +273,80 @@ describe('PoliticianHeaderCard', () => {
 });
 
 describe('CeapTab', () => {
-  it('lista categorias, fornecedores e só linka documentos seguros', () => {
+  it('lista categorias, fornecedores e o gasto por ano', () => {
     render(<CeapTab dossier={fullDossier()} />);
     expect(screen.getByText('120 comprovantes fiscais')).toBeInTheDocument();
     expect(screen.getAllByText('Gráfica Alfa LTDA').length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('link', { name: /NF-e/ })).toHaveLength(1);
-    expect(screen.getByText('--/2024')).toBeInTheDocument(); // mês ausente
+    expect(screen.getByText('Gasto da cota por ano')).toBeInTheDocument();
+    expect(screen.getByText('2024')).toBeInTheDocument();
+    const linha2023 = screen.getByText('2023').closest('tr') as HTMLElement;
+    expect(within(linha2023).getByText('R$ 400.000,00')).toBeInTheDocument();
   });
 
   it('sem dados de CEAP mostra indisponível — nunca "R$ 0,00"', () => {
     render(<CeapTab dossier={sparseDossier()} />);
     expect(screen.getByText('Custos da cota parlamentar indisponíveis')).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/R\$ 0,00|0 comprovantes/);
+  });
+
+  it('total de notas desconhecido não mostra contador (nunca "0 comprovantes")', () => {
+    const d = fullDossier();
+    d.custos_ceap.total_notas = null;
+    render(<CeapTab dossier={d} />);
+    expect(screen.getByText('Gasto da cota por ano')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/comprovantes fiscais/);
+  });
+
+  it('o período do selo vem dos anos que existem nos dados', () => {
+    const d = fullDossier();
+    d.custos_ceap.gastos_por_ano = [
+      { ano: 2022, total_gasto: 10 },
+      { ano: 2024, total_gasto: 20 },
+      { ano: 2023, total_gasto: 30 },
+    ];
+    render(<CeapTab dossier={d} />);
+    expect(screen.getByText('Gastos de 2022–2024')).toBeInTheDocument();
+  });
+
+  it('com um único ano o selo mostra só esse ano, sem intervalo', () => {
+    const d = fullDossier();
+    d.custos_ceap.gastos_por_ano = [{ ano: 2024, total_gasto: 100 }];
+    render(<CeapTab dossier={d} />);
+    expect(screen.getByText('Gastos de 2024')).toBeInTheDocument();
+    expect(screen.queryByText(/Gastos de 2024–/)).not.toBeInTheDocument();
+  });
+
+  it('sem gasto por ano não mostra selo de período nem a tabela anual', () => {
+    const d = fullDossier();
+    d.custos_ceap.gastos_por_ano = [];
+    render(<CeapTab dossier={d} />);
+    expect(screen.queryByText(/^Gastos de /)).not.toBeInTheDocument();
+    expect(screen.queryByText('Gasto da cota por ano')).not.toBeInTheDocument();
+  });
+
+  it('total de notas igual a zero é dado válido e aparece', () => {
+    const d = fullDossier();
+    d.custos_ceap.total_notas = 0;
+    render(<CeapTab dossier={d} />);
+    expect(screen.getByText('0 comprovantes fiscais')).toBeInTheDocument();
+  });
+
+  it('fornecedor sem quantidade de notas mostra "n/d" e nunca 0', () => {
+    const d = fullDossier();
+    d.custos_ceap.maiores_fornecedores = [
+      { nome_fornecedor: 'Gráfica Alfa LTDA', cnpj_cpf: '12345678000190', total_recebido: 300000, num_notas: null },
+    ];
+    render(<CeapTab dossier={d} />);
+    expect(screen.getByText('n/d')).toBeInTheDocument();
+  });
+
+  it('sem fornecedores o card do maior fornecedor mostra "n/d" e não R$ 0,00', () => {
+    const d = fullDossier();
+    d.custos_ceap.maiores_fornecedores = [];
+    render(<CeapTab dossier={d} />);
+    const card = screen.getByText('Maior Fornecedor Único').parentElement as HTMLElement;
+    expect(card.textContent).not.toMatch(/R\$ 0,00/);
+    expect(card.textContent).toMatch(/n\/d/);
   });
 
   it('média mensal ausente mostra "Indisponível"', () => {
@@ -198,6 +359,17 @@ describe('CeapTab', () => {
 });
 
 describe('FinancingTab', () => {
+  it('avisa quando há doações de outras eleições além da resumida e não avisa quando só há uma', () => {
+    const d = fullDossier();
+    d.financiamento_campanha.eleicoes_disponiveis = [2022, 2018, 2014];
+    const { unmount } = render(<FinancingTab dossier={d} />);
+    expect(screen.getByTestId('outras-eleicoes').textContent).toContain('2018, 2014');
+    expect(screen.getByTestId('outras-eleicoes').textContent).not.toContain('2022,');
+    unmount();
+    render(<FinancingTab dossier={fullDossier()} />);
+    expect(screen.queryByTestId('outras-eleicoes')).not.toBeInTheDocument();
+  });
+
   it('mostra doadores com documento mascarado e filtra a relação de doações', () => {
     render(<FinancingTab dossier={fullDossier()} />);
     expect(screen.getAllByText('Doador Um').length).toBeGreaterThan(0);
@@ -210,6 +382,41 @@ describe('FinancingTab', () => {
     expect(screen.getByText('Nenhuma doação encontrada para o termo pesquisado.')).toBeInTheDocument();
   });
 
+  it('a linha "Demais doadores" da fonte é mostrada como uma frase com a quantidade e o valor', () => {
+    const d = fullDossier();
+    d.financiamento_campanha.total_doadores = 28;
+    d.financiamento_campanha.demais_doadores = { quantidade: 26, valor: 24804 };
+    render(<FinancingTab dossier={d} />);
+    expect(screen.getByTestId('demais-doadores').textContent).toMatch(/Outros 26 doadores somam R\$\s*24\.804,00/);
+  });
+
+  it('na relação de doações a linha agregada diz quantos doadores ela soma e não mostra documento', () => {
+    const d = fullDossier();
+    d.financiamento_campanha.todas_doacoes.push(
+      { id: 'd3', ano_eleicao: 2022, nome_doador: 'Demais doadores (26)', cpf_cnpj_doador: null, valor_doado: 24804, tipo_receita: 'Agregado', agregado: true, quantidade_doadores: 26 },
+      { id: 'd4', ano_eleicao: 2022, nome_doador: 'Demais doadores', cpf_cnpj_doador: null, valor_doado: 5, tipo_receita: 'Agregado', agregado: true, quantidade_doadores: null },
+    );
+    render(<FinancingTab dossier={d} />);
+    const avisos = screen.getAllByTestId('linha-agregada').map((e) => e.textContent);
+    expect(avisos).toEqual([
+      'Soma de 26 doadores que a fonte não lista um a um',
+      'Soma de vários doadores; a fonte não informa quantos',
+    ]);
+    expect(screen.queryAllByTestId('linha-agregada')).toHaveLength(2); // as linhas normais não levam o aviso
+  });
+
+  it('sem a quantidade de doadores a média por doador fica "n/d" e nunca um palpite', () => {
+    const d = fullDossier();
+    d.financiamento_campanha.total_doadores = null;
+    d.financiamento_campanha.demais_doadores = { quantidade: null, valor: 10 };
+    render(<FinancingTab dossier={d} />);
+    const total = screen.getByText('Total de Doadores').parentElement as HTMLElement;
+    const ticket = screen.getByText('Ticket Médio por Doador').parentElement as HTMLElement;
+    expect(within(total).getByText('n/d')).toBeInTheDocument();
+    expect(within(ticket).getByText('n/d')).toBeInTheDocument();
+    expect(screen.getByTestId('demais-doadores').textContent).toMatch(/^Os demais doadores somam/);
+  });
+
   it('sem prestação de contas mostra indisponível — nunca "R$ 0,00 arrecadados"', () => {
     render(<FinancingTab dossier={sparseDossier()} />);
     expect(screen.getByText('Financiamento de campanha indisponível')).toBeInTheDocument();
@@ -220,7 +427,7 @@ describe('AmendmentsTab', () => {
   it('mostra execução e destinos', () => {
     render(<AmendmentsTab dossier={fullDossier()} />);
     expect(screen.getAllByText('Campinas/SP').length).toBeGreaterThan(0);
-    expect(screen.getByText('80%')).toBeInTheDocument();
+    expect(screen.getByText('80,0%')).toBeInTheDocument();
     expect(screen.getByText('1 emendas cadastradas')).toBeInTheDocument();
   });
 

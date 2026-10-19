@@ -19,8 +19,9 @@ Todo commit que entra na `main` e passa no CI é implantado sozinho em https://l
       descarta essas saídas locais antes do merge (o próximo cron as gera de novo). Fora dessa pasta, mudança local
       continua impedindo o merge de propósito.
    3. `alembic upgrade head` num contêiner da imagem nova, na rede do compose.
-   4. Carga das séries econômicas, dos mandatos presidenciais, da composição do Congresso e da PNAD
-      (`economia_loader`, `presidencia_loader`, `composicao_loader`, `pnad_loader`), se o schema `eco` já existe.
+   4. Carga das séries econômicas, dos mandatos presidenciais, da composição do Congresso, da PNAD e das finanças
+      (CEAP, emendas, remuneração e dados do TSE) (`economia_loader`, `presidencia_loader`, `composicao_loader`,
+      `pnad_loader`, `financas_loader`), se o schema `eco` já existe.
       São idempotentes e rodam por `etl.pipelines.carga_economica.carregar_tudo` (a mesma função do
       `run_etl --load-economia`). Se um arquivo de curadoria estiver ausente ou citar um mandato que não existe no
       banco, a carga falha com as migrações já aplicadas e a imagem antiga ainda no ar (as tabelas novas são aditivas;
@@ -85,3 +86,9 @@ bash -n ~/.legisdata-deploy/deploy.sh && echo ok
 
 Depois do merge o deploy roda com o script novo, que dali em diante se atualiza sozinho a cada deploy. Se esquecer o
 passo, rode `make run-load-economia` no servidor depois do deploy, ou o `python -c` do passo 4 do script.
+
+## Rollback da Entrega 3c (a API deixou de montar `etl/data`)
+
+O `git merge` do deploy traz o `docker-compose.yml` novo antes da verificação de saúde, mas o script guarda o commit anterior (`COMMIT_ANTERIOR`) e, se a verificação falhar, sobe a tag anterior com o `docker-compose.yml` DESSE commit (lido por `git show`), que ainda monta `./etl/data` no contêiner da API. Com isso a imagem 3b volta com o volume de que precisa e as rotas de emendas e a CEAP do dossiê funcionam como antes. Só se o compose do commit anterior não puder ser lido o script usa o atual, e nesse caso a imagem 3b (que lê CEAP e emendas desses arquivos) responde 404 em `/emendas/resumo`, `/emendas/localidade/*` e `/emendas/autor/*` e mostra a CEAP e as emendas do dossiê vazias, sem erro 5xx: corrija para frente (o `fin` já está carregado) ou recoloque temporariamente o volume `./etl/data:/etl_data:ro` no compose.
+
+Uma carga de finanças que falha (JSON malformado, tabela que encolheria a menos da metade) só é tolerada quando o `fin` já tem dados (o script consulta `fin.emenda` e `fin.despesa_cota` antes da carga e repassa o resultado como `LEGISDATA_FIN_TEM_DADOS`): nesse caso o deploy segue, o erro aparece no log (`{'erro': ...}` no resultado da carga `financas`) e a API nova continua servindo o que já estava em `fin`. No primeiro deploy da 3c (a migração 0031 acabou de criar o `fin` vazio) a falha NÃO é tolerada: o deploy aborta antes do `docker compose up` e o contêiner antigo segue no ar com o volume `./etl/data`; as tabelas novas são aditivas, então abortar nesse ponto é seguro. Para qualquer erro do Postgres, tanto no log da carga individual quanto no erro final, o texto leva só o tipo, a mensagem principal e o nome da restrição (para erro de dado, o SQLSTATE e a coluna), nunca o `DETAIL` com os valores da linha; um arquivo que existe mas tem o tipo errado volta como `{'formato_invalido': 1}`, distinto de `{'arquivo_ausente': 1}`. O `fin` só se atualiza no deploy, no ETL completo e em `run_etl --load-economia`; o cron diário recarrega apenas séries e mandatos (a atualização diária de CEAP e emendas fica para a 3d), então entre dois deploys o dossiê pode estar atrás dos arquivos de `etl/data`. As demais cargas (séries, mandatos, composição, PNAD) continuam abortando o deploy. Depois de uma falha de finanças, corrija o arquivo ou, se a redução for legítima, rode `run_etl --load-economia`. Para aceitar uma redução legítima, rode o deploy uma única vez com a variável na linha de comando (`LEGISDATA_ACEITAR_ENCOLHIMENTO=1 ~/.legisdata-deploy/deploy.sh`); o script a repassa à carga. Nunca a deixe exportada no ambiente do timer nem em arquivo de ambiente: ela desliga a proteção das oito tabelas (as seis cargas, mais fornecedores e resumo da CEAP).

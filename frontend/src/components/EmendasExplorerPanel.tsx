@@ -22,6 +22,7 @@ import {
 } from "@/services/api";
 import { useApi } from "@/hooks/useApi";
 import { useDebounce } from "@/hooks/useDebounce";
+import { ApiError } from "@/lib/errors";
 import { fmtBRL, fmtNum, fmtPct } from "@/lib/format";
 import { EmptyState, ErrorState, LoadingState } from "@/components/StateViews";
 
@@ -39,6 +40,23 @@ const AUTORES_SUGESTOES = [
   { id: "COMISSAO DE SAUDE", label: "Comissão de Saúde", icone: HeartPulse, cor: "border-rose-500/40 text-rose-300 bg-rose-500/10" },
   { id: "COMISSAO DE EDUCACAO", label: "Comissão de Educação", icone: GraduationCap, cor: "border-blue-500/40 text-blue-300 bg-blue-500/10" },
 ];
+
+// A API exige ao menos 3 caracteres (um termo curto casaria quase tudo e varreria a tabela inteira); a busca por
+// localidade também aceita a sigla do estado, com 2.
+const TERMO_MINIMO = 3;
+const SIGLAS_DE_ESTADO = new Set([
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ",
+  "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+]);
+const localidadeValida = (termo: string) => termo.length >= TERMO_MINIMO || SIGLAS_DE_ESTADO.has(termo.toUpperCase());
+// Mesmo limite do backend (a busca com mais de 100 caracteres volta 422)
+const TERMO_MAXIMO = 100;
+
+// 400 (busca ampla demais) e 503 (muitas buscas em andamento) trazem a orientação da API. No 400 repetir a mesma busca
+// só ocupa o servidor por mais 8 s, então o botão de tentar de novo some: o caminho é mudar o termo.
+const mensagemDaBusca = (erro: Error | null, padrao: string): string =>
+  erro instanceof ApiError && (erro.status === 400 || erro.status === 503) ? erro.message : padrao;
+const podeTentarDeNovo = (erro: Error | null): boolean => !(erro instanceof ApiError && erro.status === 400);
 
 const LOCALIDADES_SUGESTOES = [
   "Campinas", "Recife", "Salvador", "Belo Horizonte", "Curitiba", "Manaus", "PA", "MA", "AL"
@@ -64,13 +82,13 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
   const localidadeQuery = useApi(
     `emendas:loc:${debouncedLocalidade}`,
     (signal) => getEmendasPorLocalidade(debouncedLocalidade, 50, signal),
-    Boolean(debouncedLocalidade) && activeTab === "localidade"
+    localidadeValida(debouncedLocalidade) && activeTab === "localidade"
   );
 
   const autorQuery = useApi(
     `emendas:autor:${debouncedAutor}`,
     (signal) => getEmendasPorAutor(debouncedAutor, 50, signal),
-    Boolean(debouncedAutor) && activeTab === "institucional"
+    debouncedAutor.length >= TERMO_MINIMO && activeTab === "institucional"
   );
 
   if (resumoQuery.loading && !resumoQuery.data) {
@@ -162,7 +180,7 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
               <div className="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
                 <div
                   className="bg-cyan-400 h-full rounded-full"
-                  style={{ width: `${Math.min(100, estatisticas_gerais.taxa_execucao_pago_pct)}%` }}
+                  style={{ width: `${Math.min(100, estatisticas_gerais.taxa_execucao_pago_pct ?? 0)}%` }}
                 />
               </div>
             </div>
@@ -427,8 +445,9 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
               <input
                 type="text"
                 value={localidadeInput}
+                maxLength={TERMO_MAXIMO}
                 onChange={(e) => setLocalidadeInput(e.target.value)}
-                placeholder="Ex: Campinas, Belo Horizonte, Recife, SP, BA..."
+                placeholder="Ex: Campinas, Belo Horizonte, Recife, SP, Bahia..."
                 className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-slate-700 rounded-2xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 transition shadow-inner"
                 aria-label="Pesquisar por município ou estado"
               />
@@ -455,13 +474,18 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
           </div>
 
           {/* Resultado da Busca Territorial */}
-          {localidadeQuery.loading ? (
+          {!localidadeValida(debouncedLocalidade) ? (
+            <EmptyState
+              title={`Digite ao menos ${TERMO_MINIMO} letras ou a sigla do estado`}
+              message="Informe o nome de um município ou o estado, pela sigla ou por extenso (ex: SP, Minas Gerais, Recife)."
+            />
+          ) : localidadeQuery.loading ? (
             <LoadingState label={`Buscando emendas destinadas a "${debouncedLocalidade}"...`} />
           ) : localidadeQuery.error ? (
             <ErrorState
               title="Erro ao consultar localidade"
-              message="Não foi possível carregar as emendas para a localidade solicitada."
-              onRetry={localidadeQuery.retry}
+              message={mensagemDaBusca(localidadeQuery.error, "Não foi possível carregar as emendas para a localidade solicitada.")}
+              onRetry={podeTentarDeNovo(localidadeQuery.error) ? localidadeQuery.retry : undefined}
             />
           ) : !localidadeQuery.data || localidadeQuery.data.total_emendas_encontradas === 0 ? (
             <EmptyState
@@ -603,6 +627,20 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
               </p>
             </div>
 
+            {/* Busca livre por autor (bancada, comissão ou relator) */}
+            <div className="relative max-w-xl">
+              <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={autorInput}
+                maxLength={TERMO_MAXIMO}
+                onChange={(e) => setAutorInput(e.target.value)}
+                placeholder="Ex: Bancada da Bahia, Comissão de Saúde, Relator..."
+                className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-slate-700 rounded-2xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 transition shadow-inner"
+                aria-label="Pesquisar por autor institucional"
+              />
+            </div>
+
             {/* Sugestões de Autores Institucionais */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-2">
               {AUTORES_SUGESTOES.map((item) => {
@@ -628,13 +666,18 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
           </div>
 
           {/* Resultado da Consulta Institucional */}
-          {autorQuery.loading ? (
+          {debouncedAutor.length < TERMO_MINIMO ? (
+            <EmptyState
+              title={`Digite ao menos ${TERMO_MINIMO} letras`}
+              message="Selecione um dos autores sugeridos acima ou informe o nome de uma bancada ou comissão."
+            />
+          ) : autorQuery.loading ? (
             <LoadingState label={`Consultando emendas do autor institucional "${debouncedAutor}"...`} />
           ) : autorQuery.error ? (
             <ErrorState
               title="Erro ao consultar autor institucional"
-              message="Não foi possível carregar os dados para este autor institucional."
-              onRetry={autorQuery.retry}
+              message={mensagemDaBusca(autorQuery.error, "Não foi possível carregar os dados para este autor institucional.")}
+              onRetry={podeTentarDeNovo(autorQuery.error) ? autorQuery.retry : undefined}
             />
           ) : !autorQuery.data ? (
             <EmptyState
@@ -662,6 +705,16 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
                       <p className="text-xs text-slate-400 mt-1 max-w-2xl">
                         {autorQuery.data.perfil_autor?.descricao_amigavel}
                       </p>
+                      {autorQuery.data.quantidade_autores > 1 && (
+                        <p className="text-xs text-amber-300 mt-2 max-w-2xl">
+                          Esta busca reuniu {autorQuery.data.quantidade_autores} autores (
+                          {autorQuery.data.autores_encontrados.map((a) => a.nome_amigavel).join(", ")}
+                          {autorQuery.data.quantidade_autores > autorQuery.data.autores_encontrados.length
+                            ? " e outros"
+                            : ""}
+                          ). Os totais abaixo somam todos eles.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -33,7 +33,7 @@ from etl.utils.provenance import mark_official
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("CeapEmendasSync")
 
-CEAP_OUTPUT = "despesas_ceap_2019_2026.json"  # nome mantido: o backend lê este arquivo
+CEAP_OUTPUT = "despesas_ceap_2019_2026.json"  # nome mantido: o `financas_loader` lê este arquivo e grava em `fin` (a API não abre arquivos)
 EMENDAS_OUTPUT = "emendas_parlamentares_2019_2026.json"
 ANO_INICIAL_CEAP = 2008  # início da publicação aberta da CEAP
 TOP_FORNECEDORES = 15
