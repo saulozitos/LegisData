@@ -10,6 +10,7 @@ import {
 import type { PoliticoDossier } from "@/services/api";
 import { formatCpfCnpj } from "./format";
 import { EmptyState } from "@/components/StateViews";
+import { fmtReais } from "@/lib/format";
 
 interface FinancingTabProps {
   dossier: PoliticoDossier;
@@ -28,7 +29,10 @@ export default function FinancingTab({ dossier }: FinancingTabProps) {
   }
   // Média por doador só existe com a quantidade de doadores conhecida; sem ela fica "n/d" em vez de um palpite.
   const campanha = dossier.financiamento_campanha;
-  const ticketMedio = campanha.total_doadores ? campanha.total_arrecadado / campanha.total_doadores : null;
+  // o resumo é de uma eleição só (eleições diferentes nunca se misturam no total): as demais ficam avisadas
+  const outrasEleicoes = (campanha.eleicoes_disponiveis ?? []).filter((ano) => ano !== campanha.ano_eleicao);
+  const ticketMedio =
+    campanha.total_doadores && campanha.total_arrecadado !== null ? campanha.total_arrecadado / campanha.total_doadores : null;
   return (
             <div className="space-y-6">
               {/* Header de Financiamento */}
@@ -56,7 +60,7 @@ export default function FinancingTab({ dossier }: FinancingTabProps) {
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-slate-400">Total Arrecadado:</span>
                     <span className="text-base font-black font-mono text-emerald-400 px-3 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
-                      R$ {(dossier?.financiamento_campanha?.total_arrecadado || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {fmtReais(dossier?.financiamento_campanha?.total_arrecadado)}
                     </span>
                   </div>
                 </div>
@@ -66,9 +70,14 @@ export default function FinancingTab({ dossier }: FinancingTabProps) {
                   <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5">
                     <span className="text-[10px] text-slate-400 font-medium block mb-1">Receita Total de Campanha</span>
                     <span className="text-lg font-black font-mono text-emerald-400 block">
-                      R$ {(dossier?.financiamento_campanha?.total_arrecadado || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {fmtReais(dossier?.financiamento_campanha?.total_arrecadado)}
                     </span>
                     <span className="text-[10px] text-slate-400 mt-1 block">Ano Eleitoral: {dossier.financiamento_campanha?.ano_eleicao ?? "ano não informado"}</span>
+                    {outrasEleicoes.length > 0 ? (
+                      <span className="text-[10px] text-slate-400 mt-1 block" data-testid="outras-eleicoes">
+                        Resumo da eleição mais recente; também há doações registradas de {outrasEleicoes.join(", ")}.
+                      </span>
+                    ) : null}
                   </div>
 
                   <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5">

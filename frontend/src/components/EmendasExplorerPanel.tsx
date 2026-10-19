@@ -180,7 +180,7 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
               <div className="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
                 <div
                   className="bg-cyan-400 h-full rounded-full"
-                  style={{ width: `${Math.min(100, estatisticas_gerais.taxa_execucao_pago_pct)}%` }}
+                  style={{ width: `${Math.min(100, estatisticas_gerais.taxa_execucao_pago_pct ?? 0)}%` }}
                 />
               </div>
             </div>

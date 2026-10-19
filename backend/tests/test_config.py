@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 import pytest
 from app.core.config import CLOUD_DB_HOST_SUFFIXES, Settings
@@ -96,6 +97,37 @@ def test_default_pool_stays_below_postgres_connection_limit():
 def test_concurrent_emendas_searches_stay_below_the_connection_pool():
     s = make_settings(DATABASE_URL="postgresql://u:p@h/db")
     assert 1 <= s.EMENDAS_MAX_BUSCAS_SIMULTANEAS < s.DB_POOL_SIZE + s.DB_MAX_OVERFLOW
+
+
+@pytest.mark.parametrize(
+    "simultaneas, pool, overflow",
+    [(0, 5, 5), (-1, 5, 5), (10, 5, 5), (11, 5, 5), (3, 2, 1), (1, 1, 0)],
+)
+def test_invalid_concurrent_emendas_searches_abort_startup(simultaneas, pool, overflow):
+    with pytest.raises(RuntimeError, match="EMENDAS_MAX_BUSCAS_SIMULTANEAS"):
+        make_settings(
+            DATABASE_URL="postgresql://u:p@h/db",
+            EMENDAS_MAX_BUSCAS_SIMULTANEAS=simultaneas,
+            DB_POOL_SIZE=pool,
+            DB_MAX_OVERFLOW=overflow,
+        )
+
+
+@pytest.mark.parametrize("simultaneas, pool, overflow", [(1, 1, 1), (9, 5, 5), (3, 5, 5)])
+def test_valid_concurrent_emendas_searches_are_accepted(simultaneas, pool, overflow):
+    s = make_settings(
+        DATABASE_URL="postgresql://u:p@h/db",
+        EMENDAS_MAX_BUSCAS_SIMULTANEAS=simultaneas,
+        DB_POOL_SIZE=pool,
+        DB_MAX_OVERFLOW=overflow,
+    )
+    assert s.EMENDAS_MAX_BUSCAS_SIMULTANEAS == simultaneas
+
+
+def test_compose_passes_the_pool_and_search_limits_to_the_api():
+    compose = (Path(__file__).resolve().parents[2] / "docker-compose.yml").read_text(encoding="utf-8")
+    for variavel in ("DB_POOL_SIZE", "DB_MAX_OVERFLOW", "EMENDAS_MAX_BUSCAS_SIMULTANEAS"):
+        assert re.search(rf"^\s+{variavel}: \$\{{{variavel}:-\d+\}}$", compose, re.MULTILINE), variavel
 
 
 def test_vercel_cors_regex_is_restricted_to_the_project():

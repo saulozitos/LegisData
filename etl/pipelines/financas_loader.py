@@ -25,6 +25,7 @@ from etl.pipelines.loader_helpers import (
     TIPOS_DE_AUTOR_INSTITUCIONAL,
     chave_da_prestacao,
     contagem_int4,
+    descricao_do_erro,
     fornecedores_do_parlamentar,
     ler_ceap,
     ler_certidao,
@@ -48,6 +49,7 @@ ensure_backend_on_path()
 
 from sqlalchemy import text  # noqa: E402
 from sqlalchemy.engine import Connection, Engine  # noqa: E402
+from sqlalchemy.exc import DBAPIError  # noqa: E402
 
 logger = logging.getLogger("FinancasLoader")
 
@@ -84,6 +86,9 @@ _SQL_CONTAGEM = {
     "fin.despesa_cota_fornecedor": "SELECT count(*) FROM fin.despesa_cota_fornecedor",
     "fin.despesa_cota_resumo": "SELECT count(*) FROM fin.despesa_cota_resumo",
 }
+# Emendas com autor identificado: o upsert regrava `pessoa_id`, então um resolvedor degradado (que não acha ninguém) não
+# encolhe a tabela, mas desliga as emendas de quem já estava ligado. Esta contagem alimenta a mesma guarda.
+_SQL_CONTAGEM_EMENDAS_IDENTIFICADAS = "SELECT count(*) FROM fin.emenda WHERE autor_situacao = 'IDENTIFICADO'"
 _SQL_DELETE = {
     "fin.despesa_cota": "DELETE FROM fin.despesa_cota",
     "fin.remuneracao": "DELETE FROM fin.remuneracao",
@@ -95,24 +100,28 @@ _SQL_DELETE = {
 }
 
 
-def _protege_contra_encolhimento(conn: Connection, tabela: str, novas: int) -> None:
-    """Levanta RuntimeError (sem tocar no banco) se a carga reduziria `tabela` a menos de FRACAO_MINIMA do que existe."""
-    existentes = int(conn.execute(text(_SQL_CONTAGEM[tabela])).scalar() or 0)
+def _recusa_encolhimento(rotulo: str, existentes: int, novas: int) -> None:
+    """Levanta RuntimeError se `novas` é menos de FRACAO_MINIMA de `existentes` (e há o bastante para valer a guarda)."""
     if existentes < MINIMO_PARA_GUARDA or novas >= existentes * FRACAO_MINIMA:
         return
     if os.environ.get(VARIAVEL_ACEITAR_ENCOLHIMENTO) == "1":
         logger.warning(
             "%s: %d -> %d linhas (encolhimento aceito por %s).",
-            tabela,
+            rotulo,
             existentes,
             novas,
             VARIAVEL_ACEITAR_ENCOLHIMENTO,
         )
         return
     raise RuntimeError(
-        f"{tabela}: a carga traria {novas} linhas e o banco tem {existentes}; nada foi alterado. "
+        f"{rotulo}: a carga traria {novas} linhas e o banco tem {existentes}; nada foi alterado. "
         f"Se a redução é legítima, rode de novo com {VARIAVEL_ACEITAR_ENCOLHIMENTO}=1."
     )
+
+
+def _protege_contra_encolhimento(conn: Connection, tabela: str, novas: int) -> None:
+    """Levanta RuntimeError (sem tocar no banco) se a carga reduziria `tabela` a menos de FRACAO_MINIMA do que existe."""
+    _recusa_encolhimento(tabela, int(conn.execute(text(_SQL_CONTAGEM[tabela])).scalar() or 0), novas)
 
 
 def _lotes(linhas: List[Dict[str, Any]]) -> Iterable[List[Dict[str, Any]]]:
@@ -209,6 +218,7 @@ def linhas_da_ceap(
             "sem_identificador": 0,
             "sem_proveniencia": 0,
             "sem_detalhe_por_ano": 0,
+            "total_fora_da_faixa": 0,
         },
     )
     for dados in ceap.values():
@@ -247,11 +257,22 @@ def carregar_ceap(conn: Connection, processed_dir: Path) -> Dict[str, int]:
     # deixa uma linha por chave em cada tabela e a guarda de encolhimento olha o tamanho final.
     despesas, repetidas = somar_linhas(despesas, ("p", "ano", "tipo"), ("valor",))
     fornecedores, _ = somar_linhas(fornecedores, ("p", "grupo"), ("valor", "notas"))
-    # a soma entre fontes (Câmara + Senado) também precisa caber na coluna
-    antes = len(despesas) + len(fornecedores)
-    despesas = [x for x in despesas if soma_na_faixa(x["valor"], LIMITE_CEAP) is not None]
-    fornecedores = [x for x in fornecedores if soma_na_faixa(x["valor"], LIMITE_CEAP) is not None]
-    contagem["soma_fora_da_faixa"] = antes - len(despesas) - len(fornecedores)
+    # a soma entre fontes (Câmara + Senado) também precisa caber na coluna. Um total que não cabe deixa o gasto da pessoa
+    # incompleto, e gasto parcial não vale como total: ela sai inteira (despesas, fornecedores e resumo).
+    fora_da_faixa = [x for x in despesas + fornecedores if soma_na_faixa(x["valor"], LIMITE_CEAP) is None]
+    sem_gasto_completo = {x["p"] for x in fora_da_faixa}
+    despesas = [x for x in despesas if x["p"] not in sem_gasto_completo]
+    fornecedores = [x for x in fornecedores if x["p"] not in sem_gasto_completo]
+    resumos = [x for x in resumos if x["p"] not in sem_gasto_completo]
+    contagem["soma_fora_da_faixa"] = len(fora_da_faixa)
+    contagem["pessoas_sem_gasto_completo"] = len(sem_gasto_completo)
+    if sem_gasto_completo:
+        logger.warning(
+            "CEAP: %d pessoa(s) com total fora da faixa da coluna ficaram sem gasto.", len(sem_gasto_completo)
+        )
+    if not despesas:
+        logger.warning("CEAP sem despesa que caiba na faixa (%s); o banco não foi alterado.", contagem)
+        return {**contagem, "despesas": 0}
     completos, resumo_incompleto = resumos_completos(resumos)
     resumos, _ = somar_linhas(completos, ("p",), ("notas",))
     if repetidas:
@@ -370,6 +391,11 @@ def carregar_emendas(conn: Connection, processed_dir: Path) -> Dict[str, int]:
         logger.warning("Emendas sem nenhum registro utilizável (%s); o banco não foi alterado.", contagem)
         return {**contagem, "emendas": 0}
     _protege_contra_encolhimento(conn, "fin.emenda", len(linhas))
+    _recusa_encolhimento(
+        "fin.emenda (autor identificado)",
+        int(conn.execute(text(_SQL_CONTAGEM_EMENDAS_IDENTIFICADAS)).scalar() or 0),
+        sum(1 for x in linhas if x["situacao"] == "IDENTIFICADO"),
+    )
     inicio = conn.execute(text("SELECT now()")).scalar()  # fixo na transação: toda linha tocada recebe este instante
     _inserir(conn, SQL_EMENDA, linhas)
     removidas = conn.execute(text("DELETE FROM fin.emenda WHERE atualizado_em < :t"), {"t": inicio}).rowcount
@@ -571,8 +597,12 @@ def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, 
                 resultados[chave] = funcao(conn, pasta)
             logger.info("Finanças — %s: %s", chave, resultados[chave])
         except Exception as exc:  # noqa: BLE001 - isolada de propósito; relatada abaixo
-            logger.error("Carga de finanças '%s' falhou: %s", chave, exc, exc_info=True)
-            falhas.append(f"{chave}: {exc}")
+            # o erro do banco traz os valores da linha no DETAIL: só a descrição saneada vai para o log e para o erro final
+            descricao = descricao_do_erro(exc)
+            logger.error(
+                "Carga de finanças '%s' falhou: %s", chave, descricao, exc_info=not isinstance(exc, DBAPIError)
+            )
+            falhas.append(f"{chave}: {descricao}")
     if falhas:
         raise RuntimeError("; ".join(falhas))
     return resultados

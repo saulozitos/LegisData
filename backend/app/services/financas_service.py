@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from app.core.errors import ErroDeDominio
 from app.core.numeros import opt_float as _opt_float
 from app.core.numeros import pct as _pct
+from app.core.numeros import taxa_ou_desconhecida
 from app.services.emendas_service import AREA_SEM_FUNCAO
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -217,7 +218,7 @@ def emendas_do_parlamentar(db: Session, pessoas: Sequence[int]) -> Optional[Dict
         "possui_dados": True,
         "total_empenhado": round(empenhado, 2),
         "total_pago": round(pago, 2),
-        "percentual_execucao": _pct(pago, empenhado),
+        "percentual_execucao": taxa_ou_desconhecida(pago, empenhado),
         "destinos_principais": _agrupado(db, ids, "localidade", pago),
         "distribuicao_por_tipo": _agrupado(db, ids, "tipo", pago),
         "distribuicao_por_area": _agrupado(db, ids, "area", pago),
@@ -239,12 +240,16 @@ def emendas_do_parlamentar(db: Session, pessoas: Sequence[int]) -> Optional[Dict
 
 
 def vazio_emendas() -> Dict[str, Any]:
-    """Resposta das emendas de quem não tem nenhuma, num dict novo a cada chamada (totais 0.0 e `possui_dados` falso)."""
+    """
+    Resposta das emendas de quem não tem nenhuma, num dict novo a cada chamada. Os totais e a taxa são desconhecidos
+    (None), não zero: a base cobre só 2019 em diante, e quem é homônimo, não cadastrado ou do Senado sem vínculo também
+    cai aqui, então "R$ 0 pagos" afirmaria mais do que a fonte sabe.
+    """
     return {
         "possui_dados": False,
-        "total_empenhado": 0.0,
-        "total_pago": 0.0,
-        "percentual_execucao": 0.0,
+        "total_empenhado": None,
+        "total_pago": None,
+        "percentual_execucao": None,
         "destinos_principais": [],
         "distribuicao_por_tipo": [],
         "distribuicao_por_area": [],
@@ -254,8 +259,8 @@ def vazio_emendas() -> Dict[str, Any]:
 
 
 def vazio_emendas_detalhadas() -> Dict[str, Any]:
-    """Resposta de `/emendas` de quem não tem pessoa nem emenda, num dict novo a cada chamada."""
-    return {"possui_dados": False, "total_empenhado": 0.0, "total_pago": 0.0, "emendas": []}
+    """Resposta de `/emendas` de quem não tem pessoa nem emenda, num dict novo a cada chamada (totais desconhecidos)."""
+    return {"possui_dados": False, "total_empenhado": None, "total_pago": None, "emendas": []}
 
 
 def emendas_detalhadas(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
@@ -264,10 +269,7 @@ def emendas_detalhadas(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
     if not ids:
         return vazio_emendas_detalhadas()
     empenhado, pago = db.execute(
-        text(
-            "SELECT coalesce(sum(valor_empenhado), 0), coalesce(sum(valor_pago), 0) FROM fin.emenda "
-            "WHERE pessoa_id = ANY(:ids)"
-        ),
+        text("SELECT sum(valor_empenhado), sum(valor_pago) FROM fin.emenda WHERE pessoa_id = ANY(:ids)"),
         {"ids": ids},
     ).one()
     linhas = db.execute(
@@ -279,8 +281,8 @@ def emendas_detalhadas(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
     ).all()
     return {
         "possui_dados": len(linhas) > 0,
-        "total_empenhado": float(empenhado),
-        "total_pago": float(pago),
+        "total_empenhado": _opt_float(empenhado),  # sem emenda a soma é NULL: desconhecido, não zero
+        "total_pago": _opt_float(pago),
         "emendas": [
             {
                 "ano": r.ano,
@@ -339,7 +341,7 @@ def remuneracao(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
     total_ceap_ano: Optional[float] = None
     total_beneficios_ano: Optional[float] = None
     media_ceap: Optional[float] = None
-    acumulado = Decimal("0.00")
+    acumulado: Optional[float] = None
     if ano is not None:
         bruto, ceap, qtd_ceap, beneficios, qtd_beneficios = db.execute(
             text(
@@ -356,12 +358,10 @@ def remuneracao(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
             media_ceap = float((Decimal(ceap) / Decimal(qtd_ceap)).quantize(Decimal("0.01")))
         if qtd_beneficios:
             total_beneficios_ano = float(beneficios)
-        acumulado = Decimal(
+        acumulado = _opt_float(
             db.execute(
-                text("SELECT coalesce(sum(salario_bruto), 0) FROM fin.remuneracao WHERE pessoa_id = ANY(:ids)"),
-                {"ids": ids},
+                text("SELECT sum(salario_bruto) FROM fin.remuneracao WHERE pessoa_id = ANY(:ids)"), {"ids": ids}
             ).scalar()
-            or 0
         )
     return {
         "historico": historico,
@@ -373,7 +373,7 @@ def remuneracao(db: Session, pessoas: Sequence[int]) -> Dict[str, Any]:
         "media_ceap": media_ceap,
         "bruto_atual": historico[0]["salario_bruto"] if historico else None,
         "liquido_atual": historico[0]["salario_liquido"] if historico else None,
-        "acumulado": float(acumulado),
+        "acumulado": acumulado,
     }
 
 
@@ -403,22 +403,86 @@ def declaracoes_na_janela_da_remuneracao(
     return janela if len(janela) >= 2 else []
 
 
-def subsidio_na_janela(db: Session, pessoas: Sequence[int], depois_do_ano: int, ate_o_ano: int) -> Optional[float]:
+def subsidio_na_janela(
+    db: Session, pessoas: Sequence[int], depois_do_ano: int, ate_o_ano: int
+) -> Optional[Tuple[float, int]]:
     """
-    Subsídio bruto registrado nos anos `depois_do_ano < ano <= ate_o_ano`: o ano da declaração-base fica de fora porque a
-    declaração dele já traz o patrimônio acumulado até ali. None (desconhecido, não zero) sem remuneração na faixa ou
-    com algum ano da faixa sem registro: um buraco no meio deixaria o divisor menor que o período do patrimônio.
+    (subsídio bruto, meses com folha) registrados nos anos `depois_do_ano < ano <= ate_o_ano`: o ano da declaração-base
+    fica de fora porque a declaração dele já traz o patrimônio acumulado até ali. None (desconhecido, não zero) sem
+    remuneração na faixa, com algum ano da faixa sem registro ou com algum ano INTERIOR (nem o primeiro nem o último da
+    faixa, que podem ser parciais por posse ou fim de mandato) com menos de 12 meses: um buraco no meio deixaria o divisor
+    menor que o período do patrimônio e a razão sairia inflada.
     """
     if not pessoas:
         return None
-    soma, anos = db.execute(
+    anos = db.execute(
         text(
-            "SELECT sum(salario_bruto), count(DISTINCT ano) FROM fin.remuneracao "
-            "WHERE pessoa_id = ANY(:ids) AND ano > :depois AND ano <= :ate"
+            "SELECT ano, count(DISTINCT mes) AS meses, sum(salario_bruto) AS soma FROM fin.remuneracao "
+            "WHERE pessoa_id = ANY(:ids) AND ano > :depois AND ano <= :ate GROUP BY ano ORDER BY ano"
         ),
         {"ids": list(pessoas), "depois": depois_do_ano, "ate": ate_o_ano},
-    ).one()
-    return float(soma) if anos and anos == ate_o_ano - depois_do_ano else None
+    ).all()
+    if not anos or len(anos) != ate_o_ano - depois_do_ano:
+        return None
+    if any(r.meses < 12 for r in anos if depois_do_ano + 1 < r.ano < ate_o_ano):
+        return None
+    return float(sum(r.soma for r in anos)), int(sum(r.meses for r in anos))
+
+
+def comparacao_patrimonial(
+    db: Session,
+    pessoas: Sequence[int],
+    declaracoes: Sequence[Dict[str, Any]],
+    primeiro_ano_remuneracao: Optional[int],
+    ultimo_ano_remuneracao: Optional[int],
+) -> Dict[str, Any]:
+    """
+    Evolução do patrimônio declarado contra o subsídio bruto registrado, as duas pontas no MESMO período: a base é a
+    última declaração até o primeiro ano da remuneração, o fim é a última até o último ano dela, e o divisor soma só o
+    subsídio dentro da janela (não o acumulado do mandato inteiro, que alimenta o ROI). Sem janela, sem subsídio na janela
+    ou com subsídio zero (que não dá razão) tudo vem None, nunca zero.
+    """
+    janela = declaracoes_na_janela_da_remuneracao(declaracoes, primeiro_ano_remuneracao, ultimo_ano_remuneracao)
+    subsidio = subsidio_na_janela(db, pessoas, janela[0]["ano"], janela[-1]["ano"]) if janela else None
+    if subsidio is None or subsidio[0] <= 0:
+        return {
+            "delta_patrimonio": None,
+            "salario_acumulado_estimado": None,
+            "razao_patrimonio_renda": None,
+            "periodo_comparado": None,
+            "compatibilidade": None,
+            "diagnostico": (
+                "Dados insuficientes (requer uma declaração de bens até o início da remuneração registrada e outra "
+                "depois dela, até o fim dela)."
+            ),
+        }
+    soma, meses = subsidio
+    delta = round(janela[-1]["valor"] - janela[0]["valor"], 2)
+    razao = round(delta / soma, 2)
+    if delta <= 0 or razao <= 0.8:
+        compatibilidade = "COMPATÍVEL"
+        diagnostico = "Crescimento patrimonial compatível ou inferior ao somatório dos subsídios brutos registrados."
+    elif razao <= 2.0:
+        compatibilidade = "MODERADO"
+        diagnostico = "Evolução patrimonial compatível com rendimentos oficiais acrescidos de valorização imobiliária ou investimentos."
+    else:
+        compatibilidade = "ATÍPICO"
+        diagnostico = f"Variação atípica: o patrimônio declarado cresceu {razao}x o total de subsídios registrados."
+    return {
+        "delta_patrimonio": delta,
+        "salario_acumulado_estimado": round(soma, 2),
+        "razao_patrimonio_renda": razao,
+        "periodo_comparado": {
+            "de": janela[0]["ano"],
+            "ate": janela[-1]["ano"],
+            # o subsídio somado começa no ano seguinte ao da base e termina no ano do fim da janela
+            "subsidio_de": janela[0]["ano"] + 1,
+            "subsidio_ate": janela[-1]["ano"],
+            "meses_de_subsidio": meses,
+        },
+        "compatibilidade": compatibilidade,
+        "diagnostico": diagnostico,
+    }
 
 
 # ── TSE ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -428,11 +492,18 @@ def declaracoes_de_patrimonio(db: Session, pessoas: Sequence[int]) -> List[Dict[
     linhas = db.execute(
         text(
             "SELECT ano_eleicao, valor_declarado, detalhes FROM fin.declaracao_patrimonio "
-            "WHERE pessoa_id = ANY(:ids) ORDER BY ano_eleicao"
+            "WHERE pessoa_id = ANY(:ids) ORDER BY ano_eleicao, valor_declarado DESC, id"
         ),
         {"ids": list(pessoas)},
     ).all()
-    return [{"ano": r.ano_eleicao, "valor": float(r.valor_declarado), "detalhes": r.detalhes} for r in linhas]
+    # a mesma eleição pode vir de duas pessoas ligadas ao parlamentar: fica uma declaração por ano (a de maior valor, depois a
+    # de menor id), para a janela da comparação não depender da ordem em que o banco devolve as linhas
+    por_ano: Dict[int, Dict[str, Any]] = {}
+    for r in linhas:
+        por_ano.setdefault(
+            r.ano_eleicao, {"ano": r.ano_eleicao, "valor": float(r.valor_declarado), "detalhes": r.detalhes}
+        )
+    return list(por_ano.values())
 
 
 def doacoes_de_campanha(db: Session, pessoas: Sequence[int]) -> List[Dict[str, Any]]:
@@ -462,6 +533,7 @@ def doacoes_de_campanha(db: Session, pessoas: Sequence[int]) -> List[Dict[str, A
     ]
 
 
+FORNECEDOR_NAO_IDENTIFICADO = "Fornecedor não identificado"  # idem, para o fornecedor sem nome na fonte
 DOADOR_ANONIMO = "Doador não identificado"  # o mesmo rótulo que o ETL grava quando a fonte não informa o nome
 
 
@@ -469,6 +541,8 @@ def _chave_do_doador(doacao: Dict[str, Any]) -> Tuple[Any, ...]:
     """
     Quem é o doador de um recibo: o recibo inteiro quando não há nome nem documento (cada um é um desconhecido), o CNPJ
     sem pontuação quando há 14 dígitos (o mesmo CNPJ com e sem pontuação é um doador só) e, senão, o par nome e documento.
+    Sem documento, o nome sozinho identifica: dois homônimos sem documento viram um doador (a quantidade pode sair menor),
+    e a alternativa de tratar cada recibo como um doador contaria o mesmo doador várias vezes.
     """
     documento = doacao["cpf_cnpj_doador"]
     if documento is None and doacao["nome_doador"] == DOADOR_ANONIMO:
@@ -498,8 +572,8 @@ def resumo_das_doacoes(doacoes: Sequence[Dict[str, Any]], ano_eleicao: Optional[
         return {
             "ano_eleicao": None,
             "eleicoes_disponiveis": [],
-            "total_arrecadado": 0.0,
-            "total_doadores": 0,
+            "total_arrecadado": None,  # sem doação registrada o total é desconhecido, não zero
+            "total_doadores": None,
             "demais_doadores": None,
             "top_doadores": [],
             "todas_doacoes": [],

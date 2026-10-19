@@ -267,8 +267,8 @@ def test_resumo_das_doacoes_soma_tudo_mas_lista_so_os_cinco_maiores_com_a_partic
     vazio = {
         "ano_eleicao": None,
         "eleicoes_disponiveis": [],
-        "total_arrecadado": 0.0,
-        "total_doadores": 0,
+        "total_arrecadado": None,  # sem doação o total é desconhecido, não zero
+        "total_doadores": None,
         "demais_doadores": None,
         "top_doadores": [],
         "todas_doacoes": [],

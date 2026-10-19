@@ -1,9 +1,12 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, configure } from "@testing-library/react";
 import EmendasExplorerPanel from "./EmendasExplorerPanel";
 import * as api from "@/services/api";
 import { ApiError } from "@/lib/errors";
+
+// o painel espera 400 ms antes de buscar (debounce): a margem do `findBy*` padrão (1 s) ficaria curta numa máquina lenta
+configure({ asyncUtilTimeout: 4000 });
 
 vi.mock("@/services/api", () => ({
   getEmendasResumo: vi.fn(),
@@ -345,6 +348,32 @@ describe("EmendasExplorerPanel", () => {
     fireEvent.change(screen.getByLabelText(/Pesquisar por município ou estado/i), { target: { value: "silva" } });
     expect(await screen.findByText(/A busca é ampla demais; informe um termo mais específico\./)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Tentar novamente/i })).not.toBeInTheDocument();
+  });
+
+  it("busca ampla demais (400) na aba de autores também mostra a orientação e não oferece repetir", async () => {
+    vi.mocked(api.getEmendasResumo).mockResolvedValue(mockResumo);
+    vi.mocked(api.getEmendasPorAutor).mockRejectedValue(
+      new ApiError("A busca é ampla demais; informe um termo mais específico.", "/emendas/autor/x", 400)
+    );
+    render(<EmendasExplorerPanel />);
+    await screen.findByText(/Explorador Nacional de Emendas Orçamentárias/i);
+    fireEvent.click(screen.getByRole("button", { name: /Bancadas & Relator/i }));
+    fireEvent.change(screen.getByLabelText(/Pesquisar por autor institucional/i), { target: { value: "bancada" } });
+    expect(await screen.findByText(/A busca é ampla demais; informe um termo mais específico\./)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Tentar novamente/i })).not.toBeInTheDocument();
+  });
+
+  it("muitas buscas em andamento (503) na aba de cidade também permite tentar de novo", async () => {
+    vi.mocked(api.getEmendasResumo).mockResolvedValue(mockResumo);
+    vi.mocked(api.getEmendasPorLocalidade).mockRejectedValue(
+      new ApiError("Há muitas buscas em andamento; tente de novo em instantes.", "/emendas/localidade/x", 503)
+    );
+    render(<EmendasExplorerPanel />);
+    await screen.findByText(/Explorador Nacional de Emendas Orçamentárias/i);
+    fireEvent.click(screen.getByRole("button", { name: /Busca por Cidade\/UF/i }));
+    fireEvent.change(screen.getByLabelText(/Pesquisar por município ou estado/i), { target: { value: "silva" } });
+    expect(await screen.findByText(/Há muitas buscas em andamento/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Tentar novamente/i })).toBeInTheDocument();
   });
 
   it("muitas buscas em andamento (503) mostra a orientação e permite tentar de novo", async () => {

@@ -29,7 +29,7 @@ import {
   PieChart as LucidePieChart,
 } from "lucide-react";
 import type { PoliticoDossier } from "@/services/api";
-import { fmtNum, fmtPct, isNum } from "@/lib/format";
+import { fmtNum, fmtPct, fmtReais, isNum } from "@/lib/format";
 import PartyLink from "@/components/PartyLink";
 import { safeExternalUrl } from "@/lib/safeUrl";
 import { formatCpfCnpj, gradeBadgeClass, riskBadgeClass, compatBadgeClass, orUnavailable } from "./format";
@@ -167,11 +167,11 @@ export default function OverviewTab({ dossier, onChangeTab, onSelectParty }: Ove
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-semibold text-slate-400">Emendas</span>
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                          {fmtNum(indices.eficiencia_emendas.taxa_conversao_pct, 0)}% pagas
+                          {fmtPct(indices.eficiencia_emendas.taxa_conversao_pct, 0)} pagas
                         </span>
                       </div>
                       <div className="text-xs font-mono font-bold text-slate-200">
-                        Quota PIX: {fmtNum(indices.eficiencia_emendas.percentual_pix, 0)}%
+                        Quota PIX: {fmtPct(indices.eficiencia_emendas.percentual_pix, 0)}
                       </div>
                       <p className="text-[10px] text-slate-400 line-clamp-2">
                         Foco: {indices.eficiencia_emendas.municipio_predileto || "Distribuído"}
@@ -557,7 +557,7 @@ export default function OverviewTab({ dossier, onChangeTab, onSelectParty }: Ove
                       Total Arrecadado na Campanha
                     </span>
                     <span className="text-lg sm:text-xl font-black font-mono text-emerald-400 block leading-tight">
-                      R$ {(dossier?.financiamento_campanha?.total_arrecadado || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {fmtReais(dossier?.financiamento_campanha?.total_arrecadado)}
                     </span>
                     <span className="text-[10px] text-slate-400 mt-1 block">
                       Receita total declarada à Justiça Eleitoral

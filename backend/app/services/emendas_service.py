@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 from app.core.config import settings
 from app.core.errors import ErroDeDominio
 from app.core.names import strip_accents
-from app.core.numeros import pct
+from app.core.numeros import taxa_ou_desconhecida
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
@@ -277,7 +277,7 @@ def resumo(db: Session) -> Dict[str, Any]:
             "total_emendas": int(total.n),
             "total_reservado_empenhado_brl": round(empenhado, 2),
             "total_entregue_pago_brl": round(pago, 2),
-            "taxa_execucao_pago_pct": pct(pago, empenhado),
+            "taxa_execucao_pago_pct": taxa_ou_desconhecida(pago, empenhado),
         },
         "por_tipo_autor": por_tipo_autor,
         "por_area_tematica": _por_area(areas),
@@ -435,7 +435,7 @@ def por_localidade(db: Session, localidade: str, limite: int) -> Dict[str, Any]:
         "total_emendas_encontradas": int(total["n"]),
         "total_reservado_empenhado_brl": round(empenhado, 2),
         "total_entregue_pago_brl": round(pago, 2),
-        "taxa_execucao_pct": pct(pago, empenhado),
+        "taxa_execucao_pct": taxa_ou_desconhecida(pago, empenhado),
         "divisao_por_area": _por_area(_objetos(dados["areas"])),
         "emendas": [
             {**_item_da_emenda(r), "autor": perfil_do_autor(r.autor_texto, r.tipo_autor)}
@@ -467,7 +467,7 @@ def por_autor(db: Session, autor: str, limite: int) -> Dict[str, Any]:
         "total_emendas_enviadas": int(total["n"]),
         "total_reservado_empenhado_brl": round(empenhado, 2),
         "total_entregue_pago_brl": round(pago, 2),
-        "taxa_execucao_pct": pct(pago, empenhado),
+        "taxa_execucao_pct": taxa_ou_desconhecida(pago, empenhado),
         "top_destinos": [
             {
                 "localidade": r.localidade,

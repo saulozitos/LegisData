@@ -970,9 +970,11 @@ export interface EmendaDetalheItem {
 
 export interface EmendasParlamentaresData {
   possui_dados: boolean;
-  total_empenhado: number;
-  total_pago: number;
-  percentual_execucao: number;
+  /** `null` quando o parlamentar não tem emenda na base: o total é desconhecido, não zero. */
+  total_empenhado: number | null;
+  total_pago: number | null;
+  /** `null` sem emenda ou sem valor empenhado (a taxa não existe). */
+  percentual_execucao: number | null;
   destinos_principais: EmendaDestinoItem[];
   distribuicao_por_tipo: EmendaDistribuicaoItem[];
   distribuicao_por_area: EmendaDistribuicaoItem[];
@@ -1038,7 +1040,8 @@ export interface FinanciamentoCampanhaData {
   possui_dados: boolean;
   /** Eleição do resumo; `null` quando o parlamentar não tem nenhuma doação registrada. */
   ano_eleicao: number | null;
-  total_arrecadado: number;
+  /** `null` quando não há doação registrada: o total é desconhecido, não zero. */
+  total_arrecadado: number | null;
   /** Doadores distintos da campanha (a linha "Demais doadores" soma o N da fonte); `null` se a fonte não informa N. */
   total_doadores: number | null;
   /** Linha agregada "Demais doadores (N)" da fonte; `null` quando todos os doadores estão listados. */
@@ -1116,7 +1119,7 @@ export interface EnriquecimentoPatrimonialData {
   salario_acumulado_estimado: number | null;
   razao_patrimonio_renda: number | null;
   /** Anos das duas declarações comparadas (mesmo período do subsídio registrado); `null` sem comparação. */
-  periodo_comparado?: { de: number; ate: number; subsidio_de: number; subsidio_ate: number } | null;
+  periodo_comparado?: { de: number; ate: number; subsidio_de: number; subsidio_ate: number; meses_de_subsidio?: number } | null;
   compatibilidade: "COMPATÍVEL" | "MODERADO" | "ATÍPICO" | null;
   diagnostico: string;
 }
@@ -1131,11 +1134,12 @@ export interface EstabilidadePartidariaData {
 
 export interface EficienciaEmendasData {
   taxa_conversao_pct: number | null;
-  total_empenhado: number;
-  total_pago: number;
-  percentual_pix: number;
+  /** `null` sem emenda na base (desconhecido, não zero), igual a `percentual_pix` e à concentração. */
+  total_empenhado: number | null;
+  total_pago: number | null;
+  percentual_pix: number | null;
   municipio_predileto: string | null;
-  concentracao_municipio_predileto_pct: number;
+  concentracao_municipio_predileto_pct: number | null;
   classificacao: string | null;
   diagnostico: string;
 }
@@ -1959,7 +1963,7 @@ export interface EmendasResumoResponse {
     total_emendas: number;
     total_reservado_empenhado_brl: number;
     total_entregue_pago_brl: number;
-    taxa_execucao_pago_pct: number;
+    taxa_execucao_pago_pct: number | null;
   };
   por_tipo_autor: Record<
     string,
@@ -1990,7 +1994,7 @@ export interface EmendasLocalidadeResponse {
   total_emendas_encontradas: number;
   total_reservado_empenhado_brl: number;
   total_entregue_pago_brl: number;
-  taxa_execucao_pct: number;
+  taxa_execucao_pct: number | null;
   divisao_por_area: Array<{
     area: string;
     rotulo: string;
@@ -2035,7 +2039,7 @@ export interface EmendasAutorResponse {
   total_emendas_enviadas: number;
   total_reservado_empenhado_brl: number;
   total_entregue_pago_brl: number;
-  taxa_execucao_pct: number;
+  taxa_execucao_pct: number | null;
   top_destinos: Array<{ localidade: string; total_empenhado: number; total_pago: number; quantidade: number }>;
   por_area_tematica: Array<{
     area: string;

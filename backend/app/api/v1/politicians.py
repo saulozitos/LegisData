@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.core.links import url_oficial_proposicao
 from app.core.numeros import brl
 from app.core.numeros import pct as _pct
+from app.core.numeros import taxa_ou_desconhecida
 from app.core.query_utils import ALL_KEYWORDS, BRT, contains
 from app.models import (
     CargoPoliticoEnum,
@@ -1143,8 +1144,17 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         for m in materias_propostas
         if m["papel_autoria"] == "AUTOR_PRINCIPAL" and m["tipo"] in ("PEC", "PLP", "PL", "MPV")
     )
-    roi_dados_ok = gasto_ceap is not None and salario_acumulado_registrado > 0 and total_sessoes > 0
-    custo_total_operacional = (gasto_ceap or 0.0) + salario_acumulado_registrado if roi_dados_ok else None
+    roi_dados_ok = (
+        gasto_ceap is not None
+        and salario_acumulado_registrado is not None
+        and salario_acumulado_registrado > 0
+        and total_sessoes > 0
+    )
+    custo_total_operacional = (
+        gasto_ceap + salario_acumulado_registrado
+        if roi_dados_ok and gasto_ceap is not None and salario_acumulado_registrado is not None
+        else None
+    )
     roi = calcular_roi(
         custo_total=custo_total_operacional or 0.0,
         pontos_ialp=pontos_ialp,
@@ -1164,10 +1174,21 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     }
 
     # 2. Concentração de Fornecedores da CEAP (Índice HHI)
-    maiores_forn = custos_ceap.get("maiores_fornecedores") or []
+    # o rótulo "Fornecedor não identificado" junta lançamentos sem nome de fornecedores diferentes: não é uma entidade, e
+    # elevada ao quadrado no HHI acusaria um fornecedor que não existe. Fica no gasto total, fora do índice.
+    maiores_forn = [
+        f
+        for f in (custos_ceap.get("maiores_fornecedores") or [])
+        if not (f["cnpj_cpf"] is None and f["nome_fornecedor"] == financas_service.FORNECEDOR_NAO_IDENTIFICADO)
+    ]
+    # os maiores fornecedores são parte do gasto: se somam mais que ele, as duas fontes não cobrem o mesmo período e a
+    # participação passaria de 100% (mesma regra de "parcial não vale como total"), então o índice fica desconhecido
+    fornecedores_coerentes = not gasto_ceap or (
+        sum(f["total_recebido"] for f in (custos_ceap.get("maiores_fornecedores") or [])) <= gasto_ceap * 1.001
+    )
     hhi: Optional[float]
     top1_pct: Optional[float]
-    if gasto_ceap and gasto_ceap > 0 and maiores_forn:
+    if gasto_ceap and gasto_ceap > 0 and maiores_forn and fornecedores_coerentes:
         hhi = sum(((f["total_recebido"] / gasto_ceap * 100.0) ** 2) for f in maiores_forn)
         top1_forn = maiores_forn[0]
         top1_pct = round(top1_forn["total_recebido"] / gasto_ceap * 100.0, 1)
@@ -1186,7 +1207,12 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         top1_pct = None
         top1_forn = None
         nivel_risco_ceap = None
-        diag_hhi = "Sem despesas registradas para calcular concentração."
+        if not gasto_ceap:
+            diag_hhi = "Sem despesas registradas para calcular concentração."
+        elif not fornecedores_coerentes:
+            diag_hhi = "Fornecedores e gasto total não cobrem o mesmo período; a concentração não foi calculada."
+        else:
+            diag_hhi = "Sem fornecedor identificado entre os maiores para calcular concentração."
 
     concentracao_ceap = {
         "indice_hhi": round(hhi, 1) if hhi is not None else None,
@@ -1197,54 +1223,10 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         "diagnostico": diag_hhi,
     }
 
-    # 3. Evolução patrimonial vs. remuneração oficial registrada: as duas pontas cobrem o MESMO período. A base é a última
-    # declaração até o primeiro ano da remuneração, o fim é a última até o último ano dela, e o divisor soma só o subsídio
-    # dentro da janela (não o acumulado do mandato inteiro, que alimenta o ROI).
-    janela_patrimonio = financas_service.declaracoes_na_janela_da_remuneracao(
-        patrimonio_historico, remun["primeiro_ano"], remun["ano"]
+    # 3. Evolução patrimonial vs. remuneração oficial registrada (as duas pontas cobrem o MESMO período; ver o serviço)
+    enriquecimento_patrimonial = financas_service.comparacao_patrimonial(
+        db, pessoas, patrimonio_historico, remun["primeiro_ano"], remun["ano"]
     )
-    subsidio_da_janela = (
-        financas_service.subsidio_na_janela(db, pessoas, janela_patrimonio[0]["ano"], janela_patrimonio[-1]["ano"])
-        if janela_patrimonio
-        else None
-    )
-    if subsidio_da_janela:
-        delta_patrimonio: Optional[float] = round(janela_patrimonio[-1]["valor"] - janela_patrimonio[0]["valor"], 2)
-        razao_patrimonio_renda: Optional[float] = round(delta_patrimonio / subsidio_da_janela, 2)
-
-        if delta_patrimonio <= 0 or razao_patrimonio_renda <= 0.8:
-            compat_patrimonial = "COMPATÍVEL"
-            diag_patrimonio = (
-                "Crescimento patrimonial compatível ou inferior ao somatório dos subsídios brutos registrados."
-            )
-        elif razao_patrimonio_renda <= 2.0:
-            compat_patrimonial = "MODERADO"
-            diag_patrimonio = "Evolução patrimonial compatível com rendimentos oficiais acrescidos de valorização imobiliária ou investimentos."
-        else:
-            compat_patrimonial = "ATÍPICO"
-            diag_patrimonio = f"Variação atípica: o patrimônio declarado cresceu {razao_patrimonio_renda}x o total de subsídios registrados."
-        periodo_comparado: Optional[Dict[str, int]] = {
-            "de": janela_patrimonio[0]["ano"],
-            "ate": janela_patrimonio[-1]["ano"],
-            # o subsídio somado começa no ano seguinte ao da base e termina no ano do fim da janela
-            "subsidio_de": janela_patrimonio[0]["ano"] + 1,
-            "subsidio_ate": janela_patrimonio[-1]["ano"],
-        }
-    else:
-        delta_patrimonio = None
-        razao_patrimonio_renda = None
-        compat_patrimonial = None
-        periodo_comparado = None
-        diag_patrimonio = "Dados insuficientes (requer uma declaração de bens até o início da remuneração registrada e outra depois dela, até o fim dela)."
-
-    enriquecimento_patrimonial = {
-        "delta_patrimonio": round(delta_patrimonio, 2) if delta_patrimonio is not None else None,
-        "salario_acumulado_estimado": round(subsidio_da_janela, 2) if subsidio_da_janela else None,
-        "razao_patrimonio_renda": razao_patrimonio_renda,
-        "periodo_comparado": periodo_comparado,
-        "compatibilidade": compat_patrimonial,
-        "diagnostico": diag_patrimonio,
-    }
 
     # 4. Estabilidade Partidária (período derivado das datas de filiação registradas)
     total_filiacoes = len(filiacoes_list)
@@ -1280,8 +1262,9 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     }
 
     # 5. Eficiência e Alocação de Emendas Parlamentares
-    tot_emp_emendas = float(emendas_parlamentares.get("total_empenhado") or 0.0)
-    tot_pago_emendas = float(emendas_parlamentares.get("total_pago") or 0.0)
+    # sem emenda na base os totais, o PIX e a concentração são desconhecidos (None), não zero
+    tot_emp_emendas: Optional[float] = emendas_parlamentares.get("total_empenhado")
+    tot_pago_emendas: Optional[float] = emendas_parlamentares.get("total_pago")
     destinos = emendas_parlamentares.get("destinos_principais") or []
     top1_dest = destinos[0] if destinos else None
     dist_tipos = emendas_parlamentares.get("distribuicao_por_tipo") or []
@@ -1289,10 +1272,15 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         (t for t in dist_tipos if "PIX" in t.get("tipo", "").upper() or "ESPECIAL" in t.get("tipo", "").upper()),
         None,
     )
-    pct_pix = pix_item.get("percentual", 0.0) if pix_item else 0.0
+    tem_emendas = bool(emendas_parlamentares.get("possui_dados"))
+    pct_pix: Optional[float] = (pix_item.get("percentual", 0.0) if pix_item else 0.0) if tem_emendas else None
 
-    if tot_emp_emendas > 0:
-        taxa_exec_emendas: Optional[float] = round((tot_pago_emendas / tot_emp_emendas * 100.0), 1)
+    taxa_exec_emendas: Optional[float] = (
+        taxa_ou_desconhecida(tot_pago_emendas, tot_emp_emendas)
+        if tot_emp_emendas is not None and tot_pago_emendas is not None
+        else None
+    )
+    if taxa_exec_emendas is not None:
         if taxa_exec_emendas >= 85.0:
             classif_emendas = "ALTA_EFICIÊNCIA"
             diag_emendas = f"Excelente índice de liberação: {taxa_exec_emendas}% dos recursos empenhados foram efetivamente pagos aos destinos."
@@ -1305,9 +1293,10 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             classif_emendas = "BAIXA_EFICIÊNCIA"
             diag_emendas = f"Baixa conversão orçamentária: apenas {taxa_exec_emendas}% dos recursos alocados foram efetivamente liquidados."
     else:
-        taxa_exec_emendas = None
         classif_emendas = None
-        diag_emendas = "Sem emendas registradas."
+        diag_emendas = (
+            "Sem emendas registradas." if not tem_emendas else "Sem valor empenhado para calcular a execução."
+        )
 
     eficiencia_emendas = {
         "taxa_conversao_pct": taxa_exec_emendas,
@@ -1315,7 +1304,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         "total_pago": tot_pago_emendas,
         "percentual_pix": pct_pix,
         "municipio_predileto": top1_dest["localidade"] if top1_dest else None,
-        "concentracao_municipio_predileto_pct": (top1_dest["percentual"] if top1_dest else 0.0),
+        "concentracao_municipio_predileto_pct": (top1_dest["percentual"] if top1_dest else None),
         "classificacao": classif_emendas,
         "diagnostico": diag_emendas,
     }

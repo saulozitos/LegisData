@@ -28,9 +28,14 @@ def _add_remuneration(db, seed, months=2, ano=2024, bruto=40000):
         )
 
 
+def _ano_completo(db, seed, ano, bruto=2000):
+    """Os 12 meses do ano: os anos do meio de uma janela de subsídio precisam estar completos."""
+    _add_remuneration(db, seed, months=12, ano=ano, bruto=bruto)
+
+
 def _subsidio_de_2019_a_2022(db, seed):
-    for ano in (2019, 2020, 2021, 2022):  # um registro por ano da janela: sem buraco no divisor
-        _add_remuneration(db, seed, months=1, ano=ano, bruto=20000)
+    for ano in (2019, 2020, 2021, 2022):  # os 4 anos da janela, completos: 24.000 por ano, 96.000 no total
+        _ano_completo(db, seed, ano)
 
 
 def _declarar_patrimonio(db, politico, ano, valor, detalhes=None):
@@ -103,7 +108,7 @@ def test_patrimony_history_growth_and_compatibility(client, db, seed):
 
 @pytest.mark.parametrize("final_value,expected", [(100100, "COMPATÍVEL"), (190000, "MODERADO"), (900000, "ATÍPICO")])
 def test_patrimony_compatibility_classification(client, db, seed, final_value, expected):
-    _subsidio_de_2019_a_2022(db, seed)  # 80.000 no total: 20.000 por ano
+    _subsidio_de_2019_a_2022(db, seed)  # 96.000 no total
     _declarar_patrimonio(db, seed.fulano, 2018, 100000)  # a base: a última declaração até o início da remuneração
     _declarar_patrimonio(db, seed.fulano, 2022, final_value)
     db.commit()
@@ -112,15 +117,22 @@ def test_patrimony_compatibility_classification(client, db, seed, final_value, e
 
 
 def test_patrimonio_so_e_comparado_na_janela_da_remuneracao_e_a_declaracao_antiga_nao_infla_a_razao(client, db, seed):
-    _subsidio_de_2019_a_2022(db, seed)  # 80.000 de subsídio na janela
+    _subsidio_de_2019_a_2022(db, seed)  # 96.000 de subsídio na janela
     _declarar_patrimonio(db, seed.fulano, 1998, 1000)  # antes da janela: não entra na comparação
     _declarar_patrimonio(db, seed.fulano, 2018, 100000)
-    _declarar_patrimonio(db, seed.fulano, 2022, 150000)
+    _declarar_patrimonio(db, seed.fulano, 2022, 148000)
     db.commit()
     enrich = client.get(f"{BASE}/{seed.fulano.id}").json()["indices_inteligencia"]["enriquecimento_patrimonial"]
-    assert enrich["periodo_comparado"] == {"de": 2018, "ate": 2022, "subsidio_de": 2019, "subsidio_ate": 2022}
-    assert enrich["delta_patrimonio"] == 50000.0  # 150.000 - 100.000 (e não - 1.000)
-    assert enrich["razao_patrimonio_renda"] == 0.62 and enrich["compatibilidade"] == "COMPATÍVEL"
+    assert enrich["periodo_comparado"] == {
+        "de": 2018,
+        "ate": 2022,
+        "subsidio_de": 2019,
+        "subsidio_ate": 2022,
+        "meses_de_subsidio": 48,
+    }
+    assert enrich["delta_patrimonio"] == 48000.0  # 148.000 - 100.000 (e não - 1.000)
+    assert enrich["razao_patrimonio_renda"] == 0.5  # 48.000 / 96.000, sem empate de arredondamento
+    assert enrich["compatibilidade"] == "COMPATÍVEL"
 
 
 def test_patrimonio_sem_declaracao_depois_da_base_nao_e_comparado(client, db, seed):
@@ -154,20 +166,26 @@ def test_declaracoes_na_janela_da_remuneracao_e_funcao_pura():
 def test_reeleito_compara_o_patrimonio_so_ate_a_ultima_declaracao_dentro_do_subsidio(client, db, seed):
     """Remuneração 2019-2026, declarações 2018 e 2022: o divisor é o subsídio de 2019-2022, não o dos 8 anos."""
     for ano in (2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026):
-        _add_remuneration(db, seed, months=1, ano=ano)  # 40.000 por ano
+        _ano_completo(db, seed, ano, bruto=3000)  # 36.000 por ano
     _declarar_patrimonio(db, seed.fulano, 2018, 100000)
-    _declarar_patrimonio(db, seed.fulano, 2022, 220000)
+    _declarar_patrimonio(db, seed.fulano, 2022, 208000)
     db.commit()
     enrich = client.get(f"{BASE}/{seed.fulano.id}").json()["indices_inteligencia"]["enriquecimento_patrimonial"]
-    assert enrich["periodo_comparado"] == {"de": 2018, "ate": 2022, "subsidio_de": 2019, "subsidio_ate": 2022}
-    assert enrich["salario_acumulado_estimado"] == 160000.0  # 2019, 2020, 2021 e 2022
+    assert enrich["periodo_comparado"] == {
+        "de": 2018,
+        "ate": 2022,
+        "subsidio_de": 2019,
+        "subsidio_ate": 2022,
+        "meses_de_subsidio": 48,
+    }
+    assert enrich["salario_acumulado_estimado"] == 144000.0  # 2019, 2020, 2021 e 2022
     assert enrich["razao_patrimonio_renda"] == 0.75 and enrich["compatibilidade"] == "COMPATÍVEL"
 
 
 def test_ex_parlamentar_nao_compara_declaracao_posterior_ao_fim_do_subsidio(client, db, seed):
     """Remuneração 2019-2023, declarações 2018, 2022 e 2026: a de 2026 (candidatura) fica fora da janela."""
     for ano in (2019, 2020, 2021, 2022, 2023):
-        _add_remuneration(db, seed, months=1, ano=ano)
+        _ano_completo(db, seed, ano)
     _declarar_patrimonio(db, seed.fulano, 2018, 100000)
     _declarar_patrimonio(db, seed.fulano, 2022, 150000)
     _declarar_patrimonio(db, seed.fulano, 2026, 900000)
@@ -215,7 +233,8 @@ def test_subsidio_na_janela_exclui_o_ano_da_base_e_nao_inventa_zero(db, seed):
     _add_remuneration(db, seed, months=2, ano=2019)
     db.commit()
     pessoas = [pessoa_do(db, seed.fulano)]
-    assert financas_service.subsidio_na_janela(db, pessoas, 2018, 2019) == 80000.0  # o ano da base (2018) fica de fora
+    # o ano da base (2018) fica de fora; a soma vem com os meses de folha
+    assert financas_service.subsidio_na_janela(db, pessoas, 2018, 2019) == (80000.0, 2)
     assert (
         financas_service.subsidio_na_janela(db, pessoas, 2019, 2022) is None
     )  # sem remuneração na faixa: desconhecido
@@ -289,7 +308,7 @@ def test_emendas_endpoint_lists_only_the_authors_emendas(client, db, seed):
 
 def test_emendas_endpoint_without_any_data_is_empty(client, seed):
     body = client.get(f"{BASE}/{seed.lula_fonte.id}/emendas").json()
-    assert body["total_pago"] == 0.0 and body["emendas"] == []
+    assert body["total_pago"] is None and body["total_empenhado"] is None and body["emendas"] == []
 
 
 def test_dossier_flags_truncated_proposition_list(client, db, seed, monkeypatch):
@@ -525,3 +544,103 @@ def test_attendance_reads_leg_presenca_with_inferred_absences(client, db, seed):
     assert att["periodo_inicio"] == "2005-03-01" and "inferidas" in (att["observacao"] or "")
     tipos = {f["tipo"] for f in att["amostra_faltas"]}
     assert "AUSENCIA_INFERIDA" in tipos
+
+
+def test_subsidio_na_janela_so_aceita_anos_do_meio_com_os_12_meses(db, seed):
+    from app.services import financas_service
+
+    _add_remuneration(db, seed, months=2, ano=2019, bruto=1000)  # o primeiro ano pode ser parcial (posse no meio)
+    _add_remuneration(db, seed, months=5, ano=2020, bruto=1000)  # ano do meio incompleto: o divisor ficaria menor
+    _add_remuneration(db, seed, months=3, ano=2021, bruto=1000)  # o último também pode ser parcial
+    db.commit()
+    assert financas_service.subsidio_na_janela(db, [pessoa_do(db, seed.fulano)], 2018, 2021) is None
+
+
+def test_subsidio_na_janela_soma_os_meses_quando_os_anos_do_meio_estao_completos(db, seed):
+    from app.services import financas_service
+
+    _add_remuneration(db, seed, months=2, ano=2019, bruto=1000)
+    _add_remuneration(db, seed, months=12, ano=2020, bruto=1000)
+    _add_remuneration(db, seed, months=3, ano=2021, bruto=1000)
+    db.commit()
+    assert financas_service.subsidio_na_janela(db, [pessoa_do(db, seed.fulano)], 2018, 2021) == (17000.0, 17)
+
+
+def test_remuneracao_sem_registro_tem_o_acumulado_desconhecido_e_nao_zero(db, seed):
+    from app.services import financas_service
+
+    sem = financas_service.remuneracao(db, [pessoa_do(db, seed.lula_fonte)])
+    assert sem["acumulado"] is None and sem["total_bruto_ano"] is None and sem["historico"] == []
+
+
+def test_sem_emenda_e_sem_doacao_os_totais_e_a_eficiencia_ficam_desconhecidos_e_nao_zero(client, seed):
+    dossie = client.get(f"{BASE}/{seed.lula_fonte.id}").json()
+    emendas = dossie["emendas_parlamentares"]
+    assert emendas["possui_dados"] is False
+    assert emendas["total_empenhado"] is None and emendas["total_pago"] is None
+    assert emendas["percentual_execucao"] is None
+    eficiencia = dossie["indices_inteligencia"]["eficiencia_emendas"]
+    for campo in (
+        "taxa_conversao_pct",
+        "total_empenhado",
+        "total_pago",
+        "percentual_pix",
+        "concentracao_municipio_predileto_pct",
+        "municipio_predileto",
+        "classificacao",
+    ):
+        assert eficiencia[campo] is None, campo
+    financiamento = dossie["financiamento_campanha"]
+    assert financiamento["possui_dados"] is False
+    assert financiamento["total_arrecadado"] is None and financiamento["total_doadores"] is None
+    assert client.get(f"{BASE}/{seed.lula_fonte.id}/emendas").json()["total_pago"] is None
+
+
+def test_fornecedor_nao_identificado_fica_fora_do_hhi_mas_dentro_do_gasto_total(client, db, seed):
+    pessoa = pessoa_do(db, seed.beltrano)
+    inserir_fin(db, "despesa_cota", pessoa_id=pessoa, ano=2024, tipo_despesa="Telefonia", valor_liquido=1000)
+    for nome, cnpj, valor in (("Fornecedor não identificado", None, 900), ("ACME LTDA", "12345678000199", 100)):
+        inserir_fin(db, "despesa_cota_fornecedor", pessoa_id=pessoa, nome=nome, cnpj=cnpj, valor_total=valor, notas=1)
+    db.commit()
+    concentracao = client.get(f"{BASE}/{seed.beltrano.id}").json()["indices_inteligencia"]["concentracao_ceap"]
+    # o rótulo genérico junta fornecedores diferentes: sem ele o maior é a ACME (10% do gasto de 1.000) e o HHI é 10²
+    assert concentracao["maior_fornecedor"] == "ACME LTDA" and concentracao["percentual_maior_fornecedor"] == 10.0
+    assert concentracao["indice_hhi"] == 100.0 and concentracao["nivel_risco"] == "BAIXO"
+
+
+def test_so_fornecedor_nao_identificado_deixa_a_concentracao_desconhecida(client, db, seed):
+    pessoa = pessoa_do(db, seed.beltrano)
+    inserir_fin(db, "despesa_cota", pessoa_id=pessoa, ano=2024, tipo_despesa="Telefonia", valor_liquido=1000)
+    inserir_fin(
+        db, "despesa_cota_fornecedor", pessoa_id=pessoa, nome="Fornecedor não identificado", valor_total=1000, notas=3
+    )
+    db.commit()
+    concentracao = client.get(f"{BASE}/{seed.beltrano.id}").json()["indices_inteligencia"]["concentracao_ceap"]
+    assert concentracao["indice_hhi"] is None and concentracao["percentual_maior_fornecedor"] is None
+    assert "Sem fornecedor identificado" in concentracao["diagnostico"]
+
+
+def test_duas_declaracoes_do_mesmo_ano_ficam_uma_so_a_de_maior_valor(db, seed):
+    from app.services import financas_service
+
+    pessoas = [pessoa_do(db, seed.fulano), pessoa_do(db, seed.beltrano)]
+    _declarar_patrimonio(db, seed.fulano, 2022, 100)
+    _declarar_patrimonio(db, seed.beltrano, 2022, 900)
+    _declarar_patrimonio(db, seed.fulano, 2018, 50)
+    db.commit()
+    assert [(d["ano"], d["valor"]) for d in financas_service.declaracoes_de_patrimonio(db, pessoas)] == [
+        (2018, 50.0),
+        (2022, 900.0),
+    ]
+
+
+def test_fornecedores_que_somam_mais_que_o_gasto_deixam_a_concentracao_desconhecida(client, db, seed):
+    pessoa = pessoa_do(db, seed.beltrano)
+    inserir_fin(db, "despesa_cota", pessoa_id=pessoa, ano=2024, tipo_despesa="Telefonia", valor_liquido=1000)
+    inserir_fin(
+        db, "despesa_cota_fornecedor", pessoa_id=pessoa, nome="ACME LTDA", cnpj="12345678000199", valor_total=1500
+    )
+    db.commit()
+    concentracao = client.get(f"{BASE}/{seed.beltrano.id}").json()["indices_inteligencia"]["concentracao_ceap"]
+    assert concentracao["indice_hhi"] is None and concentracao["percentual_maior_fornecedor"] is None
+    assert "não cobrem o mesmo período" in concentracao["diagnostico"]

@@ -68,6 +68,13 @@ class Settings(BaseSettings):
                 f"@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
             )
 
+        # Fora desta faixa a busca de emendas ou responde 503 sempre (0) ou deixa de proteger o pool (>= pool)
+        if not 1 <= self.EMENDAS_MAX_BUSCAS_SIMULTANEAS < self.DB_POOL_SIZE + self.DB_MAX_OVERFLOW:
+            raise RuntimeError(
+                f"EMENDAS_MAX_BUSCAS_SIMULTANEAS={self.EMENDAS_MAX_BUSCAS_SIMULTANEAS} é inválida: precisa ficar entre 1 "
+                f"e DB_POOL_SIZE + DB_MAX_OVERFLOW - 1 ({self.DB_POOL_SIZE + self.DB_MAX_OVERFLOW - 1})."
+            )
+
         self.POSTGRES_PASSWORD = pwd or ""
         self.DATABASE_URL = db_url
 

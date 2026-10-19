@@ -6,6 +6,11 @@ Mantidas fora de `db_loader.py` para isolar a lógica. Todas são idempotentes:
 - certidões: chave natural (político, órgão, tipo de certidão), atualizada se já existir;
 - eleições: chave natural (ano, UF, turno).
 Só registros com proveniência oficial (`fonte` e `is_synthetic == False`) são carregados.
+
+ESCRITA LEGADA: doações e certidões daqui vão para tabelas do `public` que a API não lê mais (o dossiê lê `fin`, carregado
+por `financas_loader.carregar_doacoes` e `carregar_certidoes`, de mesmo nome por serem a mesma fonte). Ficam só até a
+limpeza das tabelas legadas (Fase 9 do plano de refatoração do banco); não corrija regra de negócio aqui esperando que
+ela chegue ao dossiê. As eleições por UF seguem valendo.
 """
 
 import csv

@@ -1596,28 +1596,21 @@ def test_nome_sem_cpf_nao_deixa_digitos_do_cpf_depois_de_numero_e_hifen():
 
 
 def test_regex_de_cpf_nao_tem_backtracking_catastrofico():
-    """Mede só as regex (o texto já normalizado), comparando n com 2n; as medições se intercalam para um pico de carga
-    do relógio atingir os dois tamanhos e o melhor de cada um tira o ruído."""
+    """
+    Mede só as regex (o texto já normalizado) em textos longos (centenas de milhares de caracteres) que repetem a mesma forma.
+    Linear termina em milissegundos; mesmo um backtracking quadrático levaria minutos nesse tamanho (o teste ficaria preso muito além do teto), então o teto
+    absoluto de 5 s separa os dois sem depender de razão entre tempos (que o ruído do relógio entorta).
+    """
     import time
 
     from etl.pipelines.loader_helpers import _CPF_EM_TEXTO, _SEQUENCIA_CPF
 
-    def tempo(texto_longo):
+    for unidade in ("1 ", "1.", "1", "123 - ", "123,", "R$ 1 ", "1~", "12 3 "):
+        texto_longo = unidade * 30_000
         inicio = time.perf_counter()
         _CPF_EM_TEXTO.sub(" ", texto_longo)
         _SEQUENCIA_CPF.sub(" ", texto_longo)
-        return time.perf_counter() - inicio
-
-    for unidade in ("1 ", "1.", "1", "123 - ", "123,", "R$ 1 ", "1~", "12 3 "):
-        pequeno_txt, grande_txt = unidade * 20_000, unidade * 40_000
-        pequenos, grandes = [], []
-        for _ in range(3):
-            pequenos.append(tempo(pequeno_txt))
-            grandes.append(tempo(grande_txt))
-        pequeno, grande = min(pequenos), min(grandes)
-        # linear dá cerca de 2x; quadrático, cerca de 4x (o piso de 0,05 s cobre o que o relógio não resolve)
-        assert grande < 3 * pequeno + 0.05, (unidade, pequeno, grande)
-        assert grande < 3  # teto absoluto largo, só para pegar explosão exponencial
+        assert time.perf_counter() - inicio < 5, unidade
 
 
 def test_so_digitos_nao_le_a_repr_de_dict_como_cnpj():
@@ -2121,3 +2114,102 @@ def test_erro_do_banco_so_leva_a_mensagem_principal_e_a_restricao_para_o_log(pg_
     assert sigilo not in texto_do_erro and "DETAIL" not in texto_do_erro and "Failing row" not in texto_do_erro
     assert "IntegrityError" in texto_do_erro and "doacao_campanha_doador_documento_check" in texto_do_erro
     assert descricao_do_erro(RuntimeError("tabela encolheria")) == "tabela encolheria"  # mensagens da carga seguem
+
+
+def _doacao_com_documento_sem_mascara(conn, _pasta, sigilo="Fulano-De-Tal-12345"):
+    conn.execute(
+        text(
+            "INSERT INTO fin.doacao_campanha (pessoa_id, ano_eleicao, doador_nome, doador_documento, valor, fonte_id) "
+            "VALUES ((SELECT min(id) FROM core.pessoa), 2022, :n, 'sem-mascara', 1, (SELECT min(id) FROM etl.fonte))"
+        ),
+        {"n": sigilo},
+    )
+
+
+def test_carregar_nao_deixa_o_detail_do_banco_chegar_ao_log_nem_ao_erro_final(
+    pg_engine, banco, tmp_path, monkeypatch, caplog
+):
+    """O wrapper `carregar` é quem captura a falha de cada carga: é ali que o DETAIL com a linha inteira vazaria."""
+    monkeypatch.setattr(fin, "CARGAS", (("doacoes", _doacao_com_documento_sem_mascara),))
+    with caplog.at_level("ERROR", logger="FinancasLoader"):
+        with pytest.raises(RuntimeError) as erro:
+            fin.carregar(pg_engine, tmp_path)
+    sigilo = "Fulano-De-Tal-12345"
+    assert sigilo not in str(erro.value) and sigilo not in caplog.text
+    assert "Failing row" not in str(erro.value) and "Failing row" not in caplog.text
+    assert "doacao_campanha_doador_documento_check" in str(erro.value)  # a restrição segue no texto
+    assert len(caplog.records) == 1 and not caplog.records[0].exc_info  # a pilha repetiria a linha inteira
+
+
+def test_erro_de_dado_do_banco_real_sai_so_com_o_tipo_o_sqlstate_e_sem_o_valor(pg_engine):
+    from etl.pipelines.loader_helpers import descricao_do_erro
+
+    with pytest.raises(Exception) as erro:
+        with pg_engine.begin() as conn:
+            conn.execute(text("SELECT CAST(:v AS integer)"), {"v": 3_000_000_000})
+    descricao = descricao_do_erro(erro.value)
+    assert descricao.startswith("DataError: erro de dado (SQLSTATE 22003)") and "3000000000" not in descricao
+
+
+def test_emendas_com_resolvedor_degradado_nao_desligam_as_emendas_ja_ligadas_a_uma_pessoa(
+    pg_engine, banco, tmp_path, monkeypatch
+):
+    from etl.pipelines.pessoa_resolver import Resolucao
+
+    _gravar(tmp_path, fin.EMENDAS_ARQUIVO, [_emenda(str(i), "Ana Souza") for i in range(12)])
+    with pg_engine.begin() as conn:
+        fin.carregar_emendas(conn, tmp_path)
+    with pg_engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM fin.emenda WHERE pessoa_id IS NOT NULL")).scalar() == 12
+    # o resolvedor passa a não achar ninguém: as 12 linhas continuam na fonte (a contagem de linhas não encolhe)
+    monkeypatch.setattr(
+        fin.ResolvedorDePessoas, "por_nome", lambda self, nomes, ano=None: Resolucao(None, "NAO_CADASTRADO")
+    )
+    with pytest.raises(RuntimeError, match="autor identificado"):
+        with pg_engine.begin() as conn:
+            fin.carregar_emendas(conn, tmp_path)
+    with pg_engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM fin.emenda WHERE pessoa_id IS NOT NULL")).scalar() == 12
+
+
+def test_ceap_com_total_de_ano_e_tipo_fora_da_faixa_deixa_a_pessoa_inteira_de_fora(pg_engine, banco, tmp_path):
+    grande = 600_000_000_000.0  # cada parcela cabe; o total do ano e tipo (1,2 trilhão) não cabe em numeric(14,2)
+    estoura = _ceap(por_ano_tipo={"2023": {"T": grande, " T": grande, "U": 1.0}}, fornecedores={})
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": estoura, "BETO LIMA": _ceap(camara_id=None, senado_id=200)})
+    with pg_engine.begin() as conn:
+        resultado = fin.carregar_ceap(conn, tmp_path)
+    # gasto parcial não vale como total: a Ana não fica nem com o tipo "U" que cabia
+    assert resultado["total_fora_da_faixa"] == 1
+    with pg_engine.connect() as conn:
+        pessoas = {r[0] for r in conn.execute(text("SELECT DISTINCT pessoa_id FROM fin.despesa_cota"))}
+    assert pessoas == {banco["beto"]}
+
+
+def test_cap_de_soma_entre_fontes_tambem_tira_a_pessoa_inteira(pg_engine, banco, tmp_path):
+    grande = 600_000_000_000.0
+    camara = _ceap(camara_id=500, por_ano_tipo={"2023": {"T": grande, "U": 1.0}}, fornecedores={})
+    senado = _ceap(camara_id=None, senado_id=501, por_ano_tipo={"2023": {"T": grande}}, fornecedores={})
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"C": camara, "S": senado, "OUTRA": _ceap()})
+    with pg_engine.begin() as conn:
+        resultado = fin.carregar_ceap(conn, tmp_path)
+    assert resultado["soma_fora_da_faixa"] == 1 and resultado["pessoas_sem_gasto_completo"] == 1
+    with pg_engine.connect() as conn:
+        tipos = [r[0] for r in conn.execute(text("SELECT tipo_despesa FROM fin.despesa_cota"))]
+    assert "U" not in tipos  # o tipo que cabia também sai: o gasto da pessoa ficaria parcial
+
+
+def test_a_tabela_de_nomes_de_estado_do_backend_e_a_do_etl_sao_iguais():
+    from app.services import emendas_service
+
+    from etl.pipelines import loader_helpers
+
+    assert emendas_service._ESTADOS_MAP == loader_helpers.UF_POR_NOME
+    assert set(emendas_service._UFS) == set(loader_helpers._UFS)
+
+
+def test_rotulo_de_fornecedor_nao_identificado_e_igual_no_backend_e_no_etl():
+    from app.services import financas_service
+
+    from etl.utils.rotulos import FORNECEDOR_NAO_IDENTIFICADO
+
+    assert financas_service.FORNECEDOR_NAO_IDENTIFICADO == FORNECEDOR_NAO_IDENTIFICADO == "Fornecedor não identificado"

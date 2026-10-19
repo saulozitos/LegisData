@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import type { PoliticoDossier } from "@/services/api";
 import { EmptyState } from "@/components/StateViews";
+import { fmtReais } from "@/lib/format";
 import { formatMoney } from "./format";
 
 interface CeapTabProps {
@@ -100,7 +101,7 @@ export default function CeapTab({ dossier }: CeapTabProps) {
                       {dossier?.custos_ceap?.gastos_por_tipo?.[0]?.tipo_despesa || "Sem lançamentos"}
                     </span>
                     <span className="text-[10px] font-mono text-amber-400/90 mt-1 block">
-                      R$ {(dossier?.custos_ceap?.gastos_por_tipo?.[0]?.total_gasto || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {fmtReais(dossier?.custos_ceap?.gastos_por_tipo?.[0]?.total_gasto)}
                     </span>
                   </div>
 

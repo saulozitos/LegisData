@@ -12,6 +12,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pandas as pd
+from sqlalchemy.exc import DBAPIError
 
 from etl.utils.names import (
     NON_PERSON_AUTHORS,
@@ -636,8 +637,7 @@ def uf_da_localidade(localidade: Any) -> Optional[str]:
 # Contrato comum: `ler_*(registro) -> (campos | None, motivo | None)`. Com campos, o motivo é None; sem eles, o motivo
 # ("sem_proveniencia", "sem_identificador", "sem_detalhe_por_ano" ou "invalidas") diz por que o registro ficou de fora e
 # vira chave da contagem de cada carga. `ler_registros_da_remuneracao` é a mesma regra no nível do arquivo.
-def valores_da_ceap(dados: Dict[str, Any]) -> Dict[Tuple[int, str], Decimal]:
-    """Total por (ano, tipo de despesa) de um parlamentar do arquivo. A reconciliação usa a mesma regra do loader."""
+def _totais_da_ceap(dados: Dict[str, Any]) -> Dict[Tuple[int, str], Decimal]:
     totais: Dict[Tuple[int, str], Decimal] = defaultdict(Decimal)
     por_ano_tipo = dados.get("por_ano_tipo")
     for ano, tipos in (por_ano_tipo if isinstance(por_ano_tipo, dict) else {}).items():
@@ -647,14 +647,20 @@ def valores_da_ceap(dados: Dict[str, Any]) -> Dict[Tuple[int, str], Decimal]:
             nome_tipo = texto(tipo)
             if ano_ok is not None and valor_dec is not None and nome_tipo:
                 totais[(ano_ok, nome_tipo)] += valor_dec
-    # o total de um (ano, tipo) que estoura a coluna fica de fora: a carga não pode cair por causa dele
+    return totais
+
+
+def valores_da_ceap(dados: Dict[str, Any]) -> Dict[Tuple[int, str], Decimal]:
+    """Total por (ano, tipo de despesa) de um parlamentar do arquivo, só os que cabem na coluna."""
+    totais = _totais_da_ceap(dados)
     return {chave: total for chave, valor in totais.items() if (total := soma_na_faixa(valor, LIMITE_CEAP)) is not None}
 
 
 def ler_ceap(dados: Any) -> Tuple[Optional[Dict[Tuple[int, str], Decimal]], Optional[str]]:
     """
     Totais por (ano, tipo) de um parlamentar do arquivo, ou (None, motivo) quando ele não entra: "sem_proveniencia",
-    "sem_identificador" (sem id não há como saber a fonte, Câmara ou Senado) ou "sem_detalhe_por_ano". É a regra única
+    "sem_identificador" (sem id não há como saber a fonte, Câmara ou Senado), "sem_detalhe_por_ano" ou
+    "total_fora_da_faixa" (um total de ano e tipo que não cabe na coluna: gasto parcial não vale como total). É a regra única
     de elegibilidade: a reconciliação usa esta mesma função.
     """
     if not isinstance(dados, dict) or not is_trusted(dados):
@@ -664,6 +670,9 @@ def ler_ceap(dados: Any) -> Tuple[Optional[Dict[Tuple[int, str], Decimal]], Opti
     por_ano_tipo = dados.get("por_ano_tipo")
     if not isinstance(por_ano_tipo, dict) or not por_ano_tipo:
         return None, "sem_detalhe_por_ano"
+    if any(soma_na_faixa(total, LIMITE_CEAP) is None for total in _totais_da_ceap(dados).values()):
+        # o total de um (ano, tipo) que não cabe na coluna deixaria o gasto da pessoa incompleto: ela não entra
+        return None, "total_fora_da_faixa"
     return valores_da_ceap(dados), None
 
 
@@ -925,3 +934,25 @@ def chave_da_prestacao(linhas: List[Dict[str, Any]]) -> Tuple[Any, ...]:
     """Ordem total entre prestações do mesmo (pessoa, ano): quantidade, soma e, no empate, o conteúdo das linhas."""
     conteudo = sorted((x["nome"], x["doc"] or "", str(x["valor"]), x["tipo"] or "") for x in linhas)
     return len(linhas), sum((x["valor"] for x in linhas), Decimal(0)), conteudo
+
+
+def descricao_do_erro(exc: Exception) -> str:
+    """
+    Texto do erro que pode ir para o log e para a saída do deploy. O erro do Postgres traz um `DETAIL: Failing row
+    contains (...)` com os valores da linha (o `hide_parameters` do engine não o esconde), então dele só saem o tipo, a
+    mensagem principal e o nome da restrição (para erro de dado, classe 22, só o tipo, o SQLSTATE e a coluna). Os demais erros (as mensagens da própria carga) saem como são.
+    """
+    if isinstance(exc, DBAPIError):
+        diag = getattr(exc.orig, "diag", None)
+        sqlstate = getattr(exc.orig, "pgcode", None) or ""
+        restricao = getattr(diag, "constraint_name", None)
+        coluna = getattr(diag, "column_name", None)
+        if sqlstate.startswith("22"):
+            # erro de dado (classe 22): a mensagem principal costuma citar o valor ofendido, ex. `invalid input syntax
+            # for type integer: "<valor>"`. Ficam o tipo, o SQLSTATE e, se houver, a coluna.
+            return f"{type(exc).__name__}: erro de dado (SQLSTATE {sqlstate})" + (
+                f" na coluna {coluna}" if coluna else ""
+            )
+        principal = getattr(diag, "message_primary", None) or "erro do banco"
+        return f"{type(exc).__name__}: {principal}" + (f" (restrição {restricao})" if restricao else "")
+    return str(exc)

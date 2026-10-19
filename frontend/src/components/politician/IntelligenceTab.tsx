@@ -270,7 +270,9 @@ export default function IntelligenceTab({ dossier }: IntelligenceTabProps) {
                     </span>
                     <span className="text-[10px] text-slate-400 block" data-testid="periodo-subsidio">
                       {periodo
-                        ? `Subsídio bruto de ${periodo.subsidio_de} a ${periodo.subsidio_ate}`
+                        ? `Subsídio bruto de ${periodo.subsidio_de} a ${periodo.subsidio_ate}${
+                            isNum(periodo.meses_de_subsidio) ? ` (${periodo.meses_de_subsidio} meses de folha)` : ""
+                          }`
                         : "Período indisponível: soma dos subsídios oficiais registrados"}
                     </span>
                   </div>
@@ -407,7 +409,7 @@ export default function IntelligenceTab({ dossier }: IntelligenceTabProps) {
                   <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-800 rounded-xl px-3.5 py-2">
                     <span className="text-xs text-slate-400">Taxa de Conversão:</span>
                     <span className="text-sm font-black font-mono text-emerald-400">
-                      {fmtNum(indices.eficiencia_emendas.taxa_conversao_pct, 1)}%
+                      {fmtPct(indices.eficiencia_emendas.taxa_conversao_pct, 1)}
                     </span>
                   </div>
                 </div>
@@ -430,9 +432,9 @@ export default function IntelligenceTab({ dossier }: IntelligenceTabProps) {
                       Quota de Emendas PIX
                     </span>
                     <span className={`text-lg font-black font-mono block ${
-                      indices.eficiencia_emendas.percentual_pix > 30 ? "text-amber-400" : "text-slate-200"
+                      (indices.eficiencia_emendas.percentual_pix ?? 0) > 30 ? "text-amber-400" : "text-slate-200"
                     }`}>
-                      {fmtNum(indices.eficiencia_emendas.percentual_pix, 1)}%
+                      {fmtPct(indices.eficiencia_emendas.percentual_pix, 1)}
                     </span>
                     <span className="text-[10px] text-slate-400 block">
                       Transferências especiais sem convênio vinculado
@@ -447,7 +449,7 @@ export default function IntelligenceTab({ dossier }: IntelligenceTabProps) {
                       {indices.eficiencia_emendas.municipio_predileto || "Distribuição equilibrada"}
                     </span>
                     <span className="text-[10px] text-slate-400 block">
-                      Concentra {fmtNum(indices.eficiencia_emendas.concentracao_municipio_predileto_pct, 1)}% dos recursos
+                      {isNum(indices.eficiencia_emendas.concentracao_municipio_predileto_pct) ? `Concentra ${fmtPct(indices.eficiencia_emendas.concentracao_municipio_predileto_pct, 1)} dos recursos` : "Concentração indisponível"}
                     </span>
                   </div>
                 </div>

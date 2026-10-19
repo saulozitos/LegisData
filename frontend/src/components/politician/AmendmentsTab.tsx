@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import type { PoliticoDossier } from "@/services/api";
 import { EmptyState } from "@/components/StateViews";
+import { fmtPct, fmtReais } from "@/lib/format";
 
 interface AmendmentsTabProps {
   dossier: PoliticoDossier;
@@ -59,7 +60,7 @@ export default function AmendmentsTab({ dossier }: AmendmentsTabProps) {
                       Total Efetivamente Pago
                     </span>
                     <span className="text-lg sm:text-xl font-black font-mono text-emerald-400 block leading-tight">
-                      R$ {(dossier?.emendas_parlamentares?.total_pago || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {fmtReais(dossier?.emendas_parlamentares?.total_pago)}
                     </span>
                     <span className="text-[10px] text-slate-400 mt-1 block">
                       Recursos depositados nos destinos
@@ -71,7 +72,7 @@ export default function AmendmentsTab({ dossier }: AmendmentsTabProps) {
                       Total Empenhado no OGU
                     </span>
                     <span className="text-lg sm:text-xl font-black font-mono text-cyan-400 block leading-tight">
-                      R$ {(dossier?.emendas_parlamentares?.total_empenhado || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {fmtReais(dossier?.emendas_parlamentares?.total_empenhado)}
                     </span>
                     <span className="text-[10px] text-slate-400 mt-1 block">
                       Compromisso orçamentário aprovado
@@ -83,7 +84,7 @@ export default function AmendmentsTab({ dossier }: AmendmentsTabProps) {
                       Taxa de Execução
                     </span>
                     <span className="text-lg sm:text-xl font-black font-mono text-purple-400 block leading-tight">
-                      {dossier?.emendas_parlamentares?.percentual_execucao || 0}%
+                      {fmtPct(dossier?.emendas_parlamentares?.percentual_execucao, 1)}
                     </span>
                     <span className="text-[10px] text-slate-400 mt-1 block">
                       Razão entre pago e empenhado

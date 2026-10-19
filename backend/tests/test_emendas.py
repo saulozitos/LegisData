@@ -123,7 +123,7 @@ def test_get_emendas_por_localidade_uf(client, emendas):
     assert data["total_reservado_empenhado_brl"] == 3000.0
     assert len(data["emendas"]) == 3
     # ordem: ano mais recente, depois maior valor pago (o Abel de 2023 tem pago 0 e vem por último)
-    assert [e["codigo_emenda"] for e in data["emendas"]][-1] == "2"
+    assert [e["codigo_emenda"] for e in data["emendas"]] == ["1", "5", "2"]  # 2024 (pago 400, por id) e depois 2023
     assert data["emendas"][0]["estagio"] == "Dinheiro Entregue"
 
 
@@ -369,7 +369,9 @@ def test_o_minimo_conta_o_termo_normalizado_e_nao_os_caracteres_brutos(client, e
 
 
 def test_espacos_do_meio_nao_contam_a_mais(client, emendas):
-    assert client.get(f"{BASE}/autor/a%20%20%20b").status_code in (200, 404)  # "a b": 3 caracteres normalizados
+    resposta = client.get(f"{BASE}/autor/a%20%20%20b")  # "a b": 3 caracteres normalizados, casa "BANCADA DA BAHIA"
+    assert resposta.status_code == 200
+    assert [a["nome_amigavel"] for a in resposta.json()["autores_encontrados"]] == ["Bancada Estadual (BA)"]
     assert client.get(f"{BASE}/autor/a%20%20%20%20").status_code == 400  # só "a" depois do strip
 
 

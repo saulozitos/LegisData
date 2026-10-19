@@ -14,6 +14,7 @@ import RemunerationTab from './RemunerationTab';
 import VotesTab from './VotesTab';
 import PoliticianHeaderCard from './PoliticianHeaderCard';
 import PoliticianTabNav from './PoliticianTabNav';
+import { fmtReais } from '@/lib/format';
 import { formatCpfCnpj, formatMoney, getFichaStatus, gradeBadgeClass, riskBadgeClass, compatBadgeClass, orUnavailable, NA_BADGE } from './format';
 
 vi.mock('recharts', async () => (await import('@/test/recharts')).rechartsMock);
@@ -25,6 +26,14 @@ describe('format helpers', () => {
     expect(formatCpfCnpj(null)).toBe('Não informado');
     expect(formatCpfCnpj('***.456.789-**')).toBe('***.456.789-**'); // já mascarado (9 dígitos): preservado
     expect(formatCpfCnpj('abc')).toBe('abc');
+  });
+
+  it('fmtReais mostra Indisponível para ausente e preserva o zero conhecido', () => {
+    expect(fmtReais(null)).toBe('Indisponível');
+    expect(fmtReais(undefined)).toBe('Indisponível');
+    expect(fmtReais(NaN)).toBe('Indisponível');
+    expect(fmtReais(0)).toBe('R$ 0,00');
+    expect(fmtReais(1234.5)).toBe('R$ 1.234,50');
   });
 
   it('formatMoney nunca devolve R$ 0,00 para ausente', () => {
@@ -85,6 +94,13 @@ describe('IntelligenceTab', () => {
     expect(screen.getByTestId('periodo-subsidio').textContent).toBe('Subsídio bruto de 2019 a 2022');
   });
 
+  it('mostra quantos meses de folha entraram no subsídio comparado quando a API informa', () => {
+    const d = fullDossier();
+    d.indices_inteligencia!.enriquecimento_patrimonial.periodo_comparado = { de: 2018, ate: 2022, subsidio_de: 2019, subsidio_ate: 2022, meses_de_subsidio: 47 };
+    render(<IntelligenceTab dossier={d} />);
+    expect(screen.getByTestId('periodo-subsidio').textContent).toBe('Subsídio bruto de 2019 a 2022 (47 meses de folha)');
+  });
+
   it('sem período comparado os cards dizem que o período está indisponível', () => {
     render(<IntelligenceTab dossier={fullDossier()} />);
     expect(screen.getByTestId('periodo-patrimonio').textContent).toMatch(/Período indisponível/);
@@ -94,7 +110,8 @@ describe('IntelligenceTab', () => {
   it('sem despesas da CEAP o HHI e a fatia do maior fornecedor ficam indisponíveis, nunca 0%', () => {
     render(<IntelligenceTab dossier={sparseDossier()} />);
     const fatia = screen.getByText('Fatia da Cota Consumida pelo Top 1').parentElement as HTMLElement;
-    expect(within(fatia).getByText('Indisponível').textContent).toBe('Indisponível'); // e não "0,0%"
+    expect(within(fatia).getByText('Indisponível')).toBeInTheDocument();
+    expect(fatia.textContent).not.toMatch(/0,0\s*%/); // desconhecido nunca vira "0,0%"
 
     expect(screen.queryByText('/ 10.000')).not.toBeInTheDocument();
   });
@@ -133,6 +150,37 @@ describe('OverviewTab', () => {
     expect(document.body.textContent).not.toMatch(/@camara\.leg\.br|3215-5000/);
   });
 
+  it('doadores e arrecadação desconhecidos aparecem como n/d e Indisponível, nunca como zero', () => {
+    const d = fullDossier();
+    d.financiamento_campanha.total_doadores = null;
+    d.financiamento_campanha.total_arrecadado = null;
+    render(<OverviewTab dossier={d} onChangeTab={() => {}} onSelectParty={() => {}} />);
+    const bloco = screen.getByText('Total de Doadores Registrados').parentElement as HTMLElement;
+    expect(bloco.textContent).toContain('n/d doadores');
+    expect(bloco.textContent).not.toMatch(/\b0 doa/);
+    const arrecadado = screen.getByText('Total Arrecadado na Campanha').parentElement as HTMLElement;
+    expect(arrecadado.textContent).toContain('Indisponível');
+    expect(arrecadado.textContent).not.toContain('R$ 0,00');
+  });
+
+  it('sem concentração da CEAP o HHI e o maior fornecedor aparecem como Indisponível, nunca 0%', () => {
+    const d = fullDossier();
+    const ind = d.indices_inteligencia!;
+    ind.concentracao_ceap = { ...ind.concentracao_ceap, indice_hhi: null, percentual_maior_fornecedor: null, nivel_risco: null };
+    render(<OverviewTab dossier={d} onChangeTab={() => {}} onSelectParty={() => {}} />);
+    const linha = screen.getByText(/^HHI:/);
+    expect(linha.textContent).toBe('HHI: Indisponível (Indisponível top)');
+  });
+
+  it('emendas sem dado mostram Indisponível na cota PIX e nas pagas', () => {
+    const d = fullDossier();
+    const ind = d.indices_inteligencia!;
+    ind.eficiencia_emendas = { ...ind.eficiencia_emendas, taxa_conversao_pct: null, percentual_pix: null, total_empenhado: null, total_pago: null };
+    render(<OverviewTab dossier={d} onChangeTab={() => {}} onSelectParty={() => {}} />);
+    expect(screen.getByText(/^Quota PIX:/).textContent).toBe('Quota PIX: Indisponível');
+    expect(document.body.textContent).not.toMatch(/Quota PIX: 0/);
+  });
+
   it('nota do ROI com score nulo não derruba a visão geral', () => {
     render(<OverviewTab dossier={sparseDossier()} onChangeTab={() => {}} />);
     expect(screen.getByText('Nota indisponível')).toBeInTheDocument();
@@ -167,6 +215,18 @@ describe('PoliticianTabNav', () => {
     render(<PoliticianTabNav dossier={d} activeTab="visao_geral" onChange={() => {}} />);
     const aba = screen.getByRole('tab', { name: /Custos do Mandato/ });
     expect(aba.textContent?.trim()).toBe('Custos do Mandato (CEAP)'); // sem selo de valor
+  });
+
+  it.each([
+    [0, 'R$ 0'], // gasto zero conhecido é um dado: aparece como zero, não some
+    [999, 'R$ 999'],
+    [1000, 'R$ 1k'], // o limite é inclusivo
+    [1499, 'R$ 1k'],
+  ])('o selo de gasto da aba CEAP trata o limite de mil: %s vira %s', (gasto, esperado) => {
+    const d = fullDossier();
+    d.custos_ceap.gasto_total_recente = gasto;
+    render(<PoliticianTabNav dossier={d} activeTab="visao_geral" onChange={() => {}} />);
+    expect(screen.getByRole('tab', { name: /Custos do Mandato/ }).textContent).toContain(esperado);
   });
 
   it('com dados ausentes não mostra nota e indica presença "n/d"', () => {
@@ -299,6 +359,17 @@ describe('CeapTab', () => {
 });
 
 describe('FinancingTab', () => {
+  it('avisa quando há doações de outras eleições além da resumida e não avisa quando só há uma', () => {
+    const d = fullDossier();
+    d.financiamento_campanha.eleicoes_disponiveis = [2022, 2018, 2014];
+    const { unmount } = render(<FinancingTab dossier={d} />);
+    expect(screen.getByTestId('outras-eleicoes').textContent).toContain('2018, 2014');
+    expect(screen.getByTestId('outras-eleicoes').textContent).not.toContain('2022,');
+    unmount();
+    render(<FinancingTab dossier={fullDossier()} />);
+    expect(screen.queryByTestId('outras-eleicoes')).not.toBeInTheDocument();
+  });
+
   it('mostra doadores com documento mascarado e filtra a relação de doações', () => {
     render(<FinancingTab dossier={fullDossier()} />);
     expect(screen.getAllByText('Doador Um').length).toBeGreaterThan(0);
@@ -356,7 +427,7 @@ describe('AmendmentsTab', () => {
   it('mostra execução e destinos', () => {
     render(<AmendmentsTab dossier={fullDossier()} />);
     expect(screen.getAllByText('Campinas/SP').length).toBeGreaterThan(0);
-    expect(screen.getByText('80%')).toBeInTheDocument();
+    expect(screen.getByText('80,0%')).toBeInTheDocument();
     expect(screen.getByText('1 emendas cadastradas')).toBeInTheDocument();
   });
 
