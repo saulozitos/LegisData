@@ -67,7 +67,7 @@ def test_deploy_descarta_saidas_do_cron_antes_do_merge_e_carrega_tudo_pela_carga
     texto = (RAIZ / "scripts" / "deploy" / "deploy.sh").read_text(encoding="utf-8")
     assert _posicao(texto, r"^\s*git checkout -q -- etl/data/processed") < _posicao(texto, r"^git merge --ff-only ")
     carga = texto[_posicao(texto, r"^\s*um_comando python -c ") :]
-    assert re.search(r"^from etl\.pipelines\.carga_economica import carregar_tudo", carga, re.MULTILINE)
+    assert re.search(r"^from etl\.pipelines\.carga_economica import CARGAS, carregar_tudo", carga, re.MULTILINE)
     assert _posicao(texto, r"alembic upgrade head") < _posicao(texto, r"^\s*um_comando python -c ")
     assert _posicao(texto, r"^\s*um_comando python -c ") < _posicao(texto, r"^docker compose up ")
 
@@ -96,7 +96,7 @@ def test_deploy_so_tolera_falha_das_financas_quando_fin_ja_tem_dados():
     assert consulta < _posicao(texto, r"^\s*um_comando python -c ")
     carga = texto[_posicao(texto, r"^\s*um_comando python -c ") :]
     assert re.search(r"os\.environ\.get\('LEGISDATA_FIN_TEM_DADOS'\) == 't' else \(\)", carga)
-    assert re.search(r"carregar_tudo\(engine, toleradas=toleradas\)", carga)
+    assert re.search(r"carregar_tudo\(engine, chaves=chaves, toleradas=toleradas\)", carga)
 
 
 def test_rollback_do_deploy_sobe_a_tag_anterior_com_o_compose_do_commit_anterior():
@@ -106,3 +106,86 @@ def test_rollback_do_deploy_sobe_a_tag_anterior_com_o_compose_do_commit_anterior
     rollback = texto[_posicao(texto, r'if \[\[ "\$estado" != "healthy" \]\]') :]
     assert re.search(r'git show "\$COMMIT_ANTERIOR:docker-compose\.yml"', rollback)
     assert re.search(r'IMAGE_TAG="\$ANTERIOR" docker compose --project-directory "\$RAIZ" -f ', rollback)
+
+
+# ── Atualização diária das finanças (timer de usuário) ─────────────────────────────────────────────────────────────────
+FINANCAS_SH = RAIZ / "scripts" / "deploy" / "atualizar_financas.sh"
+SYSTEMD = RAIZ / "scripts" / "systemd"
+
+
+def test_atualizacao_diaria_espera_o_lock_do_deploy_e_nao_deixa_o_lock_no_conteiner():
+    texto = FINANCAS_SH.read_text(encoding="utf-8")
+    # o mesmo arquivo de lock do deploy, no descritor 9, esperando em vez de pular (o deploy é quem pula e tenta de novo)
+    assert re.search(r'^exec 9>"\$ESTADO_DIR/deploy\.lock"', texto, re.MULTILINE)
+    assert re.search(r"^flock -w \d+ 9 \|\|", texto, re.MULTILINE)
+    assert re.search(r"financas_atualizacao 9>&-\s*$", texto, re.MULTILINE)  # o contêiner não herda o lock
+
+
+def test_atualizacao_diaria_monta_o_checkout_so_leitura_e_apenas_etl_data_gravavel():
+    texto = FINANCAS_SH.read_text(encoding="utf-8")
+    assert '-v "$RAIZ:/repo:ro"' in texto and '-v "$RAIZ/etl/data:/repo/etl/data"' in texto
+    assert '--user "$(id -u):$(id -g)"' in texto  # os arquivos gravados ficam do dono do checkout
+    assert "python -m etl.pipelines.financas_atualizacao" in texto
+    assert re.search(r"--memory \d+g", texto)  # a extração não pode derrubar o servidor
+
+
+def test_atualizacao_diaria_passa_a_senha_do_banco_por_arquivo_de_ambiente():
+    texto = FINANCAS_SH.read_text(encoding="utf-8")
+    assert not re.search(r"-e (ALEMBIC_)?DATABASE_URL=", texto) and "POSTGRES_PASSWORD" in texto
+    assert re.search(r'chmod 600 "\$ENV_BANCO"', texto) and '--env-file "$ENV_BANCO"' in texto
+    assert re.search(r"trap 'rm -f \"\$ENV_BANCO\"' EXIT", texto)
+
+
+def test_units_da_atualizacao_diaria_sao_de_usuario_e_nao_guardam_caminho_do_servidor():
+    servico = (SYSTEMD / "legisdata-financas.service").read_text(encoding="utf-8")
+    timer = (SYSTEMD / "legisdata-financas.timer").read_text(encoding="utf-8")
+    assert "EnvironmentFile=%h/.legisdata-deploy/ambiente" in servico
+    assert "ExecStart=%h/.legisdata-deploy/atualizar_financas.sh" in servico
+    assert re.search(r"^OnCalendar=\*-\*-\* \d\d:\d\d:\d\d$", timer, re.MULTILINE)
+    assert "Persistent=true" in timer and "WantedBy=timers.target" in timer
+    for texto in (servico, timer, FINANCAS_SH.read_text(encoding="utf-8")):
+        assert not re.search(r"/home/|/opt/|umbrel|\b\d{1,3}(\.\d{1,3}){3}\b", texto)  # nada do servidor no repositório
+
+
+def test_instalador_instala_a_atualizacao_diaria_e_liga_o_timer():
+    texto = (RAIZ / "scripts" / "deploy" / "instalar.sh").read_text(encoding="utf-8")
+    assert 'scripts/deploy/atualizar_financas.sh" >"$DEST/atualizar_financas.sh"' in texto
+    for unit in ("legisdata-financas.service", "legisdata-financas.timer"):
+        assert unit in texto
+    assert "systemctl --user enable --now legisdata-financas.timer" in texto
+
+
+def test_deploy_mantem_a_copia_do_script_da_atualizacao_igual_a_do_commit_implantado():
+    texto = (RAIZ / "scripts" / "deploy" / "deploy.sh").read_text(encoding="utf-8")
+    instalacao = _posicao(texto, r'install -m 755 "\$RAIZ/scripts/deploy/atualizar_financas\.sh"')
+    assert instalacao < _posicao(texto, r'^echo "\$TAG" >"\$ESTADO_DIR/ultima_tag"')  # só depois da saúde
+    assert re.search(
+        r'bash -n "\$RAIZ/scripts/deploy/atualizar_financas\.sh"', texto
+    )  # script com erro nunca é instalado
+
+
+def test_deploy_so_recarrega_as_financas_quando_o_commit_mudou_os_arquivos_ou_o_codigo_da_carga():
+    texto = (RAIZ / "scripts" / "deploy" / "deploy.sh").read_text(encoding="utf-8")
+    inicio = _posicao(texto, r"^\s*ENTRADAS_FINANCAS=\(")
+    entradas = texto[inicio : inicio + texto[inicio:].index("\n  )\n")]
+    for caminho in (
+        "despesas_ceap_2019_2026.json",
+        "emendas_parlamentares_2019_2026.json",
+        "remuneracao_parlamentares.json",
+        "declaracoes_patrimonio.json",
+        "tse_doacoes_campanha.json",
+        "certidoes_tse.json",
+        "financas_loader.py",
+        "loader_helpers.py",
+        "pessoa_resolver.py",
+        "backend/alembic/versions",
+    ):
+        assert caminho in entradas, caminho
+    # só pula com o `fin` já carregado e o commit anterior conhecido, comparando commit contra commit
+    assert re.search(r'\[\[ "\$LEGISDATA_FIN_TEM_DADOS" == "t" && -n "\$ATUAL" \]\]', texto)
+    assert re.search(r'git diff --quiet "\$ATUAL" "\$ALVO" -- "\$\{ENTRADAS_FINANCAS\[@\]\}"', texto)
+    # a decisão chega à carga: as chaves excluem `financas` só com o pulo, e a variável é repassada pelo `um_comando`
+    corpo = texto[_posicao(texto, r"^um_comando\(\) \{") :]
+    assert 'LEGISDATA_FIN_PULAR="${LEGISDATA_FIN_PULAR:-}"' in corpo.split("\n}\n")[0]
+    assert re.search(r"carregar_tudo\(engine, chaves=chaves, toleradas=toleradas\)", texto)
+    assert "os.environ.get('LEGISDATA_FIN_PULAR') == '1'" in texto

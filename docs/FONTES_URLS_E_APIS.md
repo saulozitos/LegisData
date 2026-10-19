@@ -7,6 +7,21 @@ Este documento registra com **100% de cobertura** todas as fontes de dados ofici
 
 ---
 
+## 0. Especificações oficiais das APIs (consulta obrigatória antes de mexer em extrator)
+
+Cópias em markdown das especificações oficiais, para consultar campos, parâmetros e limites em vez de adivinhar:
+
+- [`docs/apis/camara-dadosabertos-api.md`](apis/camara-dadosabertos-api.md): API de Dados Abertos da Câmara (`https://dadosabertos.camara.leg.br/api/v2/`, 79 operações em 11 grupos; spec em `.../api/v2/api-docs`). Listagens devolvem 15 itens por padrão e no máximo 100 por requisição.
+- [`docs/apis/senado-dadosabertos-api.md`](apis/senado-dadosabertos-api.md): API de Dados Abertos do Senado (`https://legis.senado.leg.br/dadosabertos`; spec em `.../v3/api-docs`).
+
+**Limites de requisição** (valem para todo extrator e toda rotina agendada):
+
+- **Senado:** mais de **10 requisições por segundo** podem receber **HTTP 429**; em horários de muita demanda, **HTTP 503**. A própria documentação pede para **não agendar rotinas em horários arredondados** (00:00, 01:15…), porque isso gera picos simultâneos. Por isso o `legisdata-financas.timer` roda às 05:37 UTC, com atraso aleatório.
+- **Câmara, arquivos em lote** (`www.camara.leg.br/cotas/Ano-{ano}.csv.zip` e os de `dadosabertos.camara.leg.br/arquivos/`): a especificação da API não descreve limite para eles, mas na prática o servidor responde **429** a vários CSVs anuais pedidos em sequência (visto com 7 downloads em cerca de 30 s). A CEAP espera 10 s entre downloads e tenta de novo uma vez após 90 s (`PAUSA_ENTRE_DOWNLOADS`, `ESPERA_NOVA_TENTATIVA` em `sync_ceap_emendas.py`).
+- Use sempre `etl.utils.http_client.HttpClient` (timeout, retry com backoff e rate limit) e confira o limite aqui antes de paralelizar qualquer extração.
+
+---
+
 ## 1. Câmara dos Deputados
 
 ### 1.1 API de Dados Abertos (v2)

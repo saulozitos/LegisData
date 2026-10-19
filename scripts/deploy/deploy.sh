@@ -115,7 +115,7 @@ um_comando() { # roda um comando Python no contêiner da imagem nova, na rede do
   # LEGISDATA_ACEITAR_ENCOLHIMENTO=1 libera, só nesta execução, uma carga de finanças que reduz uma tabela a menos da metade
   docker run --rm --network "$REDE" --env-file "$ENV_BANCO" -e ENVIRONMENT=production -e DB_SSLMODE=disable \
     -e LEGISDATA_ACEITAR_ENCOLHIMENTO="${LEGISDATA_ACEITAR_ENCOLHIMENTO:-}" \
-    -e LEGISDATA_FIN_TEM_DADOS="${LEGISDATA_FIN_TEM_DADOS:-}" \
+    -e LEGISDATA_FIN_TEM_DADOS="${LEGISDATA_FIN_TEM_DADOS:-}" -e LEGISDATA_FIN_PULAR="${LEGISDATA_FIN_PULAR:-}" \
     -e PYTHONPATH=/repo/backend:/repo -v "$RAIZ:/repo:ro" -w /app "$REGISTRO/legisdata-backend:$TAG" "$@" 9>&-
 }
 
@@ -131,12 +131,30 @@ if [[ "$TEM_ECO" == "t" && -f "$RAIZ/etl/pipelines/carga_economica.py" ]]; then
   # (fin recém-criado e vazio) uma falha da carga aborta antes do `compose up` e o contêiner antigo continua no ar.
   LEGISDATA_FIN_TEM_DADOS="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select exists(select 1 from fin.emenda) or exists(select 1 from fin.despesa_cota)")"
   export LEGISDATA_FIN_TEM_DADOS
+  # A atualização diária (legisdata-financas.timer) mantém CEAP e emendas do `fin` mais novas que os arquivos versionados.
+  # Por isso o deploy só recarrega as finanças quando o `fin` está vazio ou quando este commit mudou os arquivos de
+  # entrada ou o código da carga; senão devolveria o banco ao conteúdo dos arquivos do git, mais antigo.
+  LEGISDATA_FIN_PULAR=""
+  ENTRADAS_FINANCAS=(
+    etl/data/processed/despesas_ceap_2019_2026.json etl/data/processed/emendas_parlamentares_2019_2026.json
+    etl/data/processed/remuneracao_parlamentares.json etl/data/processed/declaracoes_patrimonio.json
+    etl/data/processed/tse_doacoes_campanha.json etl/data/processed/certidoes_tse.json
+    etl/pipelines/financas_loader.py etl/pipelines/loader_helpers.py etl/pipelines/pessoa_resolver.py
+    backend/alembic/versions
+  )
+  if [[ "$LEGISDATA_FIN_TEM_DADOS" == "t" && -n "$ATUAL" ]] && git cat-file -e "$ATUAL^{commit}" 2>/dev/null &&
+    git diff --quiet "$ATUAL" "$ALVO" -- "${ENTRADAS_FINANCAS[@]}"; then
+    LEGISDATA_FIN_PULAR=1
+    log "finanças: este commit não mudou os arquivos nem o código da carga; mantenho o fin atual"
+  fi
+  export LEGISDATA_FIN_PULAR
   um_comando python -c "
 import os
 from app.core.database import engine
-from etl.pipelines.carga_economica import carregar_tudo
+from etl.pipelines.carga_economica import CARGAS, carregar_tudo
 toleradas = ('financas',) if os.environ.get('LEGISDATA_FIN_TEM_DADOS') == 't' else ()
-for chave, resultado in carregar_tudo(engine, toleradas=toleradas).items():
+chaves = [c[0] for c in CARGAS if not (c[0] == 'financas' and os.environ.get('LEGISDATA_FIN_PULAR') == '1')]
+for chave, resultado in carregar_tudo(engine, chaves=chaves, toleradas=toleradas).items():
     print(chave, resultado)
 "
 fi
@@ -168,6 +186,12 @@ fi
 # O timer executa a cópia em $ESTADO_DIR/deploy.sh (sobrevive a um `git merge` que mexa no script); atualiza-a aqui.
 if [[ -f "$RAIZ/scripts/deploy/deploy.sh" ]] && ! cmp -s "$RAIZ/scripts/deploy/deploy.sh" "$ESTADO_DIR/deploy.sh"; then
   install -m 755 "$RAIZ/scripts/deploy/deploy.sh" "$ESTADO_DIR/deploy.sh.novo" && mv "$ESTADO_DIR/deploy.sh.novo" "$ESTADO_DIR/deploy.sh"
+fi
+# O timer das finanças executa a cópia em $ESTADO_DIR/atualizar_financas.sh; a mantém igual à do commit implantado.
+if [[ -f "$RAIZ/scripts/deploy/atualizar_financas.sh" ]] && bash -n "$RAIZ/scripts/deploy/atualizar_financas.sh" &&
+  ! cmp -s "$RAIZ/scripts/deploy/atualizar_financas.sh" "$ESTADO_DIR/atualizar_financas.sh"; then
+  install -m 755 "$RAIZ/scripts/deploy/atualizar_financas.sh" "$ESTADO_DIR/atualizar_financas.sh.novo" &&
+    mv "$ESTADO_DIR/atualizar_financas.sh.novo" "$ESTADO_DIR/atualizar_financas.sh"
 fi
 echo "$TAG" >"$ESTADO_DIR/ultima_tag"
 echo "$ALVO" >"$ESTADO_DIR/ultimo_sha"

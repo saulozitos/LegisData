@@ -15,11 +15,14 @@ Uso:
 """
 
 import argparse
+import copy
 import io
+import json
 import logging
 import time
 import zipfile
 from datetime import date
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pandas as pd
@@ -27,7 +30,7 @@ import pandas as pd
 from etl.config import PROCESSED_DATA_DIR
 from etl.extractors.emendas_extractor import EmendasExtractor
 from etl.utils.http_client import HttpClient, HttpError
-from etl.utils.io_utils import write_json_if_valid
+from etl.utils.io_utils import atomic_write_json, write_json_if_valid
 from etl.utils.provenance import mark_official
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -111,6 +114,47 @@ class CeapAccumulator:
         if not forn.get("cnpj_cpf") and cnpj:
             forn["cnpj_cpf"] = cnpj
 
+    def para_json(self) -> List[Dict[str, Any]]:
+        """Estado completo (sem truncar fornecedores) para o cache por ano; a chave vira lista [cargo, identificador]."""
+        return [{"chave": [cargo, ident], "reg": reg} for (cargo, ident), reg in self._dados.items()]
+
+    @classmethod
+    def de_json(cls, itens: List[Dict[str, Any]]) -> "CeapAccumulator":
+        acc = cls()
+        for item in itens:
+            cargo, ident = item["chave"]
+            acc._dados[(cargo, ident)] = item["reg"]
+        return acc
+
+    def mesclar(self, outro: "CeapAccumulator") -> None:
+        """
+        Soma os totais de `outro` (anos diferentes dos já acumulados). O nome do rótulo é o do último acumulador
+        mesclado, então mescle em ordem crescente de ano para ficar com o nome mais recente do parlamentar.
+        """
+        for chave, novo in outro._dados.items():
+            reg = self._dados.get(chave)
+            if reg is None:
+                self._dados[chave] = copy.deepcopy(novo)
+                continue
+            reg["nome"] = novo["nome"]
+            reg["total_gasto"] += novo["total_gasto"]
+            reg["total_notas"] += novo["total_notas"]
+            for campo in ("por_ano", "por_tipo"):
+                for k, v in novo[campo].items():
+                    reg[campo][k] = reg[campo].get(k, 0.0) + v
+            for ano, tipos in novo["por_ano_tipo"].items():
+                destino = reg["por_ano_tipo"].setdefault(ano, {})
+                for tipo, v in tipos.items():
+                    destino[tipo] = destino.get(tipo, 0.0) + v
+            for nome_f, forn in novo["fornecedores"].items():
+                atual = reg["fornecedores"].setdefault(
+                    nome_f, {"nome": nome_f, "cnpj_cpf": forn.get("cnpj_cpf"), "total": 0.0, "notas": 0}
+                )
+                atual["total"] += forn["total"]
+                atual["notas"] += forn["notas"]
+                if not atual.get("cnpj_cpf") and forn.get("cnpj_cpf"):
+                    atual["cnpj_cpf"] = forn["cnpj_cpf"]
+
     def finalize(self, fonte_por_cargo: Dict[str, str]) -> Dict[str, Dict[str, Any]]:
         """Arredonda, mantém os maiores fornecedores e resolve homônimos sem perder ninguém."""
         saida: Dict[str, Dict[str, Any]] = {}
@@ -145,7 +189,9 @@ def _num(valor: Any) -> float:
 def extract_camara_ceap(http: HttpClient, anos: Iterable[int], acc: CeapAccumulator) -> Tuple[int, List[int]]:
     """Baixa o CSV anual da Câmara. Devolve (registros, anos_com_falha)."""
     total, falhas = 0, []
-    for ano in anos:
+    for i, ano in enumerate(anos):
+        if i:
+            time.sleep(PAUSA_ENTRE_DOWNLOADS)  # a Câmara responde 429 a vários CSVs anuais seguidos
         t0 = time.time()
         url = f"https://www.camara.leg.br/cotas/Ano-{ano}.csv.zip"
         try:
@@ -215,14 +261,109 @@ def extract_senado_ceaps(http: HttpClient, anos: Iterable[int], acc: CeapAccumul
     return total, falhas
 
 
+VERSAO_DO_CACHE = 1
+PASTA_DO_CACHE = "ceap_por_ano"
+# A Câmara responde 429 (Too Many Requests) quando os CSVs anuais são pedidos em sequência (visto com 7 downloads em
+# 30 s): entre dois downloads espera-se um pouco, e um ano que falhou ganha uma segunda tentativa depois de uma pausa maior.
+PAUSA_ENTRE_DOWNLOADS = 10.0
+ESPERA_NOVA_TENTATIVA = 90.0
+
+
+def _definitivo(ano: int, hoje: date) -> bool:
+    """
+    A CEAP de um ano só é dado fechado depois de 1º de abril do ano seguinte (a Câmara e o Senado ainda corrigem
+    lançamentos nos primeiros meses). Antes disso o ano é baixado de novo a cada execução e nunca fica em cache.
+    """
+    return hoje >= date(ano + 1, 4, 1)
+
+
+def _arquivo_do_cache(cache_dir: Path, casa: str, ano: int) -> Path:
+    return Path(cache_dir) / f"{casa}_{ano}.json"
+
+
+def _ler_cache(cache_dir: Path, casa: str, ano: int) -> Optional[CeapAccumulator]:
+    caminho = _arquivo_do_cache(cache_dir, casa, ano)
+    try:
+        conteudo = json.loads(caminho.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(conteudo, dict) or conteudo.get("versao") != VERSAO_DO_CACHE:
+        return None
+    if conteudo.get("casa") != casa or conteudo.get("ano") != ano or not isinstance(conteudo.get("dados"), list):
+        return None
+    try:
+        return CeapAccumulator.de_json(conteudo["dados"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _gravar_cache(cache_dir: Path, casa: str, ano: int, acc: CeapAccumulator) -> None:
+    Path(cache_dir).mkdir(parents=True, exist_ok=True)
+    atomic_write_json(
+        _arquivo_do_cache(cache_dir, casa, ano),
+        {"versao": VERSAO_DO_CACHE, "casa": casa, "ano": ano, "dados": acc.para_json()},
+        indent=None,
+    )
+
+
+def _extrair_com_cache(
+    http: HttpClient,
+    anos: Iterable[int],
+    casa: str,
+    extrator: Any,
+    acc: CeapAccumulator,
+    cache_dir: Path,
+    hoje: date,
+) -> Tuple[int, List[int], List[int]]:
+    """
+    Extrai ano a ano: ano fechado já em cache entra sem baixar nada; os demais são baixados e, se o ano já está fechado
+    (`_definitivo`) e trouxe dados, vão para o cache. Entre downloads há uma pausa e um ano que falha é tentado de novo
+    uma vez (a Câmara limita pedidos em sequência). Devolve (registros baixados, anos com falha, anos vindos do cache).
+    A mescla é em ordem crescente de ano. Uma falha em qualquer ano continua abortando a gravação do arquivo final.
+    """
+    total, falhas, do_cache = 0, [], []
+    baixou = False
+    for ano in sorted(anos):
+        guardado = _ler_cache(cache_dir, casa, ano) if _definitivo(ano, hoje) else None
+        if guardado is not None:
+            acc.mesclar(guardado)
+            do_cache.append(ano)
+            continue
+        if baixou:
+            time.sleep(PAUSA_ENTRE_DOWNLOADS)
+        baixou = True
+        parcial = CeapAccumulator()
+        n, falhou = extrator(http, [ano], parcial)
+        if falhou:
+            logger.warning("[%s %s] falhou; nova tentativa em %.0fs", casa, ano, ESPERA_NOVA_TENTATIVA)
+            time.sleep(ESPERA_NOVA_TENTATIVA)
+            parcial = CeapAccumulator()
+            n, falhou = extrator(http, [ano], parcial)
+        if falhou:
+            falhas.extend(falhou)
+            continue
+        total += n
+        if _definitivo(ano, hoje) and parcial._dados:
+            _gravar_cache(cache_dir, casa, ano, parcial)
+        acc.mesclar(parcial)
+    return total, falhas, do_cache
+
+
 def run(
     ano_inicio: int = ANO_INICIAL_CEAP,
     ano_fim: Optional[int] = None,
     ceap: bool = True,
     emendas: bool = True,
     http: Optional[HttpClient] = None,
+    cache_dir: Optional[Path] = None,
+    hoje: Optional[date] = None,
 ) -> Dict[str, Any]:
-    ano_fim = ano_fim or date.today().year
+    """
+    Sincroniza CEAP e emendas. Com `cache_dir`, a CEAP de cada ano já fechado (depois de 1º de abril do ano seguinte) é
+    guardada e não é baixada de novo: a atualização diária só refaz o ano corrente (e o anterior até março).
+    """
+    hoje = hoje or date.today()
+    ano_fim = ano_fim or hoje.year
     if ano_inicio > ano_fim:
         raise ValueError("ano_inicio não pode ser maior que ano_fim")
     http = http or HttpClient(timeout=60.0, max_retries=3)
@@ -231,8 +372,17 @@ def run(
 
     if ceap:
         acc = CeapAccumulator()
-        n_cam, falhas_cam = extract_camara_ceap(http, anos, acc)
-        n_sen, falhas_sen = extract_senado_ceaps(http, anos, acc)
+        if cache_dir is None:
+            n_cam, falhas_cam = extract_camara_ceap(http, anos, acc)
+            n_sen, falhas_sen = extract_senado_ceaps(http, anos, acc)
+        else:
+            n_cam, falhas_cam, cache_cam = _extrair_com_cache(
+                http, anos, "camara", extract_camara_ceap, acc, cache_dir, hoje
+            )
+            n_sen, falhas_sen, cache_sen = _extrair_com_cache(
+                http, anos, "senado", extract_senado_ceaps, acc, cache_dir, hoje
+            )
+            resumo["ceap_anos_do_cache"] = {"camara": cache_cam, "senado": cache_sen}
         falhas = {"camara": falhas_cam, "senado": falhas_sen}
         resumo.update({"ceap_registros": n_cam + n_sen, "ceap_falhas": falhas})
         if falhas_cam or falhas_sen:

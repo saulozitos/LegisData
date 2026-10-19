@@ -10,6 +10,7 @@ def test_execute_cron_pipeline():
         patch("etl.pipelines.presenca_atualizacao.atualizar", return_value={"camara_portal": {}}),
         patch("etl.pipelines.votacoes_atualizacao.atualizar", return_value={"carga": {}}),
         patch("etl.pipelines.economia_atualizacao.atualizar", return_value={"series": 28}) as economia,
+        patch("etl.pipelines.financas_atualizacao.atualizar", return_value={"carga": {}}) as financas,
         patch(
             "etl.pipelines.cron_daily_consolidation.calculate_party_ippm_ranking", return_value={"ranking": [1, 2, 3]}
         ),
@@ -30,6 +31,7 @@ def test_execute_cron_pipeline():
         # mandatos sincronizados + vínculos de autoria + partidos no ranking + arestas do grafo
         assert result["registros_atualizados"] == 10 + 50 + 3 + 2
         economia.assert_called_once()  # a etapa 1c (séries econômicas) rodou
+        financas.assert_called_once()  # e a 1d (CEAP e emendas)
         assert result["erro_mensagem"] is None
         assert "data_execucao" in result
         assert mock_db.add.called
@@ -44,6 +46,7 @@ def test_cron_marks_failure_when_presence_update_fails_but_runs_other_stages():
         patch("etl.pipelines.presenca_atualizacao.atualizar", side_effect=RuntimeError("portal fora do ar")),
         patch("etl.pipelines.votacoes_atualizacao.atualizar", return_value={"carga": {}}),
         patch("etl.pipelines.economia_atualizacao.atualizar", return_value={"series": 28}),
+        patch("etl.pipelines.financas_atualizacao.atualizar", return_value={"carga": {}}),
         patch("etl.pipelines.cron_daily_consolidation.calculate_party_ippm_ranking", return_value={"ranking": [1]}),
         patch(
             "etl.pipelines.cron_daily_consolidation.build_coauthorship_network",
@@ -61,7 +64,7 @@ def test_cron_marks_failure_when_presence_update_fails_but_runs_other_stages():
         assert result["registros_atualizados"] == 10 + 5 + 1  # as demais etapas rodaram
 
 
-def _executar_com_etapas(votacoes_efeito=None, presenca_efeito=None):
+def _executar_com_etapas(votacoes_efeito=None, presenca_efeito=None, financas_efeito=None):
     """Roda o cron com as etapas externas simuladas; devolve (resultado, ordem das chamadas, sessão simulada)."""
     ordem = []
 
@@ -79,6 +82,7 @@ def _executar_com_etapas(votacoes_efeito=None, presenca_efeito=None):
         patch("etl.pipelines.cron_daily_consolidation.sync_mandate_history", side_effect=etapa("ponte", 10, None)),
         patch("etl.pipelines.presenca_atualizacao.atualizar", side_effect=etapa("presenca", {}, presenca_efeito)),
         patch("etl.pipelines.economia_atualizacao.atualizar", side_effect=etapa("economia", {}, None)),
+        patch("etl.pipelines.financas_atualizacao.atualizar", side_effect=etapa("financas", {}, financas_efeito)),
         patch(
             "etl.pipelines.votacoes_atualizacao.atualizar",
             side_effect=etapa("votacoes", {"carga": {}}, votacoes_efeito),
@@ -99,7 +103,7 @@ def _executar_com_etapas(votacoes_efeito=None, presenca_efeito=None):
 def test_votacoes_carregam_antes_da_ponte_sem_sincronizar_e_a_presenca_vem_depois():
     resultado, ordem, _ = _executar_com_etapas()
 
-    assert [nome for nome, _ in ordem] == ["votacoes", "ponte", "presenca", "economia"]
+    assert [nome for nome, _ in ordem] == ["votacoes", "ponte", "presenca", "economia", "financas"]
     assert ordem[0][1] == {"sincronizar": False}  # a ponte roda uma única vez, na etapa seguinte
     assert resultado["status"] == "SUCESSO"
 
@@ -114,6 +118,7 @@ def test_falha_na_etapa_de_votacoes_marca_falha_mas_as_demais_rodam():
         "ponte",
         "presenca",
         "economia",
+        "financas",
     ]  # ponte e presença não foram puladas
     assert resultado["registros_atualizados"] == 10 + 5 + 1  # mandatos + autorias + partidos (+0 arestas)
     registrado = mock_db.add.call_args.args[0]
@@ -135,6 +140,7 @@ def test_cron_marks_failure_when_economy_update_fails_but_runs_other_stages():
         patch("etl.pipelines.presenca_atualizacao.atualizar", return_value={}),
         patch("etl.pipelines.votacoes_atualizacao.atualizar", return_value={"carga": {}}),
         patch("etl.pipelines.economia_atualizacao.atualizar", side_effect=RuntimeError("BCB fora do ar")),
+        patch("etl.pipelines.financas_atualizacao.atualizar", return_value={"carga": {}}),
         patch(
             "etl.pipelines.cron_daily_consolidation.calculate_party_ippm_ranking", return_value={"ranking": [1]}
         ) as ranking,
@@ -154,3 +160,13 @@ def test_cron_marks_failure_when_economy_update_fails_but_runs_other_stages():
         assert result["registros_atualizados"] == 10 + 0 + 1 + 0  # mandatos + autorias + partidos + arestas
         ranking.assert_called_once()  # as etapas seguintes à economia rodaram
         grafo.assert_called_once()
+
+
+def test_falha_na_atualizacao_de_financas_marca_falha_mas_as_demais_etapas_rodam():
+    resultado, ordem, mock_db = _executar_com_etapas(financas_efeito=RuntimeError("Portal fora do ar"))
+
+    assert resultado["status"] == "FALHA"
+    assert resultado["erro_mensagem"] == "finanças: Portal fora do ar"
+    assert [nome for nome, _ in ordem][-1] == "financas"
+    assert resultado["registros_atualizados"] == 10 + 5 + 1  # a ponte, o IPPM e o grafo não foram pulados
+    assert mock_db.add.call_args.args[0].status_execucao == "FALHA"
