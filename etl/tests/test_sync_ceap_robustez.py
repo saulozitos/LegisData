@@ -116,7 +116,7 @@ HOJE = date(2026, 10, 19)
 def _payload(tmp_path):
     acc = CeapAccumulator()
     acc.add("DEPUTADO_FEDERAL", 1, "Ana", 2023, 1, "COMB", "Posto", "02558157000162", 10.0)
-    acc.add("SENADOR", 7, "Beto", 2023, 3, "PASSAGEM", "Cia", None, 100.0)
+    acc.add("DEPUTADO_FEDERAL", 2, "Beto", 2023, 3, "PASSAGEM", "Cia", None, 100.0)
     sync._gravar_cache(tmp_path, "camara", 2023, acc, date(2026, 10, 1))
     return json.loads((tmp_path / "camara_2023.json").read_text(encoding="utf-8"))
 
@@ -145,11 +145,10 @@ MUTACOES = {
     "total_nan": (["dados", 0, "reg", "total_gasto"], "NaN"),
     "fornecedor_nome_nao_texto": (["dados", 0, "reg", "fornecedores", "Posto", "nome"], 5),
     "fornecedor_cpf_em_disco": (["dados", 0, "reg", "fornecedores", "Posto", "cnpj_cpf"], "12345678909"),
-    "nome_com_cpf_em_disco": (["dados", 0, "reg", "nome"], "ANA"),
 }
 
 
-@pytest.mark.parametrize("caso", [c for c in MUTACOES if c != "nome_com_cpf_em_disco"])
+@pytest.mark.parametrize("caso", list(MUTACOES))
 def test_cache_com_um_campo_adulterado_e_recusado(tmp_path, caso):
     caminho, valor = MUTACOES[caso]
     payload = _com(_payload(tmp_path), caminho, valor)
@@ -217,9 +216,11 @@ class Vazio:
 
 
 @pytest.mark.parametrize("ausente", [False, True])
-def test_ano_corrente_que_ja_tinha_dados_e_volta_vazio_em_janeiro_e_falha(tmp_path, ausente):
-    r = sync._extrair_anos(None, [2027], "camara", Vazio(ausente), CeapAccumulator(), None, date(2027, 1, 10), {2027})
+def test_ano_corrente_que_ja_tinha_dados_e_volta_vazio_em_janeiro_e_falha(ausente):
+    extrator = Vazio(ausente)
+    r = sync._extrair_anos(None, [2027], "camara", extrator, CeapAccumulator(), None, date(2027, 1, 10), {2027})
     assert r.falhas == [2027] and r.sem_arquivo == []
+    assert extrator.chamadas == (1 if ausente else 2)  # 404 não ganha nova tentativa; o vazio ganha uma
 
 
 @pytest.mark.parametrize("hoje, esperado", [(date(2027, 3, 31), [2027]), (date(2027, 4, 1), [])])
@@ -239,11 +240,16 @@ def test_anos_publicados_no_arquivo_le_os_anos_com_gasto_por_casa(tmp_path):
 
 
 # ── Resumo e injeção de http ────────────────────────────────────────────────────────────────────────────────────────
-def test_fontes_nao_gravadas_usa_lista_positiva():
-    assert sync.fontes_nao_gravadas({"ceap_gravado": True, "emendas_gravado": True}) == []
-    assert sync.fontes_nao_gravadas({"ceap_gravado": False, "emendas_gravado": True}) == ["ceap"]
-    assert sync.fontes_nao_gravadas({"emendas_gravado": False}) == ["emendas"]  # a ceap não foi pedida
-    assert sync.fontes_nao_gravadas({}) == []
+def test_fontes_gravadas_e_nao_gravadas_sao_complementares_e_positivas():
+    for resumo, gravadas in [
+        ({"ceap_gravado": True, "emendas_gravado": True}, ["ceap", "emendas"]),
+        ({"ceap_gravado": False, "emendas_gravado": True}, ["emendas"]),
+        ({"emendas_gravado": True}, ["emendas"]),  # sem resposta da ceap: não gravou
+        ({"ceap_gravado": 1, "emendas_gravado": "sim"}, []),  # só `True` conta
+        ({}, []),
+    ]:
+        assert sync.fontes_gravadas(resumo) == gravadas, resumo
+        assert sync.fontes_nao_gravadas(resumo) == [f for f in sync.FONTES if f not in gravadas], resumo
 
 
 def test_run_repassa_o_http_injetado_ao_extrator_de_emendas(tmp_path, monkeypatch):
@@ -345,3 +351,180 @@ def test_o_arquivo_versionado_da_ceap_nao_tem_cpf_em_documento_nem_em_nome():
             assert documento is None or len(re.sub(r"\D", "", documento)) == 14, (parlamentar, forn["nome"])
             assert documento is None or cnpj_do_fornecedor(documento) is not None, (parlamentar, forn["nome"])
             assert nome_do_fornecedor(forn["nome"]) == forn["nome"], (parlamentar, forn["nome"])
+
+
+# ── Fornecedores homônimos, texto vazio e nome em branco ────────────────────────────────────────────────────────────
+def test_mei_homonimo_com_cnpj_diferente_nao_se_funde_e_cada_um_guarda_o_seu_cnpj():
+    acc = CeapAccumulator()
+    acc.add("DEPUTADO_FEDERAL", 1, "Ana", 2023, 1, "T", "JOAO DA SILVA 09876543200", "11222333000181", 10.0)
+    acc.add("DEPUTADO_FEDERAL", 1, "Ana", 2023, 2, "T", "JOAO DA SILVA 01234567890", "02558157000162", 5.0)
+    acc.add("DEPUTADO_FEDERAL", 1, "Ana", 2023, 3, "T", "JOAO DA SILVA", "02558157000162", 1.0)  # volta ao segundo
+    acc.add("DEPUTADO_FEDERAL", 1, "Ana", 2023, 4, "T", "JOAO DA SILVA", None, 2.0)  # sem documento: soma no primeiro
+    (reg,) = acc.finalize(FONTES).values()
+    forn = reg["fornecedores"]
+    assert forn["JOAO DA SILVA"] == {"nome": "JOAO DA SILVA", "cnpj_cpf": "11222333000181", "total": 12.0, "notas": 2}
+    assert forn["JOAO DA SILVA [02558157000162]"]["total"] == 6.0
+    assert forn["JOAO DA SILVA [02558157000162]"]["cnpj_cpf"] == "02558157000162"
+
+
+def test_homonimos_tambem_ficam_separados_ao_mesclar_anos_e_voltam_do_cache(tmp_path):
+    a, b = CeapAccumulator(), CeapAccumulator()
+    a.add("DEPUTADO_FEDERAL", 1, "Ana", 2023, 1, "T", "JOAO", "11222333000181", 10.0)
+    b.add("DEPUTADO_FEDERAL", 1, "Ana", 2024, 1, "T", "JOAO", "02558157000162", 5.0)
+    b.add("DEPUTADO_FEDERAL", 1, "Ana", 2024, 2, "T", "JOAO", "11222333000181", 1.0)
+    a.mesclar(b)
+    sync._gravar_cache(tmp_path, "camara", 2023, a, date(2026, 10, 1))
+    lido = sync._ler_cache(tmp_path, "camara", 2023, HOJE)
+    assert lido is not None
+    (reg,) = lido.finalize(FONTES).values()
+    assert reg["fornecedores"]["JOAO"]["total"] == 11.0
+    assert reg["fornecedores"]["JOAO [02558157000162]"]["total"] == 5.0
+
+
+def test_chave_de_fornecedor_que_nao_bate_com_nome_e_documento_invalida_o_cache(tmp_path):
+    payload = _payload(tmp_path)
+    forns = payload["dados"][0]["reg"]["fornecedores"]
+    forns["OUTRO NOME"] = forns.pop("Posto")
+    (tmp_path / "camara_2023.json").write_text(json.dumps(payload), encoding="utf-8")
+    assert sync._ler_cache(tmp_path, "camara", 2023, HOJE) is None
+
+
+def test_celula_vazia_nao_vira_o_texto_nan_nem_cria_parlamentar_fantasma():
+    acc, _, falhas = _camara(
+        [
+            "ANA;123;SP;X;2023;1;;10.0;;07575651000159",  # descrição e fornecedor vazios
+            ";;SP;X;2023;1;COMB;5.0;POSTO;07575651000159",  # sem nome e sem identificador: não é de ninguém
+        ]
+    )
+    (reg,) = acc.finalize(FONTES).values()
+    assert falhas == [] and reg["nome"] == "ANA"
+    assert set(reg["por_tipo"]) == {"OUTROS"} and set(reg["fornecedores"]) == {"Não informado"}
+    assert "nan" not in json.dumps(acc.para_json()).lower()
+
+
+def test_nome_so_de_espacos_e_descartado_e_o_que_se_grava_volta_do_cache(tmp_path):
+    acc = CeapAccumulator()
+    acc.add("DEPUTADO_FEDERAL", None, "   ", 2023, 1, "T", "F", None, 10.0)
+    assert acc.vazio
+    acc.add("DEPUTADO_FEDERAL", None, "  ana  ", 2023, 1, "T", "F", None, 10.0)
+    sync._gravar_cache(tmp_path, "camara", 2023, acc, date(2026, 10, 1))
+    lido = sync._ler_cache(tmp_path, "camara", 2023, HOJE)
+    assert lido is not None and lido.para_json() == acc.para_json()
+
+
+def test_cache_com_cargo_de_outra_casa_e_recusado(tmp_path):
+    acc = CeapAccumulator()
+    acc.add("SENADOR", 7, "Beto", 2023, 1, "T", "F", None, 10.0)
+    sync._gravar_cache(tmp_path, "camara", 2023, acc, date(2026, 10, 1))
+    assert sync._ler_cache(tmp_path, "camara", 2023, HOJE) is None
+
+
+# ── Anos já publicados: do arquivo anterior e do fin ────────────────────────────────────────────────────────────────
+def _extratores_que_nao_acham_2027(monkeypatch):
+    """2026 vem com gasto; 2027 responde 404 nas duas casas."""
+
+    def para(cargo, ident):
+        def extrator(http, anos, acc, ausentes=None):
+            if anos[0] == 2027:
+                ausentes.append(2027)
+                return 0, [2027]
+            acc.add(cargo, ident, "Fulano", anos[0], 1, "T", "F", None, 1.0)
+            return 1, []
+
+        return extrator
+
+    monkeypatch.setattr(sync, "extract_camara_ceap", para("DEPUTADO_FEDERAL", 1))
+    monkeypatch.setattr(sync, "extract_senado_ceaps", para("SENADOR", 7))
+
+
+def test_run_nao_apaga_o_ano_corrente_que_o_arquivo_anterior_ja_tinha(tmp_path, monkeypatch):
+    monkeypatch.setattr(sync, "PROCESSED_DATA_DIR", tmp_path)
+    anterior = CeapAccumulator()
+    anterior.add("DEPUTADO_FEDERAL", 1, "Ana", 2027, 1, "T", "F", None, 10.0)
+    anterior.add("SENADOR", 7, "Beto", 2027, 1, "T", "F", None, 10.0)
+    arquivo = tmp_path / sync.CEAP_OUTPUT
+    arquivo.write_text(json.dumps(anterior.finalize(FONTES)), encoding="utf-8")
+    original = arquivo.read_text(encoding="utf-8")
+    _extratores_que_nao_acham_2027(monkeypatch)
+    resumo = sync.run(2026, 2027, emendas=False, http=object(), hoje=date(2027, 1, 10))
+    assert resumo["ceap_gravado"] is False and resumo["ceap_falhas"] == {"camara": [2027], "senado": [2027]}
+    assert arquivo.read_text(encoding="utf-8") == original
+
+
+def test_run_usa_tambem_os_anos_que_o_fin_informa_quando_o_arquivo_foi_revertido(tmp_path, monkeypatch):
+    """O deploy devolve o arquivo ao retrato do git (sem 2027); quem sabe que 2027 existe é o `fin`."""
+    monkeypatch.setattr(sync, "PROCESSED_DATA_DIR", tmp_path)
+    _extratores_que_nao_acham_2027(monkeypatch)
+    sem = sync.run(2026, 2027, emendas=False, http=object(), hoje=date(2027, 1, 10))
+    assert sem["ceap_gravado"] is True and sem["ceap_anos_sem_arquivo"] == {"camara": [2027], "senado": [2027]}
+    com = sync.run(
+        2026,
+        2027,
+        emendas=False,
+        http=object(),
+        hoje=date(2027, 1, 10),
+        anos_publicados={"camara": {2027}, "senado": {2027}},
+    )
+    assert com["ceap_gravado"] is False and com["ceap_falhas"] == {"camara": [2027], "senado": [2027]}
+
+
+def test_anos_publicados_ignora_so_o_registro_ruim_e_avisa(tmp_path, caplog):
+    arquivo = tmp_path / "ceap.json"
+    arquivo.write_text(
+        json.dumps(
+            {
+                "RUIM": {"cargo": "SENADOR", "por_ano": None},
+                "RUIM2": {"cargo": "SENADOR", "por_ano": {"2023.0": 5}},
+                "NAN": {"cargo": "SENADOR", "por_ano": {"2021": float("nan")}},
+                "BOM": {"cargo": "DEPUTADO_FEDERAL", "por_ano": {"2024": 10.0, "2023": 0}},
+                "LIXO": 5,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert sync.anos_publicados_no_arquivo(arquivo) == {"camara": {2024}, "senado": set()}
+    assert "ilegíveis" in caplog.text
+
+
+# ── Resumo: cache vencido e erro das emendas ────────────────────────────────────────────────────────────────────────
+def test_run_avisa_no_resumo_o_ano_servido_pelo_cache_vencido(tmp_path, monkeypatch):
+    monkeypatch.setattr(sync, "PROCESSED_DATA_DIR", tmp_path / "saida")
+    (tmp_path / "saida").mkdir()
+    cache = tmp_path / "cache"
+    _payload(cache)  # camara_2023, gerado em 2026-10-01
+
+    def falha(http, anos, acc, ausentes=None):
+        return 0, list(anos)
+
+    monkeypatch.setattr(sync, "extract_camara_ceap", falha)
+    monkeypatch.setattr(sync, "extract_senado_ceaps", Vazio())
+    resumo = sync.run(2023, 2023, emendas=False, http=object(), cache_dir=cache, hoje=date(2027, 6, 1))
+    # o Senado volta vazio (falha do ano) e derruba a gravação, mas o aviso do cache vencido da Câmara consta
+    assert resumo["ceap_anos_cache_vencido"] == {"camara": [2023]}
+
+
+def test_erro_inesperado_das_emendas_nao_impede_a_ceap_e_fica_no_resumo(tmp_path, monkeypatch):
+    monkeypatch.setattr(sync, "PROCESSED_DATA_DIR", tmp_path)
+
+    def ok(http, anos, acc, ausentes=None):
+        acc.add("DEPUTADO_FEDERAL", 1, "Ana", anos[0], 1, "T", "F", None, 1.0)
+        return 1, []
+
+    monkeypatch.setattr(sync, "extract_camara_ceap", ok)
+
+    def ok_senado(http, anos, acc, ausentes=None):
+        acc.add("SENADOR", 7, "B", anos[0], 1, "T", "F", None, 1.0)
+        return 1, []
+
+    monkeypatch.setattr(sync, "extract_senado_ceaps", ok_senado)
+
+    class Quebra:
+        def __init__(self, http=None):
+            pass
+
+        def fetch_portal(self):
+            raise RuntimeError("portal")
+
+    monkeypatch.setattr(sync, "EmendasExtractor", Quebra)
+    resumo = sync.run(2023, 2023, http=object(), hoje=HOJE)
+    assert resumo["ceap_gravado"] is True and resumo["emendas_gravado"] is False and "portal" in resumo["emendas_erro"]

@@ -549,7 +549,7 @@ def nome_do_fornecedor(valor: Any) -> str:
     return nome_sem_cpf(valor) or FORNECEDOR_NAO_IDENTIFICADO
 
 
-# Número de 12 dígitos colado ao nome de pessoa física na CEAP (visto nos dados reais: "FULANO DE TAL 066779227925").
+# Número de 12 dígitos colado ao nome de pessoa física na CEAP (visto nos dados reais: "FULANO DE TAL 500600700800").
 # Não é CNPJ (14) nem CPF (11) e não dá para saber se é um CPF com enchimento ou outro documento pessoal: por precaução
 # (decisão D3) ele sai do nome, junto com as variantes com ponto ou hífen entre os grupos ("12.345.678.901",
 # "12345-678901", "1234.5678.9012") que somam 11 ou 12 dígitos. Fica o que parece outra coisa: CNPJ (14 dígitos, ou 13
@@ -564,10 +564,28 @@ def _tira_documento_pessoal(achado: "re.Match[str]") -> str:
     return " " if total in (11, 12) and not so_anos else achado.group(0)
 
 
+# Qualquer sequência de dígitos com até 4 separadores quaisquer entre os grupos ("5299 8224 725", "52  998  224  725",
+# "000 529 982 24725"). Só sai quando é comprovadamente um CPF: os 11 últimos dígitos passam nos dígitos verificadores e
+# o que vem antes são só zeros de enchimento (0 a 3 zeros: "0052998224725", "00052998224725"). Sequência com "/" (CNPJ
+# formatado) ou com vírgula (valor em reais) nunca é tocada.
+_DIGITOS_SEPARADOS = re.compile(r"(?<![0-9])[0-9]+(?:[\W_]{1,4}[0-9]+){0,6}(?![0-9])")
+
+
+def _tira_cpf_valido_separado(achado: "re.Match[str]") -> str:
+    bruto = achado.group(0)
+    if "/" in bruto or "," in bruto:
+        return bruto
+    digitos = re.sub(r"[^0-9]", "", bruto)
+    if 11 <= len(digitos) <= 14 and set(digitos[:-11]) <= {"0"} and cpf_valido(digitos[-11:]):
+        return " "
+    return bruto
+
+
 def nome_sem_cpf(valor: Any) -> Optional[str]:
     """Nome de pessoa ou empresa sem CPF (nem número de documento pessoal de 11 ou 12 dígitos) embutido; None se nada sobra."""
     sem_cpf = _SEQUENCIA_CPF.sub(_sem_cpf, _ascii(texto(valor)))
-    limpo = " ".join(_DOCUMENTO_PESSOAL.sub(_tira_documento_pessoal, sem_cpf).split())
+    sem_cpf = _DOCUMENTO_PESSOAL.sub(_tira_documento_pessoal, sem_cpf)
+    limpo = " ".join(_DIGITOS_SEPARADOS.sub(_tira_cpf_valido_separado, sem_cpf).split())
     return limpo or None
 
 

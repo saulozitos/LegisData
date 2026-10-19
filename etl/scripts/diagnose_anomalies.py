@@ -6,6 +6,7 @@ sempre verdadeiro e escondia justamente os casos suspeitos.
 """
 
 import argparse
+import logging
 from collections import defaultdict
 from typing import Optional
 
@@ -76,4 +77,5 @@ def main(argv: Optional[list] = None) -> None:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     main()

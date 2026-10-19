@@ -175,3 +175,23 @@ def test_recarregar_ceap_emendas_chega_ate_a_carga(monkeypatch):
     assert (
         cli.montar_parser().parse_args(["--load-economia", "--recarregar-ceap-emendas"]).recarregar_ceap_emendas is True
     )
+
+
+@pytest.mark.parametrize(
+    "argumentos, esperado",
+    [
+        ([], True),  # ETL completo: a CEAP extraída agora entra na carga
+        (["--ceap", "--load-economia"], True),
+        (["--load-economia"], False),  # só a carga: o fin pode estar à frente dos arquivos do git
+        (["--load-economia", "--recarregar-ceap-emendas"], True),
+    ],
+)
+def test_a_carga_recarrega_ceap_e_emendas_quando_a_extracao_roda_junto_ou_quando_pedido(
+    monkeypatch, argumentos, esperado
+):
+    recebido = []
+    monkeypatch.setattr(cli, "_load_economia", lambda recarregar=False: recebido.append(recarregar))
+    etapas = cli.construir_etapas(cli.montar_parser().parse_args(argumentos))
+    [carga] = [e for e in etapas if e.chave == "load_economia"]
+    carga.executar()
+    assert recebido == [esperado]

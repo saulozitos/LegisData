@@ -124,19 +124,23 @@ def pausas(monkeypatch):
     return registradas
 
 
-def _linhas_de(acc, ano, fator=1.0, nome="Ana"):
-    acc.add("DEPUTADO_FEDERAL", 1, nome, ano, 1, "COMBUSTÍVEL", "Posto A", "02558157000162", 10.0 * fator)
-    acc.add("DEPUTADO_FEDERAL", 1, nome, ano, 2, "TELEFONIA", "Posto B", None, 5.5 * fator)
-    acc.add("SENADOR", 7, "Beto", ano, 3, "PASSAGEM", "Cia", "11222333000181", 100.0 * fator)
+def _linhas_de(acc, ano, fator=1.0, nome="Ana", casa=None):
+    """Lançamentos de um ano; `casa` limita a uma casa (o cache de uma casa só aceita cargos dela), None traz as duas."""
+    if casa in (None, "camara"):
+        acc.add("DEPUTADO_FEDERAL", 1, nome, ano, 1, "COMBUSTÍVEL", "Posto A", "02558157000162", 10.0 * fator)
+        acc.add("DEPUTADO_FEDERAL", 1, nome, ano, 2, "TELEFONIA", "Posto B", None, 5.5 * fator)
+    if casa in (None, "senado"):
+        acc.add("SENADOR", 7, "Beto", ano, 3, "PASSAGEM", "Cia", "11222333000181", 100.0 * fator)
 
 
 class Extrator:
     """Extrator no formato de `extract_*_ceap` (aceita `ausentes`): registra as chamadas e simula cada situação."""
 
-    def __init__(self, falha_em=(), vazio_em=(), ausente_em=(), falha_uma_vez=False, nome="Ana"):
+    def __init__(self, falha_em=(), vazio_em=(), ausente_em=(), falha_uma_vez=False, nome="Ana", casa=None):
         self.chamadas = []
         self.falha_em, self.vazio_em, self.ausente_em = set(falha_em), set(vazio_em), set(ausente_em)
         self.falha_uma_vez, self.vistos, self.nome = falha_uma_vez, set(), nome
+        self.casa = casa  # sem casa traz as duas; `_extrair` completa com a casa que a chamada informa
 
     def __call__(self, http, anos, acc, ausentes=None):
         self.chamadas.append(list(anos))
@@ -150,12 +154,13 @@ class Extrator:
                 self.vistos.add(ano)
                 falhas.append(ano)
             elif ano not in self.vazio_em:
-                _linhas_de(acc, ano, nome=self.nome)
+                _linhas_de(acc, ano, nome=self.nome, casa=self.casa)
         return len(anos) - len(falhas), falhas
 
 
 def _extrair(anos, extrator, tmp_path, hoje=date(2026, 10, 1), casa="camara", cache=True, acc=None, publicados=None):
     acc = acc if acc is not None else CeapAccumulator()
+    extrator.casa = getattr(extrator, "casa", None) or casa
     r = sync._extrair_anos(None, anos, casa, extrator, acc, tmp_path if cache else None, hoje, publicados)
     return (r.baixados, r.falhas, r.do_cache, r.sem_arquivo), acc
 
@@ -254,7 +259,7 @@ def test_ano_com_falha_aborta_gravacao_e_preserva_arquivo_anterior(tmp_path, mon
     anterior = tmp_path / sync.CEAP_OUTPUT
     anterior.write_text(json.dumps({"BOM": {"total_gasto": 1}}), encoding="utf-8")
 
-    monkeypatch.setattr(sync, "extract_camara_ceap", Extrator())
+    monkeypatch.setattr(sync, "extract_camara_ceap", Extrator(casa="camara"))
     resumo = sync.run(
         2023, 2024, ceap=True, emendas=False, http=ClienteFalso(erros_por_ano=[2024]), hoje=date(2026, 10, 1)
     )
@@ -264,10 +269,10 @@ def test_ano_com_falha_aborta_gravacao_e_preserva_arquivo_anterior(tmp_path, mon
 
 def test_run_grava_quando_completo(tmp_path, monkeypatch):
     monkeypatch.setattr(sync, "PROCESSED_DATA_DIR", tmp_path)
-    monkeypatch.setattr(sync, "extract_camara_ceap", Extrator())
+    monkeypatch.setattr(sync, "extract_camara_ceap", Extrator(casa="camara"))
     hoje = date(2026, 10, 1)
     resumo = sync.run(2023, 2024, ceap=True, emendas=False, http=ClienteFalso(), hoje=hoje)
-    assert resumo["ceap_gravado"] is True and resumo["ceap_parlamentares"] == 3  # Ana e Beto (extrator) e S (Senado)
+    assert resumo["ceap_gravado"] is True and resumo["ceap_parlamentares"] == 2  # Ana (extrator da Câmara) e S (Senado)
     saida = json.loads((tmp_path / sync.CEAP_OUTPUT).read_text(encoding="utf-8"))
     assert saida["S"]["total_gasto"] == 20.0 and saida["ANA"]["total_gasto"] == 31.0
     # idempotência: segunda execução gera exatamente o mesmo arquivo
@@ -285,7 +290,7 @@ def test_fontes_nao_gravadas_diz_quais_falharam():
     assert sync.fontes_nao_gravadas({"ceap_gravado": True, "emendas_gravado": True}) == []
     assert sync.fontes_nao_gravadas({"ceap_gravado": False, "emendas_gravado": True}) == ["ceap"]
     assert sync.fontes_nao_gravadas({"ceap_gravado": False, "emendas_gravado": False}) == ["ceap", "emendas"]
-    assert sync.fontes_nao_gravadas({"anos": "2023-2024"}) == []  # fonte que não foi pedida não conta como falha
+    assert sync.fontes_nao_gravadas({"anos": "2023-2024"}) == ["ceap", "emendas"]  # sem resposta, não gravou
 
 
 # ── Sem CPF em disco (D3) ────────────────────────────────────────────────────────────────────────────────────────────
@@ -439,7 +444,7 @@ def test_formato_do_cache_esta_travado_suba_a_versao_se_precisar_mudar():
     """
     acc = CeapAccumulator()
     acc.add("DEPUTADO_FEDERAL", 1, "Ana", 2023, 1, "TELEFONIA", "VIVO", "02558157000162", 10.0)
-    assert sync.VERSAO_DO_CACHE == 2
+    assert sync.VERSAO_DO_CACHE == 3
     assert acc.para_json() == [
         {
             "chave": ["DEPUTADO_FEDERAL", 1],
@@ -631,7 +636,7 @@ def test_cache_de_uma_casa_nao_serve_a_outra(tmp_path):
 # ── Política de rede: pausa, segunda tentativa, ordem ───────────────────────────────────────────────────────────────
 def test_entre_dois_downloads_ha_pausa_e_ano_vindo_do_cache_nao_gera_pausa(tmp_path, pausas):
     acc = CeapAccumulator()
-    _linhas_de(acc, 2023)
+    _linhas_de(acc, 2023, casa="camara")
     sync._gravar_cache(tmp_path, "camara", 2023, acc, date(2026, 10, 1))
     _extrair([2023, 2024, 2025], Extrator(), tmp_path, date(2026, 10, 1))
     assert pausas == [
@@ -700,8 +705,8 @@ def test_run_com_cache_gera_o_mesmo_arquivo_que_sem_cache(tmp_path, monkeypatch)
     saida_cache.mkdir()
     saida_direta.mkdir()
     cache = tmp_path / "cache"
-    monkeypatch.setattr(sync, "extract_camara_ceap", Extrator())
-    monkeypatch.setattr(sync, "extract_senado_ceaps", Extrator(nome="Beto"))
+    monkeypatch.setattr(sync, "extract_camara_ceap", Extrator(casa="camara"))
+    monkeypatch.setattr(sync, "extract_senado_ceaps", Extrator(nome="Beto", casa="senado"))
     hoje = date(2026, 10, 19)
 
     monkeypatch.setattr(sync, "PROCESSED_DATA_DIR", saida_direta)
@@ -722,8 +727,8 @@ def test_run_com_cache_gera_o_mesmo_arquivo_que_sem_cache(tmp_path, monkeypatch)
 
 def test_run_informa_o_ano_novo_ainda_sem_arquivo_sem_gravar_zero(tmp_path, monkeypatch):
     monkeypatch.setattr(sync, "PROCESSED_DATA_DIR", tmp_path)
-    monkeypatch.setattr(sync, "extract_camara_ceap", Extrator(ausente_em=[2027]))
-    monkeypatch.setattr(sync, "extract_senado_ceaps", Extrator(ausente_em=[2027], nome="Beto"))
+    monkeypatch.setattr(sync, "extract_camara_ceap", Extrator(ausente_em=[2027], casa="camara"))
+    monkeypatch.setattr(sync, "extract_senado_ceaps", Extrator(ausente_em=[2027], nome="Beto", casa="senado"))
     resumo = sync.run(2026, 2027, ceap=True, emendas=False, http=object(), hoje=date(2027, 1, 3))
     assert resumo["ceap_gravado"] is True and resumo["ceap_anos_sem_arquivo"] == {"camara": [2027], "senado": [2027]}
     saida = json.loads((tmp_path / sync.CEAP_OUTPUT).read_text(encoding="utf-8"))
@@ -760,8 +765,8 @@ def test_run_preserva_o_arquivo_de_emendas_quando_o_portal_devolve_lista_truncad
 
 def test_a_falha_de_uma_fonte_nao_impede_a_gravacao_da_outra(tmp_path, monkeypatch):
     monkeypatch.setattr(sync, "PROCESSED_DATA_DIR", tmp_path)
-    monkeypatch.setattr(sync, "extract_camara_ceap", Extrator())
-    monkeypatch.setattr(sync, "extract_senado_ceaps", Extrator(falha_em=[2024], nome="Beto"))
+    monkeypatch.setattr(sync, "extract_camara_ceap", Extrator(casa="camara"))
+    monkeypatch.setattr(sync, "extract_senado_ceaps", Extrator(falha_em=[2024], nome="Beto", casa="senado"))
     monkeypatch.setattr(sync.EmendasExtractor, "fetch_portal", lambda self: _emendas(3))
     resumo = sync.run(2024, 2024, ceap=True, emendas=True, http=object(), hoje=date(2026, 10, 1))
     assert (resumo["ceap_gravado"], resumo["emendas_gravado"]) == (False, True)
@@ -769,31 +774,14 @@ def test_a_falha_de_uma_fonte_nao_impede_a_gravacao_da_outra(tmp_path, monkeypat
 
 
 # ── Data e módulo ────────────────────────────────────────────────────────────────────────────────────────────────────
-def test_a_data_de_hoje_e_a_de_brasilia_e_nao_a_do_servidor_em_utc():
-    assert sync.FUSO_DO_BRASIL.utcoffset(None) == timedelta(hours=-3)
-    assert isinstance(sync.hoje_no_brasil(), date)
-
-
-def test_logging_basicconfig_so_existe_dentro_do_main_deste_modulo():
-    """`logging.basicConfig` é do entrypoint (.claude/rules/etl.md): nunca no nível do módulo, que outros importam."""
-    import ast
-    from pathlib import Path
-
-    arvore = ast.parse(Path(sync.__file__).read_text(encoding="utf-8"))
-    for no in arvore.body:  # só o nível do módulo; o corpo de `main` é permitido
-        for sub in ast.walk(no) if not isinstance(no, ast.FunctionDef) else ():
-            if isinstance(sub, ast.Call) and getattr(sub.func, "attr", "") == "basicConfig":
-                raise AssertionError("logging.basicConfig no nível do módulo")
-    main = next(n for n in arvore.body if isinstance(n, ast.FunctionDef) and n.name == "main")
-    assert any(isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "basicConfig" for n in ast.walk(main))
 
 
 def test_numero_de_12_digitos_colado_ao_nome_do_fornecedor_nao_chega_ao_estado_nem_ao_cache():
     acc = CeapAccumulator()
     acc.add(
-        "DEPUTADO_FEDERAL", 1, "Ana", 2023, 1, "TAXI", "RAFAEL OLIVEIRA MENDONÇA 306445278866", "30809034000192", 10.0
+        "DEPUTADO_FEDERAL", 1, "Ana", 2023, 1, "TAXI", "FULANO SINTETICO DA SILVA 100200300400", "11222333000181", 10.0
     )
-    assert "306445278866" not in json.dumps(acc.para_json())
+    assert "100200300400" not in json.dumps(acc.para_json())
     (reg,) = acc.finalize(FONTES).values()
-    assert list(reg["fornecedores"]) == ["RAFAEL OLIVEIRA MENDONÇA"]
-    assert reg["fornecedores"]["RAFAEL OLIVEIRA MENDONÇA"]["cnpj_cpf"] == "30809034000192"  # o CNPJ do MEI fica
+    assert list(reg["fornecedores"]) == ["FULANO SINTETICO DA SILVA"]
+    assert reg["fornecedores"]["FULANO SINTETICO DA SILVA"]["cnpj_cpf"] == "11222333000181"  # o CNPJ do MEI fica

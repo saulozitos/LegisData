@@ -9,7 +9,8 @@ from etl.pipelines import carga_economica
 def chamadas(monkeypatch):
     registro = []
     for chave, _nome, modulo, _dep in carga_economica.CARGAS:
-        monkeypatch.setattr(f"{modulo}.carregar", lambda engine, c=chave: registro.append(c) or {"ok": c})
+        alvo = modulo.replace(":", ".") if ":" in modulo else f"{modulo}.carregar"
+        monkeypatch.setattr(alvo, lambda engine, c=chave: registro.append(c) or {"ok": c})
     monkeypatch.setattr(carga_economica, "fin_tem_ceap_e_emendas", lambda engine: False)  # fin vazio: semeia tudo
     return registro
 
@@ -162,21 +163,21 @@ def test_o_mapa_de_modos_cobre_as_cargas_de_financas_e_as_toleradas():
         ("nenhuma", ["series", "presidencia", "composicao", "pnad"]),
     ],
 )
-def test_chaves_do_deploy_por_modo_de_financas(modo, esperado):
-    assert carga_economica.chaves_do_deploy(modo) == esperado
+def test_chaves_do_modo_por_modo_de_financas(modo, esperado):
+    assert carga_economica.chaves_do_modo(modo) == esperado
 
 
-def test_chaves_do_deploy_com_modo_desconhecido_falha_em_vez_de_assumir_um(chamadas):
+def test_chaves_do_modo_com_modo_desconhecido_falha_em_vez_de_assumir_um(chamadas):
     for invalido in ("", "COMPLETA", "tudo", None):
-        with pytest.raises(ValueError, match="modo de finanças do deploy"):
-            carga_economica.chaves_do_deploy(invalido)
+        with pytest.raises(ValueError, match="modo de finanças desconhecido"):
+            carga_economica.chaves_do_modo(invalido)
 
 
 def test_o_modo_de_deploy_executa_exatamente_essas_cargas(chamadas):
-    carga_economica.carregar_tudo(object(), chaves=carga_economica.chaves_do_deploy("estaticas"))
+    carga_economica.carregar_tudo(object(), chaves=carga_economica.chaves_do_modo("estaticas"))
     assert chamadas == ["series", "presidencia", "composicao", "pnad", "financas_estaticas"]
     chamadas.clear()
-    carga_economica.carregar_tudo(object(), chaves=carga_economica.chaves_do_deploy("nenhuma"))
+    carga_economica.carregar_tudo(object(), chaves=carga_economica.chaves_do_modo("nenhuma"))
     assert "financas" not in chamadas and "financas_estaticas" not in chamadas
 
 
@@ -184,18 +185,75 @@ def test_carga_estatica_tolerada_que_falha_nao_derruba_o_deploy(chamadas, monkey
     def quebra(engine):
         raise RuntimeError("remuneracao: arquivo corrompido")
 
-    monkeypatch.setattr("etl.pipelines.financas_estaticas.carregar", quebra)
+    monkeypatch.setattr("etl.pipelines.financas_loader.carregar_estaticas", quebra)
     resultados = carga_economica.carregar_tudo(
-        object(), chaves=carga_economica.chaves_do_deploy("estaticas"), toleradas=("financas", "financas_estaticas")
+        object(), chaves=carga_economica.chaves_do_modo("estaticas"), toleradas=("financas", "financas_estaticas")
     )
     assert "corrompido" in resultados["financas_estaticas"]["erro"]
 
 
 def test_fin_tem_ceap_e_emendas_exige_as_quatro_tabelas_com_dados(pg_engine):
+    """Popula tabela por tabela numa transação revertida: só com as quatro a resposta vira True."""
     from sqlalchemy import text
 
-    tabelas = ("fin.emenda", "fin.despesa_cota", "fin.despesa_cota_fornecedor", "fin.despesa_cota_resumo")
     with pg_engine.connect() as conexao:
-        vazias = [t for t in tabelas if not conexao.execute(text(f"select exists(select 1 from {t})")).scalar()]
-    # o banco de teste pode estar vazio ou carregado por outro teste: o que importa é a regra "todas as quatro"
-    assert carga_economica.fin_tem_ceap_e_emendas(pg_engine) is (not vazias)
+        transacao = conexao.begin()
+        try:
+            for tabela in carga_economica.TABELAS_DA_CEAP_E_EMENDAS:
+                conexao.execute(text(f"TRUNCATE fin.{tabela} CASCADE"))
+            conexao.execute(text("TRUNCATE core.pessoa CASCADE"))
+            assert _consultar(conexao) is False  # tudo vazio
+            _popular(conexao)
+            assert _consultar(conexao) is True
+            conexao.execute(text("DELETE FROM fin.despesa_cota_resumo"))
+            assert _consultar(conexao) is False  # falta uma só: `and` e não `or`
+            assert conexao.execute(text(f"select {carga_economica.sql_fin_tem_dados('or')}")).scalar() is True
+        finally:
+            transacao.rollback()
+
+
+def _consultar(conexao):
+    class Motor:
+        def connect(self):
+            class Ctx:
+                def __enter__(s):
+                    return conexao
+
+                def __exit__(s, *a):
+                    return False
+
+            return Ctx()
+
+    return carga_economica.fin_tem_ceap_e_emendas(Motor())
+
+
+def _popular(conexao):
+    from sqlalchemy import text
+
+    fonte = conexao.execute(text("select id from etl.fonte order by id limit 1")).scalar()
+    assert fonte is not None, "o banco de teste precisa do catálogo etl.fonte (migrações)"
+    pessoa = conexao.execute(text("insert into core.pessoa (nome_exibicao) values ('TESTE') returning id")).scalar()
+    conexao.execute(
+        text(
+            "insert into fin.despesa_cota (pessoa_id, ano, tipo_despesa, valor_liquido, fonte_id) values (:p, 2023, 'X', 1, :f)"
+        ),
+        {"p": pessoa, "f": fonte},
+    )
+    conexao.execute(
+        text(
+            "insert into fin.despesa_cota_fornecedor (pessoa_id, nome, valor_total, fonte_id) values (:p, 'F', 1, :f)"
+        ),
+        {"p": pessoa, "f": fonte},
+    )
+    conexao.execute(
+        text("insert into fin.despesa_cota_resumo (pessoa_id, total_notas, fonte_id) values (:p, 1, :f)"),
+        {"p": pessoa, "f": fonte},
+    )
+    conexao.execute(text(_EMENDA_SQL), {"p": pessoa, "f": fonte})
+
+
+_EMENDA_SQL = (
+    "insert into fin.emenda (pessoa_id, autor_texto, tipo_autor, autor_situacao, ano, tipo_emenda, valor_empenhado, "
+    "valor_pago, localidade_destino, fonte_id) "
+    "values (:p, 'TESTE', 'INDIVIDUAL', 'IDENTIFICADO', 2023, 'Individual', 1, 1, 'X', :f)"
+)

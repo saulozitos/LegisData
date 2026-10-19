@@ -41,17 +41,17 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 import pandas as pd
 
-from etl.config import PROCESSED_DATA_DIR, TETO_DO_CSV, TETO_DO_DOWNLOAD
+from etl.config import CEAP_ARQUIVO, EMENDAS_ARQUIVO, PROCESSED_DATA_DIR, TETO_DO_CSV, TETO_DO_DOWNLOAD
 from etl.extractors.emendas_extractor import EmendasExtractor
-from etl.pipelines.loader_helpers import cnpj_do_fornecedor, nome_do_fornecedor
+from etl.pipelines.loader_helpers import cnpj_do_fornecedor, nome_do_fornecedor, texto
 from etl.utils.http_client import HttpClient, HttpError
 from etl.utils.io_utils import atomic_write_json, write_json_if_valid
 from etl.utils.provenance import mark_official
 
 logger = logging.getLogger("CeapEmendasSync")
 
-CEAP_OUTPUT = "despesas_ceap_2019_2026.json"  # nome histórico: a partir de 2027 o arquivo também terá dados de 2027
-EMENDAS_OUTPUT = "emendas_parlamentares_2019_2026.json"
+CEAP_OUTPUT = CEAP_ARQUIVO  # nome histórico: a partir de 2027 o arquivo também terá dados de 2027; o loader lê o mesmo
+EMENDAS_OUTPUT = EMENDAS_ARQUIVO
 ANO_INICIAL_CEAP = 2008  # início da publicação aberta da CEAP
 ANO_INICIAL_ARQUIVO = 2019  # início dos arquivos processados (`run_etl --ceap-ano-inicio` e a atualização diária)
 TOP_FORNECEDORES = 15
@@ -79,7 +79,7 @@ CAMARA_OBRIGATORIAS = CAMARA_COLS - {"sgUF", "sgPartido", "numMes"}
 # ── Política de rede e de cache ───────────────────────────────────────────────────────────────────────────────────────
 # Suba VERSAO_DO_CACHE a cada mudança no formato do cache ou na regra de agregação (`CeapAccumulator.add`, `para_json`,
 # `mesclar`, colunas lidas): os anos fechados em cache carregariam a regra antiga para sempre. Um teste trava o formato.
-VERSAO_DO_CACHE = 2
+VERSAO_DO_CACHE = 3
 PASTA_DO_CACHE = "ceap_por_ano"
 VALIDADE_DO_CACHE_DIAS = 90  # um ano fechado é baixado de novo depois disso (estornos e correções tardias)
 # A Câmara responde 429 (Too Many Requests) a vários CSVs anuais seguidos (visto com 7 downloads em 30 s). O Senado
@@ -90,6 +90,9 @@ MESES_DE_ATRASO_DO_ANO_NOVO = 3  # até março o arquivo/lançamento do ano novo
 FUSO_DO_BRASIL = timezone(timedelta(hours=-3))  # sem horário de verão desde 2019
 FRACAO_MINIMA_DAS_EMENDAS = 0.8  # lista de emendas com menos que isso do arquivo anterior é tratada como truncada
 LIMITE_DO_VALOR = 10**13  # R$ 10 trilhões: acima disso o número é lixo, e um inteiro gigante não pode estourar o float
+LIMITE_DA_CONTAGEM = (
+    10**9
+)  # notas ou ano de um registro do cache: acima disso a contagem é lixo (cabe num int4 com folga)
 # O que pode dar errado ao baixar e ler um ano da fonte: qualquer um vira falha daquele ano, nunca derruba o `run`
 ERROS_DA_EXTRACAO = (
     HttpError,
@@ -147,7 +150,7 @@ def _numero(valor: Any) -> bool:
 
 
 def _inteiro(valor: Any) -> bool:
-    return isinstance(valor, int) and not isinstance(valor, bool) and 0 <= valor <= 10**9
+    return isinstance(valor, int) and not isinstance(valor, bool) and 0 <= valor <= LIMITE_DA_CONTAGEM
 
 
 # ── Formato do registro (uma só definição: `add`, `mesclar` e a validação do cache usam estas fábricas) ───────────────
@@ -169,6 +172,21 @@ def _registro_vazio(cargo: str, ident: Any, nome: str, ano: int) -> Dict[str, An
 
 def _fornecedor_vazio(nome: str, cnpj: Optional[str]) -> Dict[str, Any]:
     return {"nome": nome, "cnpj_cpf": cnpj, "total": 0.0, "notas": 0}
+
+
+def _chave_do_fornecedor(fornecedores: Dict[str, Any], nome: str, cnpj: Optional[str]) -> str:
+    """
+    Onde um fornecedor mora no registro. O nome é a chave, e o CNPJ que chega depois fica no mesmo item (um lançamento
+    sem documento soma no fornecedor de mesmo nome). Dois CNPJs diferentes sob o mesmo nome (MEIs homônimos) são
+    fornecedores diferentes: o segundo ganha a chave "NOME [CNPJ]", e as linhas seguintes dele voltam a ela.
+    """
+    if not cnpj:
+        return nome
+    com_cnpj = f"{nome} [{cnpj}]"
+    if com_cnpj in fornecedores:
+        return com_cnpj
+    base = fornecedores.get(nome)
+    return nome if base is None or base["cnpj_cpf"] in (None, cnpj) else com_cnpj
 
 
 CAMPOS_DO_REGISTRO = frozenset(_registro_vazio("SENADOR", 1, "X", 2000))
@@ -206,12 +224,14 @@ def _validar_registro(chave: Any, reg: Any) -> Tuple[str, Any]:
     if not isinstance(fornecedores, dict):
         raise ValueError("fornecedores inválidos")
     for nome, forn in fornecedores.items():
-        if not (isinstance(forn, dict) and set(forn) == CAMPOS_DO_FORNECEDOR and forn["nome"] == nome):
+        if not (isinstance(forn, dict) and set(forn) == CAMPOS_DO_FORNECEDOR and isinstance(forn["nome"], str)):
             raise ValueError("fornecedor com campos diferentes dos do acumulador")
+        if nome not in (forn["nome"], f"{forn['nome']} [{forn['cnpj_cpf']}]"):
+            raise ValueError("chave do fornecedor não corresponde ao nome e ao documento")
         if not (_numero(forn["total"]) and _inteiro(forn["notas"])):
             raise ValueError("totais do fornecedor inválidos")
         # o saneamento vale também para o que já está em disco: uma regra nova de nome ou de documento recusa o cache velho
-        if nome_do_fornecedor(nome) != nome or not (
+        if nome_do_fornecedor(forn["nome"]) != forn["nome"] or not (
             forn["cnpj_cpf"] is None
             or (isinstance(forn["cnpj_cpf"], str) and cnpj_do_fornecedor(forn["cnpj_cpf"]) == forn["cnpj_cpf"])
         ):
@@ -232,6 +252,9 @@ class CeapAccumulator:
     def vazio(self) -> bool:
         return not self._dados
 
+    def cargos(self) -> Set[str]:
+        return {cargo for cargo, _ in self._dados}
+
     def add(
         self,
         cargo: str,
@@ -244,16 +267,17 @@ class CeapAccumulator:
         cnpj: Optional[str],
         valor: float,
     ) -> None:
+        nome = nome.strip().upper()
         if not nome or not math.isfinite(valor) or valor == 0:
             return
         # Nada de CPF em disco (D3): só o CNPJ de 14 dígitos fica, e o nome perde o documento pessoal embutido (MEI
         # aparece como "NOME 09876543200"). O loader aplica as mesmas regras, então o `fin` recebe o mesmo de antes.
         fornecedor = nome_do_fornecedor(fornecedor)
         cnpj = cnpj_do_fornecedor(cnpj)
-        chave = (cargo, ident if ident is not None else nome.upper().strip())
-        reg = self._dados.setdefault(chave, _registro_vazio(cargo, ident, nome.upper().strip(), ano))
+        chave = (cargo, ident if ident is not None else nome)
+        reg = self._dados.setdefault(chave, _registro_vazio(cargo, ident, nome, ano))
         if ano > reg["nome_ano"]:  # o rótulo é o do lançamento mais recente, na ordem que os anos chegarem
-            reg["nome"], reg["nome_ano"] = nome.upper().strip(), ano
+            reg["nome"], reg["nome_ano"] = nome, ano
         ano_s = str(ano)
         reg["total_gasto"] += valor
         if valor > 0:
@@ -263,7 +287,9 @@ class CeapAccumulator:
         por_tipo_ano = reg["por_ano_tipo"].setdefault(ano_s, {})
         por_tipo_ano[tipo] = por_tipo_ano.get(tipo, 0.0) + valor
 
-        forn = reg["fornecedores"].setdefault(fornecedor, _fornecedor_vazio(fornecedor, cnpj))
+        forn = reg["fornecedores"].setdefault(
+            _chave_do_fornecedor(reg["fornecedores"], fornecedor, cnpj), _fornecedor_vazio(fornecedor, cnpj)
+        )
         forn["total"] += valor
         if valor > 0:
             forn["notas"] += 1
@@ -307,8 +333,9 @@ class CeapAccumulator:
                 destino = reg["por_ano_tipo"].setdefault(ano, {})
                 for tipo, v in tipos.items():
                     destino[tipo] = destino.get(tipo, 0.0) + v
-            for nome_f, forn in novo["fornecedores"].items():
-                atual = reg["fornecedores"].setdefault(nome_f, _fornecedor_vazio(nome_f, forn.get("cnpj_cpf")))
+            for forn in novo["fornecedores"].values():
+                chave_f = _chave_do_fornecedor(reg["fornecedores"], forn["nome"], forn.get("cnpj_cpf"))
+                atual = reg["fornecedores"].setdefault(chave_f, _fornecedor_vazio(forn["nome"], forn.get("cnpj_cpf")))
                 atual["total"] += forn["total"]
                 atual["notas"] += forn["notas"]
                 if not atual.get("cnpj_cpf") and forn.get("cnpj_cpf"):
@@ -318,7 +345,7 @@ class CeapAccumulator:
         """Arredonda, mantém os maiores fornecedores e resolve homônimos sem perder ninguém."""
         saida: Dict[str, Dict[str, Any]] = {}
         for (cargo, ident), reg in sorted(self._dados.items(), key=lambda kv: (kv[1]["nome"], str(kv[0][1]))):
-            top = sorted(reg["fornecedores"].values(), key=lambda f: f["total"], reverse=True)[:TOP_FORNECEDORES]
+            top = sorted(reg["fornecedores"].items(), key=lambda kv: kv[1]["total"], reverse=True)[:TOP_FORNECEDORES]
             final = {
                 **{k: v for k, v in reg.items() if k != "nome_ano"},  # detalhe interno do acumulador
                 "total_gasto": round(reg["total_gasto"], 2),
@@ -328,7 +355,7 @@ class CeapAccumulator:
                     a: {t: round(v, 2) for t, v in sorted(tipos.items())}
                     for a, tipos in sorted(reg["por_ano_tipo"].items())
                 },
-                "fornecedores": {f["nome"]: {**f, "total": round(f["total"], 2)} for f in top},
+                "fornecedores": {chave_f: {**f, "total": round(f["total"], 2)} for chave_f, f in top},
             }
             mark_official(final, fonte_por_cargo[cargo])
             nome = reg["nome"]
@@ -352,109 +379,116 @@ def _registrar_linhas_invalidas(fonte: str, ano: int, invalidas: int) -> None:
         )
 
 
-def extract_camara_ceap(
-    http: HttpClient, anos: Iterable[int], acc: CeapAccumulator, ausentes: Optional[List[int]] = None
+def _extrair_por_ano(
+    rotulo: str,
+    anos: Iterable[int],
+    acc: CeapAccumulator,
+    ausentes: Optional[List[int]],
+    ler_ano: Callable[[int, CeapAccumulator], Tuple[int, int]],
 ) -> Tuple[int, List[int]]:
     """
-    Baixa o CSV anual da Câmara. Devolve (registros, anos_com_falha). Um ano cujo arquivo não existe (HTTP 404) entra
-    também em `ausentes`, para o chamador distinguir "ainda não publicado" de falha de rede. Qualquer problema ao ler o
-    ano (zip corrompido, coluna renomeada, linha malformada) é falha daquele ano: nada dele chega ao acumulador.
+    O envelope comum às duas casas: cada ano é lido para um acumulador à parte (`ler_ano` devolve quantos registros leu e
+    quantos lançamentos ficaram sem valor numérico), e só entra em `acc` se o ano inteiro foi lido. Qualquer problema ao
+    ler o ano (rede, zip corrompido, coluna renomeada, linha malformada) é falha daquele ano; o 404 entra também em
+    `ausentes`, para o chamador distinguir "ainda não publicado" de falha de rede.
     """
     total, falhas = 0, []
     for ano in anos:
         t0 = time.time()
-        url = f"https://www.camara.leg.br/cotas/Ano-{ano}.csv.zip"
+        parcial = CeapAccumulator()
         try:
-            conteudo = http.get_bytes(url, max_bytes=TETO_DO_DOWNLOAD)
-            with zipfile.ZipFile(io.BytesIO(conteudo)) as z:
-                membro = z.infolist()[0]
-                if membro.file_size > TETO_DO_CSV:
-                    raise ValueError(f"CSV descomprimido de {membro.file_size} bytes passa do teto de {TETO_DO_CSV}")
-                with z.open(membro) as f:
-                    df = pd.read_csv(
-                        f,
-                        sep=";",
-                        encoding="utf-8-sig",
-                        low_memory=False,
-                        usecols=lambda c: c in CAMARA_COLS,
-                        # texto puro: um documento só de dígitos seria lido como float ("07575651000159" -> 7575651000159.0)
-                        dtype={"txtCNPJCPF": str, "ideCadastro": str, "numAno": str, "numMes": str},
-                    )
-            faltam = CAMARA_OBRIGATORIAS - set(df.columns)
-            if faltam:
-                raise ValueError(f"colunas ausentes no CSV: {sorted(faltam)}")
-            parcial, invalidas = CeapAccumulator(), 0
-            for row in df.to_dict(orient="records"):
-                valor = _num(row.get("vlrLiquido"))
-                if valor is None:
-                    invalidas += 1
-                    continue
-                documento = row.get("txtCNPJCPF")
-                parcial.add(
-                    "DEPUTADO_FEDERAL",
-                    _inteiro_da_fonte(row.get("ideCadastro")),
-                    str(row.get("txNomeParlamentar") or ""),
-                    _inteiro_da_fonte(row.get("numAno")) or ano,
-                    _inteiro_da_fonte(row.get("numMes")),
-                    str(row.get("txtDescricao") or "OUTROS").strip(),
-                    str(row.get("txtFornecedor") or "Não informado").strip(),
-                    str(documento) if isinstance(documento, str) else None,
-                    valor,
-                )
+            lidos, invalidas = ler_ano(ano, parcial)
         except ERROS_DA_EXTRACAO as exc:
-            logger.warning("[Câmara %s] falha na extração: %s", ano, exc)
+            logger.warning("[%s %s] falha na extração: %s", rotulo, ano, exc)
             falhas.append(ano)
             if isinstance(exc, HttpError) and exc.status == 404 and ausentes is not None:
                 ausentes.append(ano)
             continue
-        _registrar_linhas_invalidas("Câmara", ano, invalidas)
+        _registrar_linhas_invalidas(rotulo, ano, invalidas)
         acc.mesclar(parcial)
-        total += len(df)
-        logger.info("[Câmara %s] %s registros em %.1fs", ano, f"{len(df):,}", time.time() - t0)
+        total += lidos
+        logger.info("[%s %s] %s registros em %.1fs", rotulo, ano, f"{lidos:,}", time.time() - t0)
     return total, falhas
+
+
+def extract_camara_ceap(
+    http: HttpClient, anos: Iterable[int], acc: CeapAccumulator, ausentes: Optional[List[int]] = None
+) -> Tuple[int, List[int]]:
+    """Baixa o CSV anual da Câmara. Devolve (registros, anos_com_falha); ver `_extrair_por_ano`."""
+
+    def ler_ano(ano: int, parcial: CeapAccumulator) -> Tuple[int, int]:
+        conteudo = http.get_bytes(f"https://www.camara.leg.br/cotas/Ano-{ano}.csv.zip", max_bytes=TETO_DO_DOWNLOAD)
+        with zipfile.ZipFile(io.BytesIO(conteudo)) as z:
+            membro = z.infolist()[0]
+            if membro.file_size > TETO_DO_CSV:
+                raise ValueError(f"CSV descomprimido de {membro.file_size} bytes passa do teto de {TETO_DO_CSV}")
+            with z.open(membro) as f:
+                df = pd.read_csv(
+                    f,
+                    sep=";",
+                    encoding="utf-8-sig",
+                    low_memory=False,
+                    usecols=lambda c: c in CAMARA_COLS,
+                    # texto puro: um documento só de dígitos seria lido como float ("07575651000159" -> 7575651000159.0)
+                    dtype={"txtCNPJCPF": str, "ideCadastro": str, "numAno": str, "numMes": str},
+                )
+        faltam = CAMARA_OBRIGATORIAS - set(df.columns)
+        if faltam:
+            raise ValueError(f"colunas ausentes no CSV: {sorted(faltam)}")
+        invalidas = 0
+        for row in df.to_dict(orient="records"):
+            valor = _num(row.get("vlrLiquido"))
+            if valor is None:
+                invalidas += 1
+                continue
+            # célula vazia chega como NaN (que é verdadeiro e viraria o texto "nan"): `texto` a trata
+            parcial.add(
+                "DEPUTADO_FEDERAL",
+                _inteiro_da_fonte(row.get("ideCadastro")),
+                texto(row.get("txNomeParlamentar")) or "",
+                _inteiro_da_fonte(row.get("numAno")) or ano,
+                _inteiro_da_fonte(row.get("numMes")),
+                texto(row.get("txtDescricao")) or "OUTROS",
+                texto(row.get("txtFornecedor")) or "Não informado",
+                texto(row.get("txtCNPJCPF")),
+                valor,
+            )
+        return len(df), invalidas
+
+    return _extrair_por_ano("Câmara", anos, acc, ausentes, ler_ano)
 
 
 def extract_senado_ceaps(
     http: HttpClient, anos: Iterable[int], acc: CeapAccumulator, ausentes: Optional[List[int]] = None
 ) -> Tuple[int, List[int]]:
-    """Baixa a CEAPS do Senado ano a ano. Respostas truncadas são re-tentadas; formato inesperado é falha do ano."""
-    total, falhas = 0, []
-    for ano in anos:
-        t0 = time.time()
+    """Baixa a CEAPS do Senado ano a ano. Respostas truncadas são re-tentadas; ver `_extrair_por_ano`."""
+
+    def ler_ano(ano: int, parcial: CeapAccumulator) -> Tuple[int, int]:
         url = f"https://adm.senado.gov.br/adm-dadosabertos/api/v1/senadores/despesas_ceaps/{ano}"
-        try:
-            dados = http.get_json(url, max_bytes=TETO_DO_DOWNLOAD)
-            itens = dados if isinstance(dados, list) else (dados.get("despesas") if isinstance(dados, dict) else None)
-            if not isinstance(itens, list):  # `null`/objeto sem a lista não é "ano sem despesas": é resposta inesperada
-                raise ValueError(f"resposta do Senado sem a lista de despesas ({type(dados).__name__})")
-            parcial, invalidas = CeapAccumulator(), 0
-            for item in itens:
-                valor = _num(item.get("valorReembolsado")) if isinstance(item, dict) else None
-                if valor is None:
-                    invalidas += 1
-                    continue
-                parcial.add(
-                    "SENADOR",
-                    _inteiro_da_fonte(item.get("codSenador")),
-                    str(item.get("nomeSenador") or ""),
-                    _inteiro_da_fonte(item.get("ano")) or ano,
-                    _inteiro_da_fonte(item.get("mes")),
-                    str(item.get("tipoDespesa") or "OUTROS").strip(),
-                    str(item.get("fornecedor") or "Não informado").strip(),
-                    item.get("cpfCnpj") if isinstance(item.get("cpfCnpj"), str) else None,
-                    valor,
-                )
-        except ERROS_DA_EXTRACAO as exc:
-            logger.warning("[Senado %s] falha na extração: %s", ano, exc)
-            falhas.append(ano)
-            if isinstance(exc, HttpError) and exc.status == 404 and ausentes is not None:
-                ausentes.append(ano)
-            continue
-        _registrar_linhas_invalidas("Senado", ano, invalidas)
-        acc.mesclar(parcial)
-        total += len(itens)
-        logger.info("[Senado %s] %s registros em %.1fs", ano, f"{len(itens):,}", time.time() - t0)
-    return total, falhas
+        dados = http.get_json(url, max_bytes=TETO_DO_DOWNLOAD)
+        itens = dados if isinstance(dados, list) else (dados.get("despesas") if isinstance(dados, dict) else None)
+        if not isinstance(itens, list):  # `null`/objeto sem a lista não é "ano sem despesas": é resposta inesperada
+            raise ValueError(f"resposta do Senado sem a lista de despesas ({type(dados).__name__})")
+        invalidas = 0
+        for item in itens:
+            valor = _num(item.get("valorReembolsado")) if isinstance(item, dict) else None
+            if valor is None:
+                invalidas += 1
+                continue
+            parcial.add(
+                "SENADOR",
+                _inteiro_da_fonte(item.get("codSenador")),
+                texto(item.get("nomeSenador")) or "",
+                _inteiro_da_fonte(item.get("ano")) or ano,
+                _inteiro_da_fonte(item.get("mes")),
+                texto(item.get("tipoDespesa")) or "OUTROS",
+                texto(item.get("fornecedor")) or "Não informado",
+                texto(item.get("cpfCnpj")),
+                valor,
+            )
+        return len(itens), invalidas
+
+    return _extrair_por_ano("Senado", anos, acc, ausentes, ler_ano)
 
 
 # ── Cache por ano ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -488,7 +522,9 @@ def _ler_cache(
             return None
         if not aceitar_vencido and (hoje - gerado_em).days > VALIDADE_DO_CACHE_DIAS:
             return None
-        return CeapAccumulator.de_json(conteudo["dados"])
+        acc = CeapAccumulator.de_json(conteudo["dados"])
+        # o cache de uma casa só leva cargos dela (um arquivo trocado de lugar não pode misturar Câmara e Senado)
+        return acc if {CASA_DO_CARGO[c] for c in acc.cargos()} <= {casa} else None
     except (OSError, ValueError, KeyError, TypeError, OverflowError):
         return None
 
@@ -598,16 +634,28 @@ def _extrair_anos(
 
 
 def anos_publicados_no_arquivo(caminho: Path) -> Dict[str, Set[int]]:
-    """Os anos que o arquivo processado da CEAP já traz com gasto, por casa ("camara"/"senado"); vazio se ilegível."""
+    """
+    Os anos que o arquivo processado da CEAP já traz com gasto, por casa ("camara"/"senado"). Um registro ou um ano
+    ilegível é ignorado (e avisado), não derruba a leitura dos demais; arquivo ausente ou ilegível devolve tudo vazio.
+    """
     publicados: Dict[str, Set[int]] = {"camara": set(), "senado": set()}
     try:
         dados = json.loads(Path(caminho).read_text(encoding="utf-8"))
-        for reg in dados.values():
-            casa = CASA_DO_CARGO.get(reg.get("cargo"))
-            if casa:
-                publicados[casa].update(int(ano) for ano, valor in reg.get("por_ano", {}).items() if valor)
-    except (OSError, ValueError, AttributeError, TypeError):
-        return {"camara": set(), "senado": set()}
+        registros = list(dados.values())
+    except (OSError, ValueError, AttributeError):
+        return publicados
+    ilegiveis = 0
+    for reg in registros:
+        try:
+            casa, por_ano = CASA_DO_CARGO.get(reg.get("cargo")), reg.get("por_ano")
+            if casa and isinstance(por_ano, dict):
+                for ano, valor in por_ano.items():
+                    if _numero(valor) and valor:
+                        publicados[casa].add(int(ano))
+        except (AttributeError, TypeError, ValueError):
+            ilegiveis += 1
+    if ilegiveis:
+        logger.warning("%d registro(s) do arquivo da CEAP ilegíveis ao levantar os anos já publicados", ilegiveis)
     return publicados
 
 
@@ -626,7 +674,9 @@ def run(
     cache vencer: a atualização diária só refaz o ano corrente (e o anterior até março). Cada fonte é independente: a
     falha (até a inesperada) de uma não impede a gravação da outra, e o resumo diz o que foi gravado (`ceap_gravado`,
     `emendas_gravado`). `anos_publicados` (casa -> anos que já tinham gasto) protege o ano corrente de ser apagado por um
-    soluço da fonte no começo do ano; sem ele vale o que o arquivo processado anterior já traz.
+    soluço da fonte no começo do ano; vale a união dele com o que o arquivo processado anterior já traz. Só o `http`
+    injetado vai também às emendas; sem injeção as emendas usam o cliente próprio do `EmendasExtractor` (timeout de
+    120 s, pois o arquivo do Portal tem dezenas de MB), enquanto a CEAP usa 60 s por ano.
     """
     hoje = hoje or hoje_no_brasil()
     ano_fim = ano_fim or hoje.year
@@ -719,9 +769,15 @@ def _emendas_truncadas(registros: List[Any], anterior: Path) -> bool:
     return False
 
 
+def fontes_gravadas(resumo: Dict[str, Any]) -> List[str]:
+    """As fontes ("ceap", "emendas") que o resumo afirma ter gravado. Lista positiva: sem resposta, não gravou."""
+    return [fonte for fonte in FONTES if resumo.get(f"{fonte}_gravado") is True]
+
+
 def fontes_nao_gravadas(resumo: Dict[str, Any]) -> List[str]:
-    """As fontes ("ceap", "emendas") que o `run` tentou e não gravou; vazio quando tudo foi gravado ou não foi pedido."""
-    return [fonte for fonte in FONTES if resumo.get(f"{fonte}_gravado") is False]
+    """As fontes que o `run` não gravou: falharam, ou nem constam do resumo (o complemento de `fontes_gravadas`)."""
+    gravadas = fontes_gravadas(resumo)
+    return [fonte for fonte in FONTES if fonte not in gravadas]
 
 
 def main(argv: Optional[List[str]] = None) -> Dict[str, Any]:

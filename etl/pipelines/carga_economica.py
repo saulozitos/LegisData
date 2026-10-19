@@ -2,8 +2,8 @@
 Carga única dos dados econômicos e curados no Postgres: séries, mandatos presidenciais, composição do Congresso, PNAD e finanças
 (CEAP, emendas, remuneração e dados do TSE).
 
-É o ponto de entrada de `run_etl --load-economia` e do deploy automático (e, com `chaves`, da atualização diária,
-que só recarrega séries e mandatos). As cargas são independentes: uma curadoria com problema não impede as demais, e os
+É o ponto de entrada de `run_etl --load-economia` e do deploy automático (e, com `chaves`, de `economia_atualizacao`,
+que só recarrega séries e mandatos; a atualização diária das finanças, `financas_atualizacao`, não passa por aqui). As cargas são independentes: uma curadoria com problema não impede as demais, e os
 erros são relatados juntos no fim. A composição só existe sobre os mandatos presidenciais já carregados, então é pulada
 (com mensagem clara, sem erro em cascata) quando eles falham.
 """
@@ -35,7 +35,13 @@ CARGAS: Tuple[Tuple[str, str, str, Optional[str]], ...] = (
     ),
     ("pnad", "PNAD (classes sociais)", "etl.pipelines.pnad_loader", None),
     ("financas", "Finanças (fin)", "etl.pipelines.financas_loader", None),
-    ("financas_estaticas", "Finanças sem CEAP e emendas (fin)", "etl.pipelines.financas_estaticas", None),
+    # "módulo:função" quando a carga não é o `carregar(engine)` do módulo
+    (
+        "financas_estaticas",
+        "Finanças sem CEAP e emendas (fin)",
+        "etl.pipelines.financas_loader:carregar_estaticas",
+        None,
+    ),
 )
 # Qual carga de finanças cada modo roda. Um só mapa: o deploy, o `run_etl --load-economia` e os testes leem daqui.
 FINANCAS_POR_MODO: Dict[str, Optional[str]] = {
@@ -46,28 +52,49 @@ FINANCAS_POR_MODO: Dict[str, Optional[str]] = {
 MODOS_DO_DEPLOY = tuple(FINANCAS_POR_MODO)
 # Falha dessas cargas não derruba o deploy quando o `fin` já tem dados (a API nova segue servindo o que está lá).
 TOLERADAS_NO_DEPLOY = tuple(c for c in FINANCAS_POR_MODO.values() if c)
-_SQL_FIN_TEM_CEAP_E_EMENDAS = (
-    "select exists(select 1 from fin.emenda) and exists(select 1 from fin.despesa_cota) "
-    "and exists(select 1 from fin.despesa_cota_fornecedor) and exists(select 1 from fin.despesa_cota_resumo)"
-)
+# O que a atualização diária mantém: se todas têm linhas, o `fin` está semeado; se alguma tem, a API tem o que servir.
+TABELAS_DA_CEAP_E_EMENDAS = ("emenda", "despesa_cota", "despesa_cota_fornecedor", "despesa_cota_resumo")
 
 
-def chaves_do_deploy(modo: str) -> List[str]:
+def sql_fin_tem_dados(operador: str) -> str:
+    """A consulta "o `fin` tem dados?": `and` pede todas as tabelas, `or` basta uma. O deploy.sh repete esta consulta."""
+    return f" {operador} ".join(f"exists(select 1 from fin.{t})" for t in TABELAS_DA_CEAP_E_EMENDAS)
+
+
+def chaves_do_modo(modo: str) -> List[str]:
     """
-    As cargas que o deploy executa. Séries, mandatos, composição e PNAD sempre; as finanças conforme o `modo`:
-    "completa" (o `fin` está vazio: semeia tudo dos arquivos do git), "estaticas" (só remuneração, patrimônio, doações e
-    certidões, porque CEAP e emendas vêm do timer diário e não podem voltar ao retrato do git) ou "nenhuma".
+    As cargas de um modo. Séries, mandatos, composição e PNAD sempre; as finanças conforme o `modo`: "completa" (o `fin`
+    está vazio: semeia tudo dos arquivos do git), "estaticas" (só remuneração, patrimônio, doações e certidões, porque
+    CEAP e emendas vêm do timer diário e não podem voltar ao retrato do git) ou "nenhuma". Vale para o deploy e para o
+    `run_etl --load-economia`.
     """
     if modo not in FINANCAS_POR_MODO:
-        raise ValueError(f"modo de finanças do deploy desconhecido: {modo!r} (esperado um de {MODOS_DO_DEPLOY})")
+        raise ValueError(f"modo de finanças desconhecido: {modo!r} (esperado um de {MODOS_DO_DEPLOY})")
     financas = FINANCAS_POR_MODO[modo]
     return [c for c, *_ in CARGAS if c not in FINANCAS_POR_MODO.values() or c == financas]
 
 
 def fin_tem_ceap_e_emendas(engine: Engine) -> bool:
-    """True se `fin` já guarda CEAP (despesas, fornecedores e resumos) e emendas: o que a atualização diária mantém."""
+    """True se `fin` já guarda CEAP (despesas, fornecedores e resumos) e emendas. Sem o schema `fin`, False."""
     with engine.connect() as conexao:
-        return bool(conexao.execute(text(_SQL_FIN_TEM_CEAP_E_EMENDAS)).scalar())
+        if not conexao.execute(text("select to_regclass('fin.emenda') is not null")).scalar():
+            return False
+        return bool(conexao.execute(text(f"select {sql_fin_tem_dados('and')}")).scalar())
+
+
+def falhas_toleradas(resultados: Dict[str, Any]) -> List[str]:
+    """As cargas toleradas no deploy que falharam (resultado `{"erro": ...}`); o deploy as repete na execução seguinte."""
+    return [
+        chave
+        for chave, resultado in resultados.items()
+        if chave in TOLERADAS_NO_DEPLOY and isinstance(resultado, dict) and "erro" in resultado
+    ]
+
+
+def _carga_de(modulo: str) -> Any:
+    """A função de carga de uma entrada de `CARGAS` ("módulo" => `carregar`; "módulo:função" => a função nomeada)."""
+    nome_modulo, _, funcao = modulo.partition(":")
+    return getattr(importlib.import_module(nome_modulo), funcao or "carregar")
 
 
 def carregar_tudo(
@@ -90,7 +117,7 @@ def carregar_tudo(
     aceitas = set(toleradas)
     if chaves is None:
         modo = "completa" if recarregar_ceap_e_emendas or not fin_tem_ceap_e_emendas(engine) else "estaticas"
-        chaves = chaves_do_deploy(modo)
+        chaves = chaves_do_modo(modo)
         logger.info("Finanças em modo '%s'", modo)
     escolhidas = set(chaves)
     nomes = {chave: nome for chave, nome, _, _ in CARGAS}
@@ -105,7 +132,7 @@ def carregar_tudo(
             falharam.add(chave)
             continue
         try:
-            resultados[chave] = importlib.import_module(modulo).carregar(engine)
+            resultados[chave] = _carga_de(modulo)(engine)
             logger.info("%s: %s", nome, resultados[chave])
         except Exception as exc:  # noqa: BLE001 - isolada de propósito; relatada abaixo
             descricao = descricao_do_erro(exc)

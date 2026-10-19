@@ -89,7 +89,8 @@ def _bloco(texto, nome):
 
 def _ambiente_limpo(**mudancas):
     """O ambiente do processo sem variáveis do git (o teste pode rodar dentro de um hook) e sem a configuração global."""
-    base = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    # sem GIT_* (o teste pode rodar dentro de um hook) nem POSTGRES_* (outro teste da suíte pode exportá-las)
+    base = {k: v for k, v in os.environ.items() if not k.startswith(("GIT_", "POSTGRES_"))}
     return {**base, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", **mudancas}
 
 
@@ -127,7 +128,7 @@ def test_deploy_descarta_saidas_do_cron_antes_do_merge_e_carrega_tudo_pela_carga
     assert _posicao(texto, r"^\s*git checkout -q -- etl/data/processed") < _posicao(texto, r"^git merge --ff-only ")
     carga = texto[_posicao(texto, r"um_comando python -c ") :]
     assert re.search(
-        r"^from etl\.pipelines\.carga_economica import TOLERADAS_NO_DEPLOY, carregar_tudo, chaves_do_deploy",
+        r"^from etl\.pipelines\.carga_economica import TOLERADAS_NO_DEPLOY, carregar_tudo, chaves_do_modo, falhas_toleradas",
         carga,
         re.MULTILINE,
     )
@@ -169,7 +170,7 @@ def test_deploy_so_tolera_falha_das_financas_quando_fin_ja_tem_dados():
     carga = texto[_posicao(texto, r"um_comando python -c ") :]
     assert re.search(r"os\.environ\.get\('LEGISDATA_FIN_TEM_ALGUM_DADO'\) == 't' else \(\)", carga)
     assert re.search(r"carregar_tudo\(engine, chaves=chaves, toleradas=toleradas\)", carga)
-    assert "chaves_do_deploy(os.environ.get('LEGISDATA_FIN_MODO', 'nenhuma'))" in carga  # sem decisão, não toca no fin
+    assert "chaves_do_modo(os.environ.get('LEGISDATA_FIN_MODO', 'nenhuma'))" in carga  # sem decisão, não toca no fin
 
 
 def test_modo_das_financas_chega_a_carga_pelo_um_comando():
@@ -177,7 +178,7 @@ def test_modo_das_financas_chega_a_carga_pelo_um_comando():
     corpo = texto[_posicao(texto, r"^um_comando\(\) \{") :].split("\n}\n")[0]
     assert 'LEGISDATA_FIN_MODO="${LEGISDATA_FIN_MODO:-nenhuma}"' in corpo  # sem decisão, o padrão não destrói nada
     assert (
-        'read -r LEGISDATA_FIN_MODO LEGISDATA_FIN_REFRESCAR < <(decidir_financas "$ATUAL" "$ALVO" "$LEGISDATA_FIN_TEM_DADOS" "$PENDENCIAS")'
+        'read -r LEGISDATA_FIN_MODO LEGISDATA_FIN_REFRESCAR < <(decidir_financas "$ATUAL" "$ALVO" "$LEGISDATA_FIN_TEM_DADOS" "$PENDENCIAS" "$TIMER_GRAVOU")'
         in texto
     )
 
@@ -210,7 +211,6 @@ def repo_de_decisao(tmp_path):
         "etl/data/processed/tse_doacoes_campanha.json": "[]",
         "etl/data/processed/certidoes_tse.json": "[]",
         "etl/pipelines/financas_loader.py": "a",
-        "etl/pipelines/financas_estaticas.py": "a",
         "etl/pipelines/loader_helpers.py": "a",
         "etl/pipelines/pessoa_resolver.py": "a",
         "etl/pipelines/carga_economica.py": "a",
@@ -231,7 +231,7 @@ def repo_de_decisao(tmp_path):
     return repo
 
 
-def _decidir(repo, mudanca, tem_dados="t", atual="HEAD~1", pendencias=""):
+def _decidir(repo, mudanca, tem_dados="t", atual="HEAD~1", pendencias="", timer_gravou="t"):
     """Faz um commit com `mudanca` ({caminho: conteúdo}) e devolve o que `decidir_financas` responde para ele."""
     for caminho, conteudo in mudanca.items():
         (repo / caminho).parent.mkdir(parents=True, exist_ok=True)
@@ -241,7 +241,8 @@ def _decidir(repo, mudanca, tem_dados="t", atual="HEAD~1", pendencias=""):
     funcao = _bloco(_texto(DEPLOY_SH), "decidir_financas")
     anterior = _git(repo, "rev-parse", atual) if atual else ""
     resposta = _bash(
-        f'{funcao}\ndecidir_financas "{anterior}" "$(git rev-parse HEAD)" "{tem_dados}" "{pendencias}"', cwd=repo
+        f'{funcao}\ndecidir_financas "{anterior}" "$(git rev-parse HEAD)" "{tem_dados}" "{pendencias}" "{timer_gravou}"',
+        cwd=repo,
     )
     assert resposta.returncode == 0, resposta.stderr
     return resposta.stdout.strip()
@@ -264,7 +265,6 @@ def _decidir(repo, mudanca, tem_dados="t", atual="HEAD~1", pendencias=""):
         ({"etl/pipelines/loader_helpers.py": "b"}, "estaticas 1"),
         ({"etl/pipelines/pessoa_resolver.py": "b"}, "estaticas 1"),
         ({"etl/pipelines/carga_economica.py": "b"}, "estaticas 0"),  # só orquestra as estáticas
-        ({"etl/pipelines/financas_estaticas.py": "b"}, "estaticas 0"),
         (
             {"etl/pipelines/sync_ceap_emendas.py": "b"},
             "nenhuma 1",
@@ -288,6 +288,32 @@ def test_decisao_das_financas_por_arquivo_alterado_no_commit(repo_de_decisao, mu
 )
 def test_pendencias_de_um_deploy_anterior_valem_mesmo_sem_mudanca_no_commit(repo_de_decisao, pendencias, esperado):
     assert _decidir(repo_de_decisao, {"docs/leia-me.md": "b"}, pendencias=pendencias) == esperado
+
+
+@SEM_BASH
+@pytest.mark.parametrize(
+    "mudanca, pendencias, tem_dados, esperado",
+    [
+        ({"etl/pipelines/financas_loader.py": "b"}, "carga", "t", "estaticas 1"),  # pendência + código mudou
+        ({"docs/leia-me.md": "b"}, "carga", "f", "completa 1"),  # fin sem dados: a semeadura vale mais que a pendência
+        ({"docs/leia-me.md": "b"}, "cargas\nrefrescando", "t", "nenhuma 0"),  # só linha inteira conta, não substring
+        (
+            {"scripts/deploy/atualizar_financas.sh": "novo"},
+            "",
+            "t",
+            "nenhuma 1",
+        ),  # o script do timer pede a atualização
+        ({"scripts/systemd/legisdata-financas.timer": "novo"}, "", "t", "nenhuma 1"),
+    ],
+)
+def test_pendencias_e_o_script_do_timer_na_decisao(repo_de_decisao, mudanca, pendencias, tem_dados, esperado):
+    assert _decidir(repo_de_decisao, mudanca, tem_dados=tem_dados, pendencias=pendencias) == esperado
+
+
+@SEM_BASH
+def test_timer_que_nunca_gravou_semeia_tudo_do_git_para_o_saneamento_novo_chegar_ao_fin(repo_de_decisao):
+    assert _decidir(repo_de_decisao, {"docs/leia-me.md": "b"}, timer_gravou="f") == "completa 1"
+    assert _decidir(repo_de_decisao, {"docs/leia-me.md": "b"}, timer_gravou="t") == "nenhuma 0"
 
 
 @SEM_BASH
@@ -343,7 +369,7 @@ def test_tudo_que_o_extrator_e_a_carga_importam_esta_nas_listas_da_decisao():
         corpo = re.search(rf"local {nome}=\((.*?)\n  \)", funcao, re.DOTALL).group(1)
         listas[nome] = re.findall(r"((?:etl|backend)/[\w./-]+)", corpo)
     raizes = {
-        "estaticas": ["etl/pipelines/financas_loader.py", "etl/pipelines/financas_estaticas.py"],
+        "estaticas": ["etl/pipelines/financas_loader.py", "etl/pipelines/carga_economica.py"],
         "do_timer": ["etl/pipelines/sync_ceap_emendas.py", "etl/pipelines/financas_atualizacao.py"],
     }
     for nome, entradas in raizes.items():
@@ -352,6 +378,9 @@ def test_tudo_que_o_extrator_e_a_carga_importam_esta_nas_listas_da_decisao():
             _modulos_importados(RAIZ / entrada, vistos)
         for arquivo in vistos:
             relativo = arquivo.relative_to(RAIZ).as_posix()
+            assert "from ." not in arquivo.read_text(
+                encoding="utf-8"
+            ), f"{relativo}: import relativo escaparia da varredura"
             if relativo.endswith("__init__.py"):
                 continue
             coberto = any(relativo == item or relativo.startswith(item.rstrip("/") + "/") for item in listas[nome])
@@ -480,7 +509,13 @@ esac
     for nome, conteudo in scripts.items():
         (falsos / nome).write_text(conteudo)
         (falsos / nome).chmod(0o755)
-    (raiz / ".env").write_text("POSTGRES_USER=usuario\nPOSTGRES_DB=banco\nPOSTGRES_PASSWORD='p@ss:w/rd#1 %'\n")
+    (raiz / ".env").write_text(
+        mudancas.pop("env_texto", None)
+        or "POSTGRES_USER=usuario\nPOSTGRES_DB=banco\nPOSTGRES_PASSWORD='p@ss:w/rd#1 %'\n"
+    )
+    if mudancas.pop("git_config", True):  # num worktree o .git é arquivo e não há .git/config a esconder
+        (raiz / ".git").mkdir(exist_ok=True)
+        (raiz / ".git" / "config").write_text("[core]\n")
     env = {
         **_ambiente_limpo(),
         "PATH": f"{falsos}:{os.environ['PATH']}",
@@ -547,6 +582,13 @@ def test_script_das_financas_repassa_os_pares_de_argumentos_certos_ao_contenier(
 
 
 @SEM_BASH
+def test_sem_git_config_no_checkout_nao_ha_montagem_a_esconder(tmp_path):
+    resposta, chamadas, _, _ = _ambiente_do_script_das_financas(tmp_path, git_config=False)
+    (execucao,) = _docker_run(chamadas)
+    assert resposta.returncode == 0 and not any("/repo/.git/config" in arg for arg in execucao)
+
+
+@SEM_BASH
 def test_script_das_financas_nao_repassa_a_liberacao_quando_ela_nao_foi_pedida(tmp_path):
     _, chamadas, _, _ = _ambiente_do_script_das_financas(tmp_path)
     (execucao,) = _docker_run(chamadas)
@@ -587,32 +629,39 @@ def test_script_das_financas_recusa_rodar_com_imagem_diferente_do_checkout(tmp_p
 
 
 @SEM_BASH
-@pytest.mark.parametrize("nome, valor", [("a\nb", "a\nb"), ("cr", "a\rb")])
-def test_script_das_financas_recusa_senha_com_quebra_de_linha(tmp_path, nome, valor):
-    resposta, chamadas, registro, raiz = _ambiente_do_script_das_financas(tmp_path)
-    (raiz / ".env").write_text(f'POSTGRES_PASSWORD="{valor}"\n')
-    (registro / "docker.log").unlink()  # só o que a segunda execução fizer conta
-    # rodar de novo com o .env trocado
-    resposta = subprocess.run(
-        ["bash", str(FINANCAS_SH)],
-        capture_output=True,
-        text=True,
-        check=False,
-        env={
-            **_ambiente_limpo(),
-            "PATH": f"{tmp_path / 'bin'}:{os.environ['PATH']}",
-            "REGISTRO": str(registro),
-            "LEGISDATA_DIR": str(raiz),
-            "DEPLOY_STATE_DIR": str(tmp_path / "estado"),
-            "FAKE_IMAGEM": "x:abc1234",
-            "FAKE_HEAD": "abc1234",
-        },
-    )
+@pytest.mark.parametrize("valor", ["a\nb", "a\rb"])
+def test_script_das_financas_recusa_senha_com_quebra_de_linha(tmp_path, valor):
+    resposta, chamadas, _, _ = _ambiente_do_script_das_financas(tmp_path, env_texto=f'POSTGRES_PASSWORD="{valor}"\n')
     assert resposta.returncode == 1 and "quebra de linha" in resposta.stdout
-    assert (
-        not (registro / "docker.log").exists()
-        or _docker_run([c.split("\x1f")[:-1] for c in (registro / "docker.log").read_text().splitlines()]) == []
-    )  # nenhum contêiner subiu
+    assert _docker_run(chamadas) == []  # nenhum contêiner subiu
+
+
+@SEM_BASH
+@pytest.mark.parametrize("env_texto", ["POSTGRES_USER=u\n", "POSTGRES_PASSWORD=\n"])
+def test_script_das_financas_diz_que_a_senha_esta_ausente_em_vez_de_quebrar_com_variavel_nao_definida(
+    tmp_path, env_texto
+):
+    resposta, chamadas, _, _ = _ambiente_do_script_das_financas(tmp_path, env_texto=env_texto)
+    assert resposta.returncode == 1 and "POSTGRES_PASSWORD ausente" in resposta.stdout
+    assert "unbound" not in resposta.stderr and _docker_run(chamadas) == []
+
+
+@SEM_BASH
+def test_o_script_das_financas_inspeciona_o_conteiner_da_api(tmp_path):
+    _, chamadas, _, _ = _ambiente_do_script_das_financas(tmp_path)
+    assert ["inspect", "--format", "{{.Config.Image}}", "politica_api"] in chamadas
+
+
+@SEM_BASH
+def test_restos_de_arquivo_de_ambiente_antigos_sao_removidos_e_os_recentes_ficam(tmp_path):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir(mode=0o700)
+    velho, novo = runtime / "legisdata-env.antigo", runtime / "legisdata-env.recente"
+    velho.write_text("x")
+    novo.write_text("y")
+    os.utime(velho, (1, 1))
+    _ambiente_do_script_das_financas(tmp_path, XDG_RUNTIME_DIR=str(runtime))
+    assert not velho.exists() and novo.exists()
 
 
 @SEM_BASH
@@ -649,13 +698,140 @@ def test_o_deploy_mantem_a_copia_do_script_das_financas_igual_a_do_commit_implan
     )  # script com erro nunca é instalado
 
 
-def test_deploy_dispara_a_atualizacao_so_quando_a_unit_existe_e_avisa_quando_nao_existe():
+def _fake_systemctl(tmp_path, existe=True, start_rc=0):
+    """Um `systemctl` falso que registra o que recebeu; `cat` falha quando a unit não existe."""
+    falsos = tmp_path / "falsos"
+    falsos.mkdir(exist_ok=True)
+    (falsos / "systemctl").write_text(
+        '#!/usr/bin/env bash\necho "$*" >>"$REGISTRO/systemctl.log"\n'
+        f'case "$2" in cat) exit {0 if existe else 1} ;; start) exit {start_rc} ;; esac\nexit 0\n'
+    )
+    (falsos / "systemctl").chmod(0o755)
+    registro = tmp_path / "registro"
+    registro.mkdir(exist_ok=True)
+    return {"PATH": f"{falsos}:{os.environ['PATH']}", "REGISTRO": str(registro)}
+
+
+def _disparo(tmp_path, *, existe, start_rc=0, refrescar="0", pendente=""):
+    """Roda o bloco `disparo_financas` do deploy.sh com bash de verdade; devolve (saída, conteúdo de financas_pendente)."""
+    estado = tmp_path / "estado"
+    estado.mkdir(exist_ok=True)
+    if pendente:
+        (estado / "financas_pendente").write_text(pendente)
     texto = _texto(DEPLOY_SH)
-    final = texto[_posicao(texto, r'^echo "\$TAG" >"\$ESTADO_DIR/ultima_tag"') :]
-    assert "systemctl --user cat legisdata-financas.service" in final
-    assert 'if [[ "${LEGISDATA_FIN_REFRESCAR:-0}" == "1" ]]' in final
-    assert "systemctl --user start --no-block legisdata-financas.service" in final
-    assert "AVISO: legisdata-financas.timer não está instalado" in final
+    script = (
+        f'ESTADO_DIR="{estado}"\nlog() {{ echo "LOG: $*"; }}\n{_bloco(texto, "pendencias")}\n'
+        f'LEGISDATA_FIN_REFRESCAR={refrescar}\n{_bloco(texto, "disparo_financas")}'
+    )
+    resposta = _bash(script, env=_fake_systemctl(tmp_path, existe, start_rc))
+    assert resposta.returncode == 0, resposta.stderr
+    arquivo = estado / "financas_pendente"
+    return resposta.stdout, (arquivo.read_text() if arquivo.exists() else None), tmp_path / "registro" / "systemctl.log"
+
+
+@SEM_BASH
+def test_disparo_com_a_unit_instalada_dispara_e_nao_deixa_pendencia(tmp_path):
+    saida, pendente, log = _disparo(tmp_path, existe=True, refrescar="1")
+    assert "atualização das finanças disparada" in saida and pendente is None
+    assert "--user start --no-block legisdata-financas.service" in log.read_text()
+
+
+@SEM_BASH
+def test_disparo_sem_a_unit_registra_o_pedido_e_avisa(tmp_path):
+    saida, pendente, _ = _disparo(tmp_path, existe=False, refrescar="1")
+    assert "o pedido ficou registrado" in saida and pendente == "refrescar\n"
+
+
+@SEM_BASH
+def test_disparo_que_o_systemd_recusa_mantem_o_pedido(tmp_path):
+    saida, pendente, _ = _disparo(tmp_path, existe=True, start_rc=1, refrescar="1")
+    assert "não consegui disparar" in saida and pendente == "refrescar\n"
+
+
+@SEM_BASH
+def test_pedido_antigo_e_cumprido_mesmo_sem_pedido_novo_e_a_carga_pendente_fica(tmp_path):
+    _, pendente, log = _disparo(tmp_path, existe=True, refrescar="0", pendente="carga\nrefrescar\n")
+    assert pendente == "carga\n" and "start --no-block legisdata-financas.service" in log.read_text()
+
+
+@SEM_BASH
+def test_sem_pedido_e_sem_unit_so_avisa_que_o_timer_nao_esta_instalado(tmp_path):
+    saida, pendente, _ = _disparo(tmp_path, existe=False, refrescar="0")
+    assert "legisdata-financas.timer não está instalado" in saida and pendente is None
+
+
+def _apos_carga(tmp_path, saida_da_carga, *, previa_pendente="", tentada=None):
+    estado = tmp_path / "estado"
+    estado.mkdir(exist_ok=True)
+    if previa_pendente:
+        (estado / "financas_pendente").write_text(previa_pendente)
+    if tentada is not None:
+        (estado / "financas_carga_tentada").write_text(str(tentada))
+    texto = _texto(DEPLOY_SH)
+    script = (
+        f'ESTADO_DIR="{estado}"\nlog() {{ echo "LOG: $*"; }}\n{_bloco(texto, "pendencias")}\n'
+        f"SAIDA_CARGA=$(cat <<'FIM'\n{saida_da_carga}\nFIM\n)\n{_bloco(texto, 'apos_carga')}"
+    )
+    resposta = _bash(script)
+    assert resposta.returncode == 0, resposta.stderr
+    pend = estado / "financas_pendente"
+    return pend.read_text() if pend.exists() else None, (estado / "financas_carga_tentada").exists()
+
+
+@SEM_BASH
+def test_carga_tolerada_que_falhou_vira_pendencia_com_carimbo_de_tentativa(tmp_path):
+    pendente, carimbo = _apos_carga(tmp_path, "financas {'erro': 'x'}\nFALHA_TOLERADA financas")
+    assert pendente == "carga\n" and carimbo
+
+
+@SEM_BASH
+def test_carga_que_passou_limpa_a_pendencia_de_carga_e_o_carimbo_sem_tocar_nas_outras(tmp_path):
+    pendente, carimbo = _apos_carga(tmp_path, "series {'ok': 1}", previa_pendente="carga\nrefrescar\n", tentada=1)
+    assert pendente == "refrescar\n" and not carimbo
+
+
+def test_o_python_do_deploy_e_o_bash_concordam_sobre_o_marcador_da_falha_tolerada():
+    """O bash procura `FALHA_TOLERADA <chave>` e o Python o imprime para cada carga tolerada que devolveu erro."""
+    from etl.pipelines.carga_economica import falhas_toleradas
+
+    assert falhas_toleradas(
+        {"financas_estaticas": {"erro": "x"}, "series": {"erro": "y"}, "financas": {"ceap": {}}}
+    ) == ["financas_estaticas"]
+    carga = _texto(DEPLOY_SH)
+    assert "print('FALHA_TOLERADA', chave)" in carga and "grep -q '^FALHA_TOLERADA '" in carga
+
+
+@SEM_BASH
+@pytest.mark.parametrize(
+    "pendencia, carimbo, pode",
+    [
+        ("", None, False),  # sem pendência de carga não há o que repetir
+        ("carga\n", None, True),  # pendente e sem carimbo: repete
+        ("carga\n", 10**12, False),  # tentada "no futuro" (agora < carimbo + intervalo): ainda espera
+        ("carga\n", 1, True),  # tentada há muito tempo
+        ("refrescar\n", None, False),  # outra pendência não repete a carga
+    ],
+)
+def test_a_carga_pendente_so_repete_depois_do_intervalo(tmp_path, pendencia, carimbo, pode):
+    estado = tmp_path / "estado"
+    estado.mkdir()
+    if pendencia:
+        (estado / "financas_pendente").write_text(pendencia)
+    if carimbo is not None:
+        (estado / "financas_carga_tentada").write_text(str(carimbo))
+    script = (
+        f'ESTADO_DIR="{estado}"\n{_bloco(_texto(DEPLOY_SH), "pendencias")}\ncarga_pode_repetir && echo sim || echo nao'
+    )
+    resposta = _bash(script)
+    assert resposta.stdout.strip() == ("sim" if pode else "nao"), resposta.stderr
+
+
+def test_mesmo_commit_sai_cedo_a_menos_que_haja_carga_para_repetir_e_repeticao_nao_repete_o_refresco():
+    texto = _texto(DEPLOY_SH)
+    corte = texto[_posicao(texto, r"^REPETICAO=0") : _posicao(texto, r"^# As imagens são publicadas")]
+    assert 'if [[ "$ATUAL" == "$ALVO" ]]; then' in corte and "carga_pode_repetir || exit 0" in corte
+    assert "REPETICAO=1" in corte
+    assert "[[ $REPETICAO -eq 1 ]] && LEGISDATA_FIN_REFRESCAR=0" in texto
 
 
 # ── instalar.sh (bash de verdade, repositório git e comandos falsos) ─────────────────────────────────────────────────
@@ -823,18 +999,17 @@ def test_instalador_checa_o_systemd_antes_de_gravar_qualquer_coisa():
     assert _posicao(texto, r"^mkdir -p ") < _posicao(texto, r"^docker rm -f politica_watchtower")
 
 
-def test_deploy_repete_a_carga_pendente_mesmo_sem_commit_novo_e_registra_a_falha_tolerada():
-    texto = _texto(DEPLOY_SH)
-    assert re.search(r'if \[\[ "\$ATUAL" == "\$ALVO" \]\] && ! pendente_tem carga; then\n  exit 0', texto)
-    assert re.search(r"grep -qE \"\^financas\(_estaticas\)\? \\\{'erro'\" <<<\"\$SAIDA_CARGA\"", texto)
-    assert "pendente_marca carga" in texto and "pendente_limpa carga" in texto
-    # o pedido de atualização sem unit instalada fica registrado para o instalar.sh cumprir
-    assert re.search(r'\[\[ "\$\{LEGISDATA_FIN_REFRESCAR:-0\}" == "1" \]\] && pendente_marca refrescar', texto)
-
-
 def test_contineres_do_deploy_usam_a_mesma_contencao_e_escondem_o_git_config():
     texto = _texto(DEPLOY_SH)
     assert texto.count('"${CONTENCAO[@]}"') == 2  # a migração e o um_comando, na mesma lista de flags
     assert "-v /dev/null:/repo/.git/config:ro" in texto
     assert re.search(r'chmod 600 "\$RAIZ/\.env"', texto)
     assert 'mktemp -p "$DIR_TEMP"' in texto and "XDG_RUNTIME_DIR" in texto
+
+
+def test_a_consulta_de_dados_do_fin_do_deploy_e_a_do_python():
+    from etl.pipelines.carga_economica import sql_fin_tem_dados
+
+    texto = _texto(DEPLOY_SH)
+    assert f'-tAc "select {sql_fin_tem_dados("and")}"' in texto
+    assert f'-tAc "select {sql_fin_tem_dados("or")}"' in texto

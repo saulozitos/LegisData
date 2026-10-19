@@ -15,6 +15,7 @@ log() { printf '%s [financas] %s\n' "$(date '+%F %T')" "$*"; }
 # O deploy também mexe em etl/data (descarta as saídas locais antes do merge): nunca os dois ao mesmo tempo. Usa o mesmo
 # lock do deploy e espera até 30 minutos; o deploy, ao achar o lock ocupado, tenta de novo na execução seguinte do timer.
 mkdir -p "$ESTADO_DIR"
+chmod 700 "$ESTADO_DIR"
 exec 9>"$ESTADO_DIR/deploy.lock"
 flock -w 1800 9 || { log "deploy em andamento há mais de 30 minutos; tento amanhã"; exit 1; }
 
@@ -42,16 +43,21 @@ fi
 # A senha do banco vai por arquivo de ambiente 600, nunca na linha de comando (visível em `ps`). O banco vai em variáveis
 # separadas e quem monta a URL é o próprio `Settings` do backend, que codifica a senha (um `@`, `/` ou `#` nela quebraria
 # uma URL montada aqui). Quebra de linha não cabe em arquivo de ambiente.
-# >>> env_banco
+# >>> env_banco_financas
+[[ -n "${POSTGRES_PASSWORD:-}" ]] || { log "POSTGRES_PASSWORD ausente no .env"; exit 1; }
 [[ "$POSTGRES_PASSWORD" != *$'\n'* && "$POSTGRES_PASSWORD" != *$'\r'* ]] || { log "POSTGRES_PASSWORD com quebra de linha não cabe no arquivo de ambiente"; exit 1; }
 DIR_TEMP="${XDG_RUNTIME_DIR:-}" # tmpfs do usuário quando existe; a senha não fica em disco comum
 [[ -n "$DIR_TEMP" && -d "$DIR_TEMP" && -w "$DIR_TEMP" ]] || DIR_TEMP="${ESTADO_DIR:-${TMPDIR:-/tmp}}"
+find "$DIR_TEMP" -maxdepth 1 -name 'legisdata-env.*' -mmin +60 -delete 2>/dev/null || true # restos de uma execução morta
 ENV_BANCO="$(mktemp -p "$DIR_TEMP" legisdata-env.XXXXXX)"
 trap 'rm -f "$ENV_BANCO"' EXIT
 chmod 600 "$ENV_BANCO"
 printf 'POSTGRES_USER=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_SERVER=postgres\nPOSTGRES_PORT=5432\nPOSTGRES_DB=%s\n' "$PG_USER" "$POSTGRES_PASSWORD" "$PG_DB" >"$ENV_BANCO"
-# <<< env_banco
+# <<< env_banco_financas
 
+# O .git/config pode guardar credencial de remote: some do contêiner (num worktree o .git é arquivo e não há o que esconder).
+ESCONDER_GIT=()
+[[ -f "$RAIZ/.git/config" ]] && ESCONDER_GIT=(-v /dev/null:/repo/.git/config:ro)
 log "atualizando CEAP e emendas ($IMAGEM)"
 # --user: os arquivos gravados em etl/data ficam do dono do checkout. O lock (descritor 9) não passa para o contêiner. O
 # contêiner só precisa do banco: sem capacidades, sem privilégios novos e com o .env e o .git/config (outros segredos)
@@ -61,6 +67,6 @@ docker run --rm --network "$REDE" --env-file "$ENV_BANCO" --user "$(id -u):$(id 
   -e ENVIRONMENT=production -e DB_SSLMODE=disable -e HOME=/tmp \
   -e LEGISDATA_ACEITAR_ENCOLHIMENTO="${LEGISDATA_ACEITAR_ENCOLHIMENTO:-}" \
   -e PYTHONPATH=/repo/backend:/repo --memory 2g --cpus 2 \
-  -v "$RAIZ:/repo:ro" -v "$RAIZ/etl/data:/repo/etl/data" -v /dev/null:/repo/.env:ro -v /dev/null:/repo/.git/config:ro -w /app \
+  -v "$RAIZ:/repo:ro" -v "$RAIZ/etl/data:/repo/etl/data" -v /dev/null:/repo/.env:ro ${ESCONDER_GIT[@]+"${ESCONDER_GIT[@]}"} -w /app \
   "$IMAGEM" python -m etl.pipelines.financas_atualizacao 9>&-
 log "concluído"

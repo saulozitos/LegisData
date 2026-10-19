@@ -13,6 +13,7 @@ Sai com código 1 quando as emendas divergem ou quando um total do banco passa d
 
 import argparse
 import json
+import logging
 import sys
 from collections import defaultdict
 from decimal import Decimal
@@ -173,4 +174,5 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     sys.exit(main())

@@ -2259,18 +2259,14 @@ def test_chave_desconhecida_falha_antes_de_executar_qualquer_carga(pg_engine, ba
 
 
 def test_a_carga_estatica_roda_so_remuneracao_patrimonio_doacoes_e_certidoes(monkeypatch):
-    from etl.pipelines import financas_estaticas
-
     chamadas = []
     monkeypatch.setattr(fin, "carregar", lambda engine, processed_dir=None, chaves=None: chamadas.append(tuple(chaves)))
-    financas_estaticas.carregar(object())
+    fin.carregar_estaticas(object())
     assert chamadas == [("remuneracao", "patrimonio", "doacoes", "certidoes")]
 
 
 def test_carga_estatica_nao_apaga_ceap_nem_emendas_ja_no_banco(pg_engine, banco, tmp_path):
     """O `fin` tem CEAP e emendas mais novas que o git: a carga estática não pode tocá-las."""
-    from etl.pipelines import financas_estaticas  # noqa: F401
-
     _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
     _gravar(tmp_path, fin.EMENDAS_ARQUIVO, [_emenda("1", "Ana Souza")])
     with pg_engine.begin() as conn:
@@ -2293,11 +2289,11 @@ def test_carga_estatica_nao_apaga_ceap_nem_emendas_ja_no_banco(pg_engine, banco,
     "nome, esperado",
     [
         (
-            "RAFAEL OLIVEIRA MENDONÇA 306445278866",
-            "RAFAEL OLIVEIRA MENDONÇA",
+            "FULANO SINTETICO DA SILVA 100200300400",
+            "FULANO SINTETICO DA SILVA",
         ),  # 12 dígitos colados ao nome (dados reais)
-        ("Yasmin Breckenfeld Reck 066779227925", "Yasmin Breckenfeld Reck"),
-        ("149067202109Eletrobrás Energiza", "Eletrobrás Energiza"),
+        ("Beltrana Exemplo Souza 500600700800", "Beltrana Exemplo Souza"),
+        ("900800700600Eletrobrás Energiza", "Eletrobrás Energiza"),
         (
             "RESTAURANTE SANTA CLARA LTDA:18477203000139",
             "RESTAURANTE SANTA CLARA LTDA:18477203000139",
@@ -2306,13 +2302,22 @@ def test_carga_estatica_nao_apaga_ceap_nem_emendas_ja_no_banco(pg_engine, banco,
         ("LOJA 2020 2021 2022", "LOJA 2020 2021 2022"),
         ("PEDIDO 12345678901", "PEDIDO"),  # 11 dígitos continua sendo CPF
         ("NOTA 1234567890123456", "NOTA 1234567890123456"),  # 16 dígitos: não é 12
-        ("ONLY 066779227925", "ONLY"),
+        ("ONLY 500600700800", "ONLY"),
         ("FULANO 12.345.678.901", "FULANO"),  # 11 dígitos agrupados fora do desenho 3-3-3-2
         ("FULANO 12345-678901", "FULANO"),
         ("FULANO 1234.5678.9012", "FULANO"),  # 12 dígitos em grupos de quatro que não são anos
         ("CONVENIO 2019-2020-2021", "CONVENIO 2019-2020-2021"),  # lista de anos
         ("PEDIDO 2019-10-19", "PEDIDO 2019-10-19"),  # data
         ("TEL 61-3215-1234", "TEL 61-3215-1234"),
+        ("FULANO 00052998224725", "FULANO"),  # CPF válido com enchimento de zeros à esquerda (14 e 13 dígitos)
+        ("FULANO 0052998224725", "FULANO"),
+        ("FULANO 5299 8224 725", "FULANO"),  # CPF válido em grupos 4-4-3 e 2-3-3-3, separados por espaço
+        ("FULANO 52 998 224 725", "FULANO"),
+        ("FULANO 529    98224725", "FULANO"),  # separador de vários espaços
+        ("LOJA 2020 2021 2022", "LOJA 2020 2021 2022"),
+        ("TEL 61 3215 1234", "TEL 61 3215 1234"),
+        ("VALOR 1.234,56", "VALOR 1.234,56"),
+        ("LOJA 00001974000190", "LOJA 00001974000190"),  # CNPJ com zeros à esquerda que não fecha como CPF
     ],
 )
 def test_numero_de_12_digitos_de_pessoa_fisica_sai_do_nome_e_cnpj_fica(nome, esperado):
@@ -2320,4 +2325,11 @@ def test_numero_de_12_digitos_de_pessoa_fisica_sai_do_nome_e_cnpj_fica(nome, esp
 
 
 def test_so_um_numero_de_12_digitos_nao_deixa_nome_vazio_no_fornecedor():
-    assert nome_do_fornecedor("066779227925") == "Fornecedor não identificado"
+    assert nome_do_fornecedor("500600700800") == "Fornecedor não identificado"
+
+
+def test_anos_publicados_da_ceap_vem_do_fin_por_casa(pg_engine, banco, tmp_path):
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
+    with pg_engine.begin() as conn:
+        fin.carregar_ceap(conn, tmp_path)
+    assert fin.anos_publicados_da_ceap(pg_engine) == {"camara": {2023, 2024}, "senado": set()}

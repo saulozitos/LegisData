@@ -16,9 +16,9 @@ import logging
 import os
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
-from etl.config import PROCESSED_DATA_DIR
+from etl.config import CEAP_ARQUIVO, EMENDAS_ARQUIVO, PROCESSED_DATA_DIR
 from etl.pipelines.loader_helpers import (
     LIMITE_CEAP,
     LIMITE_EMENDA,
@@ -53,8 +53,6 @@ from sqlalchemy.exc import DBAPIError  # noqa: E402
 
 logger = logging.getLogger("FinancasLoader")
 
-CEAP_ARQUIVO = "despesas_ceap_2019_2026.json"
-EMENDAS_ARQUIVO = "emendas_parlamentares_2019_2026.json"
 REMUNERACAO_ARQUIVO = "remuneracao_parlamentares.json"
 PATRIMONIO_ARQUIVO = "declaracoes_patrimonio.json"
 DOACOES_ARQUIVO = "tse_doacoes_campanha.json"
@@ -214,6 +212,27 @@ def _fonte_da_ceap(dados: Dict[str, Any]) -> str:
     if cargo == "DEPUTADO_FEDERAL":
         return FONTE_CEAP_CAMARA
     return FONTE_CEAP_CAMARA if dados.get("camara_id") else FONTE_CEAP_SENADO
+
+
+_CASA_DA_FONTE = {FONTE_CEAP_CAMARA: "camara", FONTE_CEAP_SENADO: "senado"}
+
+
+def anos_publicados_da_ceap(engine: Engine) -> Dict[str, Set[int]]:
+    """
+    Os anos em que o `fin` já tem gasto da CEAP, por casa ("camara"/"senado"). É o que a atualização diária usa para não
+    tratar como "ainda sem arquivo" um ano que já foi carregado (o arquivo processado do git não serve: o deploy o devolve
+    ao retrato antigo).
+    """
+    consulta = text(
+        "SELECT f.codigo, d.ano FROM fin.despesa_cota d JOIN etl.fonte f ON f.id = d.fonte_id "
+        "WHERE d.valor_liquido <> 0 GROUP BY f.codigo, d.ano"
+    )
+    publicados: Dict[str, Set[int]] = {"camara": set(), "senado": set()}
+    with engine.connect() as conexao:
+        for codigo, ano in conexao.execute(consulta):
+            if codigo in _CASA_DA_FONTE:
+                publicados[_CASA_DA_FONTE[codigo]].add(int(ano))
+    return publicados
 
 
 def linhas_da_ceap(
@@ -637,3 +656,12 @@ def carregar(
     if falhas:
         raise RuntimeError("; ".join(falhas))
     return resultados
+
+
+def carregar_estaticas(engine: Engine) -> Dict[str, Any]:
+    """
+    A carga das finanças que NÃO se atualizam todo dia: remuneração, patrimônio, doações e certidões. O deploy e o
+    `run_etl --load-economia` a usam quando o `fin` já tem dados: CEAP e emendas vêm do timer diário e não podem voltar ao
+    retrato versionado no git, que é mais antigo (as emendas novas seriam apagadas e voltariam com outro `uid`).
+    """
+    return carregar(engine, chaves=CHAVES_ESTATICAS)

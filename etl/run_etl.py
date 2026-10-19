@@ -415,7 +415,8 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         Etapa(
             "load_economia",
             "Carga das séries econômicas, mandatos presidenciais, composição do Congresso, PNAD e finanças (fin)",
-            lambda: _load_economia(args.recarregar_ceap_emendas),
+            # a CEAP e as emendas extraídas nesta mesma execução são mais novas que o `fin`: entram na carga
+            lambda: _load_economia(args.recarregar_ceap_emendas or quer("ceap")),
             depende_de_extracao=True,
         ),
         Etapa(

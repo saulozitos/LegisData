@@ -30,6 +30,8 @@ def simulado(monkeypatch, tmp_path):
             raise RuntimeError(cenario.erro_da_carga)
         return {c: {"ok": 1} for c in chaves}
 
+    cenario.publicados = {"camara": {2025}, "senado": set()}
+    monkeypatch.setattr(atualizacao.financas_loader, "anos_publicados_da_ceap", lambda engine: cenario.publicados)
     monkeypatch.setattr(atualizacao.sync_ceap_emendas, "run", run)
     monkeypatch.setattr(atualizacao.financas_loader, "carregar", carregar)
     monkeypatch.setattr(atualizacao, "LOCK", tmp_path / "lock" / ".financas.lock")
@@ -42,7 +44,15 @@ HOJE = date(2026, 10, 19)
 def test_extrai_com_o_cache_padrao_do_ano_inicial_ate_o_corrente_e_carrega_so_ceap_e_emendas(simulado):
     engine = object()
     resultado = atualizacao.atualizar(engine, hoje=HOJE)
-    assert simulado.run == [{"ano_inicio": 2019, "ano_fim": 2026, "cache_dir": atualizacao.CACHE_DIR, "hoje": HOJE}]
+    assert simulado.run == [
+        {
+            "ano_inicio": 2019,
+            "ano_fim": 2026,
+            "cache_dir": atualizacao.CACHE_DIR,
+            "hoje": HOJE,
+            "anos_publicados": {"camara": {2025}, "senado": set()},  # o que o fin já tem, não o arquivo do git
+        }
+    ]
     assert simulado.carga == [(engine, ("ceap", "emendas"))]  # remuneração, patrimônio... não mudam por dia
     assert resultado["carregadas"] == ["ceap", "emendas"] and resultado["carga"] == {
         "ceap": {"ok": 1},
@@ -179,3 +189,20 @@ def test_so_se_recarrega_a_fonte_que_o_resumo_afirma_ter_gravado(simulado, resum
         atualizacao.atualizar(object(), hoje=HOJE)
     esperado = [("ceap",)] if resumo.get("ceap_gravado") is True else []
     assert [chaves for _, chaves in simulado.carga] == esperado
+
+
+def test_sem_resposta_do_banco_sobre_os_anos_carregados_a_extracao_segue_so_com_o_arquivo(
+    simulado, monkeypatch, caplog
+):
+    from sqlalchemy.exc import OperationalError
+
+    def quebra(engine):
+        raise OperationalError("SELECT ...", {}, Exception("sem conexão"))
+
+    monkeypatch.setattr(atualizacao.financas_loader, "anos_publicados_da_ceap", quebra)
+    atualizacao.atualizar(object(), hoje=HOJE)
+    assert simulado.run[0]["anos_publicados"] is None and "anos da CEAP já carregados" in caplog.text
+
+
+def test_as_chaves_do_timer_sao_as_fontes_do_sync():
+    assert financas_loader.CHAVES_DO_TIMER == atualizacao.sync_ceap_emendas.FONTES

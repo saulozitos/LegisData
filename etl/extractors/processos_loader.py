@@ -342,6 +342,7 @@ def populate_processos_judiciais(
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     parser = argparse.ArgumentParser(description="Carga do acervo manual de processos judiciais.")
     parser.add_argument(
         "--allow-unverified-legal",

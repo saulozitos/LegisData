@@ -21,15 +21,17 @@ import os
 import sys
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Set
 
 from etl.config import DATA_DIR, RAW_DATA_DIR
 from etl.pipelines import financas_loader, sync_ceap_emendas
+from etl.pipelines.loader_helpers import descricao_do_erro
 from etl.utils.bootstrap import ensure_backend_on_path
 
 ensure_backend_on_path()
 
 from sqlalchemy.engine import Engine  # noqa: E402
+from sqlalchemy.exc import DBAPIError  # noqa: E402
 
 logger = logging.getLogger("FinancasAtualizacao")
 
@@ -53,13 +55,26 @@ def atualizar(
         return _atualizar(engine, hoje or sync_ceap_emendas.hoje_no_brasil(), cache_dir or CACHE_DIR)
 
 
+def _anos_ja_carregados(engine: Engine) -> Optional[Dict[str, Set[int]]]:
+    """Os anos da CEAP que o `fin` já tem; sem resposta do banco, None (vale só o que o arquivo processado traz)."""
+    try:
+        return financas_loader.anos_publicados_da_ceap(engine)
+    except DBAPIError as exc:
+        logger.warning("Não consegui levantar os anos da CEAP já carregados no fin: %s", descricao_do_erro(exc))
+        return None
+
+
 def _atualizar(engine: Engine, hoje: date, cache_dir: Path) -> Dict[str, Any]:
     resumo = sync_ceap_emendas.run(
-        ano_inicio=sync_ceap_emendas.ANO_INICIAL_ARQUIVO, ano_fim=hoje.year, cache_dir=cache_dir, hoje=hoje
+        ano_inicio=sync_ceap_emendas.ANO_INICIAL_ARQUIVO,
+        ano_fim=hoje.year,
+        cache_dir=cache_dir,
+        hoje=hoje,
+        anos_publicados=_anos_ja_carregados(engine),
     )
-    # lista positiva: só se recarrega o que o resumo afirma ter sido gravado (ausência de resposta não é gravação)
-    gravadas = [fonte for fonte in financas_loader.CHAVES_DO_TIMER if resumo.get(f"{fonte}_gravado") is True]
-    nao_gravadas = [fonte for fonte in financas_loader.CHAVES_DO_TIMER if fonte not in gravadas]
+    # lista positiva (ausência de resposta não é gravação), a mesma que a CLI usa
+    gravadas = sync_ceap_emendas.fontes_gravadas(resumo)
+    nao_gravadas = sync_ceap_emendas.fontes_nao_gravadas(resumo)
     resultado: Dict[str, Any] = {"extracao": resumo, "carregadas": gravadas}
     erros = []
     if gravadas:

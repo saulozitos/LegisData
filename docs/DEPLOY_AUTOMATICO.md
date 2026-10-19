@@ -108,9 +108,15 @@ recusa a execução com uma mensagem clara.
   as listas de `decidir_financas` contra as importações), o deploy dispara `legisdata-financas.service` na hora (sem
   esperar a madrugada), quando a unit está instalada. Sem a unit, o log do deploy avisa e registra o pedido em
   `~/.legisdata-deploy/financas_pendente`; o `instalar.sh` o cumpre ao ligar o timer;
+- `fin` com dados mas o timer **nunca gravou** (não há cache da CEAP em `etl/data/raw/ceap_por_ano`, que é o caso do primeiro
+  deploy depois da 3c): o único dado novo que existe é o do git, então o deploy semeia tudo de novo (modo `completa`) e
+  pede a atualização; assim as regras de saneamento do commit chegam ao `fin` sem esperar a madrugada;
 - a tolerância a uma carga de finanças que falha vale se o `fin` tem dado em QUALQUER das quatro tabelas da CEAP e das
-  emendas; a escolha do modo exige todas. Uma carga tolerada que falhou também grava `carga` em `financas_pendente`, e o
-  deploy seguinte tenta de novo mesmo sem commit novo, até a carga passar.
+  emendas; a escolha do modo exige todas. Uma carga tolerada que falhou também grava `carga` em `financas_pendente` (e a hora da tentativa em
+  `financas_carga_tentada`), e o deploy tenta de novo mesmo sem commit novo, no máximo uma vez por hora (`INTERVALO_DA_CARGA`),
+  até a carga passar; a repetição não dispara de novo a atualização diária. Um pedido de atualização parado
+  (`refrescar`) é cumprido na primeira execução do deploy em que a unit existir, ainda que o commit seja o mesmo. A decisão
+  também considera como mudança do timer o `atualizar_financas.sh` e as units `legisdata-financas.*`.
 
 `run_etl --load-economia` (e `make run-load-economia`) segue a mesma regra: com CEAP e emendas já no `fin`, recarrega só as
 cargas estáticas, porque os arquivos do git ficam atrás da atualização diária e recarregá-los desfaria o trabalho dela.
@@ -118,6 +124,15 @@ Para recarregar tudo dos arquivos (por exemplo, depois de regerá-los à mão co
 `run_etl --load-economia --recarregar-ceap-emendas`. A atualização diária lê a liberação de encolhimento legítimo da mesma
 forma que o deploy: `LEGISDATA_ACEITAR_ENCOLHIMENTO=1 ~/.legisdata-deploy/atualizar_financas.sh` na linha de comando (o
 script a repassa ao contêiner), nunca exportada no ambiente do timer.
+
+Para decidir se um ano do começo do ano "ainda não foi publicado" (vazio ou 404 até março), a atualização diária pergunta ao
+próprio `fin` quais anos da CEAP ele já tem (o arquivo processado não serve: o deploy o devolve ao retrato do git); um vazio
+em ano que o `fin` já tem é falha, e o `fin` não perde o ano.
+
+Os contêineres do deploy e da atualização escondem `.env` e `.git/config` (credencial de remote); num worktree, onde `.git` é
+arquivo, não há `.git/config` a esconder e a montagem é omitida. O arquivo de ambiente com a senha vai para o
+`XDG_RUNTIME_DIR` (tmpfs) quando existe; sem ele, para o diretório de estado (modo 700), e restos de execuções mortas com mais
+de uma hora são apagados.
 
 O deploy continua descartando as saídas locais de `etl/data/processed` antes do merge; a atualização diária as gera de novo.
 O nome `despesas_ceap_2019_2026.json` é histórico: a partir de 2027 o arquivo também terá dados de 2027.

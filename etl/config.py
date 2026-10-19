@@ -154,3 +154,7 @@ BCB_SERIES = {
 # compactados e 82 MB descomprimidos.
 TETO_DO_DOWNLOAD = 200 * 1024 * 1024
 TETO_DO_CSV = 300 * 1024 * 1024
+
+# Arquivos processados da CEAP e das emendas: a extração (`sync_ceap_emendas`) grava e a carga (`financas_loader`) lê.
+CEAP_ARQUIVO = "despesas_ceap_2019_2026.json"
+EMENDAS_ARQUIVO = "emendas_parlamentares_2019_2026.json"
