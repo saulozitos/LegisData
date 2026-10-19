@@ -2213,3 +2213,105 @@ def test_rotulo_de_fornecedor_nao_identificado_e_igual_no_backend_e_no_etl():
     from etl.utils.rotulos import FORNECEDOR_NAO_IDENTIFICADO
 
     assert financas_service.FORNECEDOR_NAO_IDENTIFICADO == FORNECEDOR_NAO_IDENTIFICADO == "Fornecedor não identificado"
+
+
+# ── 14ª revisão: fonte pela casa de origem, cargas por chave, total fora da faixa ────────────────────────────────────
+def _despesas_da_fonte(entrada):
+    despesas, _f, _r, _c = fin.linhas_da_ceap({"X": entrada}, _SempreAPessoa(), {"CAMARA_CSV": 1, "SENADO_API": 2})
+    return {d["f"] for d in despesas}
+
+
+@pytest.mark.parametrize(
+    "mudancas, fonte",
+    [
+        ({"cargo": "DEPUTADO_FEDERAL", "camara_id": None, "senado_id": None}, None),  # sem id: nem entra (liderança)
+        ({"cargo": "SENADOR", "camara_id": None, "senado_id": 7}, 2),
+        ({"cargo": "SENADOR", "camara_id": 7, "senado_id": None}, 2),  # o cargo vale mais que o identificador
+        ({"cargo": "DEPUTADO_FEDERAL", "camara_id": None, "senado_id": 7}, 1),
+        ({"cargo": None, "camara_id": 100, "senado_id": None}, 1),  # sem cargo, vale o identificador (arquivos antigos)
+        ({"cargo": None, "camara_id": None, "senado_id": 7}, 2),
+    ],
+)
+def test_a_fonte_da_ceap_e_a_casa_do_cargo_e_nao_a_presenca_do_camara_id(mudancas, fonte):
+    entrada = _ceap(**mudancas)
+    if entrada["cargo"] is None:
+        entrada.pop("cargo")
+    assert _despesas_da_fonte(entrada) == ({fonte} if fonte else set())
+
+
+def test_carregar_com_chaves_roda_so_as_pedidas_na_ordem_do_loader(pg_engine, banco, tmp_path, monkeypatch):
+    rodadas = []
+    monkeypatch.setattr(
+        fin, "CARGAS", tuple((c, lambda conn, pasta, c=c: rodadas.append(c) or {"ok": 1}) for c, _ in fin.CARGAS)
+    )
+    resultados = fin.carregar(pg_engine, tmp_path, chaves=("certidoes", "ceap"))
+    assert rodadas == ["ceap", "certidoes"] and set(resultados) == {"ceap", "certidoes"}
+    rodadas.clear()
+    assert set(fin.carregar(pg_engine, tmp_path)) == {c for c, _ in fin.CARGAS}  # sem chaves: todas
+
+
+def test_chave_desconhecida_falha_antes_de_executar_qualquer_carga(pg_engine, banco, tmp_path, monkeypatch):
+    rodadas = []
+    monkeypatch.setattr(fin, "CARGAS", tuple((c, lambda conn, pasta, c=c: rodadas.append(c)) for c, _ in fin.CARGAS))
+    with pytest.raises(ValueError, match="desconhecidas"):
+        fin.carregar(pg_engine, tmp_path, chaves=("ceap", "cep"))
+    assert rodadas == []
+
+
+def test_a_carga_estatica_roda_so_remuneracao_patrimonio_doacoes_e_certidoes(monkeypatch):
+    from etl.pipelines import financas_estaticas
+
+    chamadas = []
+    monkeypatch.setattr(fin, "carregar", lambda engine, processed_dir=None, chaves=None: chamadas.append(tuple(chaves)))
+    financas_estaticas.carregar(object())
+    assert chamadas == [("remuneracao", "patrimonio", "doacoes", "certidoes")]
+
+
+def test_carga_estatica_nao_apaga_ceap_nem_emendas_ja_no_banco(pg_engine, banco, tmp_path):
+    """O `fin` tem CEAP e emendas mais novas que o git: a carga estática não pode tocá-las."""
+    from etl.pipelines import financas_estaticas  # noqa: F401
+
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
+    _gravar(tmp_path, fin.EMENDAS_ARQUIVO, [_emenda("1", "Ana Souza")])
+    with pg_engine.begin() as conn:
+        fin.carregar_ceap(conn, tmp_path)
+        fin.carregar_emendas(conn, tmp_path)
+    antes = (_contar(pg_engine, "despesa_cota"), _contar(pg_engine, "emenda"))
+    (tmp_path / fin.CEAP_ARQUIVO).unlink()  # os arquivos do git, desatualizados ou ausentes, não importam
+    (tmp_path / fin.EMENDAS_ARQUIVO).unlink()
+    _gravar(
+        tmp_path,
+        fin.REMUNERACAO_ARQUIVO,
+        _oficial(registros=[{"camara_id": 100, "ano": 2024, "mes": 1, "salario_bruto": 1}]),
+    )
+    resultados = fin.carregar(pg_engine, tmp_path, chaves=fin.CHAVES_ESTATICAS)
+    assert (_contar(pg_engine, "despesa_cota"), _contar(pg_engine, "emenda")) == antes and antes[0] > 0 and antes[1] > 0
+    assert resultados["remuneracao"]["meses"] == 1 and "ceap" not in resultados
+
+
+@pytest.mark.parametrize(
+    "nome, esperado",
+    [
+        (
+            "RAFAEL OLIVEIRA MENDONÇA 306445278866",
+            "RAFAEL OLIVEIRA MENDONÇA",
+        ),  # 12 dígitos colados ao nome (dados reais)
+        ("Yasmin Breckenfeld Reck 066779227925", "Yasmin Breckenfeld Reck"),
+        ("149067202109Eletrobrás Energiza", "Eletrobrás Energiza"),
+        (
+            "RESTAURANTE SANTA CLARA LTDA:18477203000139",
+            "RESTAURANTE SANTA CLARA LTDA:18477203000139",
+        ),  # CNPJ de 14: empresa
+        ("CAFE DO CHEF LTDA.:1838408800015", "CAFE DO CHEF LTDA.:1838408800015"),  # 13 dígitos: CNPJ sem o zero inicial
+        ("LOJA 2020 2021 2022", "LOJA 2020 2021 2022"),
+        ("PEDIDO 12345678901", "PEDIDO"),  # 11 dígitos continua sendo CPF
+        ("NOTA 1234567890123456", "NOTA 1234567890123456"),  # 16 dígitos: não é 12
+        ("ONLY 066779227925", "ONLY"),
+    ],
+)
+def test_numero_de_12_digitos_de_pessoa_fisica_sai_do_nome_e_cnpj_fica(nome, esperado):
+    assert nome_sem_cpf(nome) == esperado
+
+
+def test_so_um_numero_de_12_digitos_nao_deixa_nome_vazio_no_fornecedor():
+    assert nome_do_fornecedor("066779227925") == "Fornecedor não identificado"

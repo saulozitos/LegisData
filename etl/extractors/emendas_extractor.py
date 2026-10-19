@@ -20,9 +20,11 @@ from etl.utils.http_client import HttpClient, HttpError
 from etl.utils.names import normalize_plain
 from etl.utils.provenance import mark_official, mark_synthetic
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("EmendasExtractor")
 
+# Tetos contra download ou zip gigante numa rotina sem supervisão (o arquivo real tem poucas dezenas de MB)
+TETO_DO_DOWNLOAD = 500 * 1024 * 1024
+TETO_DO_CSV = 2 * 1024 * 1024 * 1024
 PORTAL_EMENDAS_URL = "https://portaldatransparencia.gov.br/download-de-dados/emendas-parlamentares/UNICO"
 FONTE_PORTAL = "Portal da Transparência — Emendas Parlamentares (CSV oficial)"
 
@@ -157,13 +159,15 @@ class EmendasExtractor:
         """Baixa e converte o CSV oficial. Falha => lista vazia (quem grava deve preservar o arquivo anterior)."""
         logger.info("Baixando emendas parlamentares do Portal da Transparência...")
         try:
-            bruto = self.http.get_bytes(PORTAL_EMENDAS_URL)
+            bruto = self.http.get_bytes(PORTAL_EMENDAS_URL, max_bytes=TETO_DO_DOWNLOAD)
             with zipfile.ZipFile(io.BytesIO(bruto)) as zf:
                 nome_csv = next(
                     (n for n in zf.namelist() if n.lower().endswith(".csv") and "emenda" in n.lower()), None
                 )
                 if nome_csv is None:
                     nome_csv = zf.namelist()[0]
+                if zf.getinfo(nome_csv).file_size > TETO_DO_CSV:
+                    raise ValueError(f"CSV de emendas descomprimido passa do teto de {TETO_DO_CSV} bytes")
                 conteudo = zf.read(nome_csv)
             registros = parse_emendas_csv(conteudo)
         except (HttpError, zipfile.BadZipFile, ValueError, IndexError) as exc:

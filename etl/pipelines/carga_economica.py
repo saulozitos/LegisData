@@ -10,7 +10,7 @@ erros são relatados juntos no fim. A composição só existe sobre os mandatos 
 
 import importlib
 import logging
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from etl.pipelines.loader_helpers import descricao_do_erro
 from etl.utils.bootstrap import ensure_backend_on_path
@@ -34,7 +34,23 @@ CARGAS: Tuple[Tuple[str, str, str, Optional[str]], ...] = (
     ),
     ("pnad", "PNAD (classes sociais)", "etl.pipelines.pnad_loader", None),
     ("financas", "Finanças (fin)", "etl.pipelines.financas_loader", None),
+    ("financas_estaticas", "Finanças sem CEAP e emendas (fin)", "etl.pipelines.financas_estaticas", None),
 )
+# Só rodam quando pedidas pela chave: já estão incluídas em outra carga (aqui, em "financas"), e rodar as duas repetiria o trabalho.
+SO_POR_CHAVE = frozenset({"financas_estaticas"})
+MODOS_DO_DEPLOY = ("completa", "estaticas", "nenhuma")
+
+
+def chaves_do_deploy(modo: str) -> List[str]:
+    """
+    As cargas que o deploy executa. Séries, mandatos, composição e PNAD sempre; as finanças conforme o `modo`:
+    "completa" (o `fin` está vazio: semeia tudo dos arquivos do git), "estaticas" (só remuneração, patrimônio, doações e
+    certidões, porque CEAP e emendas vêm do timer diário e não podem voltar ao retrato do git) ou "nenhuma".
+    """
+    if modo not in MODOS_DO_DEPLOY:
+        raise ValueError(f"modo de finanças do deploy desconhecido: {modo!r} (esperado um de {MODOS_DO_DEPLOY})")
+    financas = {"completa": "financas", "estaticas": "financas_estaticas"}.get(modo)
+    return [c for c, *_ in CARGAS if c not in ("financas", "financas_estaticas") or c == financas]
 
 
 def carregar_tudo(
@@ -55,6 +71,8 @@ def carregar_tudo(
     falharam = set()
     for chave, nome, modulo, depende_de in CARGAS:
         if escolhidas is not None and chave not in escolhidas:
+            continue
+        if escolhidas is None and chave in SO_POR_CHAVE:
             continue
         if depende_de in falharam:
             falhas.append(f"{nome}: não executada porque '{nomes[depende_de]}' falhou")

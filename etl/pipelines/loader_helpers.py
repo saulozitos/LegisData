@@ -534,9 +534,16 @@ def nome_do_fornecedor(valor: Any) -> str:
     return nome_sem_cpf(valor) or FORNECEDOR_NAO_IDENTIFICADO
 
 
+# Número de exatamente 12 dígitos colado ao nome de pessoa física na CEAP (visto nos dados reais: "FULANO DE TAL
+# 066779227925"). Não é CNPJ (14) nem CPF (11) e não dá para saber se é um CPF com enchimento ou outro documento pessoal:
+# por precaução (decisão D3) ele sai do nome. CNPJ de 14 dígitos, que é de empresa, fica.
+_DOZE_DIGITOS = re.compile(r"(?<![0-9])[0-9]{12}(?![0-9])")
+
+
 def nome_sem_cpf(valor: Any) -> Optional[str]:
-    """Nome de pessoa ou empresa sem CPF embutido; None quando não sobra nada."""
-    limpo = " ".join(_SEQUENCIA_CPF.sub(_sem_cpf, _ascii(texto(valor))).split())
+    """Nome de pessoa ou empresa sem CPF (nem número de 12 dígitos de pessoa física) embutido; None quando não sobra nada."""
+    sem_cpf = _SEQUENCIA_CPF.sub(_sem_cpf, _ascii(texto(valor)))
+    limpo = " ".join(_DOZE_DIGITOS.sub(" ", sem_cpf).split())
     return limpo or None
 
 

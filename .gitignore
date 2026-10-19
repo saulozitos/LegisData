@@ -88,3 +88,4 @@ output/
 .xerj-data/*
 # Cache da CEAP por ano (atualização diária das finanças)
 etl/data/raw/ceap_por_ano/
+etl/data/.financas.lock

@@ -24,7 +24,8 @@ mkdir -p "$ESTADO_DIR" "$BACKUP_DIR"
 chmod 700 "$BACKUP_DIR"
 chmod 600 "$BACKUP_DIR"/legisdata_*.dump 2>/dev/null || true
 # Depois de se reexecutar (abaixo) o lock já está aberto no descritor 9, herdado do processo anterior.
-if [[ -z "${_LEGISDATA_DEPLOY_REEXEC:-}" ]]; then
+# O --dry-run não altera nada, então não disputa o lock (senão, com a atualização das finanças rodando, ele sairia "ok" sem testar).
+if [[ -z "${_LEGISDATA_DEPLOY_REEXEC:-}" && $DRY_RUN -eq 0 ]]; then
   exec 9>"$ESTADO_DIR/deploy.lock"
   flock -n 9 || { log "outra execução em andamento"; exit 0; }
 fi
@@ -105,19 +106,78 @@ fi
 COMMIT_ANTERIOR="$(git rev-parse HEAD)"  # o compose deste commit é o que o rollback precisa (o novo pode ter outros volumes)
 git merge --ff-only -q "$ALVO"
 
-# A URL do banco (com a senha) vai por arquivo de ambiente 600, nunca na linha de comando (visível em `ps`)
-URL_BANCO="postgresql+psycopg2://${PG_USER}:${POSTGRES_PASSWORD}@postgres:5432/${PG_DB}"
+# >>> url_encode
+url_encode() { # codifica um texto para a parte de usuário/senha de uma URL (RFC 3986: só A-Za-z0-9._~- ficam como estão)
+  local LC_ALL=C texto="$1" i c saida=""
+  for ((i = 0; i < ${#texto}; i++)); do
+    c="${texto:i:1}"
+    case "$c" in
+      [A-Za-z0-9._~-]) saida+="$c" ;;
+      *) saida+="$(printf '%%%02X' "'$c")" ;;
+    esac
+  done
+  printf '%s' "$saida"
+}
+# <<< url_encode
+
+# A URL do banco (com a senha) vai por arquivo de ambiente 600, nunca na linha de comando (visível em `ps`). A senha entra
+# codificada (um `@`, `/`, `#` ou `%` nela quebraria a URL); quebra de linha não cabe em arquivo de ambiente.
+# >>> env_banco
+[[ "$POSTGRES_PASSWORD" != *$'\n'* && "$POSTGRES_PASSWORD" != *$'\r'* ]] || { log "POSTGRES_PASSWORD com quebra de linha não cabe no arquivo de ambiente"; exit 1; }
+URL_BANCO="postgresql+psycopg2://${PG_USER}:$(url_encode "$POSTGRES_PASSWORD")@postgres:5432/${PG_DB}"
 ENV_BANCO="$(mktemp)"
 trap 'rm -f "$ENV_BANCO"' EXIT
 chmod 600 "$ENV_BANCO"
 printf 'ALEMBIC_DATABASE_URL=%s\nDATABASE_URL=%s\nPOSTGRES_PASSWORD=%s\n' "$URL_BANCO" "$URL_BANCO" "$POSTGRES_PASSWORD" >"$ENV_BANCO"
+# <<< env_banco
 um_comando() { # roda um comando Python no contêiner da imagem nova, na rede do compose
-  # LEGISDATA_ACEITAR_ENCOLHIMENTO=1 libera, só nesta execução, uma carga de finanças que reduz uma tabela a menos da metade
+  # LEGISDATA_ACEITAR_ENCOLHIMENTO=1 libera, só nesta execução, uma carga de finanças que reduz uma tabela a menos da metade.
+  # O contêiner só precisa do banco: sem capacidades, sem privilégios novos e com o .env (outros segredos) escondido.
   docker run --rm --network "$REDE" --env-file "$ENV_BANCO" -e ENVIRONMENT=production -e DB_SSLMODE=disable \
+    --cap-drop ALL --security-opt no-new-privileges --pids-limit 512 \
     -e LEGISDATA_ACEITAR_ENCOLHIMENTO="${LEGISDATA_ACEITAR_ENCOLHIMENTO:-}" \
-    -e LEGISDATA_FIN_TEM_DADOS="${LEGISDATA_FIN_TEM_DADOS:-}" -e LEGISDATA_FIN_PULAR="${LEGISDATA_FIN_PULAR:-}" \
-    -e PYTHONPATH=/repo/backend:/repo -v "$RAIZ:/repo:ro" -w /app "$REGISTRO/legisdata-backend:$TAG" "$@" 9>&-
+    -e LEGISDATA_FIN_TEM_DADOS="${LEGISDATA_FIN_TEM_DADOS:-}" -e LEGISDATA_FIN_MODO="${LEGISDATA_FIN_MODO:-completa}" \
+    -e PYTHONPATH=/repo/backend:/repo -v "$RAIZ:/repo:ro" -v /dev/null:/repo/.env:ro -w /app \
+    "$REGISTRO/legisdata-backend:$TAG" "$@" 9>&-
 }
+
+# >>> decidir_financas
+# Decide como o deploy trata as finanças. A atualização diária (legisdata-financas.timer) deixa CEAP e emendas do `fin` mais
+# novas que os arquivos do git; recarregá-las do git apagaria as emendas novas (que voltariam com outro `uid`) e
+# devolveria a CEAP ao passado. Então o git só semeia um `fin` vazio.
+#   uso:   decidir_financas <commit anterior> <commit alvo> <t se o fin já tem CEAP e emendas>
+#   saída: "<modo> <refrescar>"
+#     modo "completa":  fin sem dados, semeia tudo dos arquivos do git;
+#     modo "estaticas": recarrega só remuneração, patrimônio, doações e certidões (um arquivo ou o código mudou no commit);
+#     modo "nenhuma":   nada mudou, mantém o fin;
+#     refrescar 1:      o commit mudou a extração/carga de CEAP e emendas (ou o fin acabou de ser semeado do git): vale
+#                       rodar a atualização diária já, para o fin não esperar até a madrugada.
+decidir_financas() {
+  local atual="$1" alvo="$2" tem_dados="$3" modo="nenhuma" refrescar=0
+  local estaticas=(
+    etl/data/processed/remuneracao_parlamentares.json etl/data/processed/declaracoes_patrimonio.json
+    etl/data/processed/tse_doacoes_campanha.json etl/data/processed/certidoes_tse.json
+    etl/pipelines/financas_loader.py etl/pipelines/financas_estaticas.py etl/pipelines/loader_helpers.py
+    etl/pipelines/pessoa_resolver.py etl/pipelines/carga_economica.py etl/utils backend/alembic/versions
+  )
+  local do_timer=(
+    etl/pipelines/sync_ceap_emendas.py etl/pipelines/financas_atualizacao.py etl/pipelines/financas_loader.py
+    etl/pipelines/loader_helpers.py etl/pipelines/pessoa_resolver.py etl/extractors/emendas_extractor.py
+    etl/utils backend/alembic/versions
+  )
+  if [[ "$tem_dados" != "t" ]]; then
+    echo "completa 1"
+    return 0
+  fi
+  if [[ -z "$atual" ]] || ! git cat-file -e "$atual^{commit}" 2>/dev/null; then
+    echo "estaticas 1" # commit anterior desconhecido: recarrega o que pode e pede a atualização
+    return 0
+  fi
+  git diff --quiet "$atual" "$alvo" -- "${estaticas[@]}" || modo="estaticas"
+  git diff --quiet "$atual" "$alvo" -- "${do_timer[@]}" || refrescar=1
+  echo "$modo $refrescar"
+}
+# <<< decidir_financas
 
 # 3. migrações e 4. carga das séries econômicas e da curadoria (idempotentes)
 log "migrações"
@@ -129,31 +189,21 @@ if [[ "$TEM_ECO" == "t" && -f "$RAIZ/etl/pipelines/carga_economica.py" ]]; then
   log "carga de séries, mandatos, composição do Congresso e PNAD"
   # Finanças só é tolerada se `fin` já tem dados: aí a API nova segue servindo o que já estava lá. No primeiro deploy
   # (fin recém-criado e vazio) uma falha da carga aborta antes do `compose up` e o contêiner antigo continua no ar.
-  LEGISDATA_FIN_TEM_DADOS="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select exists(select 1 from fin.emenda) or exists(select 1 from fin.despesa_cota)")"
+  LEGISDATA_FIN_TEM_DADOS="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select exists(select 1 from fin.emenda) and exists(select 1 from fin.despesa_cota)")"
   export LEGISDATA_FIN_TEM_DADOS
-  # A atualização diária (legisdata-financas.timer) mantém CEAP e emendas do `fin` mais novas que os arquivos versionados.
-  # Por isso o deploy só recarrega as finanças quando o `fin` está vazio ou quando este commit mudou os arquivos de
-  # entrada ou o código da carga; senão devolveria o banco ao conteúdo dos arquivos do git, mais antigo.
-  LEGISDATA_FIN_PULAR=""
-  ENTRADAS_FINANCAS=(
-    etl/data/processed/despesas_ceap_2019_2026.json etl/data/processed/emendas_parlamentares_2019_2026.json
-    etl/data/processed/remuneracao_parlamentares.json etl/data/processed/declaracoes_patrimonio.json
-    etl/data/processed/tse_doacoes_campanha.json etl/data/processed/certidoes_tse.json
-    etl/pipelines/financas_loader.py etl/pipelines/loader_helpers.py etl/pipelines/pessoa_resolver.py
-    backend/alembic/versions
-  )
-  if [[ "$LEGISDATA_FIN_TEM_DADOS" == "t" && -n "$ATUAL" ]] && git cat-file -e "$ATUAL^{commit}" 2>/dev/null &&
-    git diff --quiet "$ATUAL" "$ALVO" -- "${ENTRADAS_FINANCAS[@]}"; then
-    LEGISDATA_FIN_PULAR=1
-    log "finanças: este commit não mudou os arquivos nem o código da carga; mantenho o fin atual"
-  fi
-  export LEGISDATA_FIN_PULAR
+  read -r LEGISDATA_FIN_MODO LEGISDATA_FIN_REFRESCAR < <(decidir_financas "$ATUAL" "$ALVO" "$LEGISDATA_FIN_TEM_DADOS")
+  export LEGISDATA_FIN_MODO LEGISDATA_FIN_REFRESCAR
+  case "$LEGISDATA_FIN_MODO" in
+    completa) log "finanças: fin sem dados; semeando tudo dos arquivos do git" ;;
+    estaticas) log "finanças: recarrego remuneração, patrimônio, doações e certidões; CEAP e emendas ficam como a atualização diária deixou" ;;
+    *) log "finanças: este commit não mudou os arquivos nem o código da carga; mantenho o fin atual" ;;
+  esac
   um_comando python -c "
 import os
 from app.core.database import engine
-from etl.pipelines.carga_economica import CARGAS, carregar_tudo
-toleradas = ('financas',) if os.environ.get('LEGISDATA_FIN_TEM_DADOS') == 't' else ()
-chaves = [c[0] for c in CARGAS if not (c[0] == 'financas' and os.environ.get('LEGISDATA_FIN_PULAR') == '1')]
+from etl.pipelines.carga_economica import carregar_tudo, chaves_do_deploy
+toleradas = ('financas', 'financas_estaticas') if os.environ.get('LEGISDATA_FIN_TEM_DADOS') == 't' else ()
+chaves = chaves_do_deploy(os.environ.get('LEGISDATA_FIN_MODO', 'completa'))
 for chave, resultado in carregar_tudo(engine, chaves=chaves, toleradas=toleradas).items():
     print(chave, resultado)
 "
@@ -195,5 +245,16 @@ if [[ -f "$RAIZ/scripts/deploy/atualizar_financas.sh" ]] && bash -n "$RAIZ/scrip
 fi
 echo "$TAG" >"$ESTADO_DIR/ultima_tag"
 echo "$ALVO" >"$ESTADO_DIR/ultimo_sha"
+# Atualização diária das finanças: se o commit mudou a extração ou a carga (ou o fin acabou de ser semeado do git), roda já.
+# A unit só existe depois do `instalar.sh`; sem ela, CEAP e emendas não se atualizam sozinhas, e o log diz isso.
+if systemctl --user cat legisdata-financas.service >/dev/null 2>&1; then
+  if [[ "${LEGISDATA_FIN_REFRESCAR:-0}" == "1" ]]; then
+    systemctl --user start --no-block legisdata-financas.service &&
+      log "atualização das finanças disparada (o commit mudou a extração ou a carga de CEAP e emendas)" ||
+      log "AVISO: não consegui disparar legisdata-financas.service; o timer roda na madrugada"
+  fi
+else
+  log "AVISO: legisdata-financas.timer não está instalado; CEAP e emendas só atualizam com ele (rode o instalar.sh, docs/DEPLOY_AUTOMATICO.md)"
+fi
 docker image prune -f >/dev/null 2>&1 || true
 log "deploy de $TAG concluído"

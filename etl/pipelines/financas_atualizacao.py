@@ -1,24 +1,29 @@
 """
-Atualização diária das finanças: extrai a CEAP (Câmara e Senado) e as emendas e recarrega o schema `fin`.
+Atualização diária das finanças: extrai a CEAP (Câmara e Senado) e as emendas e recarrega as duas no schema `fin`.
 
 A CEAP de cada ano já fechado (depois de 1º de abril do ano seguinte) vem do cache em `etl/data/raw/ceap_por_ano` e não é
 baixada de novo: só o ano corrente (e o anterior até março) vai à rede. As emendas são um único arquivo do Portal da
-Transparência, baixado por inteiro. Se alguma extração falha, os arquivos anteriores são preservados e a carga não roda
-(o `fin` fica como estava e a próxima execução tenta de novo). A carga é a mesma do deploy e do `run_etl --load-economia`
-(`carregar_tudo`), com a proteção contra encolhimento.
+Transparência, baixado por inteiro.
+
+Cada fonte é independente. A que foi gravada é recarregada no `fin`; a que falhou deixa o arquivo e o `fin` como estavam
+(nunca se recarrega a partir de um arquivo que a extração não renovou: depois de um deploy ele é o retrato antigo do git).
+Se alguma fonte falhou, a execução termina com erro depois de recarregar a outra. Os dados de remuneração, patrimônio,
+doações e certidões não mudam por dia e ficam fora desta atualização.
+
+Uma segunda execução ao mesmo tempo (o timer e o `make daily`, por exemplo) é recusada por um lock no próprio pipeline.
 
 Uso: python -m etl.pipelines.financas_atualizacao
 """
 
+import fcntl
 import logging
 import sys
 from datetime import date
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from etl.config import RAW_DATA_DIR
-from etl.pipelines import sync_ceap_emendas
-from etl.pipelines.carga_economica import carregar_tudo
+from etl.config import DATA_DIR, RAW_DATA_DIR
+from etl.pipelines import financas_loader, sync_ceap_emendas
 from etl.utils.bootstrap import ensure_backend_on_path
 
 ensure_backend_on_path()
@@ -27,20 +32,42 @@ from sqlalchemy.engine import Engine  # noqa: E402
 
 logger = logging.getLogger("FinancasAtualizacao")
 
-ANO_INICIAL = 2019  # a CEAP e as emendas do arquivo começam aqui (mesmo padrão de `run_etl --ceap-ano-inicio`)
 CACHE_DIR = RAW_DATA_DIR / sync_ceap_emendas.PASTA_DO_CACHE
+LOCK = DATA_DIR / ".financas.lock"
 
 
-def atualizar(engine: Engine, hoje: Optional[date] = None, cache_dir: Optional[Path] = None) -> Dict[str, Any]:
-    hoje = hoje or date.today()
+def atualizar(
+    engine: Engine, hoje: Optional[date] = None, cache_dir: Optional[Path] = None, lock: Optional[Path] = None
+) -> Dict[str, Any]:
+    caminho_do_lock = Path(lock or LOCK)
+    caminho_do_lock.parent.mkdir(parents=True, exist_ok=True)
+    with open(caminho_do_lock, "w") as arquivo:
+        try:
+            fcntl.flock(arquivo, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            logger.warning("Outra atualização das finanças está em andamento; esta execução foi pulada.")
+            return {"pulada": "outra atualização das finanças em andamento"}
+        return _atualizar(engine, hoje or sync_ceap_emendas.hoje_no_brasil(), cache_dir or CACHE_DIR)
+
+
+def _atualizar(engine: Engine, hoje: date, cache_dir: Path) -> Dict[str, Any]:
     resumo = sync_ceap_emendas.run(
-        ano_inicio=ANO_INICIAL, ano_fim=hoje.year, cache_dir=cache_dir or CACHE_DIR, hoje=hoje
+        ano_inicio=sync_ceap_emendas.ANO_INICIAL_ARQUIVO, ano_fim=hoje.year, cache_dir=cache_dir, hoje=hoje
     )
-    if resumo.get("ceap_gravado") is False or resumo.get("emendas_gravado") is False:
-        raise RuntimeError(f"CEAP/emendas não gravadas (arquivos anteriores preservados, `fin` não alterado): {resumo}")
-    cargas = carregar_tudo(engine, chaves=("financas",))
-    resultado = {"extracao": resumo, "carga": cargas["financas"]}
+    nao_gravadas = sync_ceap_emendas.fontes_nao_gravadas(resumo)
+    gravadas = [fonte for fonte in financas_loader.CHAVES_DO_TIMER if fonte not in nao_gravadas]
+    resultado: Dict[str, Any] = {"extracao": resumo, "carregadas": gravadas}
+    erros = []
+    if gravadas:
+        try:
+            resultado["carga"] = financas_loader.carregar(engine, chaves=gravadas)
+        except RuntimeError as exc:
+            erros.append(str(exc))
+    if nao_gravadas:
+        erros.insert(0, f"fontes não gravadas, arquivo e fin preservados: {nao_gravadas}")
     logger.info("Finanças atualizadas: %s", resultado)
+    if erros:
+        raise RuntimeError("; ".join(erros))
     return resultado
 
 

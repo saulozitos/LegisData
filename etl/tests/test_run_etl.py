@@ -142,3 +142,22 @@ def test_composicao_nao_roda_se_os_mandatos_presidenciais_falharam(monkeypatch):
         cli._load_economia()
     assert "sem arquivo de presidentes" in str(erro.value) and "não executada" in str(erro.value)
     assert chamadas == ["series", "pnad"]  # a composição foi pulada, sem erro em cascata mascarando a causa
+
+
+def test_o_ano_inicial_do_ceap_no_cli_e_o_mesmo_da_atualizacao_diaria():
+    from etl.pipelines.sync_ceap_emendas import ANO_INICIAL_ARQUIVO
+
+    assert args().ceap_ano_inicio == ANO_INICIAL_ARQUIVO == 2019
+
+
+def test_etapa_ceap_falha_quando_alguma_fonte_nao_foi_gravada_e_passa_quando_foram_as_duas(monkeypatch):
+    import etl.pipelines.sync_ceap_emendas as sync
+
+    monkeypatch.setattr(sync, "run", lambda ano_inicio: {"ceap_gravado": True, "emendas_gravado": True})
+    assert cli._ceap_emendas(2019) == {"ceap_gravado": True, "emendas_gravado": True}
+    for falha in ("ceap_gravado", "emendas_gravado"):
+        monkeypatch.setattr(
+            sync, "run", lambda ano_inicio, falha=falha: {"ceap_gravado": True, "emendas_gravado": True, falha: False}
+        )
+        with pytest.raises(RuntimeError, match="não gravadas"):
+            cli._ceap_emendas(2019)

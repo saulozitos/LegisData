@@ -123,3 +123,52 @@ def test_erro_de_dado_do_banco_nao_leva_o_valor_ofendido_nem_a_mensagem_principa
     assert carga_economica.descricao_do_erro(DataError("INSERT ...", {}, SemDiag("x"))) == (
         "DataError: erro de dado (SQLSTATE 22003)"
     )
+
+
+def test_carga_so_por_chave_nao_roda_na_carga_completa_para_nao_repetir_as_financas(chamadas):
+    carga_economica.carregar_tudo(object())
+    assert "financas_estaticas" not in chamadas
+    chamadas.clear()
+    carga_economica.carregar_tudo(object(), chaves=("financas_estaticas",))
+    assert chamadas == ["financas_estaticas"]  # pedida pela chave, roda
+
+
+def test_toda_chave_so_por_chave_existe_nas_cargas():
+    assert carga_economica.SO_POR_CHAVE <= {chave for chave, *_ in carga_economica.CARGAS}
+
+
+@pytest.mark.parametrize(
+    "modo, esperado",
+    [
+        ("completa", ["series", "presidencia", "composicao", "pnad", "financas"]),
+        ("estaticas", ["series", "presidencia", "composicao", "pnad", "financas_estaticas"]),
+        ("nenhuma", ["series", "presidencia", "composicao", "pnad"]),
+    ],
+)
+def test_chaves_do_deploy_por_modo_de_financas(modo, esperado):
+    assert carga_economica.chaves_do_deploy(modo) == esperado
+
+
+def test_chaves_do_deploy_com_modo_desconhecido_falha_em_vez_de_assumir_um(chamadas):
+    for invalido in ("", "COMPLETA", "tudo", None):
+        with pytest.raises(ValueError, match="modo de finanças do deploy"):
+            carga_economica.chaves_do_deploy(invalido)
+
+
+def test_o_modo_de_deploy_executa_exatamente_essas_cargas(chamadas):
+    carga_economica.carregar_tudo(object(), chaves=carga_economica.chaves_do_deploy("estaticas"))
+    assert chamadas == ["series", "presidencia", "composicao", "pnad", "financas_estaticas"]
+    chamadas.clear()
+    carga_economica.carregar_tudo(object(), chaves=carga_economica.chaves_do_deploy("nenhuma"))
+    assert "financas" not in chamadas and "financas_estaticas" not in chamadas
+
+
+def test_carga_estatica_tolerada_que_falha_nao_derruba_o_deploy(chamadas, monkeypatch):
+    def quebra(engine):
+        raise RuntimeError("remuneracao: arquivo corrompido")
+
+    monkeypatch.setattr("etl.pipelines.financas_estaticas.carregar", quebra)
+    resultados = carga_economica.carregar_tudo(
+        object(), chaves=carga_economica.chaves_do_deploy("estaticas"), toleradas=("financas", "financas_estaticas")
+    )
+    assert "corrompido" in resultados["financas_estaticas"]["erro"]

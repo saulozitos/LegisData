@@ -203,6 +203,19 @@ def _carga_simples(
 
 
 # ── CEAP ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
+def _fonte_da_ceap(dados: Dict[str, Any]) -> str:
+    """
+    A casa de origem do registro: o `cargo` que a extração grava (SENADOR ou DEPUTADO_FEDERAL). Uma conta da Câmara ligada
+    por nome (sem `camara_id`) continua sendo da Câmara; sem `cargo`, vale o identificador que o registro carrega.
+    """
+    cargo = dados.get("cargo")
+    if cargo == "SENADOR":
+        return FONTE_CEAP_SENADO
+    if cargo == "DEPUTADO_FEDERAL":
+        return FONTE_CEAP_CAMARA
+    return FONTE_CEAP_CAMARA if dados.get("camara_id") else FONTE_CEAP_SENADO
+
+
 def linhas_da_ceap(
     ceap: Dict[str, Any], resolvedor: ResolvedorDePessoas, fontes: Dict[str, int]
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, int]]:
@@ -231,7 +244,7 @@ def linhas_da_ceap(
             contagem["sem_pessoa"] += 1
             continue
         # a origem é o identificador que o registro carrega (nenhum registro do arquivo traz os dois)
-        fonte_id = fontes[FONTE_CEAP_CAMARA if dados.get("camara_id") else FONTE_CEAP_SENADO]
+        fonte_id = fontes[_fonte_da_ceap(dados)]
         contagem["parlamentares"] += 1
         despesas += [
             {"p": pessoa, "ano": ano, "tipo": tipo, "valor": valor, "f": fonte_id}
@@ -586,12 +599,30 @@ CARGAS: Tuple[Tuple[str, Callable[[Connection, Path], Dict[str, int]]], ...] = (
 )
 
 
-def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, Any]:
-    """Executa as seis cargas, cada uma na sua transação; uma que falha não impede as demais e o erro sobe no fim."""
+# CEAP e emendas são atualizadas todo dia pelo timer (arquivos extraídos na hora); as demais só mudam com o commit que
+# traz um arquivo novo. O deploy usa esta divisão para não devolver CEAP e emendas ao retrato do git.
+CHAVES_DO_TIMER = ("ceap", "emendas")
+CHAVES_ESTATICAS = ("remuneracao", "patrimonio", "doacoes", "certidoes")
+
+
+def carregar(
+    engine: Engine, processed_dir: Optional[Path] = None, chaves: Optional[Iterable[str]] = None
+) -> Dict[str, Any]:
+    """
+    Executa as cargas (todas, ou só as `chaves`), cada uma na sua transação; uma que falha não impede as demais e o erro
+    sobe no fim. Chave desconhecida levanta ValueError antes de tocar no banco.
+    """
     pasta = Path(processed_dir or PROCESSED_DATA_DIR)
+    escolhidas = None if chaves is None else tuple(chaves)
+    if escolhidas is not None:
+        desconhecidas = [c for c in escolhidas if c not in {chave for chave, _ in CARGAS}]
+        if desconhecidas:
+            raise ValueError(f"cargas de finanças desconhecidas: {desconhecidas}")
     resultados: Dict[str, Any] = {}
     falhas: List[str] = []
     for chave, funcao in CARGAS:
+        if escolhidas is not None and chave not in escolhidas:
+            continue
         try:
             with engine.begin() as conn:
                 resultados[chave] = funcao(conn, pasta)

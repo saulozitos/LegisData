@@ -11,6 +11,13 @@ RAIZ="$(git rev-parse --show-toplevel)"
 DEST="$HOME/.legisdata-deploy"
 UNITS="$HOME/.config/systemd/user"
 
+# O systemd do usuário precisa responder ANTES de qualquer alteração: sem sessão de usuário (um `su`, por exemplo) o
+# `systemctl --user` falha no fim, depois de o estado e o Watchtower já terem sido mexidos.
+systemctl --user show-environment >/dev/null 2>&1 || {
+  echo "systemctl --user indisponível (sem sessão de usuário/DBus). Rode numa sessão de login (ssh direto); nada foi alterado."
+  exit 1
+}
+
 echo "==> projeto: o checkout atual; ref: $REF"
 git -C "$RAIZ" cat-file -e "$REF:scripts/deploy/deploy.sh" || { echo "ref sem scripts/deploy/deploy.sh (rode git fetch origin antes)"; exit 1; }
 
@@ -22,10 +29,21 @@ for u in legisdata-deploy.service legisdata-deploy.timer legisdata-financas.serv
   git -C "$RAIZ" show "$REF:scripts/systemd/$u" >"$UNITS/$u"
 done
 
-echo "==> marcando o que já roda como implantado"
-git -C "$RAIZ" fetch -q origin main
-git -C "$RAIZ" rev-parse origin/main >"$DEST/ultimo_sha"
-docker inspect politica_api --format '{{.Config.Image}}' | sed 's/.*://' >"$DEST/ultima_tag"
+echo "==> marcando o que já roda como implantado (só na primeira instalação)"
+# O estado é o commit que está NO AR, não a main de agora: se entrou um commit novo e o CI ainda publica as imagens dele,
+# marcá-lo como implantado o faria nunca subir (e o deploy seguinte compararia contra um commit que não rodou).
+if [[ -s "$DEST/ultimo_sha" && -s "$DEST/ultima_tag" ]]; then
+  echo "estado existente mantido: $(cat "$DEST/ultima_tag")"
+else
+  TAG_NO_AR="$(docker inspect politica_api --format '{{.Config.Image}}' | sed 's/.*://')"
+  SHA_NO_AR="$(git -C "$RAIZ" rev-parse --verify -q "${TAG_NO_AR}^{commit}" || true)"
+  if [[ -n "$SHA_NO_AR" ]]; then
+    echo "$SHA_NO_AR" >"$DEST/ultimo_sha"
+    echo "$TAG_NO_AR" >"$DEST/ultima_tag"
+  else
+    echo "AVISO: a imagem no ar ($TAG_NO_AR) não é um commit deste repositório; estado não marcado, e o primeiro deploy implanta a main atual."
+  fi
+fi
 
 echo "==> teste sem alterar nada (dry-run)"
 "$DEST/deploy.sh" --dry-run && echo "dry-run ok"
@@ -38,6 +56,12 @@ systemctl --user daemon-reload
 systemctl --user enable --now legisdata-deploy.timer
 systemctl --user enable --now legisdata-financas.timer
 loginctl enable-linger "$USER" 2>/dev/null || echo "AVISO: enable-linger precisa de permissão; o timer só roda com sessão aberta"
+for timer in legisdata-deploy.timer legisdata-financas.timer; do
+  systemctl --user is-enabled --quiet "$timer" && systemctl --user is-active --quiet "$timer" || {
+    echo "ERRO: $timer não ficou ativo (veja: systemctl --user status $timer)"
+    exit 1
+  }
+done
 systemctl --user list-timers legisdata-deploy.timer legisdata-financas.timer --no-pager
 echo "==> pronto. Acompanhe com: journalctl --user -u legisdata-deploy.service -f"
 echo "    e a atualização diária das finanças com: journalctl --user -u legisdata-financas.service -f"
