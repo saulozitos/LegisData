@@ -17,6 +17,7 @@ Uso: python -m etl.pipelines.financas_atualizacao
 
 import fcntl
 import logging
+import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -41,7 +42,9 @@ def atualizar(
 ) -> Dict[str, Any]:
     caminho_do_lock = Path(lock or LOCK)
     caminho_do_lock.parent.mkdir(parents=True, exist_ok=True)
-    with open(caminho_do_lock, "w") as arquivo:
+    # sem truncar e sem seguir link simbólico: o lock é só um ponto de encontro entre processos
+    descritor = os.open(caminho_do_lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descritor, "r+") as arquivo:
         try:
             fcntl.flock(arquivo, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
@@ -54,8 +57,9 @@ def _atualizar(engine: Engine, hoje: date, cache_dir: Path) -> Dict[str, Any]:
     resumo = sync_ceap_emendas.run(
         ano_inicio=sync_ceap_emendas.ANO_INICIAL_ARQUIVO, ano_fim=hoje.year, cache_dir=cache_dir, hoje=hoje
     )
-    nao_gravadas = sync_ceap_emendas.fontes_nao_gravadas(resumo)
-    gravadas = [fonte for fonte in financas_loader.CHAVES_DO_TIMER if fonte not in nao_gravadas]
+    # lista positiva: só se recarrega o que o resumo afirma ter sido gravado (ausência de resposta não é gravação)
+    gravadas = [fonte for fonte in financas_loader.CHAVES_DO_TIMER if resumo.get(f"{fonte}_gravado") is True]
+    nao_gravadas = [fonte for fonte in financas_loader.CHAVES_DO_TIMER if fonte not in gravadas]
     resultado: Dict[str, Any] = {"extracao": resumo, "carregadas": gravadas}
     erros = []
     if gravadas:

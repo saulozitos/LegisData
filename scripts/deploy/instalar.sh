@@ -35,7 +35,7 @@ echo "==> marcando o que já roda como implantado (só na primeira instalação)
 if [[ -s "$DEST/ultimo_sha" && -s "$DEST/ultima_tag" ]]; then
   echo "estado existente mantido: $(cat "$DEST/ultima_tag")"
 else
-  TAG_NO_AR="$(docker inspect politica_api --format '{{.Config.Image}}' | sed 's/.*://')"
+  TAG_NO_AR="$(docker inspect politica_api --format '{{.Config.Image}}' 2>/dev/null | sed 's/.*://' || true)"
   SHA_NO_AR="$(git -C "$RAIZ" rev-parse --verify -q "${TAG_NO_AR}^{commit}" || true)"
   if [[ -n "$SHA_NO_AR" ]]; then
     echo "$SHA_NO_AR" >"$DEST/ultimo_sha"
@@ -46,7 +46,11 @@ else
 fi
 
 echo "==> teste sem alterar nada (dry-run)"
-"$DEST/deploy.sh" --dry-run && echo "dry-run ok"
+"$DEST/deploy.sh" --dry-run || {
+  echo "ERRO: o dry-run do deploy falhou; nada foi ligado (o Watchtower e os timers ficam como estavam)."
+  exit 1
+}
+echo "dry-run ok"
 
 echo "==> parando o Watchtower (ele trocaria a API sem backup)"
 docker rm -f politica_watchtower >/dev/null 2>&1 || true
@@ -63,5 +67,15 @@ for timer in legisdata-deploy.timer legisdata-financas.timer; do
   }
 done
 systemctl --user list-timers legisdata-deploy.timer legisdata-financas.timer --no-pager
+# Um deploy anterior pediu a atualização diária das finanças quando a unit ainda não existia: cumpre agora.
+if [[ -f "$DEST/financas_pendente" ]] && grep -qx refrescar "$DEST/financas_pendente"; then
+  echo "==> atualização das finanças pendente do deploy anterior: disparando"
+  if systemctl --user start --no-block legisdata-financas.service; then
+    grep -vx refrescar "$DEST/financas_pendente" >"$DEST/financas_pendente.novo" || true
+    if [[ -s "$DEST/financas_pendente.novo" ]]; then mv "$DEST/financas_pendente.novo" "$DEST/financas_pendente"; else rm -f "$DEST/financas_pendente.novo" "$DEST/financas_pendente"; fi
+  else
+    echo "AVISO: não consegui disparar legisdata-financas.service; o timer roda na madrugada"
+  fi
+fi
 echo "==> pronto. Acompanhe com: journalctl --user -u legisdata-deploy.service -f"
 echo "    e a atualização diária das finanças com: journalctl --user -u legisdata-financas.service -f"

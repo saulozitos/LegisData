@@ -122,13 +122,22 @@ def _composicao():
 
 
 def _ceap_emendas(ano_inicio: int):
-    from etl.pipelines.sync_ceap_emendas import fontes_nao_gravadas, run
+    from etl.pipelines.sync_ceap_emendas import ANO_INICIAL_ARQUIVO, fontes_nao_gravadas, run
 
+    if ano_inicio != ANO_INICIAL_ARQUIVO:
+        logger.warning(
+            "Janela da CEAP/emendas a partir de %s (a atualização diária usa %s): se o fin crescer com anos anteriores, a "
+            "atualização diária vai recusar a carga como encolhimento; aceite uma vez com LEGISDATA_ACEITAR_ENCOLHIMENTO=1.",
+            ano_inicio,
+            ANO_INICIAL_ARQUIVO,
+        )
     resumo = run(ano_inicio=ano_inicio)
     if fontes_nao_gravadas(resumo):
         raise RuntimeError(f"CEAP/emendas não gravadas (arquivos anteriores preservados): {resumo}")
     # a API lê o banco, não os arquivos: o dossiê só enxerga o dado novo depois de `--load-economia` (ou do próximo deploy)
-    logger.info("CEAP/emendas gravadas em arquivo; rode --load-economia para levá-las ao schema fin.")
+    logger.info(
+        "CEAP/emendas gravadas em arquivo; para levá-las ao schema fin rode --load-economia --recarregar-ceap-emendas."
+    )
     return resumo
 
 
@@ -219,7 +228,7 @@ def _remuneracao(no_cache: bool):
         raise RuntimeError(f"{len(resultado['cobertura']['falhas'])} falhas de extração")
 
 
-def _load_economia():
+def _load_economia(recarregar_ceap_e_emendas: bool = False):
     from etl.utils.bootstrap import ensure_backend_on_path
 
     ensure_backend_on_path()
@@ -227,7 +236,7 @@ def _load_economia():
 
     from etl.pipelines.carga_economica import CARGAS, carregar_tudo
 
-    resultados = carregar_tudo(engine)
+    resultados = carregar_tudo(engine, recarregar_ceap_e_emendas=recarregar_ceap_e_emendas)
     nomes = {chave: nome for chave, nome, _, _ in CARGAS}
     for chave, resultado in resultados.items():
         print(f"    {nomes[chave]}:", resultado)
@@ -280,7 +289,18 @@ def montar_parser() -> argparse.ArgumentParser:
         ("processos", "Carga do acervo manual de processos judiciais (exige --allow-unverified-legal)"),
     ]:
         p.add_argument(f"--{flag}", action="store_true", help=ajuda)
-    p.add_argument("--ceap-ano-inicio", type=int, default=2019, help="Ano inicial do CEAP/emendas (padrão: 2019)")
+    p.add_argument(
+        "--recarregar-ceap-emendas",
+        action="store_true",
+        help="Com --load-economia: recarrega CEAP e emendas dos arquivos mesmo com o fin já carregado (padrão: só as "
+        "cargas estáticas, porque a atualização diária mantém CEAP e emendas mais novas que o arquivo do git)",
+    )
+    p.add_argument(
+        "--ceap-ano-inicio",
+        type=int,
+        default=2019,
+        help="Ano inicial do CEAP/emendas (padrão: 2019, o mesmo da atualização diária; outro valor faz a atualização diária recusar a carga como encolhimento)",
+    )
     p.add_argument(
         "--presenca-max-paginas",
         type=int,
@@ -395,7 +415,7 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         Etapa(
             "load_economia",
             "Carga das séries econômicas, mandatos presidenciais, composição do Congresso, PNAD e finanças (fin)",
-            _load_economia,
+            lambda: _load_economia(args.recarregar_ceap_emendas),
             depende_de_extracao=True,
         ),
         Etapa(

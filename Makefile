@@ -111,6 +111,7 @@ run-all:
 run-etl:
 	PYTHONPATH=. $(PY) etl/run_etl.py --economic --load-economia
 
+# com CEAP e emendas já no fin recarrega só as cargas estáticas; para recarregar tudo dos arquivos: --recarregar-ceap-emendas
 run-load-economia:
 	PYTHONPATH=. $(PY) etl/run_etl.py --load-economia
 

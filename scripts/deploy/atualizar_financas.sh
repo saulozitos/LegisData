@@ -28,7 +28,12 @@ PG_DB="${POSTGRES_DB:-politica_db}"
 # O código (etl) vem do checkout e as dependências (app, pacotes) da imagem no ar: precisam ser do mesmo commit. Depois de
 # um rollback do deploy o checkout fica no commit novo e a imagem no antigo; rodar assim pode falhar de jeitos confusos.
 IMAGEM="$(docker inspect --format '{{.Config.Image}}' politica_api)"
-COMMIT_DO_CHECKOUT="$(git -C "$RAIZ" rev-parse --short=7 HEAD)"
+COMMIT_DO_CHECKOUT="$(git -C "$RAIZ" rev-parse HEAD)"
+COMMIT_DO_CHECKOUT="${COMMIT_DO_CHECKOUT:0:7}" # a mesma conta do deploy (TAG="${ALVO:0:7}"), sem depender do tamanho do `--short`
+if [[ ! "${IMAGEM##*:}" =~ ^[0-9a-f]{7}$ ]]; then
+  log "a imagem no ar (${IMAGEM}) não tem como tag o commit de 7 caracteres que o deploy publica (ex.: latest); não sei se bate com o checkout ($COMMIT_DO_CHECKOUT)"
+  exit 1
+fi
 if [[ "${IMAGEM##*:}" != "$COMMIT_DO_CHECKOUT" ]]; then
   log "a imagem no ar (${IMAGEM##*:}) não é a do checkout ($COMMIT_DO_CHECKOUT): deploy em andamento ou revertido; tento amanhã"
   exit 1
@@ -39,7 +44,9 @@ fi
 # uma URL montada aqui). Quebra de linha não cabe em arquivo de ambiente.
 # >>> env_banco
 [[ "$POSTGRES_PASSWORD" != *$'\n'* && "$POSTGRES_PASSWORD" != *$'\r'* ]] || { log "POSTGRES_PASSWORD com quebra de linha não cabe no arquivo de ambiente"; exit 1; }
-ENV_BANCO="$(mktemp)"
+DIR_TEMP="${XDG_RUNTIME_DIR:-}" # tmpfs do usuário quando existe; a senha não fica em disco comum
+[[ -n "$DIR_TEMP" && -d "$DIR_TEMP" && -w "$DIR_TEMP" ]] || DIR_TEMP="${ESTADO_DIR:-${TMPDIR:-/tmp}}"
+ENV_BANCO="$(mktemp -p "$DIR_TEMP" legisdata-env.XXXXXX)"
 trap 'rm -f "$ENV_BANCO"' EXIT
 chmod 600 "$ENV_BANCO"
 printf 'POSTGRES_USER=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_SERVER=postgres\nPOSTGRES_PORT=5432\nPOSTGRES_DB=%s\n' "$PG_USER" "$POSTGRES_PASSWORD" "$PG_DB" >"$ENV_BANCO"
@@ -47,11 +54,13 @@ printf 'POSTGRES_USER=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_SERVER=postgres\nPOSTGR
 
 log "atualizando CEAP e emendas ($IMAGEM)"
 # --user: os arquivos gravados em etl/data ficam do dono do checkout. O lock (descritor 9) não passa para o contêiner. O
-# contêiner só precisa do banco: sem capacidades, sem privilégios novos e com o .env (outros segredos) escondido.
+# contêiner só precisa do banco: sem capacidades, sem privilégios novos e com o .env e o .git/config (outros segredos)
+# escondidos. LEGISDATA_ACEITAR_ENCOLHIMENTO=1 na linha de comando libera uma redução legítima só nesta execução.
 docker run --rm --network "$REDE" --env-file "$ENV_BANCO" --user "$(id -u):$(id -g)" \
   --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 \
   -e ENVIRONMENT=production -e DB_SSLMODE=disable -e HOME=/tmp \
+  -e LEGISDATA_ACEITAR_ENCOLHIMENTO="${LEGISDATA_ACEITAR_ENCOLHIMENTO:-}" \
   -e PYTHONPATH=/repo/backend:/repo --memory 2g --cpus 2 \
-  -v "$RAIZ:/repo:ro" -v "$RAIZ/etl/data:/repo/etl/data" -v /dev/null:/repo/.env:ro -w /app \
+  -v "$RAIZ:/repo:ro" -v "$RAIZ/etl/data:/repo/etl/data" -v /dev/null:/repo/.env:ro -v /dev/null:/repo/.git/config:ro -w /app \
   "$IMAGEM" python -m etl.pipelines.financas_atualizacao 9>&-
 log "concluído"

@@ -147,3 +147,10 @@ BCB_SERIES = {
         "data_inicio": "01/01/2012",
     },
 }
+
+
+# Tetos contra download ou zip gigante numa rotina sem supervisão (o contêiner da atualização diária tem 2 GB de
+# memória). O maior arquivo real é o das emendas, com cerca de 32 MB compactados; o CSV anual da CEAP da Câmara tem 7,5 MB
+# compactados e 82 MB descomprimidos.
+TETO_DO_DOWNLOAD = 200 * 1024 * 1024
+TETO_DO_CSV = 300 * 1024 * 1024

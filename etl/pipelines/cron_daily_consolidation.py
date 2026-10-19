@@ -23,7 +23,6 @@ from app.services.party_productivity_service import (
 )
 from sqlalchemy import text
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("cron_daily_consolidation")
 
 
@@ -156,6 +155,7 @@ def execute_cron_pipeline() -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     res = execute_cron_pipeline()
     if res["status"] != "SUCESSO":
         sys.exit(1)

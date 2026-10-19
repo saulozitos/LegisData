@@ -13,7 +13,6 @@ from etl.config import PROCESSED_DATA_DIR
 from etl.utils.io_utils import atomic_write_json
 from etl.utils.names import chave_sigla
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("ComposicaoExtractor")
 
 # Catálogo histórico curado da composição dos poderes por mandato
@@ -651,4 +650,5 @@ def save_composicao_congresso(offline: bool = False):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     save_composicao_congresso()

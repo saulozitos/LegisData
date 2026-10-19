@@ -148,3 +148,29 @@ def test_materias_estruturantes_exigem_tipo_numero_e_ano():
 )
 def test_normalizar_sigla_presenca(bruto, esperado):
     assert normalizar_sigla_presenca(bruto) == esperado
+
+
+@pytest.mark.parametrize(
+    "digitos, esperado",
+    [("52998224725", True), ("52998224726", False), ("11111111111", False), ("5299822472", False), ("abc", False)],
+)
+def test_cpf_valido_confere_tamanho_repeticao_e_digitos_verificadores(digitos, esperado):
+    from etl.pipelines.loader_helpers import cpf_valido
+
+    assert cpf_valido(digitos) is esperado
+
+
+@pytest.mark.parametrize(
+    "documento, esperado",
+    [
+        ("00052998224725", None),  # CPF válido com enchimento de zeros à esquerda
+        ("000.529.982/2472-5", None),
+        ("00001974000190", "00001974000190"),  # CNPJ real com zeros à esquerda que não fecha como CPF
+        ("02.558.157/0001-62", "02558157000162"),
+        ("12345678", None),
+    ],
+)
+def test_cnpj_do_fornecedor_barra_cpf_com_enchimento_e_mantem_cnpj(documento, esperado):
+    from etl.pipelines.loader_helpers import cnpj_do_fornecedor
+
+    assert cnpj_do_fornecedor(documento) == esperado

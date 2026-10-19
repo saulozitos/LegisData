@@ -10,6 +10,7 @@ def chamadas(monkeypatch):
     registro = []
     for chave, _nome, modulo, _dep in carga_economica.CARGAS:
         monkeypatch.setattr(f"{modulo}.carregar", lambda engine, c=chave: registro.append(c) or {"ok": c})
+    monkeypatch.setattr(carga_economica, "fin_tem_ceap_e_emendas", lambda engine: False)  # fin vazio: semeia tudo
     return registro
 
 
@@ -125,16 +126,32 @@ def test_erro_de_dado_do_banco_nao_leva_o_valor_ofendido_nem_a_mensagem_principa
     )
 
 
-def test_carga_so_por_chave_nao_roda_na_carga_completa_para_nao_repetir_as_financas(chamadas):
+def test_sem_chaves_e_com_o_fin_carregado_so_rodam_as_cargas_estaticas(chamadas, monkeypatch):
+    monkeypatch.setattr(carga_economica, "fin_tem_ceap_e_emendas", lambda engine: True)
     carga_economica.carregar_tudo(object())
-    assert "financas_estaticas" not in chamadas
-    chamadas.clear()
+    assert "financas" not in chamadas and chamadas[-1] == "financas_estaticas"  # o arquivo do git não desfaz o timer
+
+
+def test_recarregar_ceap_e_emendas_forca_a_carga_completa_mesmo_com_o_fin_carregado(chamadas, monkeypatch):
+    monkeypatch.setattr(carga_economica, "fin_tem_ceap_e_emendas", lambda engine: True)
+    carga_economica.carregar_tudo(object(), recarregar_ceap_e_emendas=True)
+    assert chamadas[-1] == "financas" and "financas_estaticas" not in chamadas
+
+
+def test_chaves_explicitas_nao_consultam_o_banco(chamadas, monkeypatch):
+    def nao_deve_ser_chamada(engine):
+        raise AssertionError("consultou o banco")
+
+    monkeypatch.setattr(carga_economica, "fin_tem_ceap_e_emendas", nao_deve_ser_chamada)
     carga_economica.carregar_tudo(object(), chaves=("financas_estaticas",))
-    assert chamadas == ["financas_estaticas"]  # pedida pela chave, roda
+    assert chamadas == ["financas_estaticas"]
 
 
-def test_toda_chave_so_por_chave_existe_nas_cargas():
-    assert carga_economica.SO_POR_CHAVE <= {chave for chave, *_ in carga_economica.CARGAS}
+def test_o_mapa_de_modos_cobre_as_cargas_de_financas_e_as_toleradas():
+    chaves = {chave for chave, *_ in carga_economica.CARGAS}
+    assert {c for c in carga_economica.FINANCAS_POR_MODO.values() if c} <= chaves
+    assert set(carga_economica.TOLERADAS_NO_DEPLOY) == {"financas", "financas_estaticas"}
+    assert carga_economica.MODOS_DO_DEPLOY == tuple(carga_economica.FINANCAS_POR_MODO)
 
 
 @pytest.mark.parametrize(
@@ -172,3 +189,13 @@ def test_carga_estatica_tolerada_que_falha_nao_derruba_o_deploy(chamadas, monkey
         object(), chaves=carga_economica.chaves_do_deploy("estaticas"), toleradas=("financas", "financas_estaticas")
     )
     assert "corrompido" in resultados["financas_estaticas"]["erro"]
+
+
+def test_fin_tem_ceap_e_emendas_exige_as_quatro_tabelas_com_dados(pg_engine):
+    from sqlalchemy import text
+
+    tabelas = ("fin.emenda", "fin.despesa_cota", "fin.despesa_cota_fornecedor", "fin.despesa_cota_resumo")
+    with pg_engine.connect() as conexao:
+        vazias = [t for t in tabelas if not conexao.execute(text(f"select exists(select 1 from {t})")).scalar()]
+    # o banco de teste pode estar vazio ou carregado por outro teste: o que importa é a regra "todas as quatro"
+    assert carga_economica.fin_tem_ceap_e_emendas(pg_engine) is (not vazias)

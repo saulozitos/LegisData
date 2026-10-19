@@ -89,6 +89,7 @@ def test_main_retorna_0_quando_tudo_ok(monkeypatch):
 
 
 def test_carga_economica_isola_cada_loader_e_relata_as_falhas_no_fim(monkeypatch):
+    monkeypatch.setattr("etl.pipelines.carga_economica.fin_tem_ceap_e_emendas", lambda engine: False)
     chamadas = []
 
     def ok(nome):
@@ -110,6 +111,8 @@ def test_carga_economica_isola_cada_loader_e_relata_as_falhas_no_fim(monkeypatch
 
 
 def test_carga_economica_sem_falha_nao_levanta_e_com_duas_falhas_relata_as_duas(monkeypatch):
+    monkeypatch.setattr("etl.pipelines.carga_economica.fin_tem_ceap_e_emendas", lambda engine: False)
+
     def quebra(mensagem):
         def _(engine):
             raise RuntimeError(mensagem)
@@ -128,6 +131,7 @@ def test_carga_economica_sem_falha_nao_levanta_e_com_duas_falhas_relata_as_duas(
 
 
 def test_composicao_nao_roda_se_os_mandatos_presidenciais_falharam(monkeypatch):
+    monkeypatch.setattr("etl.pipelines.carga_economica.fin_tem_ceap_e_emendas", lambda engine: False)
     chamadas = []
 
     def quebra(engine):
@@ -161,3 +165,13 @@ def test_etapa_ceap_falha_quando_alguma_fonte_nao_foi_gravada_e_passa_quando_for
         )
         with pytest.raises(RuntimeError, match="não gravadas"):
             cli._ceap_emendas(2019)
+
+
+def test_recarregar_ceap_emendas_chega_ate_a_carga(monkeypatch):
+    recebido = {}
+    monkeypatch.setattr("etl.pipelines.carga_economica.carregar_tudo", lambda engine, **kw: recebido.update(kw) or {})
+    cli._load_economia(recarregar_ceap_e_emendas=True)
+    assert recebido == {"recarregar_ceap_e_emendas": True}
+    assert (
+        cli.montar_parser().parse_args(["--load-economia", "--recarregar-ceap-emendas"]).recarregar_ceap_emendas is True
+    )

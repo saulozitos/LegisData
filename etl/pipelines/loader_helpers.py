@@ -485,13 +485,28 @@ def so_digitos(valor: Any) -> str:
     return re.sub(r"[^0-9]", "", _ascii(texto(valor))) if valor is not None else ""
 
 
+def cpf_valido(digitos: str) -> bool:
+    """11 dígitos com os dois dígitos verificadores de um CPF (e não todos iguais)."""
+    if len(digitos) != 11 or not digitos.isdigit() or len(set(digitos)) == 1:
+        return False
+    for tamanho in (9, 10):
+        soma = sum(int(d) * peso for d, peso in zip(digitos[:tamanho], range(tamanho + 1, 1, -1)))
+        if int(digitos[tamanho]) != (soma * 10 % 11) % 10:
+            return False
+    return True
+
+
 def cnpj_do_fornecedor(valor: Any) -> Optional[str]:
     """
-    Os 14 dígitos de um CNPJ. CPF (11 dígitos), documento truncado e o CNPJ de enchimento que a Câmara usa para
-    lançamentos sem fornecedor ("CELULAR FUNCIONAL", "RAMAL") viram None: CPF nunca é gravado (decisão D3).
+    Os 14 dígitos de um CNPJ. CPF (11 dígitos), documento truncado, CPF com enchimento de zeros à esquerda
+    ("00012345678909") e o CNPJ de enchimento que a Câmara usa para lançamentos sem fornecedor ("CELULAR FUNCIONAL",
+    "RAMAL") viram None: CPF nunca é gravado (decisão D3). Não confere o dígito verificador do CNPJ (os dados de teste e
+    parte da fonte têm CNPJs que não fecham); só barra o que é comprovadamente um CPF.
     """
     digitos = so_digitos(valor)
     if len(digitos) != 14 or digitos[:12] == "0" * 12:
+        return None
+    if digitos[:3] == "000" and cpf_valido(digitos[3:]):
         return None
     return digitos
 
@@ -534,16 +549,25 @@ def nome_do_fornecedor(valor: Any) -> str:
     return nome_sem_cpf(valor) or FORNECEDOR_NAO_IDENTIFICADO
 
 
-# Número de exatamente 12 dígitos colado ao nome de pessoa física na CEAP (visto nos dados reais: "FULANO DE TAL
-# 066779227925"). Não é CNPJ (14) nem CPF (11) e não dá para saber se é um CPF com enchimento ou outro documento pessoal:
-# por precaução (decisão D3) ele sai do nome. CNPJ de 14 dígitos, que é de empresa, fica.
-_DOZE_DIGITOS = re.compile(r"(?<![0-9])[0-9]{12}(?![0-9])")
+# Número de 12 dígitos colado ao nome de pessoa física na CEAP (visto nos dados reais: "FULANO DE TAL 066779227925").
+# Não é CNPJ (14) nem CPF (11) e não dá para saber se é um CPF com enchimento ou outro documento pessoal: por precaução
+# (decisão D3) ele sai do nome, junto com as variantes com ponto ou hífen entre os grupos ("12.345.678.901",
+# "12345-678901", "1234.5678.9012") que somam 11 ou 12 dígitos. Fica o que parece outra coisa: CNPJ (14 dígitos, ou 13
+# quando perdeu o zero inicial), data, ano ou lista de anos ("LOJA 2020 2021", "ARENA 2020-2021-2022") e telefone.
+_DOCUMENTO_PESSOAL = re.compile(r"(?<![0-9])(?:[0-9]{12}|[0-9]+(?:[.\-][0-9]+){1,5})(?![0-9])")
+
+
+def _tira_documento_pessoal(achado: "re.Match[str]") -> str:
+    grupos = re.split(r"[.\-]", achado.group(0))
+    total = sum(len(g) for g in grupos)
+    so_anos = len(grupos) > 1 and all(len(g) == 4 and g[:2] in ("19", "20") for g in grupos)
+    return " " if total in (11, 12) and not so_anos else achado.group(0)
 
 
 def nome_sem_cpf(valor: Any) -> Optional[str]:
-    """Nome de pessoa ou empresa sem CPF (nem número de 12 dígitos de pessoa física) embutido; None quando não sobra nada."""
+    """Nome de pessoa ou empresa sem CPF (nem número de documento pessoal de 11 ou 12 dígitos) embutido; None se nada sobra."""
     sem_cpf = _SEQUENCIA_CPF.sub(_sem_cpf, _ascii(texto(valor)))
-    limpo = " ".join(_DOZE_DIGITOS.sub(" ", sem_cpf).split())
+    limpo = " ".join(_DOCUMENTO_PESSOAL.sub(_tira_documento_pessoal, sem_cpf).split())
     return limpo or None
 
 

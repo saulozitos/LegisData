@@ -154,10 +154,10 @@ class Extrator:
         return len(anos) - len(falhas), falhas
 
 
-def _extrair(anos, extrator, tmp_path, hoje=date(2026, 10, 1), casa="camara", cache=True, acc=None):
+def _extrair(anos, extrator, tmp_path, hoje=date(2026, 10, 1), casa="camara", cache=True, acc=None, publicados=None):
     acc = acc if acc is not None else CeapAccumulator()
-    resultado = sync._extrair_anos(None, anos, casa, extrator, acc, tmp_path if cache else None, hoje)
-    return resultado, acc
+    r = sync._extrair_anos(None, anos, casa, extrator, acc, tmp_path if cache else None, hoje, publicados)
+    return (r.baixados, r.falhas, r.do_cache, r.sem_arquivo), acc
 
 
 # ── Fonte oficial ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -295,21 +295,28 @@ def test_fontes_nao_gravadas_diz_quais_falharam():
         "098.765.432-00",  # CPF formatado
         "09876543200",  # CPF só dígitos
         "098.765.432/00  -",  # CPF na máscara de CNPJ que a Câmara usa (visto nos dados reais)
-        "123.456.789/0001-0",  # 14 dígitos com enchimento de zeros à esquerda não é CNPJ aceito
+        "123.456.789/0001",  # 12 dígitos: truncado, não é CNPJ
+        "00052998224725",  # CPF válido com enchimento de zeros à esquerda
         "000000000000",  # enchimento de lançamento sem fornecedor
         "***.456.789-**",  # já mascarado pela fonte
         "",
     ],
 )
-def test_documento_de_pessoa_fisica_nunca_chega_ao_estado_nem_ao_cache(tmp_path, documento):
+def test_documento_de_pessoa_fisica_nunca_chega_ao_estado_nem_ao_cache(documento):
     acc = CeapAccumulator()
     acc.add("DEPUTADO_FEDERAL", 1, "Ana", 2023, 1, "T", "FULANO 09876543200", documento, 10.0)
     estado = json.dumps(acc.para_json())
-    for sequencia in ("09876543200", "098.765.432-00", "098.765.432/00"):
+    for sequencia in ("09876543200", "098.765.432-00", "098.765.432/00", "52998224725"):
         assert sequencia not in estado
     (reg,) = acc.finalize(FONTES).values()
     (forn,) = reg["fornecedores"].values()
-    assert forn["nome"] == "FULANO" and forn["cnpj_cpf"] is None or documento == "123.456.789/0001-0"
+    assert forn["nome"] == "FULANO" and forn["cnpj_cpf"] is None
+
+
+def test_documento_de_14_digitos_fica_sem_conferir_o_digito_verificador():
+    # a fonte traz CNPJ que não fecha o DV; só o que é comprovadamente CPF (com zeros à esquerda) sai
+    assert sync.cnpj_do_fornecedor("12.345.678/9000-10") == "12345678900010"
+    assert sync.cnpj_do_fornecedor("00052998224725") is None
 
 
 def test_cnpj_valido_continua_no_estado_so_com_digitos():
@@ -583,7 +590,7 @@ def test_arquivo_do_ano_novo_ainda_nao_publicado_em_janeiro_nao_derruba_a_cea(tm
 
 
 def test_arquivo_ausente_fora_de_janeiro_ou_de_outro_ano_e_falha_sem_nova_tentativa(tmp_path):
-    for hoje, ano in ((date(2027, 3, 5), 2027), (date(2027, 1, 5), 2026)):
+    for hoje, ano in ((date(2027, 4, 1), 2027), (date(2027, 1, 5), 2026)):
         extrator = Extrator(ausente_em=[ano])
         (_, falhas, _, sem_arquivo), _ = _extrair([ano], extrator, tmp_path / str(hoje), hoje)
         assert (falhas, sem_arquivo) == ([ano], []) and extrator.chamadas == [[ano]], (hoje, ano)

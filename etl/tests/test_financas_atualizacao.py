@@ -146,3 +146,36 @@ def test_as_chaves_do_timer_existem_no_loader():
     assert set(financas_loader.CHAVES_DO_TIMER) <= nomes and set(financas_loader.CHAVES_ESTATICAS) <= nomes
     assert set(financas_loader.CHAVES_DO_TIMER) | set(financas_loader.CHAVES_ESTATICAS) == nomes  # nada fica sem dono
     assert not set(financas_loader.CHAVES_DO_TIMER) & set(financas_loader.CHAVES_ESTATICAS)
+
+
+def test_o_parametro_lock_escolhe_o_arquivo_do_lock(simulado, tmp_path):
+    outro = tmp_path / "outro" / ".lock"
+    atualizacao.atualizar(object(), hoje=HOJE, lock=outro)
+    assert outro.exists() and not atualizacao.LOCK.exists()
+
+
+def test_lock_que_e_link_simbolico_e_recusado_em_vez_de_seguido(simulado, tmp_path):
+    alvo = tmp_path / "alvo_de_outro_arquivo"
+    alvo.write_text("importante")
+    atualizacao.LOCK.parent.mkdir(parents=True, exist_ok=True)
+    atualizacao.LOCK.symlink_to(alvo)
+    with pytest.raises(OSError):
+        atualizacao.atualizar(object(), hoje=HOJE)
+    assert alvo.read_text() == "importante" and simulado.run == []
+
+
+def test_o_lock_nao_trunca_o_arquivo_que_ja_existe(simulado):
+    atualizacao.LOCK.parent.mkdir(parents=True, exist_ok=True)
+    atualizacao.LOCK.write_text("pid 1")
+    atualizacao.atualizar(object(), hoje=HOJE)
+    assert atualizacao.LOCK.read_text() == "pid 1"
+
+
+@pytest.mark.parametrize("resumo", [{}, {"ceap_gravado": True}, {"ceap_gravado": 1, "emendas_gravado": "sim"}])
+def test_so_se_recarrega_a_fonte_que_o_resumo_afirma_ter_gravado(simulado, resumo):
+    """Lista positiva: a ausência de resposta (ou um valor que não é `True`) nunca conta como gravação."""
+    simulado.resumo = resumo
+    with pytest.raises(RuntimeError, match="fontes não gravadas"):
+        atualizacao.atualizar(object(), hoje=HOJE)
+    esperado = [("ceap",)] if resumo.get("ceap_gravado") is True else []
+    assert [chaves for _, chaves in simulado.carga] == esperado

@@ -17,6 +17,7 @@ from etl.utils.bootstrap import ensure_backend_on_path
 
 ensure_backend_on_path()
 
+from sqlalchemy import text  # noqa: E402
 from sqlalchemy.engine import Engine  # noqa: E402
 from sqlalchemy.exc import DBAPIError  # noqa: E402
 
@@ -36,9 +37,19 @@ CARGAS: Tuple[Tuple[str, str, str, Optional[str]], ...] = (
     ("financas", "Finanças (fin)", "etl.pipelines.financas_loader", None),
     ("financas_estaticas", "Finanças sem CEAP e emendas (fin)", "etl.pipelines.financas_estaticas", None),
 )
-# Só rodam quando pedidas pela chave: já estão incluídas em outra carga (aqui, em "financas"), e rodar as duas repetiria o trabalho.
-SO_POR_CHAVE = frozenset({"financas_estaticas"})
-MODOS_DO_DEPLOY = ("completa", "estaticas", "nenhuma")
+# Qual carga de finanças cada modo roda. Um só mapa: o deploy, o `run_etl --load-economia` e os testes leem daqui.
+FINANCAS_POR_MODO: Dict[str, Optional[str]] = {
+    "completa": "financas",
+    "estaticas": "financas_estaticas",
+    "nenhuma": None,
+}
+MODOS_DO_DEPLOY = tuple(FINANCAS_POR_MODO)
+# Falha dessas cargas não derruba o deploy quando o `fin` já tem dados (a API nova segue servindo o que está lá).
+TOLERADAS_NO_DEPLOY = tuple(c for c in FINANCAS_POR_MODO.values() if c)
+_SQL_FIN_TEM_CEAP_E_EMENDAS = (
+    "select exists(select 1 from fin.emenda) and exists(select 1 from fin.despesa_cota) "
+    "and exists(select 1 from fin.despesa_cota_fornecedor) and exists(select 1 from fin.despesa_cota_resumo)"
+)
 
 
 def chaves_do_deploy(modo: str) -> List[str]:
@@ -47,32 +58,47 @@ def chaves_do_deploy(modo: str) -> List[str]:
     "completa" (o `fin` está vazio: semeia tudo dos arquivos do git), "estaticas" (só remuneração, patrimônio, doações e
     certidões, porque CEAP e emendas vêm do timer diário e não podem voltar ao retrato do git) ou "nenhuma".
     """
-    if modo not in MODOS_DO_DEPLOY:
+    if modo not in FINANCAS_POR_MODO:
         raise ValueError(f"modo de finanças do deploy desconhecido: {modo!r} (esperado um de {MODOS_DO_DEPLOY})")
-    financas = {"completa": "financas", "estaticas": "financas_estaticas"}.get(modo)
-    return [c for c, *_ in CARGAS if c not in ("financas", "financas_estaticas") or c == financas]
+    financas = FINANCAS_POR_MODO[modo]
+    return [c for c, *_ in CARGAS if c not in FINANCAS_POR_MODO.values() or c == financas]
+
+
+def fin_tem_ceap_e_emendas(engine: Engine) -> bool:
+    """True se `fin` já guarda CEAP (despesas, fornecedores e resumos) e emendas: o que a atualização diária mantém."""
+    with engine.connect() as conexao:
+        return bool(conexao.execute(text(_SQL_FIN_TEM_CEAP_E_EMENDAS)).scalar())
 
 
 def carregar_tudo(
-    engine: Engine, chaves: Optional[Iterable[str]] = None, toleradas: Iterable[str] = ()
+    engine: Engine,
+    chaves: Optional[Iterable[str]] = None,
+    toleradas: Iterable[str] = (),
+    recarregar_ceap_e_emendas: bool = False,
 ) -> Dict[str, Any]:
     """
-    Executa as cargas (todas, ou só as `chaves`) e devolve o resultado de cada uma; levanta RuntimeError no fim.
+    Executa as cargas (as `chaves`, ou todas) e devolve o resultado de cada uma; levanta RuntimeError no fim.
+
+    Sem `chaves`, as finanças dependem do banco: com CEAP e emendas já no `fin` só as cargas estáticas rodam (os arquivos
+    do git estão atrás da atualização diária e recarregá-los desfaria o trabalho dela); com o `fin` vazio, semeia tudo.
+    `recarregar_ceap_e_emendas` força a carga completa (por exemplo, depois de regerar os arquivos à mão).
 
     Uma carga em `toleradas` que falha não levanta: o erro é registrado no log e devolvido como `{"erro": ...}` no
     resultado dela. O deploy usa isso para as finanças: a API nova continua servindo o que já está em `fin` em vez de
     deixar o checkout no compose novo com os contêineres antigos no ar.
     """
     aceitas = set(toleradas)
-    escolhidas = set(chaves) if chaves is not None else None
+    if chaves is None:
+        modo = "completa" if recarregar_ceap_e_emendas or not fin_tem_ceap_e_emendas(engine) else "estaticas"
+        chaves = chaves_do_deploy(modo)
+        logger.info("Finanças em modo '%s'", modo)
+    escolhidas = set(chaves)
     nomes = {chave: nome for chave, nome, _, _ in CARGAS}
     resultados: Dict[str, Any] = {}
     falhas = []
     falharam = set()
     for chave, nome, modulo, depende_de in CARGAS:
-        if escolhidas is not None and chave not in escolhidas:
-            continue
-        if escolhidas is None and chave in SO_POR_CHAVE:
+        if chave not in escolhidas:
             continue
         if depende_de in falharam:
             falhas.append(f"{nome}: não executada porque '{nomes[depende_de]}' falhou")

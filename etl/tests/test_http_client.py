@@ -167,3 +167,41 @@ def test_corpo_acima_do_teto_sem_content_length_e_cortado_no_meio_da_leitura(mon
 def test_sem_max_bytes_o_comportamento_antigo_continua(monkeypatch):
     instalar(monkeypatch, [FakeResponse(b"x" * 3_000_000, headers={"Content-Length": "3000000"})])
     assert len(cliente().get_bytes("http://x")) == 3_000_000
+
+
+def test_retry_after_menor_que_o_backoff_fica_com_o_backoff(monkeypatch):
+    instalar(monkeypatch, [http_error(429, {"Retry-After": "1"}), FakeResponse(b"{}")])
+    dorme = []
+    HttpClient(sleep=dorme.append, max_retries=3, backoff_base=2).get_json("http://x")
+    assert dorme == [2.0]
+
+
+def test_a_espera_pedida_numa_tentativa_nao_vaza_para_a_seguinte(monkeypatch):
+    instalar(monkeypatch, [http_error(429, {"Retry-After": "30"}), http_error(429), FakeResponse(b"{}")])
+    dorme = []
+    HttpClient(sleep=dorme.append, max_retries=4, backoff_base=2).get_json("http://x")
+    assert dorme == [30.0, 4.0]  # a segunda falha não trazia Retry-After: vale o backoff da 2ª tentativa
+
+
+@pytest.mark.parametrize("pedido, desiste", [("120", False), ("120.5", True), ("121", True)])
+def test_retry_after_no_limite_exato_espera_e_acima_dele_desiste(monkeypatch, pedido, desiste):
+    instalar(monkeypatch, [http_error(429, {"Retry-After": pedido}), FakeResponse(b"{}")])
+    dorme = []
+    cli = HttpClient(sleep=dorme.append, max_retries=3, backoff_base=2)
+    if desiste:
+        with pytest.raises(HttpError, match="Retry-After"):
+            cli.get_json("http://x")
+        assert dorme == []
+    else:
+        cli.get_json("http://x")
+        assert dorme == [120.0]
+
+
+@pytest.mark.parametrize("valor", ["abc", "", "1.5", None, "-"])
+def test_content_length_invalido_e_ignorado_e_o_teto_vale_pelo_corpo_lido(monkeypatch, valor):
+    from etl.utils.http_client import _tamanho_declarado
+
+    assert _tamanho_declarado({"Content-Length": valor}) is None
+    instalar(monkeypatch, [FakeResponse(b"x" * 50, headers={"Content-Length": valor})])
+    with pytest.raises(HttpError):
+        cliente().get_bytes("http://x", max_bytes=10)

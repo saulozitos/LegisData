@@ -128,3 +128,35 @@ def test_atualizacao_de_financas_pulada_por_outra_execucao_nao_marca_falha():
 
     assert resultado["status"] == "SUCESSO" and resultado["erro_mensagem"] is None
     assert mock_db.add.call_args.args[0].status_execucao == "SUCESSO"
+
+
+def test_a_etapa_de_financas_recebe_o_engine_do_app_na_primeira_posicao():
+    from app.core.database import engine
+
+    chamadas = []
+    with patch(
+        "etl.pipelines.financas_atualizacao.atualizar", side_effect=lambda *a, **k: chamadas.append((a, k)) or {}
+    ):
+        _executar_so_financas()
+    assert chamadas and chamadas[0][0][0] is engine
+
+
+def _executar_so_financas():
+    """Roda o cron com as demais etapas simuladas, deixando passar a chamada real à etapa de finanças."""
+    alvos = {
+        "etl.pipelines.votacoes_atualizacao.atualizar": {"carga": {}},
+        "etl.pipelines.cron_daily_consolidation.sync_mandate_history": 0,
+        "etl.pipelines.presenca_atualizacao.atualizar": {},
+        "etl.pipelines.economia_atualizacao.atualizar": {},
+        "etl.pipelines.cron_daily_consolidation.calculate_party_ippm_ranking": {"ranking": []},
+        "etl.pipelines.cron_daily_consolidation.build_coauthorship_network": {"nodes": [], "edges": []},
+    }
+    patches = [patch(a, return_value=r) for a, r in alvos.items()]
+    patches.append(patch("etl.pipelines.cron_daily_consolidation.SessionLocal"))
+    for p in patches:
+        p.start()
+    try:
+        execute_cron_pipeline()
+    finally:
+        for p in patches:
+            p.stop()

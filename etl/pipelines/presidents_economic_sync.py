@@ -17,7 +17,6 @@ from etl.extractors.social_indicators_extractor import SocialIndicatorsExtractor
 from etl.transformers.economic_normalizer import EconomicNormalizer
 from etl.utils.io_utils import atomic_write_json, atomic_write_text
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("ETLPipeline")
 
 
@@ -249,5 +248,6 @@ class PresidentsEconomicSyncPipeline:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     pipeline = PresidentsEconomicSyncPipeline()
     pipeline.run()

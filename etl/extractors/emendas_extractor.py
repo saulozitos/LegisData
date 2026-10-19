@@ -15,16 +15,13 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from etl.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
+from etl.config import PROCESSED_DATA_DIR, RAW_DATA_DIR, TETO_DO_CSV, TETO_DO_DOWNLOAD
 from etl.utils.http_client import HttpClient, HttpError
 from etl.utils.names import normalize_plain
 from etl.utils.provenance import mark_official, mark_synthetic
 
 logger = logging.getLogger("EmendasExtractor")
 
-# Tetos contra download ou zip gigante numa rotina sem supervisão (o arquivo real tem poucas dezenas de MB)
-TETO_DO_DOWNLOAD = 500 * 1024 * 1024
-TETO_DO_CSV = 2 * 1024 * 1024 * 1024
 PORTAL_EMENDAS_URL = "https://portaldatransparencia.gov.br/download-de-dados/emendas-parlamentares/UNICO"
 FONTE_PORTAL = "Portal da Transparência — Emendas Parlamentares (CSV oficial)"
 
@@ -170,7 +167,7 @@ class EmendasExtractor:
                     raise ValueError(f"CSV de emendas descomprimido passa do teto de {TETO_DO_CSV} bytes")
                 conteudo = zf.read(nome_csv)
             registros = parse_emendas_csv(conteudo)
-        except (HttpError, zipfile.BadZipFile, ValueError, IndexError) as exc:
+        except (HttpError, zipfile.BadZipFile, ValueError, IndexError, EOFError, OSError, zlib.error) as exc:
             logger.error("Não foi possível obter emendas do Portal da Transparência: %s", exc)
             return []
         logger.info("%d emendas oficiais obtidas.", len(registros))

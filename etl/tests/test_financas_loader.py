@@ -2307,6 +2307,12 @@ def test_carga_estatica_nao_apaga_ceap_nem_emendas_ja_no_banco(pg_engine, banco,
         ("PEDIDO 12345678901", "PEDIDO"),  # 11 dígitos continua sendo CPF
         ("NOTA 1234567890123456", "NOTA 1234567890123456"),  # 16 dígitos: não é 12
         ("ONLY 066779227925", "ONLY"),
+        ("FULANO 12.345.678.901", "FULANO"),  # 11 dígitos agrupados fora do desenho 3-3-3-2
+        ("FULANO 12345-678901", "FULANO"),
+        ("FULANO 1234.5678.9012", "FULANO"),  # 12 dígitos em grupos de quatro que não são anos
+        ("CONVENIO 2019-2020-2021", "CONVENIO 2019-2020-2021"),  # lista de anos
+        ("PEDIDO 2019-10-19", "PEDIDO 2019-10-19"),  # data
+        ("TEL 61-3215-1234", "TEL 61-3215-1234"),
     ],
 )
 def test_numero_de_12_digitos_de_pessoa_fisica_sai_do_nome_e_cnpj_fica(nome, esperado):
