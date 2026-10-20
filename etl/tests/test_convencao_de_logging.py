@@ -3,6 +3,7 @@ uma função chamada no nível do módulo), e todo entrypoint (`if __name__ == "
 
 import ast
 from pathlib import Path
+from typing import Optional
 
 import pytest
 
@@ -35,32 +36,69 @@ def _e_main(no) -> bool:
     )
 
 
-def _configura_transitivamente(nome: str, funcoes: dict, vistos: set) -> bool:
-    """A função `nome` configura o log, direto ou por outra função do módulo que ela chama (fecho transitivo)."""
-    if nome in vistos or nome not in funcoes:
+def _funcoes_de(arvore: ast.AST) -> dict:
+    return {n.name: n for n in arvore.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+
+
+def _importadas(arvore: ast.Module) -> dict:
+    """Nome local => (função, módulo etl.* de onde veio) das importações `from etl... import f` do módulo."""
+    return {
+        (a.asname or a.name): (a.name, n.module)
+        for n in arvore.body
+        if isinstance(n, ast.ImportFrom) and n.module and n.module.split(".")[0] == "etl" and n.level == 0
+        for a in n.names
+    }
+
+
+def _configura_transitivamente(
+    nome: str, funcoes: dict, vistos: set, importadas: Optional[dict] = None, modulo_atual: str = ""
+) -> bool:
+    """A função `nome` configura o log, direto, por outra função do módulo ou por uma função importada de `etl.*`."""
+    if (modulo_atual, nome) in vistos:
         return False
-    vistos.add(nome)
+    vistos.add((modulo_atual, nome))
+    if nome not in funcoes and importadas and nome in importadas:
+        original, modulo = importadas[nome]
+        caminho = ETL.parent.joinpath(*modulo.split(".")).with_suffix(".py")
+        if not caminho.is_file():
+            return False
+        alvo = ast.parse(caminho.read_text(encoding="utf-8"))
+        return _configura_transitivamente(original, _funcoes_de(alvo), vistos, _importadas(alvo), modulo)
+    if nome not in funcoes:
+        return False
     for sub in ast.walk(funcoes[nome]):
         if _configura_log(sub):
             return True
         if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name):
-            if _configura_transitivamente(sub.func.id, funcoes, vistos):
+            if _configura_transitivamente(sub.func.id, funcoes, vistos, importadas, modulo_atual):
                 return True
     return False
 
 
 def _violacoes(arvore: ast.Module) -> list:
-    """Configurações de log executadas ao IMPORTAR o módulo: direto no nível do módulo ou por função chamada nele."""
-    funcoes = {n.name: n for n in arvore.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    """
+    Configurações de log executadas ao IMPORTAR o módulo: direto no nível do módulo, no corpo de uma classe (que roda no
+    import), ou por uma função chamada no nível do módulo (do próprio módulo ou importada de `etl.*`), com fecho transitivo.
+    """
+    funcoes, importadas = _funcoes_de(arvore), _importadas(arvore)
     achados = []
+
+    def codigo_de_import(no):
+        """Os nós que rodam ao importar: tudo fora de `def` (o corpo de classe roda; o de função não)."""
+        if isinstance(no, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return
+        yield no
+        for filho in ast.iter_child_nodes(no):
+            yield from codigo_de_import(filho)
+
     for no in arvore.body:
-        if _e_main(no) or isinstance(no, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        if _e_main(no) or isinstance(no, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        for sub in ast.walk(no):
+        for sub in codigo_de_import(no):
             if _configura_log(sub):
                 achados.append(("direto", sub.lineno))
             elif isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name):
-                if _configura_transitivamente(sub.func.id, funcoes, set()):
+                if _configura_transitivamente(sub.func.id, funcoes, set(), importadas):
                     achados.append((f"via {sub.func.id}()", sub.lineno))
     return achados
 
@@ -109,6 +147,12 @@ def test_quem_delega_chama_de_fato_a_main_que_configura_o_log(nome):
         ("if not x:\n    logging.basicConfig()\n", 1),
         ("def _setup():\n    logging.basicConfig()\n_setup()\n", 1),  # função chamada no nível do módulo
         ("def _a():\n    logging.basicConfig()\ndef _b():\n    _a()\n_b()\n", 1),  # e por um helper do helper
+        ("class Cfg:\n    logging.basicConfig()\n", 1),  # o corpo de uma classe roda no import
+        ("class Cfg:\n    def setup(self):\n        logging.basicConfig()\n", 0),  # um método só quando chamado
+        (
+            "from etl.pipelines.sync_ceap_emendas import main\nmain()\n",
+            1,
+        ),  # função importada de etl.* que configura o log
         ("def main():\n    logging.basicConfig()\nif __name__ == '__main__':\n    main()\n", 0),
         ("import logging\nlogger = logging.getLogger('x')\n", 0),
     ],

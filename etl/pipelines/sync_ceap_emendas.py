@@ -242,7 +242,10 @@ def _validar_registro(chave: Any, reg: Any) -> Tuple[str, Any]:
         # o saneamento vale também para o que já está em disco: uma regra nova de nome ou de documento recusa o cache velho
         if nome_do_fornecedor(forn["nome"]) != forn["nome"] or not (
             forn["cnpj_cpf"] is None
-            or (isinstance(forn["cnpj_cpf"], str) and cnpj_do_fornecedor(forn["cnpj_cpf"]) == forn["cnpj_cpf"])
+            or (
+                isinstance(forn["cnpj_cpf"], str)
+                and cnpj_do_fornecedor(forn["cnpj_cpf"], forn["nome"]) == forn["cnpj_cpf"]
+            )
         ):
             raise ValueError("fornecedor ou documento fora da regra de saneamento")
     return cargo, ident
@@ -282,7 +285,7 @@ class CeapAccumulator:
         # Nada de CPF em disco (D3): só o CNPJ de 14 dígitos fica, e o nome perde o documento pessoal embutido (MEI
         # aparece como "NOME 09876543200"). O loader aplica as mesmas regras, então o `fin` recebe o mesmo de antes.
         fornecedor = nome_do_fornecedor(fornecedor)
-        cnpj = cnpj_do_fornecedor(cnpj)
+        cnpj = cnpj_do_fornecedor(cnpj, fornecedor)
         chave = (cargo, ident if ident is not None else nome)
         reg = self._dados.setdefault(chave, _registro_vazio(cargo, ident, nome, ano))
         if ano > reg["nome_ano"]:  # o rótulo é o do lançamento mais recente, na ordem que os anos chegarem
@@ -604,6 +607,7 @@ def _extrair_anos(
     cache_dir: Optional[Path],
     hoje: date,
     publicados: Optional[Set[int]] = None,
+    ignorar_cache: bool = False,
 ) -> ResultadoDosAnos:
     """
     Extrai ano a ano, em ordem crescente. Com `cache_dir`, ano fechado e em cache entra sem baixar nada; os demais são
@@ -613,7 +617,7 @@ def _extrair_anos(
     """
     resultado, baixou = ResultadoDosAnos(), False
     for ano in sorted(anos):
-        if cache_dir is not None and _definitivo(ano, hoje):
+        if cache_dir is not None and not ignorar_cache and _definitivo(ano, hoje):
             guardado = _ler_cache(cache_dir, casa, ano, hoje)
             if guardado is not None:
                 acc.mesclar(guardado)
@@ -677,13 +681,15 @@ def run(
     cache_dir: Optional[Path] = None,
     hoje: Optional[date] = None,
     anos_publicados: Optional[Dict[str, Set[int]]] = None,
+    ignorar_cache: bool = False,
 ) -> Dict[str, Any]:
     """
     Sincroniza CEAP e emendas. Com `cache_dir`, a CEAP de cada ano já fechado é guardada e não é baixada de novo até o
     cache vencer: a atualização diária só refaz o ano corrente (e o anterior até março). Cada fonte é independente: a
     falha (até a inesperada) de uma não impede a gravação da outra, e o resumo diz o que foi gravado (`ceap_gravado`,
     `emendas_gravado`). `anos_publicados` (casa -> anos que já tinham gasto) protege o ano corrente de ser apagado por um
-    soluço da fonte no começo do ano; vale a união dele com o que o arquivo processado anterior já traz. Só o `http`
+    soluço da fonte no começo do ano; vale a união dele com o que o arquivo processado anterior já traz. `ignorar_cache` baixa tudo de novo mas
+    mantém a escrita do cache e a reserva do cache vencido. Só o `http`
     injetado vai também às emendas; sem injeção as emendas usam o cliente próprio do `EmendasExtractor` (timeout de
     120 s, pois o arquivo do Portal tem dezenas de MB), enquanto a CEAP usa 60 s por ano.
     """
@@ -698,7 +704,7 @@ def run(
 
     if ceap:
         try:
-            _sincronizar_ceap(http, anos, cache_dir, hoje, anos_publicados, resumo)
+            _sincronizar_ceap(http, anos, cache_dir, hoje, anos_publicados, resumo, ignorar_cache)
         except Exception as exc:  # noqa: BLE001 - uma fonte nunca derruba a outra; o erro fica no resumo e no log
             logger.error("CEAP: falha inesperada: %s", exc, exc_info=True)
             resumo["ceap_gravado"], resumo["ceap_erro"] = False, f"{type(exc).__name__}: {exc}"
@@ -721,6 +727,7 @@ def _sincronizar_ceap(
     hoje: date,
     anos_publicados: Optional[Dict[str, Set[int]]],
     resumo: Dict[str, Any],
+    ignorar_cache: bool = False,
 ) -> None:
     acc = CeapAccumulator()
     # a união do arquivo com o `fin`: o arquivo sozinho não basta (o deploy o devolve ao retrato do git) e o `fin` sozinho
@@ -729,7 +736,9 @@ def _sincronizar_ceap(
     ja_publicados = {casa: no_arquivo[casa] | (anos_publicados or {}).get(casa, set()) for casa in CASAS_DO_CONGRESSO}
     por_casa = {}
     for casa, extrator in (("camara", extract_camara_ceap), ("senado", extract_senado_ceaps)):
-        por_casa[casa] = _extrair_anos(http, anos, casa, extrator, acc, cache_dir, hoje, ja_publicados.get(casa, set()))
+        por_casa[casa] = _extrair_anos(
+            http, anos, casa, extrator, acc, cache_dir, hoje, ja_publicados.get(casa, set()), ignorar_cache
+        )
     falhas = {casa: r.falhas for casa, r in por_casa.items()}
     resumo["ceap_anos_baixados"] = {casa: r.baixados for casa, r in por_casa.items()}
     resumo["ceap_falhas"] = falhas

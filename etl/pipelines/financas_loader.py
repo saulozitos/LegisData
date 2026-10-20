@@ -628,16 +628,21 @@ CHAVES_ESTATICAS = ("remuneracao", "patrimonio", "doacoes", "certidoes")
 # ── Quem é dono da fonte: a atualização diária (extração fresca) ou o retrato do git ───────────────────────────────────
 # O deploy precisa saber, por fonte, se o `fin` já traz dado MAIS NOVO que o git (então não pode semeá-la de novo). O sinal
 # vai para o próprio banco, na MESMA transação da carga: volta junto com um backup restaurado, e uma carga que falhou não
-# deixa sinal. Cada carga fresca bem-sucedida grava uma linha em `etl.execucao` (estágio CARREGAR, status OK).
+# deixa sinal. Cada carga de CEAP ou de emendas que gravou linhas escreve uma linha em `etl.execucao` (estágio CARREGAR,
+# status OK) com `parametros = {"carga", "fresca", "origem"}`: `fresca = "true"` quando veio de uma extração nova e
+# `"false"` quando veio do retrato do git (que revoga a posse). Vale a ÚLTIMA linha de cada carga. INVARIANTE: essas
+# linhas não podem ser expurgadas como histórico comum, ou o deploy volta a semear do git em silêncio.
 SQL_FONTES_DO_TIMER = (
-    "select coalesce(string_agg(distinct parametros->>'fonte', ' '), '') from etl.execucao "
-    "where estagio = 'CARREGAR' and status = 'OK' and parametros->>'fresca' = 'true'"
+    "select coalesce(string_agg(carga, ' '), '') from ("
+    "select distinct on (parametros->>'carga') parametros->>'carga' as carga, parametros->>'fresca' as fresca "
+    "from etl.execucao where estagio = 'CARREGAR' and status = 'OK' and parametros->>'carga' is not null "
+    "order by parametros->>'carga', id desc) t where fresca = 'true'"
 )
 _CONTAGEM_DA_FONTE = {"ceap": "despesas", "emendas": "emendas"}
 
 
-def registrar_carga_fresca(conn: Connection, chave: str, resultado: Any, origem: str = "financas_atualizacao") -> None:
-    """Registra que a fonte foi carregada de uma extração fresca. Só conta se a carga de fato gravou linhas."""
+def registrar_carga(conn: Connection, chave: str, resultado: Any, fresca: bool, origem: str) -> None:
+    """Registra de onde veio o dado de uma fonte do timer. Só conta se a carga de fato gravou linhas."""
     campo = _CONTAGEM_DA_FONTE.get(chave)
     gravadas = resultado.get(campo) if campo and isinstance(resultado, dict) else None
     if not isinstance(gravadas, int) or isinstance(gravadas, bool) or gravadas <= 0:
@@ -647,25 +652,25 @@ def registrar_carga_fresca(conn: Connection, chave: str, resultado: Any, origem:
             "INSERT INTO etl.execucao (estagio, finalizado_em, status, linhas_gravadas, parametros) "
             "VALUES ('CARREGAR', now(), 'OK', :n, CAST(:p AS jsonb))"
         ),
-        {"n": min(gravadas, 2**31 - 1), "p": json.dumps({"fresca": "true", "fonte": chave, "origem": origem})},
+        {
+            "n": min(gravadas, 2**31 - 1),
+            "p": json.dumps({"fresca": "true" if fresca else "false", "carga": chave, "origem": origem}),
+        },
     )
 
 
-def registrar_fontes_frescas(engine: Engine, fontes: Iterable[str], origem: str) -> None:
-    """Para quem carregou por outro caminho (a etapa de carga do `run_etl` depois de extrair): uma transação, sem contagem."""
-    with engine.begin() as conn:
-        for fonte in fontes:
-            conn.execute(
-                text(
-                    "INSERT INTO etl.execucao (estagio, finalizado_em, status, parametros) "
-                    "VALUES ('CARREGAR', now(), 'OK', CAST(:p AS jsonb))"
-                ),
-                {"p": json.dumps({"fresca": "true", "fonte": fonte, "origem": origem})},
-            )
+def registrar_carga_fresca(conn: Connection, chave: str, resultado: Any, origem: str = "financas_atualizacao") -> None:
+    """Hook de `carregar`: o dado acabou de vir de uma extração nova (a atualização diária ou o `run_etl --ceap`)."""
+    registrar_carga(conn, chave, resultado, True, origem)
+
+
+def registrar_carga_do_git(conn: Connection, chave: str, resultado: Any, origem: str = "deploy") -> None:
+    """Hook de `carregar`: o dado veio do retrato do git (semeadura do deploy, recarga manual). Revoga a posse do timer."""
+    registrar_carga(conn, chave, resultado, False, origem)
 
 
 def fontes_do_timer(engine: Engine) -> Set[str]:
-    """As fontes do timer que o `fin` já recebeu de uma extração fresca."""
+    """As cargas (ceap, emendas) cuja última entrada em `etl.execucao` veio de uma extração fresca."""
     with engine.connect() as conexao:
         return set(str(conexao.execute(text(SQL_FONTES_DO_TIMER)).scalar() or "").split())
 
@@ -708,22 +713,3 @@ def carregar(
     if falhas:
         raise RuntimeError("; ".join(falhas))
     return resultados
-
-
-def carregar_estaticas(engine: Engine) -> Dict[str, Any]:
-    """
-    A carga das finanças que NÃO se atualizam todo dia: remuneração, patrimônio, doações e certidões. O deploy e o
-    `run_etl --load-economia` a usam quando o `fin` já tem dados: CEAP e emendas vêm do timer diário e não podem voltar ao
-    retrato versionado no git, que é mais antigo (as emendas novas seriam apagadas e voltariam com outro `uid`).
-    """
-    return carregar(engine, chaves=CHAVES_ESTATICAS)
-
-
-def carregar_sem_emendas(engine: Engine) -> Dict[str, Any]:
-    """As estáticas e a CEAP, sem tocar nas emendas: o deploy semeia a CEAP quando só as emendas já são do timer."""
-    return carregar(engine, chaves=("ceap",) + CHAVES_ESTATICAS)
-
-
-def carregar_sem_ceap(engine: Engine) -> Dict[str, Any]:
-    """As estáticas e as emendas, sem tocar na CEAP: o deploy semeia as emendas quando só a CEAP já é do timer."""
-    return carregar(engine, chaves=("emendas",) + CHAVES_ESTATICAS)

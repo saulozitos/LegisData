@@ -89,11 +89,11 @@ def test_main_retorna_0_quando_tudo_ok(monkeypatch):
 
 
 def test_carga_economica_isola_cada_loader_e_relata_as_falhas_no_fim(monkeypatch):
-    monkeypatch.setattr("etl.pipelines.carga_economica.fin_tem_ceap_e_emendas", lambda engine: False)
+    monkeypatch.setattr("etl.pipelines.carga_economica.estado_do_fin", lambda engine: (False, False))
     chamadas = []
 
     def ok(nome):
-        return lambda engine: chamadas.append(nome) or {"ok": nome}
+        return lambda engine, **kw: chamadas.append(nome) or {"ok": nome}
 
     def quebra(engine):
         chamadas.append("composicao")
@@ -111,16 +111,16 @@ def test_carga_economica_isola_cada_loader_e_relata_as_falhas_no_fim(monkeypatch
 
 
 def test_carga_economica_sem_falha_nao_levanta_e_com_duas_falhas_relata_as_duas(monkeypatch):
-    monkeypatch.setattr("etl.pipelines.carga_economica.fin_tem_ceap_e_emendas", lambda engine: False)
+    monkeypatch.setattr("etl.pipelines.carga_economica.estado_do_fin", lambda engine: (False, False))
 
     def quebra(mensagem):
-        def _(engine):
+        def _(engine, **kw):
             raise RuntimeError(mensagem)
 
         return _
 
     for modulo in ("economia_loader", "presidencia_loader", "composicao_loader", "pnad_loader", "financas_loader"):
-        monkeypatch.setattr(f"etl.pipelines.{modulo}.carregar", lambda engine: {})
+        monkeypatch.setattr(f"etl.pipelines.{modulo}.carregar", lambda engine, **kw: {})
     cli._load_economia()  # nenhuma falha: sem exceção
 
     monkeypatch.setattr("etl.pipelines.economia_loader.carregar", quebra("BCB sem arquivo"))
@@ -131,7 +131,7 @@ def test_carga_economica_sem_falha_nao_levanta_e_com_duas_falhas_relata_as_duas(
 
 
 def test_composicao_nao_roda_se_os_mandatos_presidenciais_falharam(monkeypatch):
-    monkeypatch.setattr("etl.pipelines.carga_economica.fin_tem_ceap_e_emendas", lambda engine: False)
+    monkeypatch.setattr("etl.pipelines.carga_economica.estado_do_fin", lambda engine: (False, False))
     chamadas = []
 
     def quebra(engine):
@@ -141,7 +141,7 @@ def test_composicao_nao_roda_se_os_mandatos_presidenciais_falharam(monkeypatch):
     monkeypatch.setattr("etl.pipelines.presidencia_loader.carregar", quebra)
     monkeypatch.setattr("etl.pipelines.composicao_loader.carregar", lambda engine: chamadas.append("composicao") or {})
     monkeypatch.setattr("etl.pipelines.pnad_loader.carregar", lambda engine: chamadas.append("pnad") or {})
-    monkeypatch.setattr("etl.pipelines.financas_loader.carregar", lambda engine: {})
+    monkeypatch.setattr("etl.pipelines.financas_loader.carregar", lambda engine, **kw: {})
     with pytest.raises(RuntimeError) as erro:
         cli._load_economia()
     assert "sem arquivo de presidentes" in str(erro.value) and "não executada" in str(erro.value)
@@ -174,7 +174,7 @@ def test_recarregar_ceap_emendas_chega_ate_a_carga(monkeypatch):
     recebido = {}
     monkeypatch.setattr("etl.pipelines.carga_economica.carregar_tudo", lambda engine, **kw: recebido.update(kw) or {})
     cli._load_economia(recarregar_ceap_e_emendas=True)
-    assert recebido == {"recarregar_ceap_e_emendas": True}
+    assert recebido["recarregar_ceap_e_emendas"] is True and callable(recebido["ao_confirmar"])
     assert (
         cli.montar_parser().parse_args(["--load-economia", "--recarregar-ceap-emendas"]).recarregar_ceap_emendas is True
     )
@@ -242,32 +242,18 @@ def test_sem_banco_a_extracao_manual_segue_so_com_o_arquivo(monkeypatch):
     assert cli._anos_ja_carregados_ou_none() is None
 
 
-def test_extracao_fresca_registra_as_fontes_no_fin_so_depois_da_carga_dar_certo(monkeypatch):
-    chamadas = []
-    monkeypatch.setattr(
-        "etl.pipelines.carga_economica.carregar_tudo", lambda engine, **kw: chamadas.append("carga") or {}
-    )
-    monkeypatch.setattr(
-        "etl.pipelines.financas_loader.registrar_fontes_frescas",
-        lambda engine, fontes, origem: chamadas.append((tuple(fontes), origem)),
-    )
+def test_o_gancho_da_carga_diz_de_onde_veio_o_dado(monkeypatch):
+    """Extração fresca desta execução => `fresca=true` (origem run_etl); recarga a pedido do git => revoga a posse."""
+    recebido = {}
+    monkeypatch.setattr("etl.pipelines.carga_economica.carregar_tudo", lambda engine, **kw: recebido.update(kw) or {})
     cli._load_economia(recarregar_ceap_e_emendas=True, extracao_fresca=True)
-    assert chamadas == ["carga", (("ceap", "emendas"), "run_etl")]
-    chamadas.clear()
-    cli._load_economia(recarregar_ceap_e_emendas=True)  # recarga do git a pedido: não é dado fresco
-    assert chamadas == ["carga"]
-
-    def quebra(engine, **kw):
-        raise RuntimeError("carga falhou")
-
-    monkeypatch.setattr("etl.pipelines.carga_economica.carregar_tudo", quebra)
-    chamadas.clear()
-    with pytest.raises(RuntimeError):
-        cli._load_economia(recarregar_ceap_e_emendas=True, extracao_fresca=True)
-    assert chamadas == []  # carga que falha não registra nada
+    fresca = recebido["ao_confirmar"]
+    assert fresca.func.__name__ == "registrar_carga_fresca" and fresca.keywords == {"origem": "run_etl"}
+    cli._load_economia(recarregar_ceap_e_emendas=True)
+    assert recebido["ao_confirmar"].__name__ == "registrar_carga_do_git"
 
 
-def test_no_cache_na_extracao_manual_ignora_o_cache_por_ano(monkeypatch):
+def test_no_cache_na_extracao_manual_baixa_de_novo_sem_perder_o_cache(monkeypatch):
     chamadas = {}
     monkeypatch.setattr(
         "etl.pipelines.sync_ceap_emendas.run",
@@ -275,4 +261,7 @@ def test_no_cache_na_extracao_manual_ignora_o_cache_por_ano(monkeypatch):
     )
     monkeypatch.setattr(cli, "_anos_ja_carregados_ou_none", lambda: None)
     cli._ceap_emendas(2019, usar_cache=False)
-    assert chamadas["cache_dir"] is None
+    # baixa tudo de novo, mas mantém a escrita do cache e a reserva do cache vencido
+    assert chamadas["ignorar_cache"] is True and chamadas["cache_dir"] is not None
+    cli._ceap_emendas(2019)
+    assert chamadas["ignorar_cache"] is False

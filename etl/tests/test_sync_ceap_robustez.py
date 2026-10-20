@@ -585,3 +585,28 @@ def test_validador_nao_aceita_a_chave_com_none_literal(tmp_path):
     forns["Posto [None]"] = forn
     (tmp_path / "camara_2023.json").write_text(json.dumps(payload), encoding="utf-8")
     assert sync._ler_cache(tmp_path, "camara", 2023, HOJE) is None
+
+
+def test_ignorar_cache_baixa_de_novo_regrava_o_cache_e_ainda_usa_a_reserva_vencida(tmp_path):
+    cache = tmp_path / "cache"
+    _payload(cache)  # camara_2023 válido (gerado em 2026-10-01)
+    chamadas = []
+
+    def extrator(http, anos, acc, ausentes=None):
+        chamadas.append(list(anos))
+        acc.add("DEPUTADO_FEDERAL", 1, "Ana", anos[0], 1, "T", "F", None, 99.0)
+        return 1, []
+
+    r = sync._extrair_anos(
+        None, [2023], "camara", extrator, CeapAccumulator(), cache, date(2026, 10, 2), ignorar_cache=True
+    )
+    assert chamadas == [[2023]] and r.baixados == 1 and r.do_cache == []  # o cache válido foi ignorado
+    regravado = sync._ler_cache(cache, "camara", 2023, date(2026, 10, 2))
+    assert regravado.para_json()[0]["reg"]["total_gasto"] == 99.0  # e o cache foi regravado com o dado novo
+
+    def falha(http, anos, acc, ausentes=None):
+        return 0, list(anos)
+
+    acc = CeapAccumulator()
+    r2 = sync._extrair_anos(None, [2023], "camara", falha, acc, cache, date(2027, 6, 1), ignorar_cache=True)
+    assert r2.cache_vencido == [2023] and r2.falhas == [] and not acc.vazio  # a reserva vencida continua valendo

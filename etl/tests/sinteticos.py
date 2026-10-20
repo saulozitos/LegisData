@@ -21,3 +21,6 @@ def formatado(cpf: str) -> str:
 
 # CNPJ real de raiz zerada que passa nos dígitos verificadores de CPF por acaso (deve ser tratado como CNPJ)
 CNPJ_DE_RAIZ_ZERADA = "00000000000191"
+
+# 12 dígitos sem nenhuma janela de 11 dígitos que seja CPF válido (documento pessoal "de 12 dígitos" dos testes de nome)
+DOZE_DIGITOS_SEM_CPF = "500600700800"

@@ -23,7 +23,7 @@ from etl.pipelines.loader_helpers import (
     uf_da_localidade,
 )
 from etl.pipelines.pessoa_resolver import Resolucao, ResolvedorDePessoas
-from etl.tests.sinteticos import CPF_A
+from etl.tests.sinteticos import CPF_A, DOZE_DIGITOS_SEM_CPF
 
 # ── funções puras ─────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -2259,13 +2259,6 @@ def test_chave_desconhecida_falha_antes_de_executar_qualquer_carga(pg_engine, ba
     assert rodadas == []
 
 
-def test_a_carga_estatica_roda_so_remuneracao_patrimonio_doacoes_e_certidoes(monkeypatch):
-    chamadas = []
-    monkeypatch.setattr(fin, "carregar", lambda engine, processed_dir=None, chaves=None: chamadas.append(tuple(chaves)))
-    fin.carregar_estaticas(object())
-    assert chamadas == [("remuneracao", "patrimonio", "doacoes", "certidoes")]
-
-
 def test_carga_estatica_nao_apaga_ceap_nem_emendas_ja_no_banco(pg_engine, banco, tmp_path):
     """O `fin` tem CEAP e emendas mais novas que o git: a carga estática não pode tocá-las."""
     _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
@@ -2294,7 +2287,7 @@ def test_carga_estatica_nao_apaga_ceap_nem_emendas_ja_no_banco(pg_engine, banco,
             "FULANO SINTETICO DA SILVA",
         ),  # 12 dígitos colados ao nome (dados reais)
         ("Beltrana Exemplo Souza 500600700800", "Beltrana Exemplo Souza"),
-        ("900800700600Eletrobrás Energiza", "Eletrobrás Energiza"),
+        (f"{DOZE_DIGITOS_SEM_CPF}Eletrobrás Energiza", "Eletrobrás Energiza"),
         (
             "RESTAURANTE SANTA CLARA LTDA:18477203000139",
             "RESTAURANTE SANTA CLARA LTDA:18477203000139",
@@ -2343,33 +2336,19 @@ def test_anos_publicados_da_ceap_vem_do_fin_por_casa_e_ignora_o_ano_zerado(pg_en
     assert publicados["senado"] == {2024}  # o ano sem gasto não conta como publicado
 
 
-@pytest.mark.parametrize(
-    "funcao, esperado",
-    [
-        ("carregar_sem_emendas", ("ceap", "remuneracao", "patrimonio", "doacoes", "certidoes")),
-        ("carregar_sem_ceap", ("emendas", "remuneracao", "patrimonio", "doacoes", "certidoes")),
-    ],
-)
-def test_semeadura_parcial_carrega_uma_fonte_do_timer_mais_as_estaticas(monkeypatch, funcao, esperado):
-    chamadas = []
-    monkeypatch.setattr(fin, "carregar", lambda engine, processed_dir=None, chaves=None: chamadas.append(tuple(chaves)))
-    getattr(fin, funcao)(object())
-    assert chamadas == [esperado]
-
-
 # ── Quem é dono da fonte: sinal gravado no banco, na transação da carga ─────────────────────────────────────────────
 @pytest.fixture()
-def sem_execucoes_frescas(pg_engine):
+def sem_execucoes_de_carga(pg_engine):
     def limpar():
         with pg_engine.begin() as conn:
-            conn.execute(text("DELETE FROM etl.execucao WHERE parametros->>'fresca' = 'true'"))
+            conn.execute(text("DELETE FROM etl.execucao WHERE parametros->>'carga' IS NOT NULL"))
 
     limpar()
     yield
     limpar()
 
 
-def test_carga_fresca_registra_a_fonte_na_mesma_transacao_da_carga(pg_engine, banco, tmp_path, sem_execucoes_frescas):
+def test_carga_fresca_registra_a_fonte_na_mesma_transacao_da_carga(pg_engine, banco, tmp_path, sem_execucoes_de_carga):
     _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
     assert fin.fontes_do_timer(pg_engine) == set()
     fin.carregar(pg_engine, tmp_path, chaves=("ceap",), ao_confirmar=fin.registrar_carga_fresca)
@@ -2377,33 +2356,36 @@ def test_carga_fresca_registra_a_fonte_na_mesma_transacao_da_carga(pg_engine, ba
     with pg_engine.connect() as conn:
         linha = conn.execute(
             text(
-                "SELECT estagio, status, linhas_gravadas, parametros FROM etl.execucao WHERE parametros->>'fresca' = 'true'"
+                "SELECT estagio, status, linhas_gravadas, parametros FROM etl.execucao WHERE parametros->>'carga' = 'ceap'"
             )
         ).one()
     assert linha.estagio == "CARREGAR" and linha.status == "OK" and linha.linhas_gravadas == 3
-    assert linha.parametros == {"fresca": "true", "fonte": "ceap", "origem": "financas_atualizacao"}
+    assert linha.parametros == {"fresca": "true", "carga": "ceap", "origem": "financas_atualizacao"}
 
 
-def test_sem_o_hook_a_carga_nao_registra_nada(pg_engine, banco, tmp_path, sem_execucoes_frescas):
-    """O deploy semeia por `carregar_tudo`, sem hook: o que ele grava não é dado fresco do timer."""
+def test_sem_o_hook_a_carga_nao_registra_nada(pg_engine, banco, tmp_path, sem_execucoes_de_carga):
     _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
     fin.carregar(pg_engine, tmp_path, chaves=("ceap",))
     assert fin.fontes_do_timer(pg_engine) == set()
 
 
-def test_se_o_registro_falha_a_carga_da_fonte_volta_junto(pg_engine, banco, tmp_path, sem_execucoes_frescas):
+def test_se_o_registro_grava_e_depois_falha_a_carga_da_fonte_volta_junto(
+    pg_engine, banco, tmp_path, sem_execucoes_de_carga
+):
+    """O hook grava a linha E levanta: o `ROLLBACK` leva os dados da carga e o sinal juntos (atomicidade de verdade)."""
     _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
 
-    def quebra(conn, chave, resultado):
-        raise RuntimeError("registro falhou")
+    def grava_e_quebra(conn, chave, resultado):
+        fin.registrar_carga_fresca(conn, chave, resultado)
+        raise RuntimeError("falhou depois de registrar")
 
-    with pytest.raises(RuntimeError, match="registro falhou"):
-        fin.carregar(pg_engine, tmp_path, chaves=("ceap",), ao_confirmar=quebra)
-    assert _contar(pg_engine, "despesa_cota") == 0 and fin.fontes_do_timer(pg_engine) == set()  # atômico
+    with pytest.raises(RuntimeError, match="falhou depois de registrar"):
+        fin.carregar(pg_engine, tmp_path, chaves=("ceap",), ao_confirmar=grava_e_quebra)
+    assert _contar(pg_engine, "despesa_cota") == 0 and fin.fontes_do_timer(pg_engine) == set()
 
 
 def test_so_a_fonte_que_carregou_ganha_o_registro_quando_a_outra_falha(
-    pg_engine, banco, tmp_path, monkeypatch, sem_execucoes_frescas
+    pg_engine, banco, tmp_path, monkeypatch, sem_execucoes_de_carga
 ):
     """Uma transação por fonte: a CEAP entra e fica registrada mesmo que as emendas falhem depois."""
     _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
@@ -2427,18 +2409,44 @@ def test_so_a_fonte_que_carregou_ganha_o_registro_quando_a_outra_falha(
         ("ceap", {"despesas": 0}),  # carga que não gravou linha nenhuma
         ("ceap", {"arquivo_ausente": 1}),
         ("emendas", {"emendas": True}),  # bool não é contagem
+        ("emendas", {"emendas": -3}),
         ("remuneracao", {"meses": 5}),  # fonte que não é do timer
+        ("inexistente", {"despesas": 5}),
         ("ceap", "texto"),
+        ("ceap", None),
     ],
 )
-def test_so_conta_como_fresca_a_carga_que_gravou_linhas_de_uma_fonte_do_timer(
-    pg_engine, chave, resultado, sem_execucoes_frescas
-):
+def test_so_conta_a_carga_que_gravou_linhas_de_uma_fonte_do_timer(pg_engine, chave, resultado, sem_execucoes_de_carga):
     with pg_engine.begin() as conn:
         fin.registrar_carga_fresca(conn, chave, resultado)
-    assert fin.fontes_do_timer(pg_engine) == set()
+        fin.registrar_carga_do_git(conn, chave, resultado)
+    with pg_engine.connect() as conn:
+        assert (
+            conn.execute(text("SELECT count(*) FROM etl.execucao WHERE parametros->>'carga' IS NOT NULL")).scalar() == 0
+        )
 
 
-def test_o_run_etl_registra_as_duas_fontes_depois_de_uma_extracao_fresca(pg_engine, sem_execucoes_frescas):
-    fin.registrar_fontes_frescas(pg_engine, ("ceap", "emendas"), "run_etl")
+def test_carga_do_git_revoga_a_posse_e_a_ultima_linha_de_cada_fonte_vale(pg_engine, sem_execucoes_de_carga):
+    with pg_engine.begin() as conn:
+        fin.registrar_carga_fresca(conn, "ceap", {"despesas": 3})
+        fin.registrar_carga_fresca(conn, "emendas", {"emendas": 3})
     assert fin.fontes_do_timer(pg_engine) == {"ceap", "emendas"}
+    with pg_engine.begin() as conn:
+        fin.registrar_carga_do_git(conn, "emendas", {"emendas": 3})  # semeadura do git: a posse das emendas acaba
+    assert fin.fontes_do_timer(pg_engine) == {"ceap"}
+    with pg_engine.begin() as conn:
+        fin.registrar_carga_fresca(conn, "emendas", {"emendas": 3}, origem="run_etl")  # e volta com nova extração
+        fin.registrar_carga_fresca(conn, "emendas", {"emendas": 3})  # linhas repetidas não duplicam a fonte
+    assert fin.fontes_do_timer(pg_engine) == {"ceap", "emendas"}
+
+
+def test_a_origem_do_hook_fica_registrada(pg_engine, sem_execucoes_de_carga):
+    with pg_engine.begin() as conn:
+        fin.registrar_carga_fresca(conn, "ceap", {"despesas": 1}, origem="run_etl")
+    with pg_engine.connect() as conn:
+        assert (
+            conn.execute(
+                text("SELECT parametros->>'origem' FROM etl.execucao WHERE parametros->>'carga' = 'ceap'")
+            ).scalar()
+            == "run_etl"
+        )

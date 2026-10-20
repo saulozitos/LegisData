@@ -133,7 +133,7 @@ def test_deploy_descarta_saidas_do_cron_antes_do_merge_e_carrega_tudo_pela_carga
     assert _posicao(texto, r"^\s*git checkout -q -- etl/data/processed") < _posicao(texto, r"^git merge --ff-only ")
     carga = texto[_posicao(texto, r"um_comando python -c ") :]
     assert re.search(
-        r"^from etl\.pipelines\.carga_economica import TOLERADAS_NO_DEPLOY, carregar_tudo, chaves_do_modo, falhas_toleradas",
+        r"^from etl\.pipelines\.carga_economica import TOLERADAS_NO_DEPLOY, carregar_tudo, falhas_toleradas, plano_do_modo",
         carga,
         re.MULTILINE,
     )
@@ -150,7 +150,7 @@ def test_deploy_repassa_a_liberacao_de_encolhimento_vazia_por_padrao_e_tolera_so
     assert re.search(r"toleradas\s*=\s*TOLERADAS_NO_DEPLOY if ", texto)  # a lista vive em carga_economica (um mapa só)
     from etl.pipelines.carga_economica import TOLERADAS_NO_DEPLOY
 
-    assert set(TOLERADAS_NO_DEPLOY) == {"financas", "financas_estaticas", "financas_sem_emendas", "financas_sem_ceap"}
+    assert TOLERADAS_NO_DEPLOY == ("financas",)
 
 
 def test_deploy_so_tolera_falha_das_financas_quando_fin_ja_tem_dados():
@@ -158,24 +158,24 @@ def test_deploy_so_tolera_falha_das_financas_quando_fin_ja_tem_dados():
     texto = _texto(DEPLOY_SH)
     corpo = texto[_posicao(texto, r"^um_comando\(\) \{") :].split("\n}\n")[0]
     assert re.search(r"-e LEGISDATA_FIN_TEM_ALGUM_DADO=\"\$\{LEGISDATA_FIN_TEM_ALGUM_DADO:-\}\"", corpo)
-    # o MODO exige as quatro tabelas com dados (uma migração que esvazia só uma conta como "sem dados" e semeia tudo);
-    # a TOLERÂNCIA vale se QUALQUER uma tem dados (com a API servindo o que existe, abortar o deploy seria pior)
-    tabelas = ("emenda", "despesa_cota", "despesa_cota_fornecedor", "despesa_cota_resumo")
-    todas = _posicao(
-        texto,
-        r'^\s*LEGISDATA_FIN_TEM_DADOS="\$\(docker exec politica_postgres psql .*'
-        + r" and ".join(rf"exists\(select 1 from fin\.{t}\)" for t in tabelas),
-    )
-    algum = _posicao(
-        texto,
-        r'^\s*LEGISDATA_FIN_TEM_ALGUM_DADO="\$\(docker exec politica_postgres psql .*'
-        + r" or ".join(rf"exists\(select 1 from fin\.{t}\)" for t in tabelas),
-    )
-    assert todas < _posicao(texto, r"um_comando python -c ") and algum < _posicao(texto, r"um_comando python -c ")
+    # o MODO vem de duas perguntas por fonte (a CEAP exige as 3 tabelas dela, as emendas a delas); a TOLERÂNCIA vale se
+    # QUALQUER tabela tem dados (com a API servindo o que existe, abortar o deploy seria pior)
+    from etl.pipelines.carga_economica import SQL_FIN_TEM_ALGUM_DADO, SQL_FIN_TEM_CEAP, SQL_FIN_TEM_EMENDAS
+
+    for variavel, consulta in (
+        ("TEM_CEAP", SQL_FIN_TEM_CEAP),
+        ("TEM_EMENDAS", SQL_FIN_TEM_EMENDAS),
+        ("LEGISDATA_FIN_TEM_ALGUM_DADO", SQL_FIN_TEM_ALGUM_DADO),
+    ):
+        pergunta = (
+            f'{variavel}="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select {consulta}")"'
+        )
+        assert pergunta in texto, variavel
+        assert _posicao(texto, re.escape(pergunta)) < _posicao(texto, r"um_comando python -c ")
     carga = texto[_posicao(texto, r"um_comando python -c ") :]
     assert re.search(r"os\.environ\.get\('LEGISDATA_FIN_TEM_ALGUM_DADO'\) == 't' else \(\)", carga)
-    assert re.search(r"carregar_tudo\(engine, chaves=chaves, toleradas=toleradas\)", carga)
-    assert "chaves_do_modo(os.environ.get('LEGISDATA_FIN_MODO', 'nenhuma'))" in carga  # sem decisão, não toca no fin
+    assert "carregar_tudo(engine, toleradas=toleradas, ao_confirmar=registrar_carga_do_git, **plano)" in carga
+    assert "plano_do_modo(os.environ.get('LEGISDATA_FIN_MODO', 'nenhuma'))" in carga  # sem decisão, não toca no fin
 
 
 def test_modo_das_financas_chega_a_carga_pelo_um_comando():
@@ -183,7 +183,7 @@ def test_modo_das_financas_chega_a_carga_pelo_um_comando():
     corpo = texto[_posicao(texto, r"^um_comando\(\) \{") :].split("\n}\n")[0]
     assert 'LEGISDATA_FIN_MODO="${LEGISDATA_FIN_MODO:-nenhuma}"' in corpo  # sem decisão, o padrão não destrói nada
     assert (
-        'read -r LEGISDATA_FIN_MODO LEGISDATA_FIN_REFRESCAR < <(decidir_financas "$ATUAL" "$ALVO" "$LEGISDATA_FIN_TEM_DADOS" "$PENDENCIAS" "$CEAP_DO_TIMER" "$EMENDAS_DO_TIMER")'
+        'read -r LEGISDATA_FIN_MODO LEGISDATA_FIN_REFRESCAR < <(decidir_financas "$ATUAL" "$ALVO" "$TEM_CEAP" "$TEM_EMENDAS" "$PENDENCIAS" "$CEAP_DO_TIMER" "$EMENDAS_DO_TIMER")'
         in texto
     )
 
@@ -236,8 +236,20 @@ def repo_de_decisao(tmp_path):
     return repo
 
 
-def _decidir(repo, mudanca, tem_dados="t", atual="HEAD~1", pendencias="", ceap_timer="t", emendas_timer="t"):
+def _decidir(
+    repo,
+    mudanca,
+    tem_dados=None,
+    atual="HEAD~1",
+    pendencias="",
+    ceap_timer="t",
+    emendas_timer="t",
+    tem_ceap="t",
+    tem_emendas="t",
+):
     """Faz um commit com `mudanca` ({caminho: conteúdo}) e devolve o que `decidir_financas` responde para ele."""
+    if tem_dados is not None:  # atalho dos testes antigos: as duas fontes têm (ou não) dado
+        tem_ceap = tem_emendas = tem_dados
     for caminho, conteudo in mudanca.items():
         (repo / caminho).parent.mkdir(parents=True, exist_ok=True)
         (repo / caminho).write_text(conteudo)
@@ -246,7 +258,7 @@ def _decidir(repo, mudanca, tem_dados="t", atual="HEAD~1", pendencias="", ceap_t
     funcao = _bloco(_texto(DEPLOY_SH), "decidir_financas")
     anterior = _git(repo, "rev-parse", atual) if atual else ""
     resposta = _bash(
-        f'{funcao}\ndecidir_financas "{anterior}" "$(git rev-parse HEAD)" "{tem_dados}" "{pendencias}" "{ceap_timer}" "{emendas_timer}"',
+        f'{funcao}\ndecidir_financas "{anterior}" "$(git rev-parse HEAD)" "{tem_ceap}" "{tem_emendas}" "{pendencias}" "{ceap_timer}" "{emendas_timer}"',
         cwd=repo,
     )
     assert resposta.returncode == 0, resposta.stderr
@@ -376,27 +388,62 @@ def test_repetir_a_carga_nao_repete_o_pedido_de_atualizacao(repeticao, refrescar
     assert _bash(script).stdout.strip() == esperado
 
 
+def _decidir_em_lote(repo, combinacoes):
+    """Roda `decidir_financas` para várias entradas num único bash (um commit só): devolve as saídas, uma por entrada."""
+    (repo / "etl" / "pipelines" / "financas_loader.py").write_text("b")  # o commit mexe em código da carga
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "muda a carga")
+    funcao = _bloco(_texto(DEPLOY_SH), "decidir_financas")
+    linhas = "\n".join(
+        f'decidir_financas "{atual}" HEAD "{ceap}" "{emendas}" "{pend}" "{ceap_t}" "{emendas_t}"'
+        for atual, ceap, emendas, pend, ceap_t, emendas_t in combinacoes
+    )
+    resposta = _bash(f"{funcao}\n{linhas}", cwd=repo)
+    assert resposta.returncode == 0, resposta.stderr
+    return resposta.stdout.strip().splitlines()
+
+
+@SEM_BASH
+def test_a_decisao_do_deploy_e_a_tabela_de_semeadura_do_python_nas_16_combinacoes(repo_de_decisao):
+    """O bash e o Python (`modo_de_semeadura`) têm a mesma tabela: para toda combinação, o mesmo modo."""
+    import itertools
+
+    from etl.pipelines.carga_economica import modo_de_semeadura
+
+    bools = (True, False)
+    entradas = list(itertools.product(bools, repeat=4))
+    saidas = _decidir_em_lote(
+        repo_de_decisao,
+        [
+            ("HEAD~1", "t" if a else "f", "t" if b else "f", "", "t" if c else "f", "t" if d else "f")
+            for a, b, c, d in entradas
+        ],
+    )
+    for (a, b, c, d), saida in zip(entradas, saidas):
+        esperado = modo_de_semeadura(a, b, c, d) or "estaticas"  # nada a semear + código mudou => as estáticas
+        assert saida.split()[0] == esperado, ((a, b, c, d), saida)
+
+
 @SEM_BASH
 def test_todo_modo_que_a_decisao_pode_emitir_existe_no_mapa_de_modos(repo_de_decisao):
-    """Um modo digitado errado no bash só apareceria em produção: percorre todas as combinações de entrada."""
+    """Um modo digitado errado no bash só apareceria em produção: percorre entradas, commits anteriores e pendências."""
     from etl.pipelines.carga_economica import FINANCAS_POR_MODO
 
-    emitidos = set()
-    for tem_dados in ("t", "f"):
-        for pendencias in ("", "carga", "refrescar", "carga\nrefrescar"):
-            for ceap in ("t", "f"):
-                for emendas in ("t", "f"):
-                    saida = _decidir(
-                        repo_de_decisao,
-                        {"docs/leia-me.md": f"{tem_dados}{pendencias}{ceap}{emendas}"},
-                        tem_dados=tem_dados,
-                        pendencias=pendencias,
-                        ceap_timer=ceap,
-                        emendas_timer=emendas,
-                    )
-                    emitidos.add(saida.split()[0])
+    atuais = ("HEAD~1", "", "0" * 40)
+    pendencias = ("", "carga", "refrescar", "carga\nrefrescar")
+    flags = ("t", "f")
+    combinacoes = [
+        (atual, ceap, emendas, pend, ct, et)
+        for atual in atuais
+        for pend in pendencias
+        for ceap in flags
+        for emendas in flags
+        for ct in flags
+        for et in flags
+    ]
+    emitidos = {saida.split()[0] for saida in _decidir_em_lote(repo_de_decisao, combinacoes)}
     assert emitidos <= set(FINANCAS_POR_MODO)  # nenhum modo fora do mapa
-    assert emitidos == {"completa", "sem_emendas", "sem_ceap", "nenhuma", "estaticas"}  # e todos aparecem
+    assert emitidos == {"completa", "sem_emendas", "sem_ceap", "estaticas"}  # 'nenhuma' só sem mudança nem pendência
 
 
 @SEM_BASH
@@ -409,7 +456,7 @@ def test_fin_sem_dados_semeia_tudo_do_git_e_pede_a_atualizacao_qualquer_que_seja
 def test_commit_anterior_desconhecido_ou_ausente_recarrega_o_que_pode_e_pede_a_atualizacao(repo_de_decisao):
     assert _decidir(repo_de_decisao, {"docs/leia-me.md": "b"}, atual=None) == "estaticas 1"  # ATUAL vazio
     funcao = _bloco(_texto(DEPLOY_SH), "decidir_financas")
-    inexistente = _bash(f'{funcao}\ndecidir_financas "{"0" * 40}" HEAD t', cwd=repo_de_decisao)
+    inexistente = _bash(f'{funcao}\ndecidir_financas "{"0" * 40}" HEAD t t', cwd=repo_de_decisao)
     assert inexistente.stdout.strip() == "estaticas 1" and inexistente.returncode == 0
 
 
@@ -885,9 +932,7 @@ def test_o_python_do_deploy_e_o_bash_concordam_sobre_o_marcador_da_falha_tolerad
     """O bash procura `FALHA_TOLERADA <chave>` e o Python o imprime para cada carga tolerada que devolveu erro."""
     from etl.pipelines.carga_economica import falhas_toleradas
 
-    assert falhas_toleradas(
-        {"financas_estaticas": {"erro": "x"}, "series": {"erro": "y"}, "financas": {"ceap": {}}}
-    ) == ["financas_estaticas"]
+    assert falhas_toleradas({"financas": {"erro": "x"}, "series": {"erro": "y"}}) == ["financas"]
     carga = _texto(DEPLOY_SH)
     assert "print('FALHA_TOLERADA', chave)" in carga and "grep -q '^FALHA_TOLERADA '" in carga
 
@@ -1205,12 +1250,12 @@ def test_contineres_do_deploy_usam_a_mesma_contencao_e_escondem_o_git_config():
     assert 'mktemp -p "$DIR_TEMP"' in texto and "XDG_RUNTIME_DIR" in texto
 
 
-def test_a_consulta_de_dados_do_fin_do_deploy_e_a_do_python():
-    from etl.pipelines.carga_economica import sql_fin_tem_dados
+def test_as_consultas_de_dados_do_fin_do_deploy_sao_as_do_python():
+    from etl.pipelines.carga_economica import SQL_FIN_TEM_ALGUM_DADO, SQL_FIN_TEM_CEAP, SQL_FIN_TEM_EMENDAS
 
     texto = _texto(DEPLOY_SH)
-    assert f'-tAc "select {sql_fin_tem_dados("and")}"' in texto
-    assert f'-tAc "select {sql_fin_tem_dados("or")}"' in texto
+    for consulta in (SQL_FIN_TEM_CEAP, SQL_FIN_TEM_EMENDAS, SQL_FIN_TEM_ALGUM_DADO):
+        assert f'-tAc "select {consulta}"' in texto
 
 
 def test_o_preambulo_do_arquivo_de_ambiente_e_o_mesmo_nos_dois_scripts():
@@ -1248,7 +1293,7 @@ def test_na_reexecucao_o_bloco_herda_a_decisao_em_vez_de_ver_o_proprio_carimbo(t
     reexecucao = _bash(script, env={"_LEGISDATA_DEPLOY_REEXEC": "1", "_LEGISDATA_DEPLOY_REPETICAO": "1"})
     assert "SEGUIU REPETICAO=1" in reexecucao.stdout
     primeira = _bash(script)  # sem as variáveis de reexecução: vê o carimbo de agora e sai
-    assert "SEGUIU" not in primeira.stdout
+    assert primeira.returncode == 0 and primeira.stderr == "" and "SEGUIU" not in primeira.stdout  # saiu, sem erro
     assert 'REEXEC=1 _LEGISDATA_DEPLOY_ALVO="$ALVO" _LEGISDATA_DEPLOY_REPETICAO="$REPETICAO" exec' in texto
 
 
@@ -1259,11 +1304,50 @@ def test_instalador_avisa_quando_o_deploy_instalado_nao_traz_o_bloco_de_pendenci
 
 @SEM_BASH
 def test_sem_os_argumentos_dos_marcadores_a_decisao_cai_no_lado_seguro_e_nunca_semeia(repo_de_decisao):
-    """Quem chamar `decidir_financas` só com 3 ou 4 argumentos recebe o comportamento que não reescreve fonte do timer."""
+    """Quem chamar `decidir_financas` sem os dois últimos argumentos (as flags do timer) recebe o comportamento que não reescreve fonte do timer."""
     (repo_de_decisao / "docs" / "leia-me.md").write_text("zzz")
     _git(repo_de_decisao, "add", "-A")
     _git(repo_de_decisao, "commit", "-q", "-m", "x")
     funcao = _bloco(_texto(DEPLOY_SH), "decidir_financas")
-    for chamada in ('"HEAD~1" HEAD t', '"HEAD~1" HEAD t ""'):
+    for chamada in ('"HEAD~1" HEAD t t', '"HEAD~1" HEAD t t ""'):
         resposta = _bash(f"{funcao}\ndecidir_financas {chamada}", cwd=repo_de_decisao)
         assert resposta.stdout.strip() == "nenhuma 0", chamada
+
+
+@SEM_BASH
+def test_se_a_consulta_das_fontes_do_timer_falha_o_bloco_aborta_em_vez_de_semear_do_git(tmp_path):
+    """Sem resposta do banco o deploy não pode cair em 'f f' (que semearia do git por cima do dado fresco)."""
+    falsos = tmp_path / "bin"
+    falsos.mkdir()
+    (falsos / "docker").write_text("#!/usr/bin/env bash\nexit 1\n")
+    (falsos / "docker").chmod(0o755)
+    script = (
+        "set -Eeuo pipefail\nPG_USER=u PG_DB=d\n"
+        + _bloco(_texto(DEPLOY_SH), "fontes_do_timer")
+        + '\necho "SEGUIU $CEAP_DO_TIMER"'
+    )
+    resposta = _bash(script, env={"PATH": f"{falsos}:{os.environ['PATH']}"})
+    assert resposta.returncode != 0 and "SEGUIU" not in resposta.stdout
+
+
+@SEM_BASH
+@pytest.mark.parametrize("valor", ["x", "2", "", "a[$(touch {armadilha})]", "1; echo oi"])
+def test_a_repeticao_herdada_do_ambiente_so_aceita_0_ou_1(tmp_path, valor):
+    armadilha = tmp_path / "executou"
+    estado = tmp_path / "estado"
+    estado.mkdir()
+    texto = _texto(DEPLOY_SH)
+    script = (
+        f'set -Eeuo pipefail\nESTADO_DIR="{estado}"\nlog() {{ :; }}\nDRY_RUN=0\nATUAL=abc\nALVO=def\n'
+        f'{_bloco(texto, "pendencias")}\n{_bloco(texto, "mesmo_commit")}\necho "REPETICAO=$REPETICAO"'
+    )
+    resposta = _bash(
+        script, env={"_LEGISDATA_DEPLOY_REPETICAO": valor.format(armadilha=armadilha), "_LEGISDATA_DEPLOY_REEXEC": "1"}
+    )
+    assert resposta.returncode == 0, resposta.stderr
+    assert "REPETICAO=0" in resposta.stdout and not armadilha.exists()
+
+
+def test_o_alvo_herdado_do_ambiente_so_aceita_um_sha_de_40_hex():
+    texto = _texto(DEPLOY_SH)
+    assert re.search(r'\[\[ "\$ALVO" =~ \^\[0-9a-f\]\{40\}\$ \]\] \|\| \{ log "alvo inválido', texto)

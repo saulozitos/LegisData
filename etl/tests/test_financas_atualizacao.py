@@ -33,7 +33,10 @@ def simulado(monkeypatch, tmp_path):
                 if isinstance(cenario.erro_da_carga, BaseException)
                 else RuntimeError(cenario.erro_da_carga)
             )
-        return {c: {"ok": 1} for c in chaves}
+        # o formato do `carregar` real: contagem de linhas por fonte (CEAP: despesas; emendas: emendas)
+        return {
+            c: ({"despesas": 1} if c == "ceap" else {"emendas": 1} if c == "emendas" else {"ok": 1}) for c in chaves
+        }
 
     cenario.publicados = {"camara": {2025}, "senado": set()}
     monkeypatch.setattr(atualizacao.financas_loader, "anos_publicados_da_ceap", lambda engine: cenario.publicados)
@@ -61,8 +64,8 @@ def test_extrai_com_o_cache_padrao_do_ano_inicial_ate_o_corrente_e_carrega_so_ce
     ]
     assert simulado.carga == [(engine, ("ceap", "emendas"))]  # remuneração, patrimônio... não mudam por dia
     assert resultado["carregadas"] == ["ceap", "emendas"] and resultado["carga"] == {
-        "ceap": {"ok": 1},
-        "emendas": {"ok": 1},
+        "ceap": {"despesas": 1},
+        "emendas": {"emendas": 1},
     }
 
 

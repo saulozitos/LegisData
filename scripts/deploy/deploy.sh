@@ -64,12 +64,14 @@ cd "$RAIZ"
 git fetch -q origin main
 # Numa reexecução o alvo é o da primeira execução: o script e o commit implantado não podem divergir.
 ALVO="${_LEGISDATA_DEPLOY_ALVO:-$(git rev-parse origin/main)}"
+[[ "$ALVO" =~ ^[0-9a-f]{40}$ ]] || { log "alvo inválido ($ALVO); abortando"; exit 1; }
 TAG="${ALVO:0:7}"
 ATUAL="$(cat "$ESTADO_DIR/ultimo_sha" 2>/dev/null || true)"
 # >>> mesmo_commit
 # Numa reexecução (a cópia instalada do script era outra) a primeira passada já decidiu e carimbou: herda a decisão em vez de
 # repetir o bloco, que veria o próprio carimbo recém-gravado e sairia sem fazer a tentativa.
 REPETICAO="${_LEGISDATA_DEPLOY_REPETICAO:-0}"
+[[ "$REPETICAO" =~ ^[01]$ ]] || REPETICAO=0 # vem do ambiente: nada além de 0 ou 1 entra em contexto aritmético
 if [[ -z "${_LEGISDATA_DEPLOY_REEXEC:-}" && "$ATUAL" == "$ALVO" ]]; then
   # mesmo commit: só há o que fazer se um pedido de atualização ficou parado ou se a carga pendente já pode repetir. O
   # dry-run não altera nada: não dispara o serviço nem mexe nas pendências.
@@ -202,14 +204,17 @@ um_comando() { # roda um comando Python no contêiner da imagem nova, na rede do
 # Decide como o deploy trata as finanças. A atualização diária (legisdata-financas.timer) deixa CEAP e emendas do `fin` mais
 # novas que os arquivos do git; recarregá-las do git apagaria as emendas novas (que voltariam com outro `uid`) e
 # devolveria a CEAP ao passado. Então o git só semeia o que o timer ainda não assumiu (ver "fontes_do_timer" abaixo).
-#   uso:   decidir_financas <commit anterior> <commit alvo> <t se o fin já tem CEAP e emendas> [pendências]
+#   uso:   decidir_financas <commit anterior> <commit alvo> <t se o fin tem CEAP> <t se o fin tem emendas> [pendências]
 #                           [t se o timer já carregou a CEAP] [t se o timer já carregou as emendas]
 #   Os dois últimos argumentos ausentes valem "t": quem esquecê-los cai no lado seguro (nunca semeia nem reescreve uma fonte
 #   do timer). O chamador real sempre os passa, começando em "f" e subindo para "t" conforme o banco responde.
+#   A tabela de semeadura (qual fonte o git semeia) é a de `carga_economica.modo_de_semeadura`; um teste compara as 16
+#   combinações.
 #   saída: "<modo> <refrescar>"
-#     modo "completa":    fin sem dados, ou nenhuma das duas fontes é do timer ainda: semeia tudo dos arquivos do git;
-#     modo "sem_emendas": só as emendas já são do timer: semeia a CEAP e as estáticas, sem tocar nas emendas;
-#     modo "sem_ceap":    só a CEAP já é do timer: semeia as emendas e as estáticas, sem tocar na CEAP;
+#     Uma fonte só fica fora da semeadura quando o fin tem dado dela E o timer a assumiu:
+#     modo "completa":    nenhuma das duas fontes está nesse caso: semeia tudo dos arquivos do git;
+#     modo "sem_emendas": só as emendas estão: semeia a CEAP e as estáticas, sem tocar nas emendas;
+#     modo "sem_ceap":    só a CEAP está: semeia as emendas e as estáticas, sem tocar na CEAP;
 #     modo "estaticas":   recarrega só remuneração, patrimônio, doações e certidões (um arquivo ou o código mudou);
 #     modo "nenhuma":     nada mudou, mantém o fin;
 #     refrescar 1:        o commit mudou a extração/carga de CEAP e emendas (ou o fin acabou de ser semeado do git): vale
@@ -220,8 +225,8 @@ um_comando() { # roda um comando Python no contêiner da imagem nova, na rede do
 #   tem o retrato do git, que é o dado mais novo que existe; semeia a fonte de novo para as regras de saneamento do commit
 #   chegarem ao fin.
 decidir_financas() {
-  local atual="$1" alvo="$2" tem_dados="$3" pendencias="${4:-}" ceap_do_timer="${5:-t}" emendas_do_timer="${6:-t}"
-  local modo="nenhuma" refrescar=0
+  local atual="$1" alvo="$2" tem_ceap="$3" tem_emendas="$4" pendencias="${5:-}" ceap_do_timer="${6:-t}" emendas_do_timer="${7:-t}"
+  local modo="nenhuma" refrescar=0 semear_ceap=1 semear_emendas=1
   local estaticas=(
     etl/data/processed/remuneracao_parlamentares.json etl/data/processed/declaracoes_patrimonio.json
     etl/data/processed/tse_doacoes_campanha.json etl/data/processed/certidoes_tse.json
@@ -234,19 +239,17 @@ decidir_financas() {
     etl/config.py etl/utils backend/alembic/versions scripts/deploy/atualizar_financas.sh
     scripts/systemd/legisdata-financas.service scripts/systemd/legisdata-financas.timer
   )
-  if [[ "$tem_dados" != "t" ]]; then
+  [[ "$tem_ceap" == t && "$ceap_do_timer" == t ]] && semear_ceap=0
+  [[ "$tem_emendas" == t && "$emendas_do_timer" == t ]] && semear_emendas=0
+  if ((semear_ceap && semear_emendas)); then
     echo "completa 1"
     return 0
   fi
-  if [[ "$ceap_do_timer" != "t" && "$emendas_do_timer" != "t" ]]; then
-    echo "completa 1"
-    return 0
-  fi
-  if [[ "$ceap_do_timer" != "t" ]]; then
+  if ((semear_ceap)); then
     echo "sem_emendas 1"
     return 0
   fi
-  if [[ "$emendas_do_timer" != "t" ]]; then
+  if ((semear_emendas)); then
     echo "sem_ceap 1"
     return 0
   fi
@@ -273,20 +276,22 @@ if [[ "$TEM_ECO" == "t" && -f "$RAIZ/etl/pipelines/carga_economica.py" ]]; then
   # Finanças só é tolerada se `fin` já tem dados: aí a API nova segue servindo o que já estava lá. No primeiro deploy
   # (fin recém-criado e vazio) uma falha da carga aborta antes do `compose up` e o contêiner antigo continua no ar.
   # Duas perguntas ao banco: tem CEAP e emendas completas (decide o modo) e tem ALGUM dado de finanças (decide a tolerância).
-  LEGISDATA_FIN_TEM_DADOS="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select exists(select 1 from fin.emenda) and exists(select 1 from fin.despesa_cota) and exists(select 1 from fin.despesa_cota_fornecedor) and exists(select 1 from fin.despesa_cota_resumo)")"
-  LEGISDATA_FIN_TEM_ALGUM_DADO="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select exists(select 1 from fin.emenda) or exists(select 1 from fin.despesa_cota) or exists(select 1 from fin.despesa_cota_fornecedor) or exists(select 1 from fin.despesa_cota_resumo)")"
-  export LEGISDATA_FIN_TEM_DADOS LEGISDATA_FIN_TEM_ALGUM_DADO
+  # Perguntas ao banco: a CEAP e as emendas têm dado (decidem o que semear), e algum dado de finanças existe (decide a tolerância).
+  TEM_CEAP="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select exists(select 1 from fin.despesa_cota) and exists(select 1 from fin.despesa_cota_fornecedor) and exists(select 1 from fin.despesa_cota_resumo)")"
+  TEM_EMENDAS="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select exists(select 1 from fin.emenda)")"
+  LEGISDATA_FIN_TEM_ALGUM_DADO="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select exists(select 1 from fin.despesa_cota) or exists(select 1 from fin.despesa_cota_fornecedor) or exists(select 1 from fin.despesa_cota_resumo) or exists(select 1 from fin.emenda)")"
+  export LEGISDATA_FIN_TEM_ALGUM_DADO
   PENDENCIAS="$(cat "$PENDENTE" 2>/dev/null || true)"
   # >>> fontes_do_timer
-  # a fonte é do timer se ele a CARREGOU no fin (linha em etl.execucao, gravada na transação da carga); sem a linha o fin só
-  # tem o retrato do git
-  FONTES_DO_TIMER="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select coalesce(string_agg(distinct parametros->>'fonte', ' '), '') from etl.execucao where estagio = 'CARREGAR' and status = 'OK' and parametros->>'fresca' = 'true'")"
+  # a fonte é do timer se a ÚLTIMA carga dela no fin veio de uma extração fresca (linha em etl.execucao, gravada na
+  # transação da carga; uma semeadura do git grava "fresca=false" e revoga); sem a linha o fin só tem o retrato do git
+  FONTES_DO_TIMER="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select coalesce(string_agg(carga, ' '), '') from (select distinct on (parametros->>'carga') parametros->>'carga' as carga, parametros->>'fresca' as fresca from etl.execucao where estagio = 'CARREGAR' and status = 'OK' and parametros->>'carga' is not null order by parametros->>'carga', id desc) t where fresca = 'true'")"
   CEAP_DO_TIMER=f
   EMENDAS_DO_TIMER=f
   [[ " $FONTES_DO_TIMER " == *" ceap "* ]] && CEAP_DO_TIMER=t
   [[ " $FONTES_DO_TIMER " == *" emendas "* ]] && EMENDAS_DO_TIMER=t
   # <<< fontes_do_timer
-  read -r LEGISDATA_FIN_MODO LEGISDATA_FIN_REFRESCAR < <(decidir_financas "$ATUAL" "$ALVO" "$LEGISDATA_FIN_TEM_DADOS" "$PENDENCIAS" "$CEAP_DO_TIMER" "$EMENDAS_DO_TIMER")
+  read -r LEGISDATA_FIN_MODO LEGISDATA_FIN_REFRESCAR < <(decidir_financas "$ATUAL" "$ALVO" "$TEM_CEAP" "$TEM_EMENDAS" "$PENDENCIAS" "$CEAP_DO_TIMER" "$EMENDAS_DO_TIMER")
   # >>> pos_decisao
   if [[ $REPETICAO -eq 1 ]]; then LEGISDATA_FIN_REFRESCAR=0; fi # repetir a carga não repete o pedido de atualização
   # <<< pos_decisao
@@ -301,10 +306,11 @@ if [[ "$TEM_ECO" == "t" && -f "$RAIZ/etl/pipelines/carga_economica.py" ]]; then
   SAIDA_CARGA="$(um_comando python -c "
 import os
 from app.core.database import engine
-from etl.pipelines.carga_economica import TOLERADAS_NO_DEPLOY, carregar_tudo, chaves_do_modo, falhas_toleradas
+from etl.pipelines.carga_economica import TOLERADAS_NO_DEPLOY, carregar_tudo, falhas_toleradas, plano_do_modo
+from etl.pipelines.financas_loader import registrar_carga_do_git
 toleradas = TOLERADAS_NO_DEPLOY if os.environ.get('LEGISDATA_FIN_TEM_ALGUM_DADO') == 't' else ()
-chaves = chaves_do_modo(os.environ.get('LEGISDATA_FIN_MODO', 'nenhuma'))
-resultados = carregar_tudo(engine, chaves=chaves, toleradas=toleradas)
+plano = plano_do_modo(os.environ.get('LEGISDATA_FIN_MODO', 'nenhuma'))
+resultados = carregar_tudo(engine, toleradas=toleradas, ao_confirmar=registrar_carga_do_git, **plano)
 for chave, resultado in resultados.items():
     print(chave, resultado)
 for chave in falhas_toleradas(resultados):

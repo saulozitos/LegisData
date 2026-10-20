@@ -487,7 +487,7 @@ def so_digitos(valor: Any) -> str:
 
 def cpf_valido(digitos: str) -> bool:
     """11 dígitos com os dois dígitos verificadores de um CPF (e não todos iguais)."""
-    if len(digitos) != 11 or not digitos.isdigit() or len(set(digitos)) == 1:
+    if len(digitos) != 11 or not (digitos.isascii() and digitos.isdigit()) or len(set(digitos)) == 1:
         return False
     for tamanho in (9, 10):
         soma = sum(int(d) * peso for d, peso in zip(digitos[:tamanho], range(tamanho + 1, 1, -1)))
@@ -498,7 +498,7 @@ def cpf_valido(digitos: str) -> bool:
 
 def cnpj_dv_valido(digitos: str) -> bool:
     """14 dígitos com os dois dígitos verificadores de um CNPJ (e não todos iguais)."""
-    if len(digitos) != 14 or not digitos.isdigit() or len(set(digitos)) == 1:
+    if len(digitos) != 14 or not (digitos.isascii() and digitos.isdigit()) or len(set(digitos)) == 1:
         return False
     for tamanho, pesos in ((12, (5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2)), (13, (6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2))):
         resto = sum(int(d) * p for d, p in zip(digitos[:tamanho], pesos)) % 11
@@ -507,29 +507,50 @@ def cnpj_dv_valido(digitos: str) -> bool:
     return True
 
 
-def cpf_com_zeros(digitos: str) -> bool:
+# Raízes (8 primeiros dígitos) de CNPJs reais que começam com zeros e que, por acaso, também fecham como "000"+CPF. Medidas nos
+# dados versionados (Banco do Brasil e dois doadores pessoa jurídica). Só elas escapam da regra "000+CPF é CPF"; qualquer
+# outro número de 14 dígitos com enchimento e CPF válido nos 11 últimos é tratado como CPF, mesmo que feche como CNPJ
+# (cerca de 1,4% dos CPFs com enchimento "000" fecham o CNPJ por acaso: perder um CNPJ raro é o lado seguro da D3).
+RAIZES_ZERADAS_CONHECIDAS = frozenset({"00000000", "00000531", "00070509"})
+_MARCADOR_DE_PJ = re.compile(
+    r"\b(?:LTDA|EIRELI|EPP|ME|S/?A|S\.A\.?|BANCO|COOPERATIVA|ASSOCIA[CÇ][AÃ]O|FUNDA[CÇ][AÃ]O|PARTIDO|CIA|COMPANHIA|"
+    r"EMPRESA|COM[EÉ]RCIO|IND[UÚ]STRIA|COMERCIAL)\b",
+    re.IGNORECASE,
+)
+
+
+def nome_de_pj(nome: Any) -> bool:
+    """True se o nome traz um marcador de pessoa jurídica (LTDA, S/A, BANCO...): desempata um documento ambíguo."""
+    return bool(_MARCADOR_DE_PJ.search(_ascii(texto(nome)))) if nome is not None else False
+
+
+def cpf_com_zeros(digitos: str, pj: bool = False) -> bool:
     """
     CPF válido nos 11 últimos dígitos com zeros de enchimento à esquerda (0 a quantos forem). Com exatamente 14 dígitos o
-    número também pode ser um CNPJ de raiz zerada (o do Banco do Brasil, por exemplo, passa nos dígitos verificadores de
-    CPF por acaso): se o CNPJ fecha, é CNPJ e não é tocado.
+    número também pode ser um CNPJ de raiz zerada. Ele só é CNPJ (e não é tocado) se fecha nos dígitos verificadores de
+    CNPJ E (a raiz é uma das conhecidas, ou `pj` diz que o nome é de pessoa jurídica). Fecha como CNPJ mas sem nada que
+    o confirme: é tratado como CPF.
     """
     if len(digitos) < 11 or not set(digitos[:-11]) <= {"0"} or not cpf_valido(digitos[-11:]):
         return False
-    return not (len(digitos) == 14 and cnpj_dv_valido(digitos))
+    if len(digitos) == 14 and cnpj_dv_valido(digitos) and (pj or digitos[:8] in RAIZES_ZERADAS_CONHECIDAS):
+        return False
+    return True
 
 
-def cnpj_do_fornecedor(valor: Any) -> Optional[str]:
+def cnpj_do_fornecedor(valor: Any, nome: Any = None) -> Optional[str]:
     """
     Os 14 dígitos de um CNPJ. CPF (11 dígitos), documento truncado, CPF com enchimento de zeros à esquerda (três zeros
     mais um CPF de 11 dígitos, desde que o número não feche como CNPJ) e o CNPJ de enchimento que a Câmara usa para
     lançamentos sem fornecedor ("CELULAR FUNCIONAL", "RAMAL") viram None: CPF nunca é gravado (decisão D3). Não exige que
     o dígito verificador do CNPJ feche (os dados de teste e parte da fonte têm CNPJs que não fecham); só barra o que é
-    comprovadamente um CPF.
+    comprovadamente um CPF. `nome` (opcional) desempata o 14 dígitos que fecha como CNPJ: com marcador de pessoa jurídica
+    no nome (LTDA, S/A, BANCO...) ele é CNPJ; sem isso, só as raízes zeradas conhecidas escapam.
     """
     digitos = so_digitos(valor)
     if len(digitos) != 14 or digitos[:12] == "0" * 12:
         return None
-    if cpf_com_zeros(digitos):
+    if cpf_com_zeros(digitos, pj=nome_de_pj(nome)):
         return None
     return digitos
 
@@ -607,9 +628,37 @@ def _tira_cpf_valido_separado(achado: "re.Match[str]") -> str:
 
 
 def cpfs_validos_em(valor: Any) -> int:
-    """Quantos CPFs válidos o texto carrega, nas mesmas formas que o saneamento remove (`nome_sem_cpf`). Para os testes de D3."""
+    """Quantos CPFs válidos o texto carrega, nas formas de separador que o saneamento (`nome_sem_cpf`) remove."""
     normal = _ascii(texto(valor))
     return sum(1 for achado in _DIGITOS_SEPARADOS.finditer(normal) if _digitos_de_cpf(achado.group(0)))
+
+
+_CORRIDOS_12_A_14 = re.compile(r"(?<![0-9])[0-9]{12,14}(?![0-9])")
+_CNPJ_FORMATADO_RE = re.compile(_CNPJ_FORMATADO)
+
+
+_URL = re.compile(r"https?://\S+")
+
+
+def cpfs_suspeitos_em(valor: Any, janelas: bool = True) -> int:
+    """
+    Para a guarda de D3 dos arquivos versionados, que precisa ser mais desconfiada que o saneamento: além de
+    `cpfs_validos_em`, conta o CNPJ formatado que é "000"+CPF e qualquer janela de 11 dígitos com CPF válido dentro de um
+    número corrido de 12 a 14 dígitos (um CPF colado a outros dígitos), exceto o de 14 que fecha como CNPJ. As janelas
+    (`janelas=True`) valem para código escrito à mão; em dados (JSON/CSV/docs) códigos de emenda e de processo somam 12 a 14
+    dígitos e dariam falso positivo, então a guarda as desliga ali. Endereços (URLs) não entram nas janelas.
+    """
+    normal = _ascii(texto(valor))
+    achados = cpfs_validos_em(valor)
+    achados += sum(1 for m in _CNPJ_FORMATADO_RE.finditer(normal) if cpf_com_zeros(so_digitos(m.group("cnpj"))))
+    if not janelas:
+        return achados
+    for m in _CORRIDOS_12_A_14.finditer(_URL.sub(" ", normal)):
+        d = m.group(0)
+        if len(d) == 14 and cnpj_dv_valido(d):
+            continue
+        achados += any(cpf_valido(d[i : i + 11]) for i in range(len(d) - 10))
+    return achados
 
 
 def nome_sem_cpf(valor: Any) -> Optional[str]:
@@ -641,7 +690,9 @@ _CASA_DECIMAL = re.compile(r",[0-9]{1,2}(?![0-9])")
 def _tira_cpf_do_texto(achado: "re.Match[str]") -> str:
     if achado.group("canon"):
         return " "
-    if achado.group("moeda") or achado.group("cnpj"):
+    if achado.group("cnpj"):  # CNPJ formatado fica, salvo se for um CPF com zeros de enchimento
+        return " " if cpf_com_zeros(so_digitos(achado.group("cnpj"))) else achado.group(0)
+    if achado.group("moeda"):
         return achado.group(0)
     # só dígitos corridos seguidos de vírgula e 1 ou 2 dígitos são valor em reais; com separadores entre os grupos não
     if achado.group(0).isdigit() and _CASA_DECIMAL.match(achado.string, achado.end()):
@@ -682,7 +733,7 @@ def documento_do_doador(valor: Any) -> Optional[str]:
     if _MASCARA_CPF.fullmatch(mascara):
         return mascara
     if _CNPJ_CANONICO.fullmatch(bruto):
-        return bruto
+        return None if cpf_com_zeros(so_digitos(bruto)) else bruto  # CPF com enchimento na coluna de CNPJ não passa
     if "*" in bruto:
         return None
     digitos = so_digitos(bruto)
@@ -912,7 +963,8 @@ def fornecedores_do_parlamentar(dados: Dict[str, Any]) -> List[Dict[str, Any]]:
         valor_dec = decimal_de(item.get("total"))
         if valor_dec is None:
             continue
-        nome, cnpj = nome_do_fornecedor(item.get("nome")), cnpj_do_fornecedor(item.get("cnpj_cpf"))
+        nome = nome_do_fornecedor(item.get("nome"))
+        cnpj = cnpj_do_fornecedor(item.get("cnpj_cpf"), nome)
         notas = contagem_int4(item.get("notas"))
         grupo = grupo_do_fornecedor(cnpj, nome)
         # `maior` é o maior valor de uma única grafia: o nome mostrado é o dela, e no empate vale o nome (não a ordem)

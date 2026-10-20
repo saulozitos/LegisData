@@ -151,10 +151,12 @@ def _ceap_emendas(ano_inicio: int, usar_cache: bool = True):
 
     # o mesmo cache por ano e a mesma proteção do começo do ano da atualização diária (os anos já carregados vêm do `fin`;
     # sem banco, vale só o arquivo processado)
+    # --no-cache baixa tudo de novo, mas continua gravando o cache e mantém a reserva do cache vencido
     resumo = run(
         ano_inicio=ano_inicio,
-        cache_dir=CACHE_DIR if usar_cache else None,
+        cache_dir=CACHE_DIR,
         anos_publicados=_anos_ja_carregados_ou_none(),
+        ignorar_cache=not usar_cache,
     )
     if fontes_nao_gravadas(resumo):
         raise RuntimeError(f"CEAP/emendas não gravadas (arquivos anteriores preservados): {resumo}")
@@ -254,20 +256,20 @@ def _remuneracao(no_cache: bool):
 
 
 def _load_economia(recarregar_ceap_e_emendas: bool = False, extracao_fresca: bool = False):
+    from functools import partial
+
     from etl.utils.bootstrap import ensure_backend_on_path
 
     ensure_backend_on_path()
     from app.core.database import engine
 
     from etl.pipelines.carga_economica import CARGAS, carregar_tudo
+    from etl.pipelines.financas_loader import registrar_carga_do_git, registrar_carga_fresca
 
-    resultados = carregar_tudo(engine, recarregar_ceap_e_emendas=recarregar_ceap_e_emendas)
-    if extracao_fresca:
-        # CEAP e emendas vieram de uma extração desta execução: o `fin` passa a ter dado mais novo que o git, e o deploy
-        # precisa saber (ele não semeia de novo uma fonte que já é fresca)
-        from etl.pipelines.financas_loader import registrar_fontes_frescas
-
-        registrar_fontes_frescas(engine, ("ceap", "emendas"), "run_etl")
+    # A carga de cada fonte das finanças registra, na própria transação, de onde veio o dado: extração fresca desta execução
+    # (o `fin` passa a ter dado mais novo que o git e o deploy não semeia de novo essa fonte) ou o retrato do git.
+    hook = partial(registrar_carga_fresca, origem="run_etl") if extracao_fresca else registrar_carga_do_git
+    resultados = carregar_tudo(engine, recarregar_ceap_e_emendas=recarregar_ceap_e_emendas, ao_confirmar=hook)
     nomes = {chave: nome for chave, nome, _, _ in CARGAS}
     for chave, resultado in resultados.items():
         print(f"    {nomes[chave]}:", resultado)

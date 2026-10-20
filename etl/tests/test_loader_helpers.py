@@ -277,3 +277,60 @@ def test_texto_sem_cpf_tem_contrato_mais_frouxo_que_o_do_nome():
 
     assert "Contrato" in texto_sem_cpf.__doc__ and "nome_sem_cpf" in texto_sem_cpf.__doc__
     assert nome_sem_cpf(f"X {CPF_A[:4]} {CPF_A[4:8]} {CPF_A[8:]}") == "X"
+
+
+@pytest.mark.parametrize("digitos", ["²" * 11, "١٢٣٤٥٦٧٨٩٠١", "１２３４５６７８９０１", "abcdefghijk"])
+def test_cpf_valido_e_cnpj_dv_valido_nao_levantam_com_digitos_que_nao_sao_ascii(digitos):
+    from etl.pipelines.loader_helpers import cnpj_dv_valido, cpf_valido
+
+    assert cpf_valido(digitos) is False and cnpj_dv_valido(digitos + "123") is False
+
+
+@pytest.mark.parametrize(
+    "raiz", sorted(__import__("etl.pipelines.loader_helpers", fromlist=["x"]).RAIZES_ZERADAS_CONHECIDAS)
+)
+def test_as_raizes_zeradas_conhecidas_existem_nos_dados_versionados_ou_sao_a_do_banco_do_brasil(raiz):
+    """A allowlist não pode acumular raízes sem origem: toda raiz é a do BB ou aparece num arquivo de dados versionado."""
+
+    from etl.config import PROCESSED_DATA_DIR
+
+    if raiz == "00000000":
+        return
+    texto = (PROCESSED_DATA_DIR / "tse_doacoes_campanha.json").read_text(encoding="utf-8")
+    assert f"{raiz[:2]}.{raiz[2:5]}.{raiz[5:8]}" in texto or raiz in texto, raiz
+
+
+@pytest.mark.parametrize(
+    "nome, eh_pj",
+    [
+        ("BANCO DO BRASIL S.A.", True),
+        ("EMPRESA X LTDA", True),
+        ("JOAO DA SILVA ME", True),
+        ("JOAO DA SILVA", False),
+        (None, False),
+        ("", False),
+    ],
+)
+def test_marcador_de_pessoa_juridica_no_nome(nome, eh_pj):
+    from etl.pipelines.loader_helpers import nome_de_pj
+
+    assert nome_de_pj(nome) is eh_pj
+
+
+def test_zero_mais_cpf_que_fecha_como_cnpj_so_e_cnpj_com_raiz_conhecida_ou_nome_de_pj():
+    """Cerca de 1,4% dos CPFs com enchimento '000' fecham o CNPJ por acaso: sem confirmação, valem como CPF (None)."""
+    from etl.pipelines.loader_helpers import cnpj_do_fornecedor, cnpj_dv_valido, cpf_com_zeros
+
+    achado = None
+    for base in range(123456789, 123456789 + 40000 * 7919, 7919):
+        d = "000" + __import__("etl.tests.sinteticos", fromlist=["x"]).cpf_com_digitos(str(base))
+        if (
+            cnpj_dv_valido(d)
+            and d[:8] not in __import__("etl.pipelines.loader_helpers", fromlist=["x"]).RAIZES_ZERADAS_CONHECIDAS
+        ):
+            achado = d
+            break
+    assert achado, "esperava ao menos um CPF sintético com enchimento que também fecha como CNPJ"
+    assert cpf_com_zeros(achado) is True and cnpj_do_fornecedor(achado) is None  # sem confirmação: é CPF
+    assert cnpj_do_fornecedor(achado, "FORNECEDOR EXEMPLO LTDA") == achado  # com marcador de PJ no nome: é CNPJ
+    assert cnpj_do_fornecedor(achado, "JOAO DA SILVA") is None
