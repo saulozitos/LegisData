@@ -496,17 +496,40 @@ def cpf_valido(digitos: str) -> bool:
     return True
 
 
+def cnpj_dv_valido(digitos: str) -> bool:
+    """14 dígitos com os dois dígitos verificadores de um CNPJ (e não todos iguais)."""
+    if len(digitos) != 14 or not digitos.isdigit() or len(set(digitos)) == 1:
+        return False
+    for tamanho, pesos in ((12, (5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2)), (13, (6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2))):
+        resto = sum(int(d) * p for d, p in zip(digitos[:tamanho], pesos)) % 11
+        if int(digitos[tamanho]) != (0 if resto < 2 else 11 - resto):
+            return False
+    return True
+
+
+def cpf_com_zeros(digitos: str) -> bool:
+    """
+    CPF válido nos 11 últimos dígitos com zeros de enchimento à esquerda (0 a quantos forem). Com exatamente 14 dígitos o
+    número também pode ser um CNPJ de raiz zerada (o do Banco do Brasil, por exemplo, passa nos dígitos verificadores de
+    CPF por acaso): se o CNPJ fecha, é CNPJ e não é tocado.
+    """
+    if len(digitos) < 11 or not set(digitos[:-11]) <= {"0"} or not cpf_valido(digitos[-11:]):
+        return False
+    return not (len(digitos) == 14 and cnpj_dv_valido(digitos))
+
+
 def cnpj_do_fornecedor(valor: Any) -> Optional[str]:
     """
-    Os 14 dígitos de um CNPJ. CPF (11 dígitos), documento truncado, CPF com enchimento de zeros à esquerda
-    (os três zeros de enchimento mais um CPF de 11 dígitos) e o CNPJ de enchimento que a Câmara usa para lançamentos sem fornecedor ("CELULAR FUNCIONAL",
-    "RAMAL") viram None: CPF nunca é gravado (decisão D3). Não confere o dígito verificador do CNPJ (os dados de teste e
-    parte da fonte têm CNPJs que não fecham); só barra o que é comprovadamente um CPF.
+    Os 14 dígitos de um CNPJ. CPF (11 dígitos), documento truncado, CPF com enchimento de zeros à esquerda (três zeros
+    mais um CPF de 11 dígitos, desde que o número não feche como CNPJ) e o CNPJ de enchimento que a Câmara usa para
+    lançamentos sem fornecedor ("CELULAR FUNCIONAL", "RAMAL") viram None: CPF nunca é gravado (decisão D3). Não exige que
+    o dígito verificador do CNPJ feche (os dados de teste e parte da fonte têm CNPJs que não fecham); só barra o que é
+    comprovadamente um CPF.
     """
     digitos = so_digitos(valor)
     if len(digitos) != 14 or digitos[:12] == "0" * 12:
         return None
-    if digitos[:3] == "000" and cpf_valido(digitos[3:]):
+    if cpf_com_zeros(digitos):
         return None
     return digitos
 
@@ -541,7 +564,9 @@ def _ascii(valor: Any) -> str:
 
 
 def _sem_cpf(achado: "re.Match[str]") -> str:
-    return achado.group(0) if achado.group("cnpj") else " "
+    if achado.group("cnpj"):  # CNPJ formatado fica, salvo se for um CPF com zeros de enchimento (que o CNPJ não fecha)
+        return " " if cpf_com_zeros(so_digitos(achado.group("cnpj"))) else achado.group(0)
+    return " "
 
 
 def nome_do_fornecedor(valor: Any) -> str:
@@ -564,19 +589,17 @@ def _tira_documento_pessoal(achado: "re.Match[str]") -> str:
     return " " if total in (11, 12) and not so_anos else achado.group(0)
 
 
-# Qualquer sequência de dígitos com separadores quaisquer entre os grupos ("5299 8224 725", "52  998  224  725",
-# "5 2 9 9 8 2 2 4 7 2 5", "000 529 982 24725"). Só sai quando é comprovadamente um CPF: os 11 últimos dígitos passam nos
-# dígitos verificadores e o que vem antes são só zeros de enchimento (em qualquer quantidade). Sequência com "/" (CNPJ
-# formatado) ou com vírgula (valor em reais) nunca é tocada. Linear: dígitos e separadores são classes disjuntas.
-_DIGITOS_SEPARADOS = re.compile(r"(?<![0-9])[0-9]+(?:[\W_]+[0-9]+)*(?![0-9])")
+# Qualquer sequência de dígitos com separadores entre os grupos (agrupamentos 4-4-3 ou 2-3-3-3, um dígito por espaço,
+# separador largo, zeros de enchimento antes). Só sai quando é comprovadamente um CPF: os 11 últimos dígitos passam nos
+# dígitos verificadores e o que vem antes são só zeros de enchimento. Vírgula e barra NÃO são separador: cada lado delas
+# é avaliado sozinho (um CPF seguido de ", 2" ou de " / 2024" não escapa), e o CNPJ formatado e o valor em reais ficam
+# inteiros porque nenhum de seus lados soma 11 dígitos. Linear: dígitos e separadores são classes disjuntas.
+_DIGITOS_SEPARADOS = re.compile(r"(?<![0-9])[0-9]+(?:(?:[^\w,/]|_)+[0-9]+)*(?![0-9])")
 
 
 def _digitos_de_cpf(bruto: str) -> bool:
     """True se a sequência (com separadores) é um CPF válido, com ou sem zeros de enchimento à esquerda."""
-    if "/" in bruto or "," in bruto:
-        return False
-    digitos = re.sub(r"[^0-9]", "", bruto)
-    return len(digitos) >= 11 and set(digitos[:-11]) <= {"0"} and cpf_valido(digitos[-11:])
+    return cpf_com_zeros(re.sub(r"[^0-9]", "", bruto))
 
 
 def _tira_cpf_valido_separado(achado: "re.Match[str]") -> str:
@@ -627,7 +650,12 @@ def _tira_cpf_do_texto(achado: "re.Match[str]") -> str:
 
 
 def texto_sem_cpf(valor: Any) -> Optional[str]:
-    """Texto livre da fonte sem CPF embutido (decisão D3); None quando não sobra nada."""
+    """
+    Texto livre da fonte sem CPF embutido (decisão D3); None quando não sobra nada. Contrato: só as formas do desenho
+    3-3-3-2 (e dez dígitos corridos) saem, preservando valores em reais; é mais frouxo que `nome_sem_cpf`, que também
+    tira o CPF comprovado por dígito verificador em qualquer agrupamento. Campo livre que pode trazer documento solto
+    (nome de pessoa, razão social) deve passar por `nome_sem_cpf`.
+    """
     bruto = texto(valor)
     if bruto is None:
         return None

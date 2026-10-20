@@ -34,7 +34,7 @@ def _posicao(texto, padrao):
 
 def test_deploy_se_atualiza_antes_de_tocar_no_banco():
     texto = (RAIZ / "scripts" / "deploy" / "deploy.sh").read_text(encoding="utf-8")
-    reexecucao = _posicao(texto, r"^\s*_LEGISDATA_DEPLOY_REEXEC=1 _LEGISDATA_DEPLOY_ALVO=\"\$ALVO\" exec ")
+    reexecucao = _posicao(texto, r"^\s*_LEGISDATA_DEPLOY_REEXEC=1 _LEGISDATA_DEPLOY_ALVO=\"\$ALVO\" .*exec ")
     assert reexecucao < _posicao(texto, r"docker exec politica_postgres pg_dump ")
     assert _posicao(texto, r"bash -n ") < reexecucao  # script novo com erro de sintaxe nunca é instalado
 
@@ -57,7 +57,7 @@ def test_umask_restrito_nao_vaza_para_o_merge():
 def test_deploy_usa_o_mesmo_alvo_na_reexecucao_e_no_merge():
     texto = (RAIZ / "scripts" / "deploy" / "deploy.sh").read_text(encoding="utf-8")
     assert re.search(r'^ALVO="\$\{_LEGISDATA_DEPLOY_ALVO:-', texto, re.MULTILINE)
-    assert re.search(r'_LEGISDATA_DEPLOY_ALVO="\$ALVO" exec ', texto)
+    assert re.search(r'_LEGISDATA_DEPLOY_ALVO="\$ALVO" .*exec ', texto)
     assert re.search(r'^git merge --ff-only -q "\$ALVO"', texto, re.MULTILINE)
 
 
@@ -90,7 +90,12 @@ def _bloco(texto, nome):
 def _ambiente_limpo(**mudancas):
     """O ambiente do processo sem variáveis do git (o teste pode rodar dentro de um hook) e sem a configuração global."""
     # sem GIT_* (o teste pode rodar dentro de um hook) nem POSTGRES_* (outro teste da suíte pode exportá-las)
-    base = {k: v for k, v in os.environ.items() if not k.startswith(("GIT_", "POSTGRES_"))}
+    ruido = ("GIT_", "POSTGRES_", "_LEGISDATA_", "LEGISDATA_", "DEPLOY_")
+    base = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith(ruido) and k not in ("INTERVALO_DA_CARGA", "DRY_RUN", "ESTADO_DIR")
+    }
     return {**base, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", **mudancas}
 
 
@@ -337,34 +342,61 @@ def test_fin_sem_dados_vence_qualquer_marcador_e_sem_marcadores_com_dados_semeia
     )
 
 
-def test_os_marcadores_do_deploy_sao_os_que_a_atualizacao_diaria_grava(tmp_path):
-    """O deploy procura `etl/data/.financas_<fonte>_carregada`; o Python grava com `MARCADOR_DA_FONTE`."""
-    from etl.config import DATA_DIR, MARCADOR_DA_FONTE
-    from etl.pipelines.financas_atualizacao import marcar_fontes_carregadas
+def test_a_consulta_das_fontes_do_timer_do_deploy_e_a_do_python():
+    from etl.pipelines.financas_loader import SQL_FONTES_DO_TIMER
 
-    marcar_fontes_carregadas(["ceap", "emendas"], tmp_path)
-    gravados = sorted(p.name for p in tmp_path.iterdir())
-    texto = _texto(DEPLOY_SH)
-    for fonte, nome in zip(("ceap", "emendas"), gravados):
-        assert nome == MARCADOR_DA_FONTE.format(fonte=fonte) and f'"$RAIZ/etl/data/{nome}"' in texto
-    assert DATA_DIR.name == "data"  # etl/data, a pasta que o contêiner do timer grava
+    assert f'-tAc "{SQL_FONTES_DO_TIMER}"' in _texto(DEPLOY_SH)
 
 
 @SEM_BASH
-def test_o_deploy_deriva_os_dois_marcadores_com_bash_real(tmp_path):
-    texto = _texto(DEPLOY_SH)
-    trecho = texto[_posicao(texto, r"^  CEAP_DO_TIMER=f") : _posicao(texto, r"^  read -r LEGISDATA_FIN_MODO")]
-    (tmp_path / "etl" / "data").mkdir(parents=True)
-    saidas = []
-    for criar in ([], ["ceap"], ["emendas"], ["ceap", "emendas"]):
-        for f in (tmp_path / "etl" / "data").glob(".financas_*"):
-            f.unlink()
-        for fonte in criar:
-            (tmp_path / "etl" / "data" / f".financas_{fonte}_carregada").touch()
-        resposta = _bash(f'RAIZ="{tmp_path}"\n{trecho}\necho "$CEAP_DO_TIMER $EMENDAS_DO_TIMER"')
-        assert resposta.returncode == 0, resposta.stderr
-        saidas.append(resposta.stdout.strip())
-    assert saidas == ["f f", "t f", "f t", "t t"]
+@pytest.mark.parametrize(
+    "resposta_do_banco, esperado",
+    [("", "f f"), ("ceap", "t f"), ("emendas", "f t"), ("ceap emendas", "t t"), ("emendas_velhas ceapx", "f f")],
+)
+def test_o_deploy_deriva_as_fontes_do_timer_da_resposta_do_banco(tmp_path, resposta_do_banco, esperado):
+    """A resposta do `psql` (nomes separados por espaço) vira as duas flags; só a palavra inteira conta."""
+    falsos = tmp_path / "bin"
+    falsos.mkdir()
+    (falsos / "docker").write_text(f"#!/usr/bin/env bash\necho '{resposta_do_banco}'\n")
+    (falsos / "docker").chmod(0o755)
+    script = (
+        "PG_USER=u PG_DB=d\n"
+        + _bloco(_texto(DEPLOY_SH), "fontes_do_timer")
+        + '\necho "$CEAP_DO_TIMER $EMENDAS_DO_TIMER"'
+    )
+    resposta = _bash(script, env={"PATH": f"{falsos}:{os.environ['PATH']}"})
+    assert resposta.returncode == 0, resposta.stderr
+    assert resposta.stdout.strip() == esperado
+
+
+@SEM_BASH
+@pytest.mark.parametrize("repeticao, refrescar, esperado", [(1, "1", "0"), (0, "1", "1"), (1, "0", "0"), (0, "0", "0")])
+def test_repetir_a_carga_nao_repete_o_pedido_de_atualizacao(repeticao, refrescar, esperado):
+    script = f"REPETICAO={repeticao}\nLEGISDATA_FIN_REFRESCAR={refrescar}\n{_bloco(_texto(DEPLOY_SH), 'pos_decisao')}\necho $LEGISDATA_FIN_REFRESCAR"
+    assert _bash(script).stdout.strip() == esperado
+
+
+@SEM_BASH
+def test_todo_modo_que_a_decisao_pode_emitir_existe_no_mapa_de_modos(repo_de_decisao):
+    """Um modo digitado errado no bash só apareceria em produção: percorre todas as combinações de entrada."""
+    from etl.pipelines.carga_economica import FINANCAS_POR_MODO
+
+    emitidos = set()
+    for tem_dados in ("t", "f"):
+        for pendencias in ("", "carga", "refrescar", "carga\nrefrescar"):
+            for ceap in ("t", "f"):
+                for emendas in ("t", "f"):
+                    saida = _decidir(
+                        repo_de_decisao,
+                        {"docs/leia-me.md": f"{tem_dados}{pendencias}{ceap}{emendas}"},
+                        tem_dados=tem_dados,
+                        pendencias=pendencias,
+                        ceap_timer=ceap,
+                        emendas_timer=emendas,
+                    )
+                    emitidos.add(saida.split()[0])
+    assert emitidos <= set(FINANCAS_POR_MODO)  # nenhum modo fora do mapa
+    assert emitidos == {"completa", "sem_emendas", "sem_ceap", "nenhuma", "estaticas"}  # e todos aparecem
 
 
 @SEM_BASH
@@ -755,7 +787,8 @@ def _fake_systemctl(tmp_path, existe=True, start_rc=0):
     falsos.mkdir(exist_ok=True)
     (falsos / "systemctl").write_text(
         '#!/usr/bin/env bash\necho "$*" >>"$REGISTRO/systemctl.log"\n'
-        # só a unit das finanças existe (e só ela inicia): um nome digitado errado no script não passa
+        # só a unit das finanças, do usuário, existe (e só ela inicia): nome ou escopo errado no script não passa
+        '[[ "$1" == --user ]] || exit 9\n'
         f'case "$2 $3" in "cat legisdata-financas.service") exit {0 if existe else 1} ;; '
         f'"start --no-block") [[ "$4" == legisdata-financas.service ]] && exit {start_rc} || exit 9 ;; esac\nexit 1\n'
     )
@@ -939,8 +972,9 @@ def test_mesmo_commit_com_carga_pendente_vencida_segue_carimba_a_tentativa_e_nao
 def test_mesmo_commit_com_carga_dentro_do_intervalo_sai(tmp_path):
     import time
 
-    saida, _, carimbo, _ = _mesmo_commit(tmp_path, pendente="carga\n", tentada=int(time.time()))
-    assert "SEGUIU" not in saida and int(carimbo) <= time.time()
+    agora = int(time.time())
+    saida, _, carimbo, _ = _mesmo_commit(tmp_path, pendente="carga\n", tentada=agora)
+    assert "SEGUIU" not in saida and carimbo == str(agora)  # sai sem regravar o carimbo
 
 
 @SEM_BASH
@@ -1195,3 +1229,41 @@ def test_o_preambulo_do_arquivo_de_ambiente_e_o_mesmo_nos_dois_scripts():
     ]
     for trecho in comum:
         assert trecho in deploy and trecho in financas, trecho
+
+
+@SEM_BASH
+def test_na_reexecucao_o_bloco_herda_a_decisao_em_vez_de_ver_o_proprio_carimbo(tmp_path):
+    """A 1ª passada decidiu repetir e carimbou; a cópia reexecutada herda `REPETICAO=1` e segue."""
+    estado = tmp_path / "estado"
+    estado.mkdir()
+    (estado / "financas_pendente").write_text("carga\n")
+    import time
+
+    (estado / "financas_carga_tentada").write_text(str(int(time.time())))  # carimbado agora, pela 1ª passada
+    texto = _texto(DEPLOY_SH)
+    script = (
+        f'ESTADO_DIR="{estado}"\nlog() {{ echo "LOG: $*"; }}\nDRY_RUN=0\nATUAL=abc\nALVO=abc\n'
+        f'{_bloco(texto, "pendencias")}\n{_bloco(texto, "mesmo_commit")}\necho "SEGUIU REPETICAO=$REPETICAO"'
+    )
+    reexecucao = _bash(script, env={"_LEGISDATA_DEPLOY_REEXEC": "1", "_LEGISDATA_DEPLOY_REPETICAO": "1"})
+    assert "SEGUIU REPETICAO=1" in reexecucao.stdout
+    primeira = _bash(script)  # sem as variáveis de reexecução: vê o carimbo de agora e sai
+    assert "SEGUIU" not in primeira.stdout
+    assert 'REEXEC=1 _LEGISDATA_DEPLOY_ALVO="$ALVO" _LEGISDATA_DEPLOY_REPETICAO="$REPETICAO" exec' in texto
+
+
+def test_instalador_avisa_quando_o_deploy_instalado_nao_traz_o_bloco_de_pendencias():
+    texto = _texto(INSTALAR_SH)
+    assert "declare -F pendente_tem" in texto and "não traz o bloco de pendências" in texto
+
+
+@SEM_BASH
+def test_sem_os_argumentos_dos_marcadores_a_decisao_cai_no_lado_seguro_e_nunca_semeia(repo_de_decisao):
+    """Quem chamar `decidir_financas` só com 3 ou 4 argumentos recebe o comportamento que não reescreve fonte do timer."""
+    (repo_de_decisao / "docs" / "leia-me.md").write_text("zzz")
+    _git(repo_de_decisao, "add", "-A")
+    _git(repo_de_decisao, "commit", "-q", "-m", "x")
+    funcao = _bloco(_texto(DEPLOY_SH), "decidir_financas")
+    for chamada in ('"HEAD~1" HEAD t', '"HEAD~1" HEAD t ""'):
+        resposta = _bash(f"{funcao}\ndecidir_financas {chamada}", cwd=repo_de_decisao)
+        assert resposta.stdout.strip() == "nenhuma 0", chamada

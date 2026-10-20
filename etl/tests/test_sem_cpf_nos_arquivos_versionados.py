@@ -1,7 +1,10 @@
 """D3: nenhum arquivo versionado pode carregar CPF (nem em texto, nem como chave, nem como número solto de campo de documento)."""
 
+import csv
 import gzip
+import io
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -26,24 +29,38 @@ EXTENSOES = {
     ".ini",
     ".service",
     ".timer",
+    *(".js", ".jsx", ".ts", ".tsx", ".css", ".html", ".cfg", ".mjs", ".example", ".env", ".ipynb"),
 }
-# Sequências de versão e hashes de lockfiles somam dígitos que passam no verificador por acaso: o frontend fica de fora.
-FORA = ("frontend/", "output/")
-CHAVES_DE_DOCUMENTO = ("cpf", "documento", "cpf_cnpj", "cpf_cnpj_doador", "cnpj_cpf")
+NOMES_SEM_EXTENSAO = {"Makefile", "Dockerfile"}
+# Sequências de versão e hashes de lockfiles somam dígitos que passam no verificador por acaso: só eles ficam de fora.
+FORA = ("output/",)
+LOCKFILES = ("package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "Pipfile.lock")
+CHAVES_DE_DOCUMENTO = ("cpf", "documento", "doc")
 
 
 def _versionados():
     if shutil.which("git") is None:
         return []
-    saida = subprocess.run(["git", "ls-files", "-z"], cwd=RAIZ, capture_output=True, check=True).stdout.decode("utf-8")
+    resultado = subprocess.run(["git", "ls-files", "-z"], cwd=RAIZ, capture_output=True, check=False)
+    if resultado.returncode != 0:  # fora de um checkout git (tarball): os testes pulam em vez de falhar na coleta
+        return []
+    saida = resultado.stdout.decode("utf-8")
     return sorted(
         RAIZ / nome
         for nome in saida.split("\0")
-        if nome and not nome.startswith(FORA) and (Path(nome).suffix in EXTENSOES or nome.endswith(".json.gz"))
+        if nome
+        and not nome.startswith(FORA)
+        and Path(nome).name not in LOCKFILES
+        and (Path(nome).suffix in EXTENSOES or Path(nome).name in NOMES_SEM_EXTENSAO or nome.endswith(".json.gz"))
     )
 
 
 ARQUIVOS = _versionados()
+
+
+def _chave_de_documento(chave: str) -> bool:
+    chave = chave.lower()
+    return "cpf" in chave or chave in CHAVES_DE_DOCUMENTO
 
 
 def _textos(no):
@@ -51,7 +68,7 @@ def _textos(no):
     if isinstance(no, dict):
         for chave, valor in no.items():
             yield str(chave)
-            if isinstance(valor, int) and not isinstance(valor, bool) and str(chave).lower() in CHAVES_DE_DOCUMENTO:
+            if isinstance(valor, int) and not isinstance(valor, bool) and _chave_de_documento(str(chave)):
                 yield str(valor).zfill(11)
             yield from _textos(valor)
     elif isinstance(no, list):
@@ -63,12 +80,32 @@ def _textos(no):
 
 def _achados(arquivo: Path) -> int:
     if arquivo.name.endswith(".json.gz"):
-        conteudo = gzip.open(arquivo, "rt", encoding="utf-8").read()
+        with gzip.open(arquivo, "rt", encoding="utf-8") as aberto:
+            conteudo = aberto.read()
     else:
         conteudo = arquivo.read_text(encoding="utf-8", errors="replace")
     if arquivo.suffix == ".json" or arquivo.name.endswith(".json.gz"):
         return sum(cpfs_validos_em(texto) for texto in _textos(json.loads(conteudo)))
+    if arquivo.suffix == ".csv":
+        return _achados_no_csv(conteudo)
     return sum(cpfs_validos_em(linha) for linha in conteudo.splitlines())
+
+
+NUMERO = re.compile(r"^-?[0-9]+(?:[.,][0-9]+)?$")
+
+
+def _achados_no_csv(conteudo: str) -> int:
+    """Célula puramente numérica é valor (reais, contagem): só vale como documento se a coluna tem nome de documento."""
+    linhas = list(csv.reader(io.StringIO(conteudo)))
+    cabecalho = [c.lower() for c in linhas[0]] if linhas else []
+    achados = 0
+    for linha in linhas[1:]:
+        for i, celula in enumerate(linha):
+            coluna_de_documento = i < len(cabecalho) and any(h in cabecalho[i] for h in CHAVES_DE_DOCUMENTO)
+            if NUMERO.match(celula.strip()) and not coluna_de_documento:
+                continue
+            achados += cpfs_validos_em(celula)
+    return achados
 
 
 @pytest.mark.skipif(not ARQUIVOS, reason="git indisponível")
@@ -83,6 +120,7 @@ def test_a_varredura_cobre_os_arquivos_processados_e_os_testes():
     assert "etl/data/processed/despesas_ceap_2019_2026.json" in nomes
     assert "etl/data/processed/tse_doacoes_campanha.json" in nomes
     assert any(n.endswith(".json.gz") for n in nomes) and "docs/DEPLOY_AUTOMATICO.md" in nomes
+    assert any(n.startswith("frontend/") for n in nomes) and not any(Path(n).name in LOCKFILES for n in nomes)
     assert "etl/tests/test_sem_cpf_nos_arquivos_versionados.py" in nomes
 
 
@@ -90,6 +128,9 @@ def test_a_varredura_cobre_os_arquivos_processados_e_os_testes():
 @pytest.mark.parametrize(
     "texto",
     [
+        f"FULANO {CPF_A}, 2",  # um CPF solto antes de uma vírgula não se esconde atrás dela
+        f'"JOAO {CPF_A}", "12345678000195"',
+        f"FULANO {CPF_A[:4]} {CPF_A[4:8]} {CPF_A[8:]} / 2024",
         f"FULANO {CPF_A}",
         f"FULANO {formatado(CPF_A)}",
         f"FULANO 000{CPF_A}",
@@ -105,11 +146,28 @@ def test_a_varredura_acha_cpf_sintetico_em_todas_as_formas(texto):
 
 def test_a_varredura_acha_cpf_em_chave_em_valor_e_em_inteiro_de_campo_de_documento(tmp_path):
     arquivo = tmp_path / "x.json"
-    for conteudo in ({CPF_A: 1}, {"nome": f"F {CPF_A}"}, {"cpf": int(CPF_A)}, [{"documento": int(CPF_A)}]):
+    for conteudo in (
+        {CPF_A: 1},
+        {"nome": f"F {CPF_A}"},
+        {"cpf": int(CPF_A)},
+        [{"documento": int(CPF_A)}],
+        {"nr_cpf_candidato": int(CPF_A)},
+        {"cpf_doador": int(CPF_A)},
+    ):
         arquivo.write_text(json.dumps(conteudo), encoding="utf-8")
         assert _achados(arquivo) == 1, conteudo
     arquivo.write_text(json.dumps({"valor_pago_brl": int(CPF_A)}), encoding="utf-8")
     assert _achados(arquivo) == 0  # um valor em reais que coincide com os dígitos não é CPF
+
+
+def test_a_varredura_de_csv_ignora_valor_numerico_mas_acha_documento_em_coluna_de_documento_e_texto(tmp_path):
+    csv_ = tmp_path / "x.csv"
+    csv_.write_text(f"valor,nome\n{CPF_A},ok\n", encoding="utf-8")
+    assert _achados(csv_) == 0  # célula só de dígitos numa coluna de valor
+    csv_.write_text(f"cpf_doador,nome\n{CPF_A},ok\n", encoding="utf-8")
+    assert _achados(csv_) == 1
+    csv_.write_text(f"valor,nome\n10,FULANO {CPF_A}\n", encoding="utf-8")
+    assert _achados(csv_) == 1
 
 
 def test_a_varredura_le_json_gz_e_texto_comum(tmp_path):

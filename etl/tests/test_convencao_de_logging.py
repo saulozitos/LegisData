@@ -35,6 +35,20 @@ def _e_main(no) -> bool:
     )
 
 
+def _configura_transitivamente(nome: str, funcoes: dict, vistos: set) -> bool:
+    """A função `nome` configura o log, direto ou por outra função do módulo que ela chama (fecho transitivo)."""
+    if nome in vistos or nome not in funcoes:
+        return False
+    vistos.add(nome)
+    for sub in ast.walk(funcoes[nome]):
+        if _configura_log(sub):
+            return True
+        if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name):
+            if _configura_transitivamente(sub.func.id, funcoes, vistos):
+                return True
+    return False
+
+
 def _violacoes(arvore: ast.Module) -> list:
     """Configurações de log executadas ao IMPORTAR o módulo: direto no nível do módulo ou por função chamada nele."""
     funcoes = {n.name: n for n in arvore.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
@@ -45,8 +59,8 @@ def _violacoes(arvore: ast.Module) -> list:
         for sub in ast.walk(no):
             if _configura_log(sub):
                 achados.append(("direto", sub.lineno))
-            elif isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name) and sub.func.id in funcoes:
-                if any(_configura_log(x) for x in ast.walk(funcoes[sub.func.id])):
+            elif isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name):
+                if _configura_transitivamente(sub.func.id, funcoes, set()):
                     achados.append((f"via {sub.func.id}()", sub.lineno))
     return achados
 
@@ -68,10 +82,21 @@ def test_todo_entrypoint_configura_o_proprio_log(arquivo):
 
 @pytest.mark.parametrize("nome", sorted(DELEGAM))
 def test_quem_delega_chama_de_fato_a_main_que_configura_o_log(nome):
-    texto = next(p for p in MODULOS if p.name == nome).read_text(encoding="utf-8")
-    assert "sync_ceap_emendas import" in texto and "main" in texto, nome
-    main_do_sync = ast.parse((ETL / "pipelines" / "sync_ceap_emendas.py").read_text(encoding="utf-8"))
-    [main] = [n for n in main_do_sync.body if isinstance(n, ast.FunctionDef) and n.name == "main"]
+    arvore = ast.parse(next(p for p in MODULOS if p.name == nome).read_text(encoding="utf-8"))
+    importa_main = any(
+        isinstance(n, ast.ImportFrom)
+        and n.module == "etl.pipelines.sync_ceap_emendas"
+        and any(a.name == "main" for a in n.names)
+        for n in ast.walk(arvore)
+    )
+    chama_a_main = any(
+        isinstance(c, ast.Call) and getattr(c.func, "id", "") in ("main", "_main")
+        for n in arvore.body
+        for c in ast.walk(n)
+    ) and any(_e_main(n) for n in arvore.body)
+    assert importa_main and chama_a_main, nome
+    sync = ast.parse((ETL / "pipelines" / "sync_ceap_emendas.py").read_text(encoding="utf-8"))
+    [main] = [n for n in sync.body if isinstance(n, ast.FunctionDef) and n.name == "main"]
     assert any(_configura_log(sub) for sub in ast.walk(main))
 
 
@@ -83,6 +108,7 @@ def test_quem_delega_chama_de_fato_a_main_que_configura_o_log(nome):
         ("import logging.config\nlogging.config.dictConfig({})\n", 1),
         ("if not x:\n    logging.basicConfig()\n", 1),
         ("def _setup():\n    logging.basicConfig()\n_setup()\n", 1),  # função chamada no nível do módulo
+        ("def _a():\n    logging.basicConfig()\ndef _b():\n    _a()\n_b()\n", 1),  # e por um helper do helper
         ("def main():\n    logging.basicConfig()\nif __name__ == '__main__':\n    main()\n", 0),
         ("import logging\nlogger = logging.getLogger('x')\n", 0),
     ],

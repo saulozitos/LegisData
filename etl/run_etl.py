@@ -137,7 +137,7 @@ def _anos_ja_carregados_ou_none():
         return None
 
 
-def _ceap_emendas(ano_inicio: int):
+def _ceap_emendas(ano_inicio: int, usar_cache: bool = True):
     from etl.pipelines.sync_ceap_emendas import ANO_INICIAL_ARQUIVO, fontes_nao_gravadas, run
 
     if ano_inicio != ANO_INICIAL_ARQUIVO:
@@ -151,12 +151,17 @@ def _ceap_emendas(ano_inicio: int):
 
     # o mesmo cache por ano e a mesma proteção do começo do ano da atualização diária (os anos já carregados vêm do `fin`;
     # sem banco, vale só o arquivo processado)
-    resumo = run(ano_inicio=ano_inicio, cache_dir=CACHE_DIR, anos_publicados=_anos_ja_carregados_ou_none())
+    resumo = run(
+        ano_inicio=ano_inicio,
+        cache_dir=CACHE_DIR if usar_cache else None,
+        anos_publicados=_anos_ja_carregados_ou_none(),
+    )
     if fontes_nao_gravadas(resumo):
         raise RuntimeError(f"CEAP/emendas não gravadas (arquivos anteriores preservados): {resumo}")
     # a API lê o banco, não os arquivos: o dossiê só enxerga o dado novo depois de `--load-economia`
     logger.info(
-        "CEAP/emendas gravadas em arquivo; para levá-las ao schema fin rode --load-economia --recarregar-ceap-emendas."
+        "CEAP/emendas gravadas em arquivo. Com --load-economia nesta mesma execução a carga é automática; numa execução "
+        "separada, rode --load-economia --recarregar-ceap-emendas para levá-las ao schema fin."
     )
     return resumo
 
@@ -248,7 +253,7 @@ def _remuneracao(no_cache: bool):
         raise RuntimeError(f"{len(resultado['cobertura']['falhas'])} falhas de extração")
 
 
-def _load_economia(recarregar_ceap_e_emendas: bool = False):
+def _load_economia(recarregar_ceap_e_emendas: bool = False, extracao_fresca: bool = False):
     from etl.utils.bootstrap import ensure_backend_on_path
 
     ensure_backend_on_path()
@@ -257,6 +262,12 @@ def _load_economia(recarregar_ceap_e_emendas: bool = False):
     from etl.pipelines.carga_economica import CARGAS, carregar_tudo
 
     resultados = carregar_tudo(engine, recarregar_ceap_e_emendas=recarregar_ceap_e_emendas)
+    if extracao_fresca:
+        # CEAP e emendas vieram de uma extração desta execução: o `fin` passa a ter dado mais novo que o git, e o deploy
+        # precisa saber (ele não semeia de novo uma fonte que já é fresca)
+        from etl.pipelines.financas_loader import registrar_fontes_frescas
+
+        registrar_fontes_frescas(engine, ("ceap", "emendas"), "run_etl")
     nomes = {chave: nome for chave, nome, _, _ in CARGAS}
     for chave, resultado in resultados.items():
         print(f"    {nomes[chave]}:", resultado)
@@ -297,7 +308,10 @@ def montar_parser() -> argparse.ArgumentParser:
         ("orcamento", "Repasses federais por UF (Portal da Transparência, CSV mensal oficial)"),
         ("composicao", "Composição histórica do Congresso"),
         ("pnad", "Faixas de salário mínimo a partir dos microdados da PNAD Contínua (IBGE)"),
-        ("ceap", "CEAP (Câmara/Senado) e emendas parlamentares oficiais"),
+        (
+            "ceap",
+            "CEAP (Câmara/Senado) e emendas oficiais; usa o cache por ano (--no-cache o ignora) e confere no fin os anos já carregados",
+        ),
         ("votacoes", "Votações nominais em plenário (Câmara e Senado) com orientação do governo e ex-parlamentares"),
         ("presenca", "Presença em plenário (Câmara: portal oficial; Senado: votações nominais)"),
         ("remuneracao", "Remuneração mensal dos deputados (portal da Câmara)"),
@@ -386,7 +400,7 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
     ceap_gravada = {"ok": False}  # a extração desta execução terminou bem? Só então ela vale como "mais nova que o fin"
 
     def extrair_ceap():
-        resumo = _ceap_emendas(args.ceap_ano_inicio)  # levanta se alguma fonte não foi gravada
+        resumo = _ceap_emendas(args.ceap_ano_inicio, usar_cache=cache)  # levanta se alguma fonte não foi gravada
         ceap_gravada["ok"] = True
         return resumo
 
@@ -443,7 +457,9 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
             "load_economia",
             "Carga das séries econômicas, mandatos presidenciais, composição do Congresso, PNAD e finanças (fin)",
             # a CEAP e as emendas extraídas COM SUCESSO nesta mesma execução são mais novas que o `fin`: entram na carga
-            lambda: _load_economia(args.recarregar_ceap_emendas or ceap_gravada["ok"]),
+            lambda: _load_economia(
+                args.recarregar_ceap_emendas or ceap_gravada["ok"], extracao_fresca=ceap_gravada["ok"]
+            ),
             depende_de_extracao=True,
         ),
         Etapa(

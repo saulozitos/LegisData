@@ -10,7 +10,7 @@ import pytest
 
 import etl.pipelines.sync_ceap_emendas as sync
 from etl.pipelines.sync_ceap_emendas import CeapAccumulator
-from etl.tests.sinteticos import CPF_B
+from etl.tests.sinteticos import CPF_A, CPF_B
 from etl.utils.http_client import HttpError
 
 FONTES = {"DEPUTADO_FEDERAL": "camara", "SENADOR": "senado"}
@@ -359,7 +359,7 @@ def test_o_arquivo_versionado_da_ceap_nao_tem_cpf_em_documento_nem_em_nome():
 def test_mei_homonimo_com_cnpj_diferente_nao_se_funde_e_cada_um_guarda_o_seu_cnpj():
     acc = CeapAccumulator()
     acc.add("DEPUTADO_FEDERAL", 1, "Ana", 2023, 1, "T", "JOAO DA SILVA 09876543200", "11222333000181", 10.0)
-    acc.add("DEPUTADO_FEDERAL", 1, "Ana", 2023, 2, "T", "JOAO DA SILVA 01234567890", "02558157000162", 5.0)
+    acc.add("DEPUTADO_FEDERAL", 1, "Ana", 2023, 2, "T", f"JOAO DA SILVA {CPF_A}", "02558157000162", 5.0)
     acc.add("DEPUTADO_FEDERAL", 1, "Ana", 2023, 3, "T", "JOAO DA SILVA", "02558157000162", 1.0)  # volta ao segundo
     acc.add("DEPUTADO_FEDERAL", 1, "Ana", 2023, 4, "T", "JOAO DA SILVA", None, 2.0)  # sem documento: soma no primeiro
     (reg,) = acc.finalize(FONTES).values()
@@ -537,7 +537,10 @@ def test_casas_do_congresso_sao_as_mesmas_nos_dois_lados_do_contrato_dos_anos_pu
     from etl.pipelines import financas_loader
 
     assert set(sync.CASA_DO_CARGO.values()) == set(CASAS_DO_CONGRESSO) == set(financas_loader._CASA_DA_FONTE.values())
-    assert set(sync.PAUSA_POR_CASA) == set(CASAS_DO_CONGRESSO)
+    # mapeamentos por nome, nunca por posição: reordenar a tupla não pode trocar a Câmara pelo Senado
+    fontes = {financas_loader.FONTE_CEAP_CAMARA: "camara", financas_loader.FONTE_CEAP_SENADO: "senado"}
+    assert financas_loader._CASA_DA_FONTE == fontes
+    assert sync.PAUSA_POR_CASA == {"camara": 10.0, "senado": 1.0}
     assert set(sync.anos_publicados_no_arquivo(Path("/nao/existe.json"))) == set(CASAS_DO_CONGRESSO)
 
 

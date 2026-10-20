@@ -72,7 +72,9 @@ systemctl --user list-timers legisdata-deploy.timer legisdata-financas.timer --n
 ESTADO_DIR="$DEST"
 # shellcheck disable=SC1090
 source <(sed -n '/^# >>> pendencias/,/^# <<< pendencias/p' "$DEST/deploy.sh")
-if pendente_tem refrescar; then
+if ! declare -F pendente_tem >/dev/null; then
+  echo "AVISO: o deploy.sh instalado ($REF) não traz o bloco de pendências; o pedido pendente fica para o próximo deploy."
+elif pendente_tem refrescar; then
   echo "==> atualização das finanças pendente do deploy anterior: disparando"
   if disparar_financas; then
     pendente_limpa refrescar

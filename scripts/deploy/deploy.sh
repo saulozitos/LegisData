@@ -67,8 +67,10 @@ ALVO="${_LEGISDATA_DEPLOY_ALVO:-$(git rev-parse origin/main)}"
 TAG="${ALVO:0:7}"
 ATUAL="$(cat "$ESTADO_DIR/ultimo_sha" 2>/dev/null || true)"
 # >>> mesmo_commit
-REPETICAO=0
-if [[ "$ATUAL" == "$ALVO" ]]; then
+# Numa reexecução (a cópia instalada do script era outra) a primeira passada já decidiu e carimbou: herda a decisão em vez de
+# repetir o bloco, que veria o próprio carimbo recém-gravado e sairia sem fazer a tentativa.
+REPETICAO="${_LEGISDATA_DEPLOY_REPETICAO:-0}"
+if [[ -z "${_LEGISDATA_DEPLOY_REEXEC:-}" && "$ATUAL" == "$ALVO" ]]; then
   # mesmo commit: só há o que fazer se um pedido de atualização ficou parado ou se a carga pendente já pode repetir. O
   # dry-run não altera nada: não dispara o serviço nem mexe nas pendências.
   if [[ $DRY_RUN -eq 0 ]] && pendente_tem refrescar && disparar_financas; then
@@ -101,7 +103,7 @@ if [[ -z "${_LEGISDATA_DEPLOY_REEXEC:-}" ]] && git cat-file -e "$ALVO:scripts/de
   elif ! cmp -s "$ESTADO_DIR/deploy.sh.novo" "$ESTADO_DIR/deploy.sh"; then
     chmod 755 "$ESTADO_DIR/deploy.sh.novo" && mv "$ESTADO_DIR/deploy.sh.novo" "$ESTADO_DIR/deploy.sh"
     log "script de deploy atualizado para o da main; reexecutando"
-    _LEGISDATA_DEPLOY_REEXEC=1 _LEGISDATA_DEPLOY_ALVO="$ALVO" exec "$ESTADO_DIR/deploy.sh" "$@"
+    _LEGISDATA_DEPLOY_REEXEC=1 _LEGISDATA_DEPLOY_ALVO="$ALVO" _LEGISDATA_DEPLOY_REPETICAO="$REPETICAO" exec "$ESTADO_DIR/deploy.sh" "$@"
   fi
   rm -f "$ESTADO_DIR/deploy.sh.novo"
 fi
@@ -199,9 +201,11 @@ um_comando() { # roda um comando Python no contêiner da imagem nova, na rede do
 # >>> decidir_financas
 # Decide como o deploy trata as finanças. A atualização diária (legisdata-financas.timer) deixa CEAP e emendas do `fin` mais
 # novas que os arquivos do git; recarregá-las do git apagaria as emendas novas (que voltariam com outro `uid`) e
-# devolveria a CEAP ao passado. Então o git só semeia um `fin` vazio.
+# devolveria a CEAP ao passado. Então o git só semeia o que o timer ainda não assumiu (ver "fontes_do_timer" abaixo).
 #   uso:   decidir_financas <commit anterior> <commit alvo> <t se o fin já tem CEAP e emendas> [pendências]
 #                           [t se o timer já carregou a CEAP] [t se o timer já carregou as emendas]
+#   Os dois últimos argumentos ausentes valem "t": quem esquecê-los cai no lado seguro (nunca semeia nem reescreve uma fonte
+#   do timer). O chamador real sempre os passa, começando em "f" e subindo para "t" conforme o banco responde.
 #   saída: "<modo> <refrescar>"
 #     modo "completa":    fin sem dados, ou nenhuma das duas fontes é do timer ainda: semeia tudo dos arquivos do git;
 #     modo "sem_emendas": só as emendas já são do timer: semeia a CEAP e as estáticas, sem tocar nas emendas;
@@ -211,9 +215,10 @@ um_comando() { # roda um comando Python no contêiner da imagem nova, na rede do
 #     refrescar 1:        o commit mudou a extração/carga de CEAP e emendas (ou o fin acabou de ser semeado do git): vale
 #                         rodar a atualização diária já, para o fin não esperar até a madrugada.
 #   Pendências (conteúdo de financas_pendente, uma por linha): "carga" força ao menos as estáticas, "refrescar" pede a
-#   atualização. "O timer já carregou" é o marcador que a atualização diária deixa em etl/data depois de carregar a fonte
-#   no fin (não o cache de extração, que existe mesmo quando a carga falhou). Sem ele o fin só tem o retrato do git, que
-#   é o dado mais novo que existe; semeia a fonte de novo para as regras de saneamento do commit chegarem ao fin.
+#   atualização. "O timer já carregou" é uma linha em etl.execucao que a carga fresca grava NA MESMA TRANSAÇÃO que os dados
+#   (volta com um backup restaurado e não fica para trás se a carga falhou; não é o cache de extração). Sem ela o fin só
+#   tem o retrato do git, que é o dado mais novo que existe; semeia a fonte de novo para as regras de saneamento do commit
+#   chegarem ao fin.
 decidir_financas() {
   local atual="$1" alvo="$2" tem_dados="$3" pendencias="${4:-}" ceap_do_timer="${5:-t}" emendas_do_timer="${6:-t}"
   local modo="nenhuma" refrescar=0
@@ -272,13 +277,19 @@ if [[ "$TEM_ECO" == "t" && -f "$RAIZ/etl/pipelines/carga_economica.py" ]]; then
   LEGISDATA_FIN_TEM_ALGUM_DADO="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select exists(select 1 from fin.emenda) or exists(select 1 from fin.despesa_cota) or exists(select 1 from fin.despesa_cota_fornecedor) or exists(select 1 from fin.despesa_cota_resumo)")"
   export LEGISDATA_FIN_TEM_DADOS LEGISDATA_FIN_TEM_ALGUM_DADO
   PENDENCIAS="$(cat "$PENDENTE" 2>/dev/null || true)"
-  # a fonte é do timer se ele a CARREGOU no fin (marcador em etl/data); sem o marcador o fin só tem o retrato do git
+  # >>> fontes_do_timer
+  # a fonte é do timer se ele a CARREGOU no fin (linha em etl.execucao, gravada na transação da carga); sem a linha o fin só
+  # tem o retrato do git
+  FONTES_DO_TIMER="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select coalesce(string_agg(distinct parametros->>'fonte', ' '), '') from etl.execucao where estagio = 'CARREGAR' and status = 'OK' and parametros->>'fresca' = 'true'")"
   CEAP_DO_TIMER=f
   EMENDAS_DO_TIMER=f
-  [[ -f "$RAIZ/etl/data/.financas_ceap_carregada" ]] && CEAP_DO_TIMER=t
-  [[ -f "$RAIZ/etl/data/.financas_emendas_carregada" ]] && EMENDAS_DO_TIMER=t
+  [[ " $FONTES_DO_TIMER " == *" ceap "* ]] && CEAP_DO_TIMER=t
+  [[ " $FONTES_DO_TIMER " == *" emendas "* ]] && EMENDAS_DO_TIMER=t
+  # <<< fontes_do_timer
   read -r LEGISDATA_FIN_MODO LEGISDATA_FIN_REFRESCAR < <(decidir_financas "$ATUAL" "$ALVO" "$LEGISDATA_FIN_TEM_DADOS" "$PENDENCIAS" "$CEAP_DO_TIMER" "$EMENDAS_DO_TIMER")
-  [[ $REPETICAO -eq 1 ]] && LEGISDATA_FIN_REFRESCAR=0 # repetir a carga não repete o pedido de atualização
+  # >>> pos_decisao
+  if [[ $REPETICAO -eq 1 ]]; then LEGISDATA_FIN_REFRESCAR=0; fi # repetir a carga não repete o pedido de atualização
+  # <<< pos_decisao
   export LEGISDATA_FIN_MODO LEGISDATA_FIN_REFRESCAR
   case "$LEGISDATA_FIN_MODO" in
     completa) log "finanças: fin sem dados ou ainda sem nenhuma fonte do timer; semeando tudo dos arquivos do git" ;;

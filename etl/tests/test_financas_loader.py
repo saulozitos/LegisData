@@ -2355,3 +2355,90 @@ def test_semeadura_parcial_carrega_uma_fonte_do_timer_mais_as_estaticas(monkeypa
     monkeypatch.setattr(fin, "carregar", lambda engine, processed_dir=None, chaves=None: chamadas.append(tuple(chaves)))
     getattr(fin, funcao)(object())
     assert chamadas == [esperado]
+
+
+# ── Quem é dono da fonte: sinal gravado no banco, na transação da carga ─────────────────────────────────────────────
+@pytest.fixture()
+def sem_execucoes_frescas(pg_engine):
+    def limpar():
+        with pg_engine.begin() as conn:
+            conn.execute(text("DELETE FROM etl.execucao WHERE parametros->>'fresca' = 'true'"))
+
+    limpar()
+    yield
+    limpar()
+
+
+def test_carga_fresca_registra_a_fonte_na_mesma_transacao_da_carga(pg_engine, banco, tmp_path, sem_execucoes_frescas):
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
+    assert fin.fontes_do_timer(pg_engine) == set()
+    fin.carregar(pg_engine, tmp_path, chaves=("ceap",), ao_confirmar=fin.registrar_carga_fresca)
+    assert fin.fontes_do_timer(pg_engine) == {"ceap"}
+    with pg_engine.connect() as conn:
+        linha = conn.execute(
+            text(
+                "SELECT estagio, status, linhas_gravadas, parametros FROM etl.execucao WHERE parametros->>'fresca' = 'true'"
+            )
+        ).one()
+    assert linha.estagio == "CARREGAR" and linha.status == "OK" and linha.linhas_gravadas == 3
+    assert linha.parametros == {"fresca": "true", "fonte": "ceap", "origem": "financas_atualizacao"}
+
+
+def test_sem_o_hook_a_carga_nao_registra_nada(pg_engine, banco, tmp_path, sem_execucoes_frescas):
+    """O deploy semeia por `carregar_tudo`, sem hook: o que ele grava não é dado fresco do timer."""
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
+    fin.carregar(pg_engine, tmp_path, chaves=("ceap",))
+    assert fin.fontes_do_timer(pg_engine) == set()
+
+
+def test_se_o_registro_falha_a_carga_da_fonte_volta_junto(pg_engine, banco, tmp_path, sem_execucoes_frescas):
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
+
+    def quebra(conn, chave, resultado):
+        raise RuntimeError("registro falhou")
+
+    with pytest.raises(RuntimeError, match="registro falhou"):
+        fin.carregar(pg_engine, tmp_path, chaves=("ceap",), ao_confirmar=quebra)
+    assert _contar(pg_engine, "despesa_cota") == 0 and fin.fontes_do_timer(pg_engine) == set()  # atômico
+
+
+def test_so_a_fonte_que_carregou_ganha_o_registro_quando_a_outra_falha(
+    pg_engine, banco, tmp_path, monkeypatch, sem_execucoes_frescas
+):
+    """Uma transação por fonte: a CEAP entra e fica registrada mesmo que as emendas falhem depois."""
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
+    _gravar(tmp_path, fin.EMENDAS_ARQUIVO, [_emenda("1", "Ana Souza")])
+
+    def emendas_quebram(conn, pasta):
+        raise RuntimeError("emendas fora do ar")
+
+    originais = dict(fin.CARGAS)
+    monkeypatch.setattr(
+        fin, "CARGAS", tuple((c, emendas_quebram if c == "emendas" else f) for c, f in originais.items())
+    )
+    with pytest.raises(RuntimeError, match="emendas fora do ar"):
+        fin.carregar(pg_engine, tmp_path, chaves=("ceap", "emendas"), ao_confirmar=fin.registrar_carga_fresca)
+    assert fin.fontes_do_timer(pg_engine) == {"ceap"} and _contar(pg_engine, "despesa_cota") == 3
+
+
+@pytest.mark.parametrize(
+    "chave, resultado",
+    [
+        ("ceap", {"despesas": 0}),  # carga que não gravou linha nenhuma
+        ("ceap", {"arquivo_ausente": 1}),
+        ("emendas", {"emendas": True}),  # bool não é contagem
+        ("remuneracao", {"meses": 5}),  # fonte que não é do timer
+        ("ceap", "texto"),
+    ],
+)
+def test_so_conta_como_fresca_a_carga_que_gravou_linhas_de_uma_fonte_do_timer(
+    pg_engine, chave, resultado, sem_execucoes_frescas
+):
+    with pg_engine.begin() as conn:
+        fin.registrar_carga_fresca(conn, chave, resultado)
+    assert fin.fontes_do_timer(pg_engine) == set()
+
+
+def test_o_run_etl_registra_as_duas_fontes_depois_de_uma_extracao_fresca(pg_engine, sem_execucoes_frescas):
+    fin.registrar_fontes_frescas(pg_engine, ("ceap", "emendas"), "run_etl")
+    assert fin.fontes_do_timer(pg_engine) == {"ceap", "emendas"}

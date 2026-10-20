@@ -159,10 +159,7 @@ TETO_DO_CSV = 300 * 1024 * 1024
 CEAP_ARQUIVO = "despesas_ceap_2019_2026.json"
 EMENDAS_ARQUIVO = "emendas_parlamentares_2019_2026.json"
 
-# As casas do Congresso, na ordem em que a CEAP é extraída. Quem produz (`financas_loader.anos_publicados_da_ceap`) e quem
-# consome (`sync_ceap_emendas`) os "anos já publicados por casa" usa estas chaves; um teste confere a igualdade.
+# As casas do Congresso (a ordem não significa nada: os mapeamentos por casa são sempre explícitos, por nome). Quem produz
+# (`financas_loader.anos_publicados_da_ceap`) e quem consome (`sync_ceap_emendas`) os "anos já publicados por casa" usa
+# estas chaves; um teste confere a igualdade.
 CASAS_DO_CONGRESSO = ("camara", "senado")
-
-# Marcadores que a atualização diária deixa em `etl/data` depois de CARREGAR cada fonte no `fin` com sucesso. O deploy decide
-# por eles se o timer já assumiu a fonte (então o git não pode mais semeá-la) ou se o `fin` ainda tem só o retrato do git.
-MARCADOR_DA_FONTE = ".financas_{fonte}_carregada"

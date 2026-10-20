@@ -196,13 +196,17 @@ def test_a_carga_recarrega_ceap_e_emendas_so_quando_a_extracao_desta_execucao_de
 ):
     recebido = []
 
-    def extracao(ano_inicio):
+    def extracao(ano_inicio, usar_cache=True):
         if not extracao_ok:
             raise RuntimeError("CEAP/emendas não gravadas")
         return {}
 
     monkeypatch.setattr(cli, "_ceap_emendas", extracao)
-    monkeypatch.setattr(cli, "_load_economia", lambda recarregar=False: recebido.append(recarregar))
+    monkeypatch.setattr(
+        cli,
+        "_load_economia",
+        lambda recarregar=False, extracao_fresca=False: recebido.append((recarregar, extracao_fresca)),
+    )
     etapas = {e.chave: e for e in cli.construir_etapas(cli.montar_parser().parse_args(argumentos))}
     if "ceap" in etapas:
         try:
@@ -210,7 +214,8 @@ def test_a_carga_recarrega_ceap_e_emendas_so_quando_a_extracao_desta_execucao_de
         except RuntimeError:
             pass
     etapas["load_economia"].executar()
-    assert recebido == [esperado]
+    fresca = "ceap" in etapas and extracao_ok  # só a extração desta execução, e só se deu certo, vale como fresca
+    assert recebido == [(esperado, fresca)]
 
 
 def test_a_extracao_manual_usa_o_cache_por_ano_e_os_anos_ja_carregados(monkeypatch):
@@ -235,3 +240,39 @@ def test_sem_banco_a_extracao_manual_segue_so_com_o_arquivo(monkeypatch):
 
     monkeypatch.setattr("etl.pipelines.financas_atualizacao.anos_ja_carregados", quebra)
     assert cli._anos_ja_carregados_ou_none() is None
+
+
+def test_extracao_fresca_registra_as_fontes_no_fin_so_depois_da_carga_dar_certo(monkeypatch):
+    chamadas = []
+    monkeypatch.setattr(
+        "etl.pipelines.carga_economica.carregar_tudo", lambda engine, **kw: chamadas.append("carga") or {}
+    )
+    monkeypatch.setattr(
+        "etl.pipelines.financas_loader.registrar_fontes_frescas",
+        lambda engine, fontes, origem: chamadas.append((tuple(fontes), origem)),
+    )
+    cli._load_economia(recarregar_ceap_e_emendas=True, extracao_fresca=True)
+    assert chamadas == ["carga", (("ceap", "emendas"), "run_etl")]
+    chamadas.clear()
+    cli._load_economia(recarregar_ceap_e_emendas=True)  # recarga do git a pedido: não é dado fresco
+    assert chamadas == ["carga"]
+
+    def quebra(engine, **kw):
+        raise RuntimeError("carga falhou")
+
+    monkeypatch.setattr("etl.pipelines.carga_economica.carregar_tudo", quebra)
+    chamadas.clear()
+    with pytest.raises(RuntimeError):
+        cli._load_economia(recarregar_ceap_e_emendas=True, extracao_fresca=True)
+    assert chamadas == []  # carga que falha não registra nada
+
+
+def test_no_cache_na_extracao_manual_ignora_o_cache_por_ano(monkeypatch):
+    chamadas = {}
+    monkeypatch.setattr(
+        "etl.pipelines.sync_ceap_emendas.run",
+        lambda **kw: chamadas.update(kw) or {"ceap_gravado": True, "emendas_gravado": True},
+    )
+    monkeypatch.setattr(cli, "_anos_ja_carregados_ou_none", lambda: None)
+    cli._ceap_emendas(2019, usar_cache=False)
+    assert chamadas["cache_dir"] is None

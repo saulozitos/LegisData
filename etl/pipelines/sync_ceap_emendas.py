@@ -91,7 +91,7 @@ PASTA_DO_CACHE = "ceap_por_ano"
 VALIDADE_DO_CACHE_DIAS = 90  # um ano fechado é baixado de novo depois disso (estornos e correções tardias)
 # A Câmara responde 429 (Too Many Requests) a vários CSVs anuais seguidos (visto com 7 downloads em 30 s). O Senado
 # limita em 10 requisições por segundo e aqui há uma por ano; a pausa dele é só cortesia.
-PAUSA_POR_CASA = dict(zip(CASAS_DO_CONGRESSO, (10.0, 1.0)))
+PAUSA_POR_CASA = {"camara": 10.0, "senado": 1.0}
 ESPERA_NOVA_TENTATIVA = 90.0
 MESES_DE_ATRASO_DO_ANO_NOVO = 3  # até março o arquivo/lançamento do ano novo pode não existir ainda (o Senado atrasa)
 FUSO_DO_BRASIL = timezone(timedelta(hours=-3))  # sem horário de verão desde 2019

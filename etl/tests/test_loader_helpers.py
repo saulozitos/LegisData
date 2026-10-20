@@ -16,7 +16,7 @@ from etl.pipelines.loader_helpers import (
     normalizar_sigla_presenca,
     resolve_party_id,
 )
-from etl.tests.sinteticos import CPF_A, CPF_A_INVALIDO, formatado
+from etl.tests.sinteticos import CNPJ_DE_RAIZ_ZERADA, CPF_A, CPF_A_INVALIDO, formatado
 
 
 def pol(ident, eleitoral, civil=None):
@@ -214,3 +214,66 @@ def test_o_saneamento_de_texto_hostil_e_linear():
     nome_sem_cpf("1 " * 300_000)
     nome_sem_cpf("1" + " " * 600_000 + "1")
     assert time.time() - t0 < 10
+
+
+@pytest.mark.parametrize(
+    "digitos, esperado",
+    [
+        ("00000000000191", True),
+        ("11222333000181", True),
+        ("11222333000182", False),
+        ("11111111111111", False),
+        ("123", False),
+    ],
+)
+def test_cnpj_dv_valido(digitos, esperado):
+    from etl.pipelines.loader_helpers import cnpj_dv_valido
+
+    assert cnpj_dv_valido(digitos) is esperado
+
+
+def test_cnpj_de_raiz_zerada_que_fecha_como_cnpj_nao_e_tratado_como_cpf_com_enchimento():
+    """O CNPJ do Banco do Brasil (00.000.000/0001-91) passa nos dígitos de CPF por acaso: é CNPJ e fica."""
+    from etl.pipelines.loader_helpers import cnpj_do_fornecedor, cpf_com_zeros, cpfs_validos_em, nome_sem_cpf
+
+    d = CNPJ_DE_RAIZ_ZERADA
+    formatado_ = f"{d[:2]}.{d[2:5]}.{d[5:8]}/{d[8:12]}-{d[12:]}"
+    assert cnpj_do_fornecedor(formatado_) == d
+    assert cpf_com_zeros(d) is False
+    assert nome_sem_cpf(f"BANCO {d}") == f"BANCO {d}"
+    assert nome_sem_cpf(f"BANCO {formatado_}") == f"BANCO {formatado_}"
+    assert cpfs_validos_em(f"BANCO {d}") == 0
+
+
+def test_cpf_com_zeros_aceita_enchimento_de_qualquer_tamanho_e_nao_o_cnpj_que_fecha():
+    from etl.pipelines.loader_helpers import cpf_com_zeros
+
+    assert cpf_com_zeros(CPF_A) and cpf_com_zeros("0" + CPF_A) and cpf_com_zeros("0" * 20 + CPF_A)
+    assert not cpf_com_zeros("1" + CPF_A) and not cpf_com_zeros(CPF_A_INVALIDO) and not cpf_com_zeros("123")
+
+
+def test_cpf_com_enchimento_dentro_de_cnpj_formatado_sai_do_nome_e_o_do_documento_vira_none():
+    from etl.pipelines.loader_helpers import cnpj_do_fornecedor, nome_sem_cpf
+
+    d = "000" + CPF_A
+    mascara = f"{d[:2]}.{d[2:5]}.{d[5:8]}/{d[8:12]}-{d[12:]}"  # a máscara de CNPJ (NN.NNN.NNN/NNNN-NN) com CPF dentro
+    assert cnpj_do_fornecedor(mascara) is None
+    assert nome_sem_cpf(f"MEI {mascara}") == "MEI"
+
+
+@pytest.mark.parametrize("sufixo", [", 2", " / 2024", ", 12345678000195", " , "])
+def test_cpf_seguido_de_virgula_ou_barra_nao_se_esconde_atras_dela(sufixo):
+    """A vírgula e a barra não juntam grupos: cada lado é avaliado sozinho."""
+    from etl.pipelines.loader_helpers import cpfs_validos_em, nome_sem_cpf
+
+    texto = f"FULANO {CPF_A[:4]} {CPF_A[4:8]} {CPF_A[8:]}{sufixo}"
+    assert cpfs_validos_em(texto) == 1
+    assert CPF_A[:4] not in (nome_sem_cpf(texto) or "")
+
+
+def test_texto_sem_cpf_tem_contrato_mais_frouxo_que_o_do_nome():
+    """Documentado: texto livre preserva valor em reais ('R$ ...'); o nome tira o CPF comprovado em qualquer agrupamento."""
+    from etl.pipelines.loader_helpers import nome_sem_cpf, texto_sem_cpf
+
+    assert "Contrato" in texto_sem_cpf.__doc__ and "nome_sem_cpf" in texto_sem_cpf.__doc__
+    assert nome_sem_cpf(f"X {CPF_A[:4]} {CPF_A[4:8]} {CPF_A[8:]}") == "X"

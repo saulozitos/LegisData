@@ -12,6 +12,7 @@ registro utilizável ou que reduziria a tabela a menos da metade (arquivo trunca
 que já está no banco. Cada carga é uma transação: ou grava inteira ou não grava.
 """
 
+import json
 import logging
 import os
 from collections import defaultdict
@@ -214,7 +215,7 @@ def _fonte_da_ceap(dados: Dict[str, Any]) -> str:
     return FONTE_CEAP_CAMARA if dados.get("camara_id") else FONTE_CEAP_SENADO
 
 
-_CASA_DA_FONTE = dict(zip((FONTE_CEAP_CAMARA, FONTE_CEAP_SENADO), CASAS_DO_CONGRESSO))
+_CASA_DA_FONTE = {FONTE_CEAP_CAMARA: "camara", FONTE_CEAP_SENADO: "senado"}
 
 
 def anos_publicados_da_ceap(engine: Engine) -> Dict[str, Set[int]]:
@@ -624,12 +625,61 @@ CHAVES_DO_TIMER = ("ceap", "emendas")
 CHAVES_ESTATICAS = ("remuneracao", "patrimonio", "doacoes", "certidoes")
 
 
+# ── Quem é dono da fonte: a atualização diária (extração fresca) ou o retrato do git ───────────────────────────────────
+# O deploy precisa saber, por fonte, se o `fin` já traz dado MAIS NOVO que o git (então não pode semeá-la de novo). O sinal
+# vai para o próprio banco, na MESMA transação da carga: volta junto com um backup restaurado, e uma carga que falhou não
+# deixa sinal. Cada carga fresca bem-sucedida grava uma linha em `etl.execucao` (estágio CARREGAR, status OK).
+SQL_FONTES_DO_TIMER = (
+    "select coalesce(string_agg(distinct parametros->>'fonte', ' '), '') from etl.execucao "
+    "where estagio = 'CARREGAR' and status = 'OK' and parametros->>'fresca' = 'true'"
+)
+_CONTAGEM_DA_FONTE = {"ceap": "despesas", "emendas": "emendas"}
+
+
+def registrar_carga_fresca(conn: Connection, chave: str, resultado: Any, origem: str = "financas_atualizacao") -> None:
+    """Registra que a fonte foi carregada de uma extração fresca. Só conta se a carga de fato gravou linhas."""
+    campo = _CONTAGEM_DA_FONTE.get(chave)
+    gravadas = resultado.get(campo) if campo and isinstance(resultado, dict) else None
+    if not isinstance(gravadas, int) or isinstance(gravadas, bool) or gravadas <= 0:
+        return
+    conn.execute(
+        text(
+            "INSERT INTO etl.execucao (estagio, finalizado_em, status, linhas_gravadas, parametros) "
+            "VALUES ('CARREGAR', now(), 'OK', :n, CAST(:p AS jsonb))"
+        ),
+        {"n": min(gravadas, 2**31 - 1), "p": json.dumps({"fresca": "true", "fonte": chave, "origem": origem})},
+    )
+
+
+def registrar_fontes_frescas(engine: Engine, fontes: Iterable[str], origem: str) -> None:
+    """Para quem carregou por outro caminho (a etapa de carga do `run_etl` depois de extrair): uma transação, sem contagem."""
+    with engine.begin() as conn:
+        for fonte in fontes:
+            conn.execute(
+                text(
+                    "INSERT INTO etl.execucao (estagio, finalizado_em, status, parametros) "
+                    "VALUES ('CARREGAR', now(), 'OK', CAST(:p AS jsonb))"
+                ),
+                {"p": json.dumps({"fresca": "true", "fonte": fonte, "origem": origem})},
+            )
+
+
+def fontes_do_timer(engine: Engine) -> Set[str]:
+    """As fontes do timer que o `fin` já recebeu de uma extração fresca."""
+    with engine.connect() as conexao:
+        return set(str(conexao.execute(text(SQL_FONTES_DO_TIMER)).scalar() or "").split())
+
+
 def carregar(
-    engine: Engine, processed_dir: Optional[Path] = None, chaves: Optional[Iterable[str]] = None
+    engine: Engine,
+    processed_dir: Optional[Path] = None,
+    chaves: Optional[Iterable[str]] = None,
+    ao_confirmar: Optional[Callable[[Connection, str, Any], None]] = None,
 ) -> Dict[str, Any]:
     """
     Executa as cargas (todas, ou só as `chaves`), cada uma na sua transação; uma que falha não impede as demais e o erro
-    sobe no fim. Chave desconhecida levanta ValueError antes de tocar no banco.
+    sobe no fim. Chave desconhecida levanta ValueError antes de tocar no banco. `ao_confirmar(conn, chave, resultado)`
+    roda DENTRO da transação da chave, depois de a carga gravar: o que ele grava vale ou some junto com a carga.
     """
     pasta = Path(processed_dir or PROCESSED_DATA_DIR)
     escolhidas = None if chaves is None else tuple(chaves)
@@ -645,6 +695,8 @@ def carregar(
         try:
             with engine.begin() as conn:
                 resultados[chave] = funcao(conn, pasta)
+                if ao_confirmar is not None:
+                    ao_confirmar(conn, chave, resultados[chave])
             logger.info("Finanças — %s: %s", chave, resultados[chave])
         except Exception as exc:  # noqa: BLE001 - isolada de propósito; relatada abaixo
             # o erro do banco traz os valores da linha no DETAIL: só a descrição saneada vai para o log e para o erro final
