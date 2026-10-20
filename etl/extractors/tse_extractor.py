@@ -15,7 +15,6 @@ from etl.config import PROCESSED_DATA_DIR
 from etl.utils.datafiles import load_deputados, load_senadores
 from etl.utils.io_utils import atomic_write_json, atomic_write_text
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("TSEExtractor")
 
 FONTE_CURADORIA = "Curadoria manual LegisData (trajetória notória; não verificada automaticamente contra o TSE)"
@@ -305,6 +304,7 @@ class TSEExtractor:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     extractor = TSEExtractor()
     stats = extractor.run()
     print("Estatísticas da Extração de Filiações:", stats)

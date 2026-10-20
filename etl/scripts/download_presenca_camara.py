@@ -39,7 +39,6 @@ from etl.extractors.presenca_extractor import (  # noqa: E402
 )
 from etl.utils.io_utils import atomic_write_json  # noqa: E402
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("DownloadPresencaCamara")
 
 USER_AGENT = (
@@ -263,4 +262,5 @@ def main():
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     main()

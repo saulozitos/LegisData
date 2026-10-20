@@ -23,7 +23,6 @@ from app.services.party_productivity_service import (
 )
 from sqlalchemy import text
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("cron_daily_consolidation")
 
 
@@ -82,6 +81,19 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         except Exception as e:
             erros_etapas.append(f"economia: {e}")
             logger.error(f"Falha na atualização das séries econômicas: {e}", exc_info=True)
+
+        # Etapa 1d: CEAP e emendas (extração incremental por ano e recarga do `fin`); não bloqueia as demais etapas
+        logger.info("Etapa 1d: atualizando CEAP e emendas parlamentares...")
+        try:
+            from app.core.database import engine as engine_financas
+
+            from etl.pipelines.financas_atualizacao import atualizar as atualizar_financas
+
+            financas = atualizar_financas(engine_financas)
+            logger.info(f"Etapa 1d concluída: {financas}")
+        except Exception as e:
+            erros_etapas.append(f"finanças: {e}")
+            logger.error(f"Falha na atualização de CEAP e emendas: {e}", exc_info=True)
 
         # Etapa 2: Ingestão de Proposições e Autores
         logger.info("Etapa 2/4: Verificando autoria e integridade de proposições...")
@@ -143,6 +155,7 @@ def execute_cron_pipeline() -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     res = execute_cron_pipeline()
     if res["status"] != "SUCESSO":
         sys.exit(1)

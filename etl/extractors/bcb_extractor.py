@@ -23,7 +23,6 @@ from etl.extractors.ibovespa_extractor import IbovespaExtractor
 from etl.utils.http_client import HttpClient, HttpError
 from etl.utils.io_utils import atomic_write_json
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("BCBExtractor")
 
 # Desde 2025 o SGS limita séries diárias a janelas de 10 anos por consulta; 5 anos respondem antes do timeout.

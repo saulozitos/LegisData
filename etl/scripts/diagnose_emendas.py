@@ -12,6 +12,7 @@ Uso: python -m etl.scripts.diagnose_emendas [--json]
 
 import argparse
 import json
+import logging
 import re
 from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -105,4 +106,5 @@ def main(argv: Optional[List[str]] = None) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     main()

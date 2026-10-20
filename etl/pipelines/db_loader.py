@@ -92,7 +92,6 @@ from etl.pipelines.votacoes_loader import carregar_parlamentares_historicos, car
 from etl.utils.names import build_unique_name_map, normalize_name_tokens  # noqa: E402
 from etl.utils.provenance import SYNTHETIC_CODE_PREFIX, SYNTHETIC_TAG, is_synthetic, is_trusted, tag_text  # noqa: E402
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("DBLoader")
 
 # Compatibilidade com o nome privado anterior
@@ -2228,4 +2227,5 @@ def main(argv: Optional[List[str]] = None) -> Dict[str, int]:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     main()

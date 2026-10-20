@@ -12,7 +12,6 @@ from etl.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
 from etl.utils.http_client import HttpClient, HttpError
 from etl.utils.provenance import mark_official, mark_synthetic
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("CeapExtractor")
 
 DEFAULT_ANOS = (2023, 2024, 2025)

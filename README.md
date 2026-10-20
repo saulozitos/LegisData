@@ -195,8 +195,9 @@ Cargas complementares de assiduidade e remuneração oficiais, e das séries eco
 (`eco.observacao`, `core.mandato_presidencial`):
 ```bash
 python etl/run_etl.py --load-presenca
-python etl/run_etl.py --load-economia
+python etl/run_etl.py --load-economia    # semeia do git só a CEAP/emendas que o fin não tem ou que o timer não assumiu; o resto, só as estáticas
 ```
+Para recarregar CEAP e emendas dos arquivos gerados à mão: `--load-economia --recarregar-ceap-emendas`.
 
 ### Passo 5: Iniciar o Backend (FastAPI)
 ```bash

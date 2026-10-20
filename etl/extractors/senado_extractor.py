@@ -12,7 +12,6 @@ from etl.extractors.camara_extractor import classificar_setor_por_texto
 from etl.utils.http_client import HttpClient, HttpError
 from etl.utils.io_utils import atomic_write_json, write_json_if_valid
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("SenadoExtractor")
 
 BASE_SENADO_URL = "https://legis.senado.leg.br/dadosabertos"
@@ -343,6 +342,7 @@ class SenadoExtractor:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     extractor = SenadoExtractor()
     res = extractor.run_full_extraction()
     print("Resultado da extração:", res)

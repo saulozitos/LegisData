@@ -17,6 +17,7 @@ from etl.extractors import (
     tse_patrimonio_extractor,
 )
 from etl.extractors.tse_core import Politico, casar_candidatos, escolher_membros, ler_candidatos, parse_brl
+from etl.tests.sinteticos import CPF_B, formatado
 from etl.utils.identidades import IdentidadesParlamentares, parse_date, valid_cpf
 from etl.utils.provenance import is_trusted
 
@@ -91,7 +92,7 @@ def test_parse_brl_e_marcadores_do_tse():
 
 
 def test_valid_cpf_rejeita_mascara_do_tse_e_digitos_repetidos():
-    assert valid_cpf("123.456.789-09") == "12345678909"
+    assert valid_cpf(formatado(CPF_B)) == CPF_B
     assert valid_cpf("-4") is None and valid_cpf("00000000000") is None and valid_cpf(None) is None
 
 
@@ -122,8 +123,8 @@ def test_ler_candidatos_deduplica_candidato_por_turno(tmp_path):
 # casamento candidato -> político
 # ----------------------------------------------------------------------------------------------------------
 def test_casamento_por_cpf_ignora_nome_e_uf(tmp_path):
-    df = candidatos_df(tmp_path, [cand_row(1, "Nome Totalmente Outro", "Outro", uf="RJ", cpf="12345678909")])
-    res = casar_candidatos([politico("c:1", "Fulano", "Fulano", cpf="12345678909")], df)
+    df = candidatos_df(tmp_path, [cand_row(1, "Nome Totalmente Outro", "Outro", uf="RJ", cpf=CPF_B)])
+    res = casar_candidatos([politico("c:1", "Fulano", "Fulano", cpf=CPF_B)], df)
     assert res.casados == {"c:1": 0} and res.motivo["c:1"] == "cpf"
 
 
@@ -250,7 +251,7 @@ def test_resumir_bens_limita_tipos():
 # ----------------------------------------------------------------------------------------------------------
 def test_mascarar_documento():
     mascarar = tse_doacoes_extractor.mascarar_documento
-    assert mascarar("123.456.789-09") == "***.456.789-**"
+    assert mascarar(formatado(CPF_B)) == "***.456.789-**"
     assert mascarar("12345678000195") == "12.345.678/0001-95"
     assert mascarar("#NULO#") is None and mascarar("-1") is None and mascarar("123") is None
 
@@ -263,11 +264,9 @@ def test_doacoes_agrega_top_doadores_e_preserva_total(tmp_path, monkeypatch):
         tmp_path / "consulta_cand_2022.zip",
         {"consulta_cand_2022_BRASIL.csv": (CAND_COLS, [cand_row(10, "Fulano de Tal", "Fulano", nasc="01/01/1980")])},
     )
-    linhas = [
-        ["10", "SP", "12345678909", f"Pessoa {i}", f"{100 + i},00", "Recursos de pessoas físicas"] for i in range(5)
-    ]
+    linhas = [["10", "SP", CPF_B, f"Pessoa {i}", f"{100 + i},00", "Recursos de pessoas físicas"] for i in range(5)]
     linhas.append(["10", "SP", "12345678000195", "Empresa X", "1000,00", "Recursos de pessoas jurídicas"])
-    linhas.append(["10", "SP", "12345678909", "Pessoa 0", "50,00", "Recursos de pessoas físicas"])  # mesmo doador
+    linhas.append(["10", "SP", CPF_B, "Pessoa 0", "50,00", "Recursos de pessoas físicas"])  # mesmo doador
     linhas.append(["77", "SP", "1", "De outro candidato", "9999,00", "Outros"])
     contas = zip_csv(tmp_path / "contas_2022.zip", {"receitas_candidatos_2022_SP.csv": (RECEITA_2022, linhas)})
     monkeypatch.setattr(
@@ -294,7 +293,7 @@ def test_doacoes_agrega_top_doadores_e_preserva_total(tmp_path, monkeypatch):
     pf = [d for d in r["doadores"] if d["nome_doador"].startswith("Pessoa")]
     assert all(d["cpf_cnpj_doador"] == "***.456.789-**" for d in pf)  # CPF nunca é gravado inteiro
     assert r["doadores"][-1]["nome_doador"].startswith("Demais doadores")
-    assert "12345678909" not in (saida / "tse_doacoes_campanha.json").read_text(encoding="utf-8")
+    assert CPF_B not in (saida / "tse_doacoes_campanha.json").read_text(encoding="utf-8")
 
 
 def test_layout_2014_e_normalizado(tmp_path):
@@ -464,7 +463,7 @@ class HttpFalso:
             return {
                 "dados": {
                     "nomeCivil": "FULANO DE TAL",
-                    "cpf": "12345678909",
+                    "cpf": CPF_B,
                     "dataNascimento": "1980-01-01",
                     "ufNascimento": "SP",
                 }
@@ -483,7 +482,7 @@ def test_identidades_busca_uma_vez_e_usa_cache(tmp_path):
     http = HttpFalso()
     ident = IdentidadesParlamentares(raw_dir=tmp_path, http=http)
     assert ident.enrich([1], [2]) == 2
-    assert ident.get("camara:1")["cpf"] == "12345678909" and ident.get("senado:2")["cpf"] is None
+    assert ident.get("camara:1")["cpf"] == CPF_B and ident.get("senado:2")["cpf"] is None
     assert ident.get("senado:2")["data_nascimento"] == "1970-05-05"
     outra = IdentidadesParlamentares(raw_dir=tmp_path, http=HttpFalso())
     assert outra.enrich([1], [2]) == 0 and outra.http.chamadas == []
@@ -509,5 +508,5 @@ def test_carregar_universo_enriquece_e_deduplica_presidentes(tmp_path):
     universo = tse_core.carregar_universo(tmp_path, ident)
     assert [p.chave for p in universo] == ["camara:1", "senado:2", "presidente:pres idente"]
     dep = universo[0]
-    assert dep.nome_civil == "FULANO DE TAL" and dep.cpf == "12345678909" and dep.uf == "SP"
+    assert dep.nome_civil == "FULANO DE TAL" and dep.cpf == CPF_B and dep.uf == "SP"
     assert dep.nascimento == date(1980, 1, 1) and "cpf" not in dep.identificadores()

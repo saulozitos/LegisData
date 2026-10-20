@@ -20,8 +20,11 @@ Todo commit que entra na `main` e passa no CI é implantado sozinho em https://l
       continua impedindo o merge de propósito.
    3. `alembic upgrade head` num contêiner da imagem nova, na rede do compose.
    4. Carga das séries econômicas, dos mandatos presidenciais, da composição do Congresso, da PNAD e das finanças
-      (CEAP, emendas, remuneração e dados do TSE) (`economia_loader`, `presidencia_loader`, `composicao_loader`,
-      `pnad_loader`, `financas_loader`), se o schema `eco` já existe.
+      (`economia_loader`, `presidencia_loader`, `composicao_loader`, `pnad_loader` e, das finanças, só o que a função
+      `decidir_financas` manda: tudo se o `fin` está vazio ou se o timer ainda não assumiu nenhuma fonte; só a CEAP
+      ou só as emendas, conforme a que o timer ainda não assumiu; remuneração, patrimônio, doações e certidões se o
+      commit mudou os arquivos ou o código delas; nada caso contrário. Uma fonte que o timer já assumiu nunca volta ao
+      retrato do git), se o schema `eco` já existe.
       São idempotentes e rodam por `etl.pipelines.carga_economica.carregar_tudo` (a mesma função do
       `run_etl --load-economia`). Se um arquivo de curadoria estiver ausente ou citar um mandato que não existe no
       banco, a carga falha com as migrações já aplicadas e a imagem antiga ainda no ar (as tabelas novas são aditivas;
@@ -47,8 +50,8 @@ Nenhum caminho, endereço ou credencial do servidor entra no repositório: o dir
 cd <diretório do projeto no servidor>
 git clean -fdq scripts            # só se sobrou cópia solta de uma instalação manual anterior
 git fetch -q origin
-git show origin/main:scripts/deploy/instalar.sh > /tmp/instalar.sh
-bash /tmp/instalar.sh origin/main
+f="$(mktemp)"; git show origin/main:scripts/deploy/instalar.sh >"$f"
+bash "$f" origin/main; rm -f "$f"
 ```
 
 O instalador grava o ambiente, instala o script e as units, marca o commit atual como já implantado, roda um dry-run,
@@ -62,6 +65,127 @@ remove o Watchtower e liga o timer. Pode ser executado de novo.
 - Voltar uma versão: `IMAGE_TAG=<sha anterior> docker compose up -d --no-build backend frontend` (e restaurar o dump em
   `~/backups` se a migração mudou o schema).
 - Restaurar um backup: `docker exec -i politica_postgres pg_restore -U politica_user -d politica_db --clean --if-exists < ~/backups/<arquivo>.dump`.
+
+## Atualização diária de CEAP e emendas (`legisdata-financas.timer`)
+
+O `fin` não depende mais só do deploy: um segundo timer do usuário roda todo dia às 05:37 UTC (02:37 em Brasília; horário
+não redondo, como pede a documentação da API do Senado) o script `~/.legisdata-deploy/atualizar_financas.sh`, que executa
+`python -m etl.pipelines.financas_atualizacao` num contêiner da imagem da API que está no ar. O contêiner roda com o checkout
+montado só para leitura e apenas `etl/data` gravável, na rede do compose, com limite de 2 GB de memória, sem capacidades
+(`--cap-drop ALL`), sem privilégios novos e com o `.env` escondido (só recebe as credenciais do banco, por arquivo de
+ambiente 600; o `Settings` do backend monta a URL e codifica a senha). O que ele faz:
+
+1. Baixa a CEAP da Câmara e do Senado e as emendas do Portal da Transparência e regrava os arquivos de
+   `etl/data/processed`. A CEAP de cada ano **já fechado** (depois de 1º de abril do ano seguinte) vem do cache em
+   `etl/data/raw/ceap_por_ano` (fora do git) e não é baixada de novo até o cache vencer (90 dias); só o ano corrente, e o
+   anterior até março, vão à rede. A primeira execução baixa todos os anos desde 2019, com 10 s de pausa entre os
+   downloads da Câmara (ela responde 429 a CSVs anuais seguidos), e leva alguns minutos; as seguintes são leves. O cache
+   não guarda CPF: a extração só mantém o CNPJ de 14 dígitos dos fornecedores e tira o CPF embutido dos nomes.
+2. Cada fonte é independente. Um ano que falha ganha uma segunda tentativa depois de 90 s; um ano que volta vazio é falha
+   (nunca "gasto zero"). Até março, o arquivo (ou a lista) do ano novo que a fonte ainda não publicou não derruba a CEAP: o ano
+   fica de fora e o resumo registra `ceap_anos_sem_arquivo`, mas só se nem o arquivo processado anterior nem o
+   `fin` tinham gasto daquele ano (um vazio depois de o ano já ter dados é falha, para não apagar dado). Se a nova baixa de um ano
+   fechado falha e existe um cache vencido dele, o cache vencido serve de reserva e o resumo registra
+   `ceap_anos_cache_vencido`. Uma lista de emendas com menos de 80% da anterior é tratada como
+   download truncado. Se uma fonte falha, o arquivo e o `fin` dela ficam como estavam.
+3. Só as fontes **gravadas** são recarregadas no `fin` (`financas_loader.carregar(chaves=...)`), com a proteção contra
+   encolhimento e os erros do Postgres saneados. Nunca se recarrega uma fonte a partir de um arquivo que a extração não
+   renovou, porque depois de um deploy esse arquivo é o retrato antigo do git. Se alguma fonte falhou, a execução termina
+   com erro (o `systemd` registra) depois de recarregar a outra. Remuneração, patrimônio, doações e certidões não entram.
+
+O script usa o mesmo lock do deploy (`~/.legisdata-deploy/deploy.lock`), esperando até 30 minutos, e o pipeline tem um lock
+próprio (`etl/data/.financas.lock`) contra duas atualizações ao mesmo tempo (o timer e o `make daily`, por exemplo). Fora do
+contêiner do timer (que já está atrás do lock do script), onde o processo enxerga o `deploy.lock` (`LEGISDATA_DEPLOY_LOCK`, ou
+`DEPLOY_STATE_DIR`, ou `~/.legisdata-deploy`), o pipeline também o respeita: com o deploy em andamento, ou sem permissão para
+abrir o arquivo, a execução é pulada, para não reverter o JSON no meio nem carregar o retrato do git como se fosse dado fresco.
+O instalador recusa um `DEPLOY_STATE_DIR` diferente de `~/.legisdata-deploy`, porque as units instaladas usam esse caminho. Antes de
+rodar, o script confere que a imagem no ar é a do commit do checkout; depois de um rollback do deploy eles divergem e ele
+recusa a execução com uma mensagem clara.
+
+**Interação com o deploy.** Como o `fin` passa a ficar mais novo que os arquivos versionados no git, o deploy decide assim
+(função `decidir_financas` em `deploy.sh`, testada com `bash` e `git` de verdade):
+
+- fonte sem dado no `fin` (primeiro deploy, migração ou operação que a esvaziou): o git semeia aquela fonte, e só ela, e o
+  deploy dispara a atualização. A CEAP "tem dado" quando as 3 tabelas dela têm linhas; as emendas, quando `fin.emenda` tem;
+- `fin` com dados e fonte já assumida pelo timer: **nunca** recarrega essa fonte a partir do git (recarregar apagaria as
+  emendas novas, que voltariam com outro `uid`, e a CEAP regrediria até o dia seguinte). "Assumida" é uma linha em
+  `etl.execucao` (estágio `CARREGAR`, status `OK`, `parametros = {carga, fresca, origem}`) que a carga de cada fonte grava
+  NA MESMA TRANSAÇÃO dos dados, só se gravou linhas; `fresca = true` quando o dado veio de uma extração nova (o timer ou
+  `run_etl --ceap`) e `false` quando veio do retrato do git (a semeadura do deploy ou `--recarregar-ceap-emendas`), o que
+  revoga a posse: vale a ÚLTIMA linha de cada carga. Essas linhas não podem ser expurgadas como histórico comum, ou o
+  deploy volta a semear do git em silêncio (cerca de 2 linhas por dia). Por isso ela volta junto com um `pg_restore` de dump antigo, some se
+  a carga falhou (o cache de extração não serve: existe mesmo quando a carga falhou) e não depende de arquivo em disco
+  (`git clean -x` não apaga nada). Cada fonte é uma transação: a CEAP entra e fica assumida mesmo que as emendas falhem.
+  `run_etl --ceap --load-economia` bem-sucedido também registra as duas. Recarrega só remuneração, patrimônio, doações e
+  certidões, e apenas se o commit mudou os arquivos delas, o código da carga, `etl/utils` ou as migrações;
+- se o commit mudou a extração ou a carga de CEAP e emendas (qualquer módulo `etl` que elas importam: um teste confere
+  as listas de `decidir_financas` contra as importações), o deploy dispara `legisdata-financas.service` na hora (sem
+  esperar a madrugada), quando a unit está instalada. Sem a unit, o log do deploy avisa e registra o pedido em
+  `~/.legisdata-deploy/financas_pendente`; o `instalar.sh` o cumpre ao ligar o timer;
+- `fin` com dados mas fonte que o timer **ainda não carregou** (é o caso do primeiro deploy depois da 3c): o único dado
+  novo que existe é o do git, então o deploy a semeia de novo e pede a atualização; assim as regras de saneamento do commit
+  chegam ao `fin` sem esperar a madrugada. Por fonte: nenhuma assumida => modo `completa`; só as emendas assumidas =>
+  `sem_emendas` (semeia a CEAP e as estáticas, sem reescrever as emendas); só a CEAP assumida => `sem_ceap`;
+- a tolerância a uma carga de finanças que falha vale se o `fin` tem dado em QUALQUER das quatro tabelas da CEAP e das
+  emendas; a escolha do que semear é por fonte (acima). Uma carga tolerada que falhou também grava `carga` em `financas_pendente` (e a hora da tentativa em
+  `financas_carga_tentada`), e o deploy tenta de novo mesmo sem commit novo, no máximo uma vez por hora (`INTERVALO_DA_CARGA`; a tentativa é
+  carimbada ANTES da carga, então qualquer falha dela, tolerada ou não, espera o intervalo), até a carga passar; a
+  repetição não dispara de novo a atualização diária. O `--dry-run` nunca dispara o serviço, não limpa pendência nem
+  carimba tentativa. Um pedido de atualização parado
+  (`refrescar`) é cumprido na primeira execução do deploy em que a unit existir, ainda que o commit seja o mesmo. A decisão
+  também considera como mudança do timer o `atualizar_financas.sh` e as units `legisdata-financas.*`.
+
+`run_etl --load-economia` (e `make run-load-economia`) usa a MESMA política (`carga_economica.modo_de_semeadura`, que o
+`decidir_financas` repete em bash; um teste compara as 16 combinações): só se semeia do git a fonte que o `fin` ainda não
+tem ou que o timer ainda não assumiu; as demais ficam só com as cargas estáticas, porque os arquivos do git ficam atrás
+da atualização diária e recarregá-los desfaria o trabalho dela. Para recarregar tudo dos arquivos (por exemplo, depois de
+regerá-los à mão com `--ceap`), use `run_etl --load-economia --recarregar-ceap-emendas`. Em ambos os casos a carga de
+CEAP e emendas registra, na própria transação, de onde veio o dado (extração fresca desta execução ou git). A atualização diária lê a liberação de encolhimento legítimo da mesma
+forma que o deploy: `LEGISDATA_ACEITAR_ENCOLHIMENTO=1 ~/.legisdata-deploy/atualizar_financas.sh` na linha de comando (o
+script a repassa ao contêiner), nunca exportada no ambiente do timer.
+
+Para decidir se um ano do começo do ano "ainda não foi publicado" (vazio ou 404 até março), a atualização diária junta os
+anos que o próprio `fin` já tem (o arquivo processado sozinho não serve: o deploy o devolve ao retrato do git) com os que o
+arquivo processado traz (o `fin` sozinho também não: a carga pode ter falhado depois de o arquivo receber o ano); um vazio
+em ano que qualquer um dos dois já tem é falha, e o dado não se perde. A extração manual (`run_etl --ceap`) usa o mesmo
+cache por ano e a mesma proteção, e só dispara a carga completa (`--load-economia`) se a extração desta execução deu certo.
+`--no-cache` baixa tudo de novo, mas continua gravando o cache e mantém a reserva do cache vencido.
+
+**Transição.** A cópia do `deploy.sh` instalada antes desta versão se reexecuta com o script novo sem a variável
+`_LEGISDATA_DEPLOY_REPETICAO`: assume 0, o que dispara a atualização diária uma vez a mais numa repetição de carga. Máquinas
+de desenvolvimento que rodaram a versão intermediária (marcadores em arquivo) podem apagar `etl/data/.financas_*_carregada`.
+As linhas de `etl.execucao` gravadas por versões anteriores deste branch (chave `fonte` em vez de `carga`) continuam valendo:
+as duas consultas leem `coalesce(parametros->>'carga', parametros->>'fonte')`, e a linha nova de uma fonte prevalece.
+
+Os contêineres do deploy e da atualização escondem `.env` e `.git/config` (credencial de remote); num worktree, onde `.git` é
+arquivo, não há `.git/config` a esconder e a montagem é omitida. O arquivo de ambiente com a senha vai para o
+`XDG_RUNTIME_DIR` (tmpfs) quando existe; sem ele, para o diretório de estado (modo 700), e restos de execuções mortas com mais
+de uma hora são apagados.
+
+O deploy continua descartando as saídas locais de `etl/data/processed` antes do merge; a atualização diária as gera de novo.
+O nome `despesas_ceap_2019_2026.json` é histórico: a partir de 2027 o arquivo também terá dados de 2027.
+
+**Instalação** (uma vez, pelo usuário do servidor, junto do deploy): rodar de novo o `instalar.sh` do commit atual, que
+agora também instala o script e as units `legisdata-financas.service/.timer` e liga o timer. O instalador confere o
+`systemctl --user` antes de gravar qualquer coisa, mantém o estado do deploy se ele já existe (não marca como implantado um
+commit que ainda não subiu) e termina com erro se um timer não ficar ativo:
+
+```bash
+cd <diretório do projeto no servidor>
+git fetch -q origin
+f="$(mktemp)"; git show origin/main:scripts/deploy/instalar.sh >"$f"
+bash "$f" origin/main; rm -f "$f"
+```
+
+Depois, o `deploy.sh` mantém a cópia do script igual à do commit implantado. Para testar na hora:
+`systemctl --user start legisdata-financas.service` e acompanhar com `journalctl --user -u legisdata-financas.service -f`.
+Para pausar: `systemctl --user stop legisdata-financas.timer`.
+
+O `make daily` (presença, votações, séries, IPPM e grafo) é outro agendador, ainda sem timer no servidor atual. Se um dia
+ele for instalado, a etapa 1d dele já inclui esta atualização (o lock do pipeline impede a execução dupla e, no host do
+deploy, ela é pulada quando enxerga o `deploy.lock` ocupado; o `legisdata-diario.service` roda como outro usuário e só o enxerga se a unit exportar `LEGISDATA_DEPLOY_LOCK`) e o
+`legisdata-financas.timer` pode ser removido; instale um só dos dois com o mesmo usuário, para o cache e os arquivos de
+`etl/data` não ficarem com donos diferentes.
 
 ## Limites conhecidos
 
@@ -85,10 +209,12 @@ bash -n ~/.legisdata-deploy/deploy.sh && echo ok
 ```
 
 Depois do merge o deploy roda com o script novo, que dali em diante se atualiza sozinho a cada deploy. Se esquecer o
-passo, rode `make run-load-economia` no servidor depois do deploy, ou o `python -c` do passo 4 do script.
+passo, rode `make run-load-economia` no servidor depois do deploy. Ele semeia do git só a fonte que o `fin` não tem ou que o
+timer ainda não assumiu (logo depois da transição, antes da primeira execução do timer, isso é a CEAP e as emendas
+inteiras, gravadas como `fresca=false`); a fonte que o timer já assumiu não é desfeita. Ou rode o `python -c` do passo 4.
 
 ## Rollback da Entrega 3c (a API deixou de montar `etl/data`)
 
 O `git merge` do deploy traz o `docker-compose.yml` novo antes da verificação de saúde, mas o script guarda o commit anterior (`COMMIT_ANTERIOR`) e, se a verificação falhar, sobe a tag anterior com o `docker-compose.yml` DESSE commit (lido por `git show`), que ainda monta `./etl/data` no contêiner da API. Com isso a imagem 3b volta com o volume de que precisa e as rotas de emendas e a CEAP do dossiê funcionam como antes. Só se o compose do commit anterior não puder ser lido o script usa o atual, e nesse caso a imagem 3b (que lê CEAP e emendas desses arquivos) responde 404 em `/emendas/resumo`, `/emendas/localidade/*` e `/emendas/autor/*` e mostra a CEAP e as emendas do dossiê vazias, sem erro 5xx: corrija para frente (o `fin` já está carregado) ou recoloque temporariamente o volume `./etl/data:/etl_data:ro` no compose.
 
-Uma carga de finanças que falha (JSON malformado, tabela que encolheria a menos da metade) só é tolerada quando o `fin` já tem dados (o script consulta `fin.emenda` e `fin.despesa_cota` antes da carga e repassa o resultado como `LEGISDATA_FIN_TEM_DADOS`): nesse caso o deploy segue, o erro aparece no log (`{'erro': ...}` no resultado da carga `financas`) e a API nova continua servindo o que já estava em `fin`. No primeiro deploy da 3c (a migração 0031 acabou de criar o `fin` vazio) a falha NÃO é tolerada: o deploy aborta antes do `docker compose up` e o contêiner antigo segue no ar com o volume `./etl/data`; as tabelas novas são aditivas, então abortar nesse ponto é seguro. Para qualquer erro do Postgres, tanto no log da carga individual quanto no erro final, o texto leva só o tipo, a mensagem principal e o nome da restrição (para erro de dado, o SQLSTATE e a coluna), nunca o `DETAIL` com os valores da linha; um arquivo que existe mas tem o tipo errado volta como `{'formato_invalido': 1}`, distinto de `{'arquivo_ausente': 1}`. O `fin` só se atualiza no deploy, no ETL completo e em `run_etl --load-economia`; o cron diário recarrega apenas séries e mandatos (a atualização diária de CEAP e emendas fica para a 3d), então entre dois deploys o dossiê pode estar atrás dos arquivos de `etl/data`. As demais cargas (séries, mandatos, composição, PNAD) continuam abortando o deploy. Depois de uma falha de finanças, corrija o arquivo ou, se a redução for legítima, rode `run_etl --load-economia`. Para aceitar uma redução legítima, rode o deploy uma única vez com a variável na linha de comando (`LEGISDATA_ACEITAR_ENCOLHIMENTO=1 ~/.legisdata-deploy/deploy.sh`); o script a repassa à carga. Nunca a deixe exportada no ambiente do timer nem em arquivo de ambiente: ela desliga a proteção das oito tabelas (as seis cargas, mais fornecedores e resumo da CEAP).
+Uma carga de finanças que falha (JSON malformado, tabela que encolheria a menos da metade) só é tolerada quando o `fin` já tem dados (o script confere se alguma das quatro tabelas, `fin.emenda`, `fin.despesa_cota`, `fin.despesa_cota_fornecedor` e `fin.despesa_cota_resumo`, tem linhas, depois das migrações e antes da carga, e repassa o resultado como `LEGISDATA_FIN_TEM_ALGUM_DADO`; a tolerância vale para a carga `financas`): nesse caso o deploy segue, o erro aparece no log (`{'erro': ...}` no resultado da carga `financas`) e a API nova continua servindo o que já estava em `fin`. No primeiro deploy da 3c (a migração 0031 acabou de criar o `fin` vazio) a falha NÃO é tolerada: o deploy aborta antes do `docker compose up` e o contêiner antigo segue no ar com o volume `./etl/data`; as tabelas novas são aditivas, então abortar nesse ponto é seguro. Para qualquer erro do Postgres, tanto no log da carga individual quanto no erro final, o texto leva só o tipo, a mensagem principal e o nome da restrição (para erro de dado, o SQLSTATE e a coluna), nunca o `DETAIL` com os valores da linha; um arquivo que existe mas tem o tipo errado volta como `{'formato_invalido': 1}`, distinto de `{'arquivo_ausente': 1}`. O `fin` se atualiza no deploy (quando o commit mudou as entradas ou o código da carga), todo dia pela atualização diária de CEAP e emendas (seção abaixo), no ETL completo e em `run_etl --load-economia`. As demais cargas (séries, mandatos, composição, PNAD) continuam abortando o deploy. Depois de uma falha de finanças, corrija o arquivo ou, se a redução for legítima, rode `run_etl --load-economia` (com `LEGISDATA_ACEITAR_ENCOLHIMENTO=1` na linha de comando); o deploy repete a carga sozinho até ela passar. Para aceitar uma redução legítima, rode o deploy uma única vez com a variável na linha de comando (`LEGISDATA_ACEITAR_ENCOLHIMENTO=1 ~/.legisdata-deploy/deploy.sh`); o script a repassa à carga. Nunca a deixe exportada no ambiente do timer nem em arquivo de ambiente: ela desliga a proteção das oito tabelas (as seis cargas, mais fornecedores e resumo da CEAP).

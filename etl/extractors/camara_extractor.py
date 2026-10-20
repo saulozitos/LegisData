@@ -15,7 +15,6 @@ from etl.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
 from etl.utils.http_client import HttpClient, HttpError
 from etl.utils.io_utils import atomic_write_json, write_json_if_valid
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("CamaraExtractor")
 
 BASE_URL = "https://dadosabertos.camara.leg.br/api/v2"
@@ -775,6 +774,7 @@ class CamaraExtractor:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     extractor = CamaraExtractor(request_delay=0.1)
     res = extractor.run_full_extraction()
     print("Resultado da extração da Câmara:", res)

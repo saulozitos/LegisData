@@ -34,7 +34,6 @@ MANDATO_POR_ELEICAO = {
     2022: "lula-2023",
 }
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("SocialIndicatorsExtractor")
 
 
@@ -450,6 +449,7 @@ class SocialIndicatorsExtractor:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     extractor = SocialIndicatorsExtractor()
     res = extractor.export_all()
     print("Exportação concluída com sucesso:", res)

@@ -1,0 +1,12 @@
+[Unit]
+Description=LegisData - agenda a atualização de CEAP e emendas todo dia de madrugada
+
+[Timer]
+# O servidor está em UTC: 05:37 UTC são 02:37 em Brasília. Horário não redondo de propósito: a documentação da API do Senado
+# pede para evitar rotinas em horários arredondados (picos simultâneos geram HTTP 429)
+OnCalendar=*-*-* 05:37:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

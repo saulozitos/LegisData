@@ -147,3 +147,24 @@ BCB_SERIES = {
         "data_inicio": "01/01/2012",
     },
 }
+
+
+# Tetos contra download ou zip gigante numa rotina sem supervisão (o contêiner da atualização diária tem 2 GB de
+# memória). O maior arquivo real é o das emendas, com cerca de 32 MB compactados; o CSV anual da CEAP da Câmara tem 7,5 MB
+# compactados e 82 MB descomprimidos.
+TETO_DO_DOWNLOAD = 200 * 1024 * 1024
+TETO_DO_CSV = 300 * 1024 * 1024
+
+# Arquivos processados da CEAP e das emendas: a extração (`sync_ceap_emendas`) grava e a carga (`financas_loader`) lê.
+CEAP_ARQUIVO = "despesas_ceap_2019_2026.json"
+EMENDAS_ARQUIVO = "emendas_parlamentares_2019_2026.json"
+
+# As casas do Congresso (a ordem não significa nada: os mapeamentos por casa são sempre explícitos, por nome). Quem produz
+# (`financas_loader.anos_publicados_da_ceap`) e quem consome (`sync_ceap_emendas`) os "anos já publicados por casa" usa
+# estas chaves; um teste confere a igualdade.
+CASAS_DO_CONGRESSO = ("camara", "senado")
+
+# As cargas de finanças que o timer diário atualiza (extração fresca) e as que só mudam com o commit. Ficam aqui, leves, para a
+# política de semeadura (`carga_economica`) não precisar importar o loader inteiro só para saber os nomes.
+CHAVES_DO_TIMER = ("ceap", "emendas")
+CHAVES_ESTATICAS = ("remuneracao", "patrimonio", "doacoes", "certidoes")
