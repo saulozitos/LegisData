@@ -20,13 +20,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from etl.config import PROCESSED_DATA_DIR
-from etl.pipelines.financas_loader import (
-    CEAP_ARQUIVO,
-    DOACOES_ARQUIVO,
-    EMENDAS_ARQUIVO,
-    REMUNERACAO_ARQUIVO,
-)
+from etl.config import CEAP_ARQUIVO, EMENDAS_ARQUIVO, PROCESSED_DATA_DIR
+from etl.pipelines.financas_loader import DOACOES_ARQUIVO, REMUNERACAO_ARQUIVO
 from etl.pipelines.loader_helpers import (
     ler_ceap,
     ler_doacoes,

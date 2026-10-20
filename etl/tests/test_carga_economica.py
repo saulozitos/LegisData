@@ -151,7 +151,12 @@ def test_chaves_explicitas_nao_consultam_o_banco(chamadas, monkeypatch):
 def test_o_mapa_de_modos_cobre_as_cargas_de_financas_e_as_toleradas():
     chaves = {chave for chave, *_ in carga_economica.CARGAS}
     assert {c for c in carga_economica.FINANCAS_POR_MODO.values() if c} <= chaves
-    assert set(carga_economica.TOLERADAS_NO_DEPLOY) == {"financas", "financas_estaticas"}
+    assert set(carga_economica.TOLERADAS_NO_DEPLOY) == {
+        "financas",
+        "financas_estaticas",
+        "financas_sem_emendas",
+        "financas_sem_ceap",
+    }
     assert carga_economica.MODOS_DO_DEPLOY == tuple(carga_economica.FINANCAS_POR_MODO)
 
 
@@ -160,6 +165,8 @@ def test_o_mapa_de_modos_cobre_as_cargas_de_financas_e_as_toleradas():
     [
         ("completa", ["series", "presidencia", "composicao", "pnad", "financas"]),
         ("estaticas", ["series", "presidencia", "composicao", "pnad", "financas_estaticas"]),
+        ("sem_emendas", ["series", "presidencia", "composicao", "pnad", "financas_sem_emendas"]),
+        ("sem_ceap", ["series", "presidencia", "composicao", "pnad", "financas_sem_ceap"]),
         ("nenhuma", ["series", "presidencia", "composicao", "pnad"]),
     ],
 )
@@ -192,8 +199,9 @@ def test_carga_estatica_tolerada_que_falha_nao_derruba_o_deploy(chamadas, monkey
     assert "corrompido" in resultados["financas_estaticas"]["erro"]
 
 
-def test_fin_tem_ceap_e_emendas_exige_as_quatro_tabelas_com_dados(pg_engine):
-    """Popula tabela por tabela numa transação revertida: só com as quatro a resposta vira True."""
+@pytest.mark.parametrize("faltando", carga_economica.TABELAS_DA_CEAP_E_EMENDAS)
+def test_fin_tem_ceap_e_emendas_exige_as_quatro_tabelas_com_dados(pg_engine, faltando):
+    """Popula tudo numa transação revertida e esvazia uma tabela por vez: cada uma é exigida (`and`, não `or`)."""
     from sqlalchemy import text
 
     with pg_engine.connect() as conexao:
@@ -205,11 +213,56 @@ def test_fin_tem_ceap_e_emendas_exige_as_quatro_tabelas_com_dados(pg_engine):
             assert _consultar(conexao) is False  # tudo vazio
             _popular(conexao)
             assert _consultar(conexao) is True
-            conexao.execute(text("DELETE FROM fin.despesa_cota_resumo"))
-            assert _consultar(conexao) is False  # falta uma só: `and` e não `or`
+            conexao.execute(text(f"DELETE FROM fin.{faltando}"))
+            assert _consultar(conexao) is False
             assert conexao.execute(text(f"select {carga_economica.sql_fin_tem_dados('or')}")).scalar() is True
         finally:
             transacao.rollback()
+
+
+def test_fin_tem_ceap_e_emendas_sem_o_schema_fin_e_falso_sem_consultar_as_tabelas():
+    consultas = []
+
+    class Conexao:
+        def execute(self, consulta):
+            consultas.append(str(consulta))
+
+            class Resultado:
+                def scalar(self):
+                    return False  # to_regclass('fin.emenda') is not null => false
+
+            return Resultado()
+
+    class Motor:
+        def connect(self):
+            class Ctx:
+                def __enter__(s):
+                    return Conexao()
+
+                def __exit__(s, *a):
+                    return False
+
+            return Ctx()
+
+    assert carga_economica.fin_tem_ceap_e_emendas(Motor()) is False
+    assert len(consultas) == 1 and "to_regclass" in consultas[0]
+
+
+def test_carga_de_modulo_e_funcao_resolve_a_funcao_nomeada_e_o_padrao_carregar():
+    assert (
+        carga_economica._carga_de("etl.pipelines.financas_loader:carregar_estaticas").__name__ == "carregar_estaticas"
+    )
+    assert carga_economica._carga_de("etl.pipelines.pnad_loader").__name__ == "carregar"
+    with pytest.raises(AttributeError):
+        carga_economica._carga_de("etl.pipelines.financas_loader:nao_existe")
+
+
+def test_falhas_toleradas_so_olha_as_cargas_toleradas_e_o_formato_de_erro():
+    f = carga_economica.falhas_toleradas
+    assert f({"financas_sem_ceap": {"erro": "x"}, "series": {"erro": "y"}, "financas": {"ceap": {}}, "pnad": 3}) == [
+        "financas_sem_ceap"
+    ]
+    assert f({"financas": "texto"}) == [] and f({}) == []
 
 
 def _consultar(conexao):

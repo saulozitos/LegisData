@@ -8,6 +8,7 @@ import pytest
 import etl.pipelines.sync_ceap_emendas as sync
 from etl.extractors.emendas_extractor import EmendasExtractor, parse_brl, parse_emendas_csv, stable_id
 from etl.pipelines.sync_ceap_emendas import CeapAccumulator
+from etl.tests.sinteticos import CPF_A
 
 FONTES = {"DEPUTADO_FEDERAL": "camara", "SENADOR": "senado"}
 
@@ -301,7 +302,7 @@ def test_fontes_nao_gravadas_diz_quais_falharam():
         "09876543200",  # CPF só dígitos
         "098.765.432/00  -",  # CPF na máscara de CNPJ que a Câmara usa (visto nos dados reais)
         "123.456.789/0001",  # 12 dígitos: truncado, não é CNPJ
-        "00052998224725",  # CPF válido com enchimento de zeros à esquerda
+        "000" + CPF_A,  # CPF válido com enchimento de zeros à esquerda
         "000000000000",  # enchimento de lançamento sem fornecedor
         "***.456.789-**",  # já mascarado pela fonte
         "",
@@ -311,7 +312,7 @@ def test_documento_de_pessoa_fisica_nunca_chega_ao_estado_nem_ao_cache(documento
     acc = CeapAccumulator()
     acc.add("DEPUTADO_FEDERAL", 1, "Ana", 2023, 1, "T", "FULANO 09876543200", documento, 10.0)
     estado = json.dumps(acc.para_json())
-    for sequencia in ("09876543200", "098.765.432-00", "098.765.432/00", "52998224725"):
+    for sequencia in ("09876543200", "098.765.432-00", "098.765.432/00", CPF_A):
         assert sequencia not in estado
     (reg,) = acc.finalize(FONTES).values()
     (forn,) = reg["fornecedores"].values()
@@ -321,7 +322,7 @@ def test_documento_de_pessoa_fisica_nunca_chega_ao_estado_nem_ao_cache(documento
 def test_documento_de_14_digitos_fica_sem_conferir_o_digito_verificador():
     # a fonte traz CNPJ que não fecha o DV; só o que é comprovadamente CPF (com zeros à esquerda) sai
     assert sync.cnpj_do_fornecedor("12.345.678/9000-10") == "12345678900010"
-    assert sync.cnpj_do_fornecedor("00052998224725") is None
+    assert sync.cnpj_do_fornecedor("000" + CPF_A) is None
 
 
 def test_cnpj_valido_continua_no_estado_so_com_digitos():

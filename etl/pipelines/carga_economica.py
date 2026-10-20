@@ -42,11 +42,21 @@ CARGAS: Tuple[Tuple[str, str, str, Optional[str]], ...] = (
         "etl.pipelines.financas_loader:carregar_estaticas",
         None,
     ),
+    # semeadura parcial do deploy: uma das duas fontes do timer já é dele (o git não pode mais reescrevê-la)
+    (
+        "financas_sem_emendas",
+        "Finanças sem as emendas (fin)",
+        "etl.pipelines.financas_loader:carregar_sem_emendas",
+        None,
+    ),
+    ("financas_sem_ceap", "Finanças sem a CEAP (fin)", "etl.pipelines.financas_loader:carregar_sem_ceap", None),
 )
 # Qual carga de finanças cada modo roda. Um só mapa: o deploy, o `run_etl --load-economia` e os testes leem daqui.
 FINANCAS_POR_MODO: Dict[str, Optional[str]] = {
     "completa": "financas",
     "estaticas": "financas_estaticas",
+    "sem_emendas": "financas_sem_emendas",
+    "sem_ceap": "financas_sem_ceap",
     "nenhuma": None,
 }
 MODOS_DO_DEPLOY = tuple(FINANCAS_POR_MODO)
@@ -65,7 +75,8 @@ def chaves_do_modo(modo: str) -> List[str]:
     """
     As cargas de um modo. Séries, mandatos, composição e PNAD sempre; as finanças conforme o `modo`: "completa" (o `fin`
     está vazio: semeia tudo dos arquivos do git), "estaticas" (só remuneração, patrimônio, doações e certidões, porque
-    CEAP e emendas vêm do timer diário e não podem voltar ao retrato do git) ou "nenhuma". Vale para o deploy e para o
+    CEAP e emendas vêm do timer diário e não podem voltar ao retrato do git), "sem_emendas"/"sem_ceap" (as estáticas mais
+    só uma das duas fontes do timer, quando a outra já é dele) ou "nenhuma". Vale para o deploy e para o
     `run_etl --load-economia`.
     """
     if modo not in FINANCAS_POR_MODO:

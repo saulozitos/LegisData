@@ -4,11 +4,13 @@ import io
 import json
 import zipfile
 from datetime import date
+from pathlib import Path
 
 import pytest
 
 import etl.pipelines.sync_ceap_emendas as sync
 from etl.pipelines.sync_ceap_emendas import CeapAccumulator
+from etl.tests.sinteticos import CPF_B
 from etl.utils.http_client import HttpError
 
 FONTES = {"DEPUTADO_FEDERAL": "camara", "SENADOR": "senado"}
@@ -45,7 +47,7 @@ def _camara(linhas, **kw):
 
 
 def test_cnpj_so_de_digitos_com_zero_a_esquerda_nao_vira_float():
-    acc, _, falhas = _camara(["ANA;123;SP;X;2023;1;COMB;10,5;POSTO;07575651000159".replace("10,5", "10.5")])
+    acc, _, falhas = _camara(["ANA;123;SP;X;2023;1;COMB;10.5;POSTO;07575651000159"])
     (reg,) = acc.finalize(FONTES).values()
     assert falhas == [] and reg["fornecedores"]["POSTO"]["cnpj_cpf"] == "07575651000159"
     assert reg["camara_id"] == 123
@@ -144,7 +146,7 @@ MUTACOES = {
     "por_ano_nulo": (["dados", 0, "reg", "por_ano"], None),
     "total_nan": (["dados", 0, "reg", "total_gasto"], "NaN"),
     "fornecedor_nome_nao_texto": (["dados", 0, "reg", "fornecedores", "Posto", "nome"], 5),
-    "fornecedor_cpf_em_disco": (["dados", 0, "reg", "fornecedores", "Posto", "cnpj_cpf"], "12345678909"),
+    "fornecedor_cpf_em_disco": (["dados", 0, "reg", "fornecedores", "Posto", "cnpj_cpf"], CPF_B),
 }
 
 
@@ -171,7 +173,7 @@ def test_cache_com_chave_repetida_e_recusado(tmp_path):
 def test_cache_com_nome_de_fornecedor_com_cpf_e_recusado(tmp_path):
     payload = _payload(tmp_path)
     reg = payload["dados"][0]["reg"]
-    reg["fornecedores"] = {"JOSE 12345678909": {**reg["fornecedores"]["Posto"], "nome": "JOSE 12345678909"}}
+    reg["fornecedores"] = {f"JOSE {CPF_B}": {**reg["fornecedores"]["Posto"], "nome": f"JOSE {CPF_B}"}}
     (tmp_path / "camara_2023.json").write_text(json.dumps(payload), encoding="utf-8")
     assert sync._ler_cache(tmp_path, "camara", 2023, HOJE) is None
 
@@ -528,3 +530,55 @@ def test_erro_inesperado_das_emendas_nao_impede_a_ceap_e_fica_no_resumo(tmp_path
     monkeypatch.setattr(sync, "EmendasExtractor", Quebra)
     resumo = sync.run(2023, 2023, http=object(), hoje=HOJE)
     assert resumo["ceap_gravado"] is True and resumo["emendas_gravado"] is False and "portal" in resumo["emendas_erro"]
+
+
+def test_casas_do_congresso_sao_as_mesmas_nos_dois_lados_do_contrato_dos_anos_publicados():
+    from etl.config import CASAS_DO_CONGRESSO
+    from etl.pipelines import financas_loader
+
+    assert set(sync.CASA_DO_CARGO.values()) == set(CASAS_DO_CONGRESSO) == set(financas_loader._CASA_DA_FONTE.values())
+    assert set(sync.PAUSA_POR_CASA) == set(CASAS_DO_CONGRESSO)
+    assert set(sync.anos_publicados_no_arquivo(Path("/nao/existe.json"))) == set(CASAS_DO_CONGRESSO)
+
+
+def test_o_arquivo_tem_o_ano_e_o_fin_nao_a_uniao_protege_o_ano(tmp_path, monkeypatch):
+    """A carga falhou depois de o arquivo receber 2027: o `fin` não tem o ano, o arquivo tem; um 404 não pode apagá-lo."""
+    monkeypatch.setattr(sync, "PROCESSED_DATA_DIR", tmp_path)
+    anterior = CeapAccumulator()
+    anterior.add("DEPUTADO_FEDERAL", 1, "Ana", 2027, 1, "T", "F", None, 10.0)
+    anterior.add("SENADOR", 7, "Beto", 2027, 1, "T", "F", None, 10.0)
+    arquivo = tmp_path / sync.CEAP_OUTPUT
+    arquivo.write_text(json.dumps(anterior.finalize(FONTES)), encoding="utf-8")
+    _extratores_que_nao_acham_2027(monkeypatch)
+    resumo = sync.run(
+        2026,
+        2027,
+        emendas=False,
+        http=object(),
+        hoje=date(2027, 1, 10),
+        anos_publicados={"camara": set(), "senado": set()},  # o fin respondeu, e sem o ano
+    )
+    assert resumo["ceap_gravado"] is False and resumo["ceap_falhas"] == {"camara": [2027], "senado": [2027]}
+
+
+@pytest.mark.parametrize(
+    "erro", [NotImplementedError("compressão"), RuntimeError("File is encrypted"), RecursionError()]
+)
+def test_zip_cifrado_ou_com_compressao_nao_suportada_e_falha_do_ano_e_nao_derruba_o_run(erro):
+    class Cliente:
+        def get_bytes(self, url, **kwargs):
+            raise erro
+
+    acc = CeapAccumulator()
+    _, falhas = sync.extract_camara_ceap(Cliente(), [2023], acc)
+    assert falhas == [2023] and acc.vazio
+
+
+def test_validador_nao_aceita_a_chave_com_none_literal(tmp_path):
+    payload = _payload(tmp_path)
+    forns = payload["dados"][0]["reg"]["fornecedores"]
+    forn = forns.pop("Posto")
+    forn["cnpj_cpf"] = None
+    forns["Posto [None]"] = forn
+    (tmp_path / "camara_2023.json").write_text(json.dumps(payload), encoding="utf-8")
+    assert sync._ler_cache(tmp_path, "camara", 2023, HOJE) is None

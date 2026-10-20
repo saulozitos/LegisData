@@ -157,11 +157,14 @@ def test_o_ano_inicial_do_ceap_no_cli_e_o_mesmo_da_atualizacao_diaria():
 def test_etapa_ceap_falha_quando_alguma_fonte_nao_foi_gravada_e_passa_quando_foram_as_duas(monkeypatch):
     import etl.pipelines.sync_ceap_emendas as sync
 
-    monkeypatch.setattr(sync, "run", lambda ano_inicio: {"ceap_gravado": True, "emendas_gravado": True})
+    monkeypatch.setattr(cli, "_anos_ja_carregados_ou_none", lambda: None)
+    monkeypatch.setattr(sync, "run", lambda ano_inicio, **kw: {"ceap_gravado": True, "emendas_gravado": True})
     assert cli._ceap_emendas(2019) == {"ceap_gravado": True, "emendas_gravado": True}
     for falha in ("ceap_gravado", "emendas_gravado"):
         monkeypatch.setattr(
-            sync, "run", lambda ano_inicio, falha=falha: {"ceap_gravado": True, "emendas_gravado": True, falha: False}
+            sync,
+            "run",
+            lambda ano_inicio, falha=falha, **kw: {"ceap_gravado": True, "emendas_gravado": True, falha: False},
         )
         with pytest.raises(RuntimeError, match="não gravadas"):
             cli._ceap_emendas(2019)
@@ -178,20 +181,57 @@ def test_recarregar_ceap_emendas_chega_ate_a_carga(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "argumentos, esperado",
+    "argumentos, extracao_ok, esperado",
     [
-        ([], True),  # ETL completo: a CEAP extraída agora entra na carga
-        (["--ceap", "--load-economia"], True),
-        (["--load-economia"], False),  # só a carga: o fin pode estar à frente dos arquivos do git
-        (["--load-economia", "--recarregar-ceap-emendas"], True),
+        ([], True, True),  # ETL completo: a CEAP extraída agora entra na carga
+        (["--ceap", "--load-economia"], True, True),
+        (["--ceap", "--load-economia"], False, False),  # extração falhou: o arquivo é o retrato antigo, não recarrega
+        (["--load-economia"], True, False),  # só a carga: o fin pode estar à frente dos arquivos do git
+        (["--load-economia", "--recarregar-ceap-emendas"], True, True),
+        (["--ceap", "--load-economia", "--recarregar-ceap-emendas"], False, True),  # o operador pediu explicitamente
     ],
 )
-def test_a_carga_recarrega_ceap_e_emendas_quando_a_extracao_roda_junto_ou_quando_pedido(
-    monkeypatch, argumentos, esperado
+def test_a_carga_recarrega_ceap_e_emendas_so_quando_a_extracao_desta_execucao_deu_certo_ou_quando_pedido(
+    monkeypatch, argumentos, extracao_ok, esperado
 ):
     recebido = []
+
+    def extracao(ano_inicio):
+        if not extracao_ok:
+            raise RuntimeError("CEAP/emendas não gravadas")
+        return {}
+
+    monkeypatch.setattr(cli, "_ceap_emendas", extracao)
     monkeypatch.setattr(cli, "_load_economia", lambda recarregar=False: recebido.append(recarregar))
-    etapas = cli.construir_etapas(cli.montar_parser().parse_args(argumentos))
-    [carga] = [e for e in etapas if e.chave == "load_economia"]
-    carga.executar()
+    etapas = {e.chave: e for e in cli.construir_etapas(cli.montar_parser().parse_args(argumentos))}
+    if "ceap" in etapas:
+        try:
+            etapas["ceap"].executar()
+        except RuntimeError:
+            pass
+    etapas["load_economia"].executar()
     assert recebido == [esperado]
+
+
+def test_a_extracao_manual_usa_o_cache_por_ano_e_os_anos_ja_carregados(monkeypatch):
+    chamadas = {}
+    monkeypatch.setattr(
+        "etl.pipelines.sync_ceap_emendas.run",
+        lambda **kw: chamadas.update(kw) or {"ceap_gravado": True, "emendas_gravado": True},
+    )
+    monkeypatch.setattr(cli, "_anos_ja_carregados_ou_none", lambda: {"camara": {2026}, "senado": set()})
+    cli._ceap_emendas(2019)
+    assert chamadas["cache_dir"].name == "ceap_por_ano" and chamadas["anos_publicados"] == {
+        "camara": {2026},
+        "senado": set(),
+    }
+
+
+def test_sem_banco_a_extracao_manual_segue_so_com_o_arquivo(monkeypatch):
+    monkeypatch.setattr("app.core.database.engine", object())  # um motor que não responde a nada
+
+    def quebra(engine):
+        raise RuntimeError("sem banco")
+
+    monkeypatch.setattr("etl.pipelines.financas_atualizacao.anos_ja_carregados", quebra)
+    assert cli._anos_ja_carregados_ou_none() is None

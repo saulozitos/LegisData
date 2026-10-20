@@ -499,7 +499,7 @@ def cpf_valido(digitos: str) -> bool:
 def cnpj_do_fornecedor(valor: Any) -> Optional[str]:
     """
     Os 14 dígitos de um CNPJ. CPF (11 dígitos), documento truncado, CPF com enchimento de zeros à esquerda
-    ("00012345678909") e o CNPJ de enchimento que a Câmara usa para lançamentos sem fornecedor ("CELULAR FUNCIONAL",
+    (os três zeros de enchimento mais um CPF de 11 dígitos) e o CNPJ de enchimento que a Câmara usa para lançamentos sem fornecedor ("CELULAR FUNCIONAL",
     "RAMAL") viram None: CPF nunca é gravado (decisão D3). Não confere o dígito verificador do CNPJ (os dados de teste e
     parte da fonte têm CNPJs que não fecham); só barra o que é comprovadamente um CPF.
     """
@@ -564,28 +564,38 @@ def _tira_documento_pessoal(achado: "re.Match[str]") -> str:
     return " " if total in (11, 12) and not so_anos else achado.group(0)
 
 
-# Qualquer sequência de dígitos com até 4 separadores quaisquer entre os grupos ("5299 8224 725", "52  998  224  725",
-# "000 529 982 24725"). Só sai quando é comprovadamente um CPF: os 11 últimos dígitos passam nos dígitos verificadores e
-# o que vem antes são só zeros de enchimento (0 a 3 zeros: "0052998224725", "00052998224725"). Sequência com "/" (CNPJ
-# formatado) ou com vírgula (valor em reais) nunca é tocada.
-_DIGITOS_SEPARADOS = re.compile(r"(?<![0-9])[0-9]+(?:[\W_]{1,4}[0-9]+){0,6}(?![0-9])")
+# Qualquer sequência de dígitos com separadores quaisquer entre os grupos ("5299 8224 725", "52  998  224  725",
+# "5 2 9 9 8 2 2 4 7 2 5", "000 529 982 24725"). Só sai quando é comprovadamente um CPF: os 11 últimos dígitos passam nos
+# dígitos verificadores e o que vem antes são só zeros de enchimento (em qualquer quantidade). Sequência com "/" (CNPJ
+# formatado) ou com vírgula (valor em reais) nunca é tocada. Linear: dígitos e separadores são classes disjuntas.
+_DIGITOS_SEPARADOS = re.compile(r"(?<![0-9])[0-9]+(?:[\W_]+[0-9]+)*(?![0-9])")
+
+
+def _digitos_de_cpf(bruto: str) -> bool:
+    """True se a sequência (com separadores) é um CPF válido, com ou sem zeros de enchimento à esquerda."""
+    if "/" in bruto or "," in bruto:
+        return False
+    digitos = re.sub(r"[^0-9]", "", bruto)
+    return len(digitos) >= 11 and set(digitos[:-11]) <= {"0"} and cpf_valido(digitos[-11:])
 
 
 def _tira_cpf_valido_separado(achado: "re.Match[str]") -> str:
-    bruto = achado.group(0)
-    if "/" in bruto or "," in bruto:
-        return bruto
-    digitos = re.sub(r"[^0-9]", "", bruto)
-    if 11 <= len(digitos) <= 14 and set(digitos[:-11]) <= {"0"} and cpf_valido(digitos[-11:]):
-        return " "
-    return bruto
+    return " " if _digitos_de_cpf(achado.group(0)) else achado.group(0)
+
+
+def cpfs_validos_em(valor: Any) -> int:
+    """Quantos CPFs válidos o texto carrega, nas mesmas formas que o saneamento remove (`nome_sem_cpf`). Para os testes de D3."""
+    normal = _ascii(texto(valor))
+    return sum(1 for achado in _DIGITOS_SEPARADOS.finditer(normal) if _digitos_de_cpf(achado.group(0)))
 
 
 def nome_sem_cpf(valor: Any) -> Optional[str]:
     """Nome de pessoa ou empresa sem CPF (nem número de documento pessoal de 11 ou 12 dígitos) embutido; None se nada sobra."""
-    sem_cpf = _SEQUENCIA_CPF.sub(_sem_cpf, _ascii(texto(valor)))
-    sem_cpf = _DOCUMENTO_PESSOAL.sub(_tira_documento_pessoal, sem_cpf)
-    limpo = " ".join(_DIGITOS_SEPARADOS.sub(_tira_cpf_valido_separado, sem_cpf).split())
+    # primeiro o CPF comprovado por dígito verificador em qualquer agrupamento (leva junto os zeros de enchimento), depois as
+    # formas do desenho 3-3-3-2 e, por fim, o número de 11 ou 12 dígitos de documento pessoal
+    sem_cpf = _DIGITOS_SEPARADOS.sub(_tira_cpf_valido_separado, _ascii(texto(valor)))
+    sem_cpf = _SEQUENCIA_CPF.sub(_sem_cpf, sem_cpf)
+    limpo = " ".join(_DOCUMENTO_PESSOAL.sub(_tira_documento_pessoal, sem_cpf).split())
     return limpo or None
 
 

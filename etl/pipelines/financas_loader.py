@@ -18,7 +18,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
-from etl.config import CEAP_ARQUIVO, EMENDAS_ARQUIVO, PROCESSED_DATA_DIR
+from etl.config import CASAS_DO_CONGRESSO, CEAP_ARQUIVO, EMENDAS_ARQUIVO, PROCESSED_DATA_DIR
 from etl.pipelines.loader_helpers import (
     LIMITE_CEAP,
     LIMITE_EMENDA,
@@ -214,7 +214,7 @@ def _fonte_da_ceap(dados: Dict[str, Any]) -> str:
     return FONTE_CEAP_CAMARA if dados.get("camara_id") else FONTE_CEAP_SENADO
 
 
-_CASA_DA_FONTE = {FONTE_CEAP_CAMARA: "camara", FONTE_CEAP_SENADO: "senado"}
+_CASA_DA_FONTE = dict(zip((FONTE_CEAP_CAMARA, FONTE_CEAP_SENADO), CASAS_DO_CONGRESSO))
 
 
 def anos_publicados_da_ceap(engine: Engine) -> Dict[str, Set[int]]:
@@ -227,7 +227,7 @@ def anos_publicados_da_ceap(engine: Engine) -> Dict[str, Set[int]]:
         "SELECT f.codigo, d.ano FROM fin.despesa_cota d JOIN etl.fonte f ON f.id = d.fonte_id "
         "WHERE d.valor_liquido <> 0 GROUP BY f.codigo, d.ano"
     )
-    publicados: Dict[str, Set[int]] = {"camara": set(), "senado": set()}
+    publicados: Dict[str, Set[int]] = {casa: set() for casa in CASAS_DO_CONGRESSO}
     with engine.connect() as conexao:
         for codigo, ano in conexao.execute(consulta):
             if codigo in _CASA_DA_FONTE:
@@ -665,3 +665,13 @@ def carregar_estaticas(engine: Engine) -> Dict[str, Any]:
     retrato versionado no git, que é mais antigo (as emendas novas seriam apagadas e voltariam com outro `uid`).
     """
     return carregar(engine, chaves=CHAVES_ESTATICAS)
+
+
+def carregar_sem_emendas(engine: Engine) -> Dict[str, Any]:
+    """As estáticas e a CEAP, sem tocar nas emendas: o deploy semeia a CEAP quando só as emendas já são do timer."""
+    return carregar(engine, chaves=("ceap",) + CHAVES_ESTATICAS)
+
+
+def carregar_sem_ceap(engine: Engine) -> Dict[str, Any]:
+    """As estáticas e as emendas, sem tocar na CEAP: o deploy semeia as emendas quando só a CEAP já é do timer."""
+    return carregar(engine, chaves=("emendas",) + CHAVES_ESTATICAS)

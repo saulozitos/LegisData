@@ -23,6 +23,7 @@ from etl.pipelines.loader_helpers import (
     uf_da_localidade,
 )
 from etl.pipelines.pessoa_resolver import Resolucao, ResolvedorDePessoas
+from etl.tests.sinteticos import CPF_A
 
 # ── funções puras ─────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -2309,11 +2310,14 @@ def test_carga_estatica_nao_apaga_ceap_nem_emendas_ja_no_banco(pg_engine, banco,
         ("CONVENIO 2019-2020-2021", "CONVENIO 2019-2020-2021"),  # lista de anos
         ("PEDIDO 2019-10-19", "PEDIDO 2019-10-19"),  # data
         ("TEL 61-3215-1234", "TEL 61-3215-1234"),
-        ("FULANO 00052998224725", "FULANO"),  # CPF válido com enchimento de zeros à esquerda (14 e 13 dígitos)
-        ("FULANO 0052998224725", "FULANO"),
-        ("FULANO 5299 8224 725", "FULANO"),  # CPF válido em grupos 4-4-3 e 2-3-3-3, separados por espaço
-        ("FULANO 52 998 224 725", "FULANO"),
-        ("FULANO 529    98224725", "FULANO"),  # separador de vários espaços
+        (f"FULANO 000{CPF_A}", "FULANO"),  # CPF válido com enchimento de zeros à esquerda (14 e 13 dígitos)
+        (f"FULANO 00{CPF_A}", "FULANO"),
+        (
+            f"FULANO {CPF_A[:4]} {CPF_A[4:8]} {CPF_A[8:]}",
+            "FULANO",
+        ),  # CPF válido em grupos 4-4-3 e 2-3-3-3, separados por espaço
+        (f"FULANO {CPF_A[:2]} {CPF_A[2:5]} {CPF_A[5:8]} {CPF_A[8:]}", "FULANO"),
+        (f"FULANO {CPF_A[:3]}    {CPF_A[3:]}", "FULANO"),  # separador de vários espaços
         ("LOJA 2020 2021 2022", "LOJA 2020 2021 2022"),
         ("TEL 61 3215 1234", "TEL 61 3215 1234"),
         ("VALOR 1.234,56", "VALOR 1.234,56"),
@@ -2328,8 +2332,26 @@ def test_so_um_numero_de_12_digitos_nao_deixa_nome_vazio_no_fornecedor():
     assert nome_do_fornecedor("500600700800") == "Fornecedor não identificado"
 
 
-def test_anos_publicados_da_ceap_vem_do_fin_por_casa(pg_engine, banco, tmp_path):
-    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
+def test_anos_publicados_da_ceap_vem_do_fin_por_casa_e_ignora_o_ano_zerado(pg_engine, banco, tmp_path):
+    senador = _ceap(nome="BETO LIMA", camara_id=None, senado_id=200, cargo="SENADOR")
+    senador["por_ano_tipo"] = {"2024": {"PASSAGEM": 30.0}, "2022": {"PASSAGEM": 0.0}}  # 2022 sem gasto
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap(), "BETO LIMA": senador})
     with pg_engine.begin() as conn:
         fin.carregar_ceap(conn, tmp_path)
-    assert fin.anos_publicados_da_ceap(pg_engine) == {"camara": {2023, 2024}, "senado": set()}
+    publicados = fin.anos_publicados_da_ceap(pg_engine)
+    assert publicados["camara"] == {2023, 2024}
+    assert publicados["senado"] == {2024}  # o ano sem gasto não conta como publicado
+
+
+@pytest.mark.parametrize(
+    "funcao, esperado",
+    [
+        ("carregar_sem_emendas", ("ceap", "remuneracao", "patrimonio", "doacoes", "certidoes")),
+        ("carregar_sem_ceap", ("emendas", "remuneracao", "patrimonio", "doacoes", "certidoes")),
+    ],
+)
+def test_semeadura_parcial_carrega_uma_fonte_do_timer_mais_as_estaticas(monkeypatch, funcao, esperado):
+    chamadas = []
+    monkeypatch.setattr(fin, "carregar", lambda engine, processed_dir=None, chaves=None: chamadas.append(tuple(chaves)))
+    getattr(fin, funcao)(object())
+    assert chamadas == [esperado]

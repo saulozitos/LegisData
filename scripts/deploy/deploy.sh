@@ -27,6 +27,7 @@ log() { printf '%s [deploy] %s\n' "$(date '+%F %T')" "$*"; }
 PENDENTE="${ESTADO_DIR}/financas_pendente"
 CARGA_TENTADA="${ESTADO_DIR}/financas_carga_tentada"
 INTERVALO_DA_CARGA="${INTERVALO_DA_CARGA:-3600}"
+[[ "$INTERVALO_DA_CARGA" =~ ^[0-9]+$ ]] || INTERVALO_DA_CARGA=3600
 pendente_tem() { [[ -f "$PENDENTE" ]] && grep -qx "$1" "$PENDENTE"; }
 pendente_marca() { pendente_tem "$1" || printf '%s\n' "$1" >>"$PENDENTE"; }
 pendente_limpa() {
@@ -36,8 +37,10 @@ pendente_limpa() {
 }
 carga_pode_repetir() { # há carga pendente e a última tentativa tem mais de INTERVALO_DA_CARGA segundos
   pendente_tem carga || return 1
-  [[ -s "$CARGA_TENTADA" ]] || return 0
-  (($(date +%s) - $(cat "$CARGA_TENTADA") >= INTERVALO_DA_CARGA))
+  local tentada
+  tentada="$(cat "$CARGA_TENTADA" 2>/dev/null || true)"
+  [[ "$tentada" =~ ^[0-9]+$ ]] || return 0 # sem carimbo legível, repete
+  (($(date +%s) - tentada >= INTERVALO_DA_CARGA))
 }
 disparar_financas() { # dispara a atualização diária; falha se a unit não existe ou o systemd não aceitou
   systemctl --user cat legisdata-financas.service >/dev/null 2>&1 || return 1
@@ -63,16 +66,21 @@ git fetch -q origin main
 ALVO="${_LEGISDATA_DEPLOY_ALVO:-$(git rev-parse origin/main)}"
 TAG="${ALVO:0:7}"
 ATUAL="$(cat "$ESTADO_DIR/ultimo_sha" 2>/dev/null || true)"
+# >>> mesmo_commit
 REPETICAO=0
 if [[ "$ATUAL" == "$ALVO" ]]; then
-  # mesmo commit: só há o que fazer se um pedido de atualização ficou parado ou se a carga pendente já pode repetir
-  if pendente_tem refrescar && disparar_financas; then
+  # mesmo commit: só há o que fazer se um pedido de atualização ficou parado ou se a carga pendente já pode repetir. O
+  # dry-run não altera nada: não dispara o serviço nem mexe nas pendências.
+  if [[ $DRY_RUN -eq 0 ]] && pendente_tem refrescar && disparar_financas; then
     pendente_limpa refrescar
     log "atualização das finanças pendente disparada"
   fi
   carga_pode_repetir || exit 0
   REPETICAO=1
+  # a tentativa é carimbada ANTES da carga: qualquer falha dela (tolerada ou não) espera o intervalo para repetir
+  if [[ $DRY_RUN -eq 0 ]]; then date +%s >"$CARGA_TENTADA"; fi
 fi
+# <<< mesmo_commit
 
 # As imagens são publicadas só depois do CI passar; sem elas não há o que implantar ainda.
 for img in legisdata-backend legisdata-frontend; do
@@ -192,18 +200,23 @@ um_comando() { # roda um comando Python no contêiner da imagem nova, na rede do
 # Decide como o deploy trata as finanças. A atualização diária (legisdata-financas.timer) deixa CEAP e emendas do `fin` mais
 # novas que os arquivos do git; recarregá-las do git apagaria as emendas novas (que voltariam com outro `uid`) e
 # devolveria a CEAP ao passado. Então o git só semeia um `fin` vazio.
-#   uso:   decidir_financas <commit anterior> <commit alvo> <t se o fin já tem CEAP e emendas> [pendências] [t se o timer já gravou]
+#   uso:   decidir_financas <commit anterior> <commit alvo> <t se o fin já tem CEAP e emendas> [pendências]
+#                           [t se o timer já carregou a CEAP] [t se o timer já carregou as emendas]
 #   saída: "<modo> <refrescar>"
-#     modo "completa":  fin sem dados, semeia tudo dos arquivos do git;
-#     modo "estaticas": recarrega só remuneração, patrimônio, doações e certidões (um arquivo ou o código mudou no commit);
-#     modo "nenhuma":   nada mudou, mantém o fin;
-#     refrescar 1:      o commit mudou a extração/carga de CEAP e emendas (ou o fin acabou de ser semeado do git): vale
-#                       rodar a atualização diária já, para o fin não esperar até a madrugada.
+#     modo "completa":    fin sem dados, ou nenhuma das duas fontes é do timer ainda: semeia tudo dos arquivos do git;
+#     modo "sem_emendas": só as emendas já são do timer: semeia a CEAP e as estáticas, sem tocar nas emendas;
+#     modo "sem_ceap":    só a CEAP já é do timer: semeia as emendas e as estáticas, sem tocar na CEAP;
+#     modo "estaticas":   recarrega só remuneração, patrimônio, doações e certidões (um arquivo ou o código mudou);
+#     modo "nenhuma":     nada mudou, mantém o fin;
+#     refrescar 1:        o commit mudou a extração/carga de CEAP e emendas (ou o fin acabou de ser semeado do git): vale
+#                         rodar a atualização diária já, para o fin não esperar até a madrugada.
 #   Pendências (conteúdo de financas_pendente, uma por linha): "carga" força ao menos as estáticas, "refrescar" pede a
-#   atualização. Timer que nunca gravou (sem cache da CEAP em etl/data/raw): o `fin` só tem o retrato do git, que é o dado
-#   mais novo que existe; semeia tudo de novo (modo "completa") para as regras de saneamento do commit chegarem ao `fin`.
+#   atualização. "O timer já carregou" é o marcador que a atualização diária deixa em etl/data depois de carregar a fonte
+#   no fin (não o cache de extração, que existe mesmo quando a carga falhou). Sem ele o fin só tem o retrato do git, que
+#   é o dado mais novo que existe; semeia a fonte de novo para as regras de saneamento do commit chegarem ao fin.
 decidir_financas() {
-  local atual="$1" alvo="$2" tem_dados="$3" pendencias="${4:-}" timer_gravou="${5:-t}" modo="nenhuma" refrescar=0
+  local atual="$1" alvo="$2" tem_dados="$3" pendencias="${4:-}" ceap_do_timer="${5:-t}" emendas_do_timer="${6:-t}"
+  local modo="nenhuma" refrescar=0
   local estaticas=(
     etl/data/processed/remuneracao_parlamentares.json etl/data/processed/declaracoes_patrimonio.json
     etl/data/processed/tse_doacoes_campanha.json etl/data/processed/certidoes_tse.json
@@ -216,8 +229,20 @@ decidir_financas() {
     etl/config.py etl/utils backend/alembic/versions scripts/deploy/atualizar_financas.sh
     scripts/systemd/legisdata-financas.service scripts/systemd/legisdata-financas.timer
   )
-  if [[ "$tem_dados" != "t" || "$timer_gravou" != "t" ]]; then
+  if [[ "$tem_dados" != "t" ]]; then
     echo "completa 1"
+    return 0
+  fi
+  if [[ "$ceap_do_timer" != "t" && "$emendas_do_timer" != "t" ]]; then
+    echo "completa 1"
+    return 0
+  fi
+  if [[ "$ceap_do_timer" != "t" ]]; then
+    echo "sem_emendas 1"
+    return 0
+  fi
+  if [[ "$emendas_do_timer" != "t" ]]; then
+    echo "sem_ceap 1"
     return 0
   fi
   if [[ -z "$atual" ]] || ! git cat-file -e "$atual^{commit}" 2>/dev/null; then
@@ -247,14 +272,18 @@ if [[ "$TEM_ECO" == "t" && -f "$RAIZ/etl/pipelines/carga_economica.py" ]]; then
   LEGISDATA_FIN_TEM_ALGUM_DADO="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select exists(select 1 from fin.emenda) or exists(select 1 from fin.despesa_cota) or exists(select 1 from fin.despesa_cota_fornecedor) or exists(select 1 from fin.despesa_cota_resumo)")"
   export LEGISDATA_FIN_TEM_DADOS LEGISDATA_FIN_TEM_ALGUM_DADO
   PENDENCIAS="$(cat "$PENDENTE" 2>/dev/null || true)"
-  # o timer já gravou se deixou o cache da CEAP por ano no checkout (sem ele o fin só tem o retrato do git)
-  TIMER_GRAVOU=f
-  compgen -G "$RAIZ/etl/data/raw/ceap_por_ano/*.json" >/dev/null && TIMER_GRAVOU=t
-  read -r LEGISDATA_FIN_MODO LEGISDATA_FIN_REFRESCAR < <(decidir_financas "$ATUAL" "$ALVO" "$LEGISDATA_FIN_TEM_DADOS" "$PENDENCIAS" "$TIMER_GRAVOU")
+  # a fonte é do timer se ele a CARREGOU no fin (marcador em etl/data); sem o marcador o fin só tem o retrato do git
+  CEAP_DO_TIMER=f
+  EMENDAS_DO_TIMER=f
+  [[ -f "$RAIZ/etl/data/.financas_ceap_carregada" ]] && CEAP_DO_TIMER=t
+  [[ -f "$RAIZ/etl/data/.financas_emendas_carregada" ]] && EMENDAS_DO_TIMER=t
+  read -r LEGISDATA_FIN_MODO LEGISDATA_FIN_REFRESCAR < <(decidir_financas "$ATUAL" "$ALVO" "$LEGISDATA_FIN_TEM_DADOS" "$PENDENCIAS" "$CEAP_DO_TIMER" "$EMENDAS_DO_TIMER")
   [[ $REPETICAO -eq 1 ]] && LEGISDATA_FIN_REFRESCAR=0 # repetir a carga não repete o pedido de atualização
   export LEGISDATA_FIN_MODO LEGISDATA_FIN_REFRESCAR
   case "$LEGISDATA_FIN_MODO" in
-    completa) log "finanças: fin sem dados; semeando tudo dos arquivos do git" ;;
+    completa) log "finanças: fin sem dados ou ainda sem nenhuma fonte do timer; semeando tudo dos arquivos do git" ;;
+    sem_emendas) log "finanças: as emendas já são do timer; semeio a CEAP e recarrego as estáticas" ;;
+    sem_ceap) log "finanças: a CEAP já é do timer; semeio as emendas e recarrego as estáticas" ;;
     estaticas) log "finanças: recarrego remuneração, patrimônio, doações e certidões; CEAP e emendas ficam como a atualização diária deixou" ;;
     *) log "finanças: este commit não mudou os arquivos nem o código da carga; mantenho o fin atual" ;;
   esac

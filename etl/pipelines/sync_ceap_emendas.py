@@ -41,7 +41,14 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 import pandas as pd
 
-from etl.config import CEAP_ARQUIVO, EMENDAS_ARQUIVO, PROCESSED_DATA_DIR, TETO_DO_CSV, TETO_DO_DOWNLOAD
+from etl.config import (
+    CASAS_DO_CONGRESSO,
+    CEAP_ARQUIVO,
+    EMENDAS_ARQUIVO,
+    PROCESSED_DATA_DIR,
+    TETO_DO_CSV,
+    TETO_DO_DOWNLOAD,
+)
 from etl.extractors.emendas_extractor import EmendasExtractor
 from etl.pipelines.loader_helpers import cnpj_do_fornecedor, nome_do_fornecedor, texto
 from etl.utils.http_client import HttpClient, HttpError
@@ -84,7 +91,7 @@ PASTA_DO_CACHE = "ceap_por_ano"
 VALIDADE_DO_CACHE_DIAS = 90  # um ano fechado é baixado de novo depois disso (estornos e correções tardias)
 # A Câmara responde 429 (Too Many Requests) a vários CSVs anuais seguidos (visto com 7 downloads em 30 s). O Senado
 # limita em 10 requisições por segundo e aqui há uma por ano; a pausa dele é só cortesia.
-PAUSA_POR_CASA = {"camara": 10.0, "senado": 1.0}
+PAUSA_POR_CASA = dict(zip(CASAS_DO_CONGRESSO, (10.0, 1.0)))
 ESPERA_NOVA_TENTATIVA = 90.0
 MESES_DE_ATRASO_DO_ANO_NOVO = 3  # até março o arquivo/lançamento do ano novo pode não existir ainda (o Senado atrasa)
 FUSO_DO_BRASIL = timezone(timedelta(hours=-3))  # sem horário de verão desde 2019
@@ -105,6 +112,8 @@ ERROS_DA_EXTRACAO = (
     TypeError,
     AttributeError,
     IndexError,
+    NotImplementedError,  # zip com compressão não suportada
+    RuntimeError,  # zip cifrado; também RecursionError (JSON aninhado demais)
     pd.errors.ParserError,
     pd.errors.EmptyDataError,
 )
@@ -226,7 +235,7 @@ def _validar_registro(chave: Any, reg: Any) -> Tuple[str, Any]:
     for nome, forn in fornecedores.items():
         if not (isinstance(forn, dict) and set(forn) == CAMPOS_DO_FORNECEDOR and isinstance(forn["nome"], str)):
             raise ValueError("fornecedor com campos diferentes dos do acumulador")
-        if nome not in (forn["nome"], f"{forn['nome']} [{forn['cnpj_cpf']}]"):
+        if not (nome == forn["nome"] or (forn["cnpj_cpf"] and nome == f"{forn['nome']} [{forn['cnpj_cpf']}]")):
             raise ValueError("chave do fornecedor não corresponde ao nome e ao documento")
         if not (_numero(forn["total"]) and _inteiro(forn["notas"])):
             raise ValueError("totais do fornecedor inválidos")
@@ -638,7 +647,7 @@ def anos_publicados_no_arquivo(caminho: Path) -> Dict[str, Set[int]]:
     Os anos que o arquivo processado da CEAP já traz com gasto, por casa ("camara"/"senado"). Um registro ou um ano
     ilegível é ignorado (e avisado), não derruba a leitura dos demais; arquivo ausente ou ilegível devolve tudo vazio.
     """
-    publicados: Dict[str, Set[int]] = {"camara": set(), "senado": set()}
+    publicados: Dict[str, Set[int]] = {casa: set() for casa in CASAS_DO_CONGRESSO}
     try:
         dados = json.loads(Path(caminho).read_text(encoding="utf-8"))
         registros = list(dados.values())
@@ -714,9 +723,10 @@ def _sincronizar_ceap(
     resumo: Dict[str, Any],
 ) -> None:
     acc = CeapAccumulator()
-    ja_publicados = (
-        anos_publicados if anos_publicados is not None else anos_publicados_no_arquivo(PROCESSED_DATA_DIR / CEAP_OUTPUT)
-    )
+    # a união do arquivo com o `fin`: o arquivo sozinho não basta (o deploy o devolve ao retrato do git) e o `fin` sozinho
+    # também não (a carga pode ter falhado depois de o arquivo ter recebido o ano)
+    no_arquivo = anos_publicados_no_arquivo(PROCESSED_DATA_DIR / CEAP_OUTPUT)
+    ja_publicados = {casa: no_arquivo[casa] | (anos_publicados or {}).get(casa, set()) for casa in CASAS_DO_CONGRESSO}
     por_casa = {}
     for casa, extrator in (("camara", extract_camara_ceap), ("senado", extract_senado_ceaps)):
         por_casa[casa] = _extrair_anos(http, anos, casa, extrator, acc, cache_dir, hoje, ja_publicados.get(casa, set()))

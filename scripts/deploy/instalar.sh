@@ -67,12 +67,15 @@ for timer in legisdata-deploy.timer legisdata-financas.timer; do
   }
 done
 systemctl --user list-timers legisdata-deploy.timer legisdata-financas.timer --no-pager
-# Um deploy anterior pediu a atualização diária das finanças quando a unit ainda não existia: cumpre agora.
-if [[ -f "$DEST/financas_pendente" ]] && grep -qx refrescar "$DEST/financas_pendente"; then
+# Um deploy anterior pediu a atualização diária das finanças quando a unit ainda não existia: cumpre agora. As funções de
+# pendência são as do próprio deploy.sh instalado (um formato só para `financas_pendente`).
+ESTADO_DIR="$DEST"
+# shellcheck disable=SC1090
+source <(sed -n '/^# >>> pendencias/,/^# <<< pendencias/p' "$DEST/deploy.sh")
+if pendente_tem refrescar; then
   echo "==> atualização das finanças pendente do deploy anterior: disparando"
-  if systemctl --user start --no-block legisdata-financas.service; then
-    grep -vx refrescar "$DEST/financas_pendente" >"$DEST/financas_pendente.novo" || true
-    if [[ -s "$DEST/financas_pendente.novo" ]]; then mv "$DEST/financas_pendente.novo" "$DEST/financas_pendente"; else rm -f "$DEST/financas_pendente.novo" "$DEST/financas_pendente"; fi
+  if disparar_financas; then
+    pendente_limpa refrescar
   else
     echo "AVISO: não consegui disparar legisdata-financas.service; o timer roda na madrugada"
   fi

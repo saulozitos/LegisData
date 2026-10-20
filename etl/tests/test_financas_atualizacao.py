@@ -27,7 +27,11 @@ def simulado(monkeypatch, tmp_path):
     def carregar(engine, processed_dir=None, chaves=None):
         cenario.carga.append((engine, tuple(chaves)))
         if cenario.erro_da_carga:
-            raise RuntimeError(cenario.erro_da_carga)
+            raise (
+                cenario.erro_da_carga
+                if isinstance(cenario.erro_da_carga, BaseException)
+                else RuntimeError(cenario.erro_da_carga)
+            )
         return {c: {"ok": 1} for c in chaves}
 
     cenario.publicados = {"camara": {2025}, "senado": set()}
@@ -35,6 +39,10 @@ def simulado(monkeypatch, tmp_path):
     monkeypatch.setattr(atualizacao.sync_ceap_emendas, "run", run)
     monkeypatch.setattr(atualizacao.financas_loader, "carregar", carregar)
     monkeypatch.setattr(atualizacao, "LOCK", tmp_path / "lock" / ".financas.lock")
+    monkeypatch.setattr(
+        atualizacao, "DATA_DIR", tmp_path / "data"
+    )  # os marcadores de carga vão para cá, não para etl/data
+    (tmp_path / "data").mkdir()
     return cenario
 
 
@@ -206,3 +214,47 @@ def test_sem_resposta_do_banco_sobre_os_anos_carregados_a_extracao_segue_so_com_
 
 def test_as_chaves_do_timer_sao_as_fontes_do_sync():
     assert financas_loader.CHAVES_DO_TIMER == atualizacao.sync_ceap_emendas.FONTES
+
+
+def _marcadores(tmp_path):
+    return sorted(p.name for p in (tmp_path / "data").iterdir())
+
+
+def test_carga_bem_sucedida_deixa_um_marcador_por_fonte_carregada(simulado, tmp_path):
+    atualizacao.atualizar(object(), hoje=HOJE)
+    assert _marcadores(tmp_path) == [".financas_ceap_carregada", ".financas_emendas_carregada"]
+
+
+def test_so_a_fonte_gravada_e_carregada_ganha_marcador(simulado, tmp_path):
+    simulado.resumo["emendas_gravado"] = False
+    with pytest.raises(RuntimeError):
+        atualizacao.atualizar(object(), hoje=HOJE)
+    assert _marcadores(tmp_path) == [".financas_ceap_carregada"]
+
+
+def test_carga_que_falha_nao_deixa_marcador(simulado, tmp_path):
+    simulado.erro_da_carga = "ceap: tabela encolheria"
+    with pytest.raises(RuntimeError):
+        atualizacao.atualizar(object(), hoje=HOJE)
+    assert _marcadores(tmp_path) == []
+
+
+def test_o_marcador_pode_ir_para_outra_pasta(simulado, tmp_path):
+    destino = tmp_path / "outra"
+    destino.mkdir()
+    atualizacao.atualizar(object(), hoje=HOJE, marcadores=destino)
+    assert sorted(p.name for p in destino.iterdir()) == [".financas_ceap_carregada", ".financas_emendas_carregada"]
+
+
+@pytest.mark.parametrize("erro", [ValueError("cargas desconhecidas"), "OperationalError"])
+def test_erro_inesperado_da_carga_sobe_como_esta_sem_marcador_e_o_main_devolve_1(simulado, tmp_path, monkeypatch, erro):
+    from sqlalchemy.exc import OperationalError
+
+    simulado.erro_da_carga = (
+        OperationalError("SELECT", {}, Exception("sem conexão")) if erro == "OperationalError" else erro
+    )
+    with pytest.raises((ValueError, OperationalError)):
+        atualizacao.atualizar(object(), hoje=HOJE)
+    assert (
+        _marcadores(tmp_path) == []
+    )  # a exceção inesperada não é engolida: quem chama (main) registra o código de saída

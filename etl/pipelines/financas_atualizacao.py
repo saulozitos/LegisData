@@ -21,9 +21,9 @@ import os
 import sys
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Iterable, Optional, Set
 
-from etl.config import DATA_DIR, RAW_DATA_DIR
+from etl.config import DATA_DIR, MARCADOR_DA_FONTE, RAW_DATA_DIR
 from etl.pipelines import financas_loader, sync_ceap_emendas
 from etl.pipelines.loader_helpers import descricao_do_erro
 from etl.utils.bootstrap import ensure_backend_on_path
@@ -40,7 +40,11 @@ LOCK = DATA_DIR / ".financas.lock"
 
 
 def atualizar(
-    engine: Engine, hoje: Optional[date] = None, cache_dir: Optional[Path] = None, lock: Optional[Path] = None
+    engine: Engine,
+    hoje: Optional[date] = None,
+    cache_dir: Optional[Path] = None,
+    lock: Optional[Path] = None,
+    marcadores: Optional[Path] = None,
 ) -> Dict[str, Any]:
     caminho_do_lock = Path(lock or LOCK)
     caminho_do_lock.parent.mkdir(parents=True, exist_ok=True)
@@ -52,10 +56,10 @@ def atualizar(
         except BlockingIOError:
             logger.warning("Outra atualização das finanças está em andamento; esta execução foi pulada.")
             return {"pulada": "outra atualização das finanças em andamento"}
-        return _atualizar(engine, hoje or sync_ceap_emendas.hoje_no_brasil(), cache_dir or CACHE_DIR)
+        return _atualizar(engine, hoje or sync_ceap_emendas.hoje_no_brasil(), cache_dir or CACHE_DIR, marcadores)
 
 
-def _anos_ja_carregados(engine: Engine) -> Optional[Dict[str, Set[int]]]:
+def anos_ja_carregados(engine: Engine) -> Optional[Dict[str, Set[int]]]:
     """Os anos da CEAP que o `fin` já tem; sem resposta do banco, None (vale só o que o arquivo processado traz)."""
     try:
         return financas_loader.anos_publicados_da_ceap(engine)
@@ -64,13 +68,20 @@ def _anos_ja_carregados(engine: Engine) -> Optional[Dict[str, Set[int]]]:
         return None
 
 
-def _atualizar(engine: Engine, hoje: date, cache_dir: Path) -> Dict[str, Any]:
+def marcar_fontes_carregadas(fontes: Iterable[str], pasta: Optional[Path] = None) -> None:
+    """Deixa um marcador por fonte carregada: o deploy sabe por ele que a fonte já é do timer e não a semeia do git."""
+    destino = Path(pasta or DATA_DIR)
+    for fonte in fontes:
+        (destino / MARCADOR_DA_FONTE.format(fonte=fonte)).touch()
+
+
+def _atualizar(engine: Engine, hoje: date, cache_dir: Path, marcadores: Optional[Path] = None) -> Dict[str, Any]:
     resumo = sync_ceap_emendas.run(
         ano_inicio=sync_ceap_emendas.ANO_INICIAL_ARQUIVO,
         ano_fim=hoje.year,
         cache_dir=cache_dir,
         hoje=hoje,
-        anos_publicados=_anos_ja_carregados(engine),
+        anos_publicados=anos_ja_carregados(engine),
     )
     # lista positiva (ausência de resposta não é gravação), a mesma que a CLI usa
     gravadas = sync_ceap_emendas.fontes_gravadas(resumo)
@@ -80,6 +91,7 @@ def _atualizar(engine: Engine, hoje: date, cache_dir: Path) -> Dict[str, Any]:
     if gravadas:
         try:
             resultado["carga"] = financas_loader.carregar(engine, chaves=gravadas)
+            marcar_fontes_carregadas(gravadas, marcadores)
         except RuntimeError as exc:
             erros.append(str(exc))
     if nao_gravadas:

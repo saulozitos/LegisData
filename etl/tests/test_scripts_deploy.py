@@ -145,7 +145,7 @@ def test_deploy_repassa_a_liberacao_de_encolhimento_vazia_por_padrao_e_tolera_so
     assert re.search(r"toleradas\s*=\s*TOLERADAS_NO_DEPLOY if ", texto)  # a lista vive em carga_economica (um mapa só)
     from etl.pipelines.carga_economica import TOLERADAS_NO_DEPLOY
 
-    assert set(TOLERADAS_NO_DEPLOY) == {"financas", "financas_estaticas"}
+    assert set(TOLERADAS_NO_DEPLOY) == {"financas", "financas_estaticas", "financas_sem_emendas", "financas_sem_ceap"}
 
 
 def test_deploy_so_tolera_falha_das_financas_quando_fin_ja_tem_dados():
@@ -178,7 +178,7 @@ def test_modo_das_financas_chega_a_carga_pelo_um_comando():
     corpo = texto[_posicao(texto, r"^um_comando\(\) \{") :].split("\n}\n")[0]
     assert 'LEGISDATA_FIN_MODO="${LEGISDATA_FIN_MODO:-nenhuma}"' in corpo  # sem decisão, o padrão não destrói nada
     assert (
-        'read -r LEGISDATA_FIN_MODO LEGISDATA_FIN_REFRESCAR < <(decidir_financas "$ATUAL" "$ALVO" "$LEGISDATA_FIN_TEM_DADOS" "$PENDENCIAS" "$TIMER_GRAVOU")'
+        'read -r LEGISDATA_FIN_MODO LEGISDATA_FIN_REFRESCAR < <(decidir_financas "$ATUAL" "$ALVO" "$LEGISDATA_FIN_TEM_DADOS" "$PENDENCIAS" "$CEAP_DO_TIMER" "$EMENDAS_DO_TIMER")'
         in texto
     )
 
@@ -231,7 +231,7 @@ def repo_de_decisao(tmp_path):
     return repo
 
 
-def _decidir(repo, mudanca, tem_dados="t", atual="HEAD~1", pendencias="", timer_gravou="t"):
+def _decidir(repo, mudanca, tem_dados="t", atual="HEAD~1", pendencias="", ceap_timer="t", emendas_timer="t"):
     """Faz um commit com `mudanca` ({caminho: conteúdo}) e devolve o que `decidir_financas` responde para ele."""
     for caminho, conteudo in mudanca.items():
         (repo / caminho).parent.mkdir(parents=True, exist_ok=True)
@@ -241,7 +241,7 @@ def _decidir(repo, mudanca, tem_dados="t", atual="HEAD~1", pendencias="", timer_
     funcao = _bloco(_texto(DEPLOY_SH), "decidir_financas")
     anterior = _git(repo, "rev-parse", atual) if atual else ""
     resposta = _bash(
-        f'{funcao}\ndecidir_financas "{anterior}" "$(git rev-parse HEAD)" "{tem_dados}" "{pendencias}" "{timer_gravou}"',
+        f'{funcao}\ndecidir_financas "{anterior}" "$(git rev-parse HEAD)" "{tem_dados}" "{pendencias}" "{ceap_timer}" "{emendas_timer}"',
         cwd=repo,
     )
     assert resposta.returncode == 0, resposta.stderr
@@ -311,9 +311,60 @@ def test_pendencias_e_o_script_do_timer_na_decisao(repo_de_decisao, mudanca, pen
 
 
 @SEM_BASH
-def test_timer_que_nunca_gravou_semeia_tudo_do_git_para_o_saneamento_novo_chegar_ao_fin(repo_de_decisao):
-    assert _decidir(repo_de_decisao, {"docs/leia-me.md": "b"}, timer_gravou="f") == "completa 1"
-    assert _decidir(repo_de_decisao, {"docs/leia-me.md": "b"}, timer_gravou="t") == "nenhuma 0"
+@pytest.mark.parametrize(
+    "ceap_timer, emendas_timer, esperado",
+    [
+        ("f", "f", "completa 1"),  # o timer nunca carregou nada: o git é o dado mais novo, semeia tudo
+        ("f", "t", "sem_emendas 1"),  # só as emendas são dele: semeia a CEAP sem reescrever as emendas (uid)
+        ("t", "f", "sem_ceap 1"),
+        ("t", "t", "nenhuma 0"),
+    ],
+)
+def test_semeadura_por_fonte_conforme_o_que_o_timer_ja_carregou(repo_de_decisao, ceap_timer, emendas_timer, esperado):
+    mudanca = {"docs/leia-me.md": "b"}
+    assert _decidir(repo_de_decisao, mudanca, ceap_timer=ceap_timer, emendas_timer=emendas_timer) == esperado
+
+
+@SEM_BASH
+def test_fin_sem_dados_vence_qualquer_marcador_e_sem_marcadores_com_dados_semeia_tudo(repo_de_decisao):
+    assert (
+        _decidir(repo_de_decisao, {"docs/leia-me.md": "b"}, tem_dados="f", ceap_timer="t", emendas_timer="t")
+        == "completa 1"
+    )
+    assert (
+        _decidir(repo_de_decisao, {"docs/leia-me.md": "c"}, tem_dados="t", ceap_timer="f", emendas_timer="f")
+        == "completa 1"
+    )
+
+
+def test_os_marcadores_do_deploy_sao_os_que_a_atualizacao_diaria_grava(tmp_path):
+    """O deploy procura `etl/data/.financas_<fonte>_carregada`; o Python grava com `MARCADOR_DA_FONTE`."""
+    from etl.config import DATA_DIR, MARCADOR_DA_FONTE
+    from etl.pipelines.financas_atualizacao import marcar_fontes_carregadas
+
+    marcar_fontes_carregadas(["ceap", "emendas"], tmp_path)
+    gravados = sorted(p.name for p in tmp_path.iterdir())
+    texto = _texto(DEPLOY_SH)
+    for fonte, nome in zip(("ceap", "emendas"), gravados):
+        assert nome == MARCADOR_DA_FONTE.format(fonte=fonte) and f'"$RAIZ/etl/data/{nome}"' in texto
+    assert DATA_DIR.name == "data"  # etl/data, a pasta que o contêiner do timer grava
+
+
+@SEM_BASH
+def test_o_deploy_deriva_os_dois_marcadores_com_bash_real(tmp_path):
+    texto = _texto(DEPLOY_SH)
+    trecho = texto[_posicao(texto, r"^  CEAP_DO_TIMER=f") : _posicao(texto, r"^  read -r LEGISDATA_FIN_MODO")]
+    (tmp_path / "etl" / "data").mkdir(parents=True)
+    saidas = []
+    for criar in ([], ["ceap"], ["emendas"], ["ceap", "emendas"]):
+        for f in (tmp_path / "etl" / "data").glob(".financas_*"):
+            f.unlink()
+        for fonte in criar:
+            (tmp_path / "etl" / "data" / f".financas_{fonte}_carregada").touch()
+        resposta = _bash(f'RAIZ="{tmp_path}"\n{trecho}\necho "$CEAP_DO_TIMER $EMENDAS_DO_TIMER"')
+        assert resposta.returncode == 0, resposta.stderr
+        saidas.append(resposta.stdout.strip())
+    assert saidas == ["f f", "t f", "f t", "t t"]
 
 
 @SEM_BASH
@@ -704,7 +755,9 @@ def _fake_systemctl(tmp_path, existe=True, start_rc=0):
     falsos.mkdir(exist_ok=True)
     (falsos / "systemctl").write_text(
         '#!/usr/bin/env bash\necho "$*" >>"$REGISTRO/systemctl.log"\n'
-        f'case "$2" in cat) exit {0 if existe else 1} ;; start) exit {start_rc} ;; esac\nexit 0\n'
+        # só a unit das finanças existe (e só ela inicia): um nome digitado errado no script não passa
+        f'case "$2 $3" in "cat legisdata-financas.service") exit {0 if existe else 1} ;; '
+        f'"start --no-block") [[ "$4" == legisdata-financas.service ]] && exit {start_rc} || exit 9 ;; esac\nexit 1\n'
     )
     (falsos / "systemctl").chmod(0o755)
     registro = tmp_path / "registro"
@@ -775,19 +828,24 @@ def _apos_carga(tmp_path, saida_da_carga, *, previa_pendente="", tentada=None):
     resposta = _bash(script)
     assert resposta.returncode == 0, resposta.stderr
     pend = estado / "financas_pendente"
-    return pend.read_text() if pend.exists() else None, (estado / "financas_carga_tentada").exists()
+    carimbo = estado / "financas_carga_tentada"
+    return pend.read_text() if pend.exists() else None, (carimbo.read_text().strip() if carimbo.exists() else None)
 
 
 @SEM_BASH
 def test_carga_tolerada_que_falhou_vira_pendencia_com_carimbo_de_tentativa(tmp_path):
     pendente, carimbo = _apos_carga(tmp_path, "financas {'erro': 'x'}\nFALHA_TOLERADA financas")
-    assert pendente == "carga\n" and carimbo
+    import time
+
+    assert (
+        pendente == "carga\n" and carimbo.isdigit() and abs(int(carimbo) - time.time()) < 60
+    )  # segundos desde a época
 
 
 @SEM_BASH
 def test_carga_que_passou_limpa_a_pendencia_de_carga_e_o_carimbo_sem_tocar_nas_outras(tmp_path):
     pendente, carimbo = _apos_carga(tmp_path, "series {'ok': 1}", previa_pendente="carga\nrefrescar\n", tentada=1)
-    assert pendente == "refrescar\n" and not carimbo
+    assert pendente == "refrescar\n" and carimbo is None
 
 
 def test_o_python_do_deploy_e_o_bash_concordam_sobre_o_marcador_da_falha_tolerada():
@@ -826,12 +884,114 @@ def test_a_carga_pendente_so_repete_depois_do_intervalo(tmp_path, pendencia, car
     assert resposta.stdout.strip() == ("sim" if pode else "nao"), resposta.stderr
 
 
-def test_mesmo_commit_sai_cedo_a_menos_que_haja_carga_para_repetir_e_repeticao_nao_repete_o_refresco():
+def _mesmo_commit(
+    tmp_path, *, atual="abc", alvo="abc", pendente="", tentada=None, dry_run=0, intervalo=3600, unit=True
+):
+    """Roda o bloco `mesmo_commit` do deploy.sh (com `exit` de verdade). Devolve (saída, pendências, carimbo)."""
+    estado = tmp_path / "estado"
+    estado.mkdir(exist_ok=True)
+    if pendente:
+        (estado / "financas_pendente").write_text(pendente)
+    if tentada is not None:
+        (estado / "financas_carga_tentada").write_text(str(tentada))
     texto = _texto(DEPLOY_SH)
-    corte = texto[_posicao(texto, r"^REPETICAO=0") : _posicao(texto, r"^# As imagens são publicadas")]
-    assert 'if [[ "$ATUAL" == "$ALVO" ]]; then' in corte and "carga_pode_repetir || exit 0" in corte
-    assert "REPETICAO=1" in corte
-    assert "[[ $REPETICAO -eq 1 ]] && LEGISDATA_FIN_REFRESCAR=0" in texto
+    script = (
+        f'ESTADO_DIR="{estado}"\nINTERVALO_DA_CARGA={intervalo}\nlog() {{ echo "LOG: $*"; }}\nDRY_RUN={dry_run}\n'
+        f'ATUAL={atual}\nALVO={alvo}\n{_bloco(texto, "pendencias")}\n{_bloco(texto, "mesmo_commit")}\n'
+        'echo "SEGUIU REPETICAO=$REPETICAO"'
+    )
+    resposta = _bash(script, env=_fake_systemctl(tmp_path, unit))
+    assert resposta.returncode == 0, resposta.stderr
+    pend = estado / "financas_pendente"
+    carimbo = estado / "financas_carga_tentada"
+    log = tmp_path / "registro" / "systemctl.log"
+    return (
+        resposta.stdout,
+        pend.read_text() if pend.exists() else None,
+        carimbo.read_text().strip() if carimbo.exists() else None,
+        log.read_text() if log.exists() else "",
+    )
+
+
+@SEM_BASH
+def test_mesmo_commit_sem_pendencia_sai_sem_fazer_nada(tmp_path):
+    saida, pendente, carimbo, systemctl = _mesmo_commit(tmp_path)
+    assert "SEGUIU" not in saida and pendente is None and carimbo is None and "start" not in systemctl
+
+
+@SEM_BASH
+def test_mesmo_commit_com_pedido_de_atualizacao_dispara_limpa_e_sai(tmp_path):
+    saida, pendente, _, systemctl = _mesmo_commit(tmp_path, pendente="refrescar\n")
+    assert "SEGUIU" not in saida and "pendente disparada" in saida and pendente is None
+    assert "start --no-block legisdata-financas.service" in systemctl
+
+
+@SEM_BASH
+def test_mesmo_commit_com_carga_pendente_vencida_segue_carimba_a_tentativa_e_nao_mexe_no_pedido(tmp_path):
+    import time
+
+    saida, pendente, carimbo, _ = _mesmo_commit(tmp_path, pendente="carga\n", tentada=1)
+    assert "SEGUIU REPETICAO=1" in saida and pendente == "carga\n"
+    assert abs(int(carimbo) - time.time()) < 60  # um instante de agora, em segundos desde a época
+
+
+@SEM_BASH
+def test_mesmo_commit_com_carga_dentro_do_intervalo_sai(tmp_path):
+    import time
+
+    saida, _, carimbo, _ = _mesmo_commit(tmp_path, pendente="carga\n", tentada=int(time.time()))
+    assert "SEGUIU" not in saida and int(carimbo) <= time.time()
+
+
+@SEM_BASH
+def test_commit_novo_segue_sem_repeticao_e_sem_carimbo(tmp_path):
+    saida, pendente, carimbo, _ = _mesmo_commit(tmp_path, atual="abc", alvo="def", pendente="refrescar\n")
+    assert "SEGUIU REPETICAO=0" in saida and pendente == "refrescar\n" and carimbo is None
+
+
+@SEM_BASH
+def test_dry_run_com_o_mesmo_commit_nao_dispara_nao_limpa_nem_carimba(tmp_path):
+    saida, pendente, carimbo, systemctl = _mesmo_commit(tmp_path, pendente="carga\nrefrescar\n", tentada=1, dry_run=1)
+    assert "SEGUIU REPETICAO=1" in saida  # segue até testar as imagens (o dry-run sai depois)
+    assert pendente == "carga\nrefrescar\n" and carimbo == "1" and "start" not in systemctl
+
+
+@SEM_BASH
+@pytest.mark.parametrize("carimbo", ["lixo", "", "12 34", None, "1000"])
+def test_carimbo_ilegivel_ou_antigo_repete(tmp_path, carimbo):
+    saida, *_ = _mesmo_commit(tmp_path, pendente="carga\n", tentada=carimbo)
+    assert "SEGUIU REPETICAO=1" in saida
+
+
+@SEM_BASH
+def test_o_carimbo_nunca_e_avaliado_como_expressao_aritmetica(tmp_path):
+    armadilha = tmp_path / "executou"
+    saida, *_ = _mesmo_commit(tmp_path, pendente="carga\n", tentada=f"a[$(touch {armadilha})]")
+    assert "SEGUIU" in saida and not armadilha.exists()
+
+
+@SEM_BASH
+@pytest.mark.parametrize("agora, esperado", [(1100, "sim"), (1099, "nao")])  # carimbo 1000, intervalo 100
+def test_fronteira_exata_do_intervalo(tmp_path, agora, esperado):
+    estado = tmp_path / "estado"
+    estado.mkdir()
+    (estado / "financas_pendente").write_text("carga\n")
+    (estado / "financas_carga_tentada").write_text("1000")
+    script = (
+        f'ESTADO_DIR="{estado}"\nINTERVALO_DA_CARGA=100\n{_bloco(_texto(DEPLOY_SH), "pendencias")}\n'
+        f"date() {{ echo {agora}; }}\ncarga_pode_repetir && echo sim || echo nao"
+    )
+    assert _bash(script).stdout.strip() == esperado
+
+
+@SEM_BASH
+def test_intervalo_invalido_no_ambiente_volta_ao_padrao(tmp_path):
+    estado = tmp_path / "estado"
+    estado.mkdir()
+    resposta = _bash(
+        f'ESTADO_DIR="{estado}"\nINTERVALO_DA_CARGA=1h\n{_bloco(_texto(DEPLOY_SH), "pendencias")}\necho $INTERVALO_DA_CARGA'
+    )
+    assert resposta.stdout.strip() == "3600"
 
 
 # ── instalar.sh (bash de verdade, repositório git e comandos falsos) ─────────────────────────────────────────────────
@@ -841,6 +1001,10 @@ def _instalacao(tmp_path, *, tag=None, env_rc="0", timer_rc="0", previo=None, dr
         pasta.mkdir(parents=True, exist_ok=True)
     (repo / "scripts" / "deploy" / "deploy.sh").write_text(
         '#!/usr/bin/env bash\necho "deploy-falso $*"\nexit "${FAKE_DRY_RC:-0}"\n'
+        # o instalador carrega as funções de pendência do próprio deploy.sh: o falso leva o bloco verdadeiro
+        + "# >>> pendencias\n"
+        + _bloco(_texto(DEPLOY_SH), "pendencias")
+        + "# <<< pendencias\n"
     )
     shutil.copy(FINANCAS_SH, repo / "scripts" / "deploy" / "atualizar_financas.sh")
     shutil.copy(INSTALAR_SH, repo / "scripts" / "deploy" / "instalar.sh")
@@ -1013,3 +1177,21 @@ def test_a_consulta_de_dados_do_fin_do_deploy_e_a_do_python():
     texto = _texto(DEPLOY_SH)
     assert f'-tAc "select {sql_fin_tem_dados("and")}"' in texto
     assert f'-tAc "select {sql_fin_tem_dados("or")}"' in texto
+
+
+def test_o_preambulo_do_arquivo_de_ambiente_e_o_mesmo_nos_dois_scripts():
+    """Os scripts são instalados como cópias avulsas (sem biblioteca comum): a parte compartilhada não pode divergir."""
+    deploy = _bloco(_texto(DEPLOY_SH), "env_banco")
+    financas = _bloco(_texto(FINANCAS_SH), "env_banco_financas")
+    comum = [
+        "POSTGRES_PASSWORD ausente no .env",
+        "POSTGRES_PASSWORD com quebra de linha não cabe no arquivo de ambiente",
+        'DIR_TEMP="${XDG_RUNTIME_DIR:-}"',
+        'DIR_TEMP="${ESTADO_DIR:-${TMPDIR:-/tmp}}"',
+        "find \"$DIR_TEMP\" -maxdepth 1 -name 'legisdata-env.*' -mmin +60 -delete",
+        'ENV_BANCO="$(mktemp -p "$DIR_TEMP" legisdata-env.XXXXXX)"',
+        "trap 'rm -f \"$ENV_BANCO\"' EXIT",
+        'chmod 600 "$ENV_BANCO"',
+    ]
+    for trecho in comum:
+        assert trecho in deploy and trecho in financas, trecho

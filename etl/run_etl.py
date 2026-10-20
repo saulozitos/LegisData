@@ -121,6 +121,22 @@ def _composicao():
     return save_composicao_congresso()
 
 
+def _anos_ja_carregados_ou_none():
+    """Os anos da CEAP que o `fin` já tem, ou None quando o banco não responde (a extração manual não exige banco)."""
+    try:
+        from etl.utils.bootstrap import ensure_backend_on_path
+
+        ensure_backend_on_path()
+        from app.core.database import engine
+
+        from etl.pipelines.financas_atualizacao import anos_ja_carregados
+
+        return anos_ja_carregados(engine)
+    except Exception as exc:  # noqa: BLE001 - sem banco a extração segue só com o arquivo processado
+        logger.warning("Sem o fin para conferir os anos da CEAP já carregados: %s", type(exc).__name__)
+        return None
+
+
 def _ceap_emendas(ano_inicio: int):
     from etl.pipelines.sync_ceap_emendas import ANO_INICIAL_ARQUIVO, fontes_nao_gravadas, run
 
@@ -131,10 +147,14 @@ def _ceap_emendas(ano_inicio: int):
             ano_inicio,
             ANO_INICIAL_ARQUIVO,
         )
-    resumo = run(ano_inicio=ano_inicio)
+    from etl.pipelines.financas_atualizacao import CACHE_DIR
+
+    # o mesmo cache por ano e a mesma proteção do começo do ano da atualização diária (os anos já carregados vêm do `fin`;
+    # sem banco, vale só o arquivo processado)
+    resumo = run(ano_inicio=ano_inicio, cache_dir=CACHE_DIR, anos_publicados=_anos_ja_carregados_ou_none())
     if fontes_nao_gravadas(resumo):
         raise RuntimeError(f"CEAP/emendas não gravadas (arquivos anteriores preservados): {resumo}")
-    # a API lê o banco, não os arquivos: o dossiê só enxerga o dado novo depois de `--load-economia` (ou do próximo deploy)
+    # a API lê o banco, não os arquivos: o dossiê só enxerga o dado novo depois de `--load-economia`
     logger.info(
         "CEAP/emendas gravadas em arquivo; para levá-las ao schema fin rode --load-economia --recarregar-ceap-emendas."
     )
@@ -363,6 +383,13 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         return modo_completo or chave in selecionadas
 
     cache = not args.no_cache
+    ceap_gravada = {"ok": False}  # a extração desta execução terminou bem? Só então ela vale como "mais nova que o fin"
+
+    def extrair_ceap():
+        resumo = _ceap_emendas(args.ceap_ano_inicio)  # levanta se alguma fonte não foi gravada
+        ceap_gravada["ok"] = True
+        return resumo
+
     catalogo = [
         Etapa("economic", "Extração econômica e presidentes (BCB / INPE)", lambda: _economic(cache)),
         Etapa("camara", "Dados abertos da Câmara dos Deputados", lambda: _camara(args.no_cache)),
@@ -378,7 +405,7 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         ),
         Etapa("composicao", "Composição do Congresso e governabilidade", _composicao),
         Etapa("pnad", "Faixas de salário mínimo (microdados PNAD Contínua)", lambda: _pnad(args.no_cache)),
-        Etapa("ceap", "CEAP e emendas parlamentares oficiais", lambda: _ceap_emendas(args.ceap_ano_inicio)),
+        Etapa("ceap", "CEAP e emendas parlamentares oficiais", extrair_ceap),
         Etapa(
             "votacoes",
             "Votações nominais e orientação do governo (Câmara e Senado)",
@@ -415,8 +442,8 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         Etapa(
             "load_economia",
             "Carga das séries econômicas, mandatos presidenciais, composição do Congresso, PNAD e finanças (fin)",
-            # a CEAP e as emendas extraídas nesta mesma execução são mais novas que o `fin`: entram na carga
-            lambda: _load_economia(args.recarregar_ceap_emendas or quer("ceap")),
+            # a CEAP e as emendas extraídas COM SUCESSO nesta mesma execução são mais novas que o `fin`: entram na carga
+            lambda: _load_economia(args.recarregar_ceap_emendas or ceap_gravada["ok"]),
             depende_de_extracao=True,
         ),
         Etapa(

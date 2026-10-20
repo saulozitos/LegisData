@@ -101,20 +101,25 @@ recusa a execução com uma mensagem clara.
 (função `decidir_financas` em `deploy.sh`, testada com `bash` e `git` de verdade):
 
 - `fin` sem dados (primeiro deploy, ou migração que o esvaziou): semeia tudo dos arquivos do git e dispara a atualização;
-- `fin` com dados: **nunca** recarrega CEAP e emendas a partir do git (recarregar apagaria as emendas novas, que voltariam
-  com outro `uid`, e a CEAP regrediria até o dia seguinte). Recarrega só remuneração, patrimônio, doações e certidões, e
-  apenas se o commit mudou os arquivos delas, o código da carga, `etl/utils` ou as migrações;
+- `fin` com dados e fonte já assumida pelo timer: **nunca** recarrega essa fonte a partir do git (recarregar apagaria as
+  emendas novas, que voltariam com outro `uid`, e a CEAP regrediria até o dia seguinte). "Assumida" é o marcador
+  `etl/data/.financas_<fonte>_carregada`, que a atualização diária grava depois de CARREGAR a fonte no `fin` com sucesso
+  (o cache de extração não serve: ele existe mesmo quando a carga falhou). Recarrega só remuneração, patrimônio, doações e
+  certidões, e apenas se o commit mudou os arquivos delas, o código da carga, `etl/utils` ou as migrações;
 - se o commit mudou a extração ou a carga de CEAP e emendas (qualquer módulo `etl` que elas importam: um teste confere
   as listas de `decidir_financas` contra as importações), o deploy dispara `legisdata-financas.service` na hora (sem
   esperar a madrugada), quando a unit está instalada. Sem a unit, o log do deploy avisa e registra o pedido em
   `~/.legisdata-deploy/financas_pendente`; o `instalar.sh` o cumpre ao ligar o timer;
-- `fin` com dados mas o timer **nunca gravou** (não há cache da CEAP em `etl/data/raw/ceap_por_ano`, que é o caso do primeiro
-  deploy depois da 3c): o único dado novo que existe é o do git, então o deploy semeia tudo de novo (modo `completa`) e
-  pede a atualização; assim as regras de saneamento do commit chegam ao `fin` sem esperar a madrugada;
+- `fin` com dados mas fonte que o timer **ainda não carregou** (é o caso do primeiro deploy depois da 3c): o único dado
+  novo que existe é o do git, então o deploy a semeia de novo e pede a atualização; assim as regras de saneamento do commit
+  chegam ao `fin` sem esperar a madrugada. Por fonte: nenhuma assumida => modo `completa`; só as emendas assumidas =>
+  `sem_emendas` (semeia a CEAP e as estáticas, sem reescrever as emendas); só a CEAP assumida => `sem_ceap`;
 - a tolerância a uma carga de finanças que falha vale se o `fin` tem dado em QUALQUER das quatro tabelas da CEAP e das
   emendas; a escolha do modo exige todas. Uma carga tolerada que falhou também grava `carga` em `financas_pendente` (e a hora da tentativa em
-  `financas_carga_tentada`), e o deploy tenta de novo mesmo sem commit novo, no máximo uma vez por hora (`INTERVALO_DA_CARGA`),
-  até a carga passar; a repetição não dispara de novo a atualização diária. Um pedido de atualização parado
+  `financas_carga_tentada`), e o deploy tenta de novo mesmo sem commit novo, no máximo uma vez por hora (`INTERVALO_DA_CARGA`; a tentativa é
+  carimbada ANTES da carga, então qualquer falha dela, tolerada ou não, espera o intervalo), até a carga passar; a
+  repetição não dispara de novo a atualização diária. O `--dry-run` nunca dispara o serviço, não limpa pendência nem
+  carimba tentativa. Um pedido de atualização parado
   (`refrescar`) é cumprido na primeira execução do deploy em que a unit existir, ainda que o commit seja o mesmo. A decisão
   também considera como mudança do timer o `atualizar_financas.sh` e as units `legisdata-financas.*`.
 
@@ -125,9 +130,11 @@ Para recarregar tudo dos arquivos (por exemplo, depois de regerá-los à mão co
 forma que o deploy: `LEGISDATA_ACEITAR_ENCOLHIMENTO=1 ~/.legisdata-deploy/atualizar_financas.sh` na linha de comando (o
 script a repassa ao contêiner), nunca exportada no ambiente do timer.
 
-Para decidir se um ano do começo do ano "ainda não foi publicado" (vazio ou 404 até março), a atualização diária pergunta ao
-próprio `fin` quais anos da CEAP ele já tem (o arquivo processado não serve: o deploy o devolve ao retrato do git); um vazio
-em ano que o `fin` já tem é falha, e o `fin` não perde o ano.
+Para decidir se um ano do começo do ano "ainda não foi publicado" (vazio ou 404 até março), a atualização diária junta os
+anos que o próprio `fin` já tem (o arquivo processado sozinho não serve: o deploy o devolve ao retrato do git) com os que o
+arquivo processado traz (o `fin` sozinho também não: a carga pode ter falhado depois de o arquivo receber o ano); um vazio
+em ano que qualquer um dos dois já tem é falha, e o dado não se perde. A extração manual (`run_etl --ceap`) usa o mesmo
+cache por ano e a mesma proteção, e só dispara a carga completa (`--load-economia`) se a extração desta execução deu certo.
 
 Os contêineres do deploy e da atualização escondem `.env` e `.git/config` (credencial de remote); num worktree, onde `.git` é
 arquivo, não há `.git/config` a esconder e a montagem é omitida. O arquivo de ambiente com a senha vai para o

@@ -16,6 +16,7 @@ from etl.pipelines.loader_helpers import (
     normalizar_sigla_presenca,
     resolve_party_id,
 )
+from etl.tests.sinteticos import CPF_A, CPF_A_INVALIDO, formatado
 
 
 def pol(ident, eleitoral, civil=None):
@@ -152,7 +153,7 @@ def test_normalizar_sigla_presenca(bruto, esperado):
 
 @pytest.mark.parametrize(
     "digitos, esperado",
-    [("52998224725", True), ("52998224726", False), ("11111111111", False), ("5299822472", False), ("abc", False)],
+    [(CPF_A, True), (CPF_A_INVALIDO, False), ("11111111111", False), ("5299822472", False), ("abc", False)],
 )
 def test_cpf_valido_confere_tamanho_repeticao_e_digitos_verificadores(digitos, esperado):
     from etl.pipelines.loader_helpers import cpf_valido
@@ -163,8 +164,8 @@ def test_cpf_valido_confere_tamanho_repeticao_e_digitos_verificadores(digitos, e
 @pytest.mark.parametrize(
     "documento, esperado",
     [
-        ("00052998224725", None),  # CPF válido com enchimento de zeros à esquerda
-        ("000.529.982/2472-5", None),
+        ("000" + CPF_A, None),  # CPF válido com enchimento de zeros à esquerda
+        (f"000.{CPF_A[:3]}.{CPF_A[3:6]}/{CPF_A[6:10]}-{CPF_A[10]}", None),
         ("00001974000190", "00001974000190"),  # CNPJ real com zeros à esquerda que não fecha como CPF
         ("02.558.157/0001-62", "02558157000162"),
         ("12345678", None),
@@ -174,3 +175,42 @@ def test_cnpj_do_fornecedor_barra_cpf_com_enchimento_e_mantem_cnpj(documento, es
     from etl.pipelines.loader_helpers import cnpj_do_fornecedor
 
     assert cnpj_do_fornecedor(documento) == esperado
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        " ".join(CPF_A),  # um dígito por grupo (11 grupos)
+        f"{CPF_A[:3]}     {CPF_A[3:]}",  # separador de 5 espaços
+        f"{CPF_A[:3]}-{CPF_A[3:6]}-{CPF_A[6:9]}-{CPF_A[9:]}",
+        "0" * 6 + CPF_A,  # muitos zeros de enchimento
+        "000 " + " ".join((CPF_A[:3], CPF_A[3:6], CPF_A[6:9], CPF_A[9:])),
+        formatado(CPF_A),
+    ],
+)
+def test_nome_sem_cpf_remove_o_cpf_valido_em_qualquer_agrupamento(texto):
+    from etl.pipelines.loader_helpers import cpfs_validos_em, nome_sem_cpf
+
+    assert cpfs_validos_em(texto) == 1
+    assert nome_sem_cpf(f"FULANO {texto}") == "FULANO"
+
+
+@pytest.mark.parametrize(
+    "texto",
+    ["LOJA 2020 2021 2022", "TEL 61 3215 1234", "11.222.333/0001-81", "VALOR 1.234,56", "1 2 3 4 5 6 7 8 9 10 11 12"],
+)
+def test_nome_sem_cpf_deixa_o_que_nao_e_cpf(texto):
+    from etl.pipelines.loader_helpers import cpfs_validos_em, nome_sem_cpf
+
+    assert cpfs_validos_em(texto) == 0 and nome_sem_cpf(f"LOJA {texto}") == f"LOJA {texto}"
+
+
+def test_o_saneamento_de_texto_hostil_e_linear():
+    import time
+
+    from etl.pipelines.loader_helpers import nome_sem_cpf
+
+    t0 = time.time()
+    nome_sem_cpf("1 " * 300_000)
+    nome_sem_cpf("1" + " " * 600_000 + "1")
+    assert time.time() - t0 < 10
