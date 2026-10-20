@@ -19,7 +19,14 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
-from etl.config import CASAS_DO_CONGRESSO, CEAP_ARQUIVO, EMENDAS_ARQUIVO, PROCESSED_DATA_DIR
+from etl.config import (  # noqa: F401 - CHAVES_* são reexportadas para quem já importa daqui
+    CASAS_DO_CONGRESSO,
+    CEAP_ARQUIVO,
+    CHAVES_DO_TIMER,
+    CHAVES_ESTATICAS,
+    EMENDAS_ARQUIVO,
+    PROCESSED_DATA_DIR,
+)
 from etl.pipelines.loader_helpers import (
     LIMITE_CEAP,
     LIMITE_EMENDA,
@@ -43,6 +50,7 @@ from etl.pipelines.loader_helpers import (
     uf_da_localidade,
 )
 from etl.pipelines.pessoa_resolver import ResolvedorDePessoas
+from etl.pipelines.semeadura_das_financas import SQL_FONTES_DO_TIMER, fontes_do_timer  # noqa: F401 - reexportadas
 from etl.utils.bootstrap import ensure_backend_on_path
 from etl.utils.datafiles import load_json
 
@@ -621,8 +629,7 @@ CARGAS: Tuple[Tuple[str, Callable[[Connection, Path], Dict[str, int]]], ...] = (
 
 # CEAP e emendas são atualizadas todo dia pelo timer (arquivos extraídos na hora); as demais só mudam com o commit que
 # traz um arquivo novo. O deploy usa esta divisão para não devolver CEAP e emendas ao retrato do git.
-CHAVES_DO_TIMER = ("ceap", "emendas")
-CHAVES_ESTATICAS = ("remuneracao", "patrimonio", "doacoes", "certidoes")
+# (definidas em `etl.config`, leves, para a política de semeadura não precisar importar este módulo inteiro)
 
 
 # ── Quem é dono da fonte: a atualização diária (extração fresca) ou o retrato do git ───────────────────────────────────
@@ -632,12 +639,6 @@ CHAVES_ESTATICAS = ("remuneracao", "patrimonio", "doacoes", "certidoes")
 # status OK) com `parametros = {"carga", "fresca", "origem"}`: `fresca = "true"` quando veio de uma extração nova e
 # `"false"` quando veio do retrato do git (que revoga a posse). Vale a ÚLTIMA linha de cada carga. INVARIANTE: essas
 # linhas não podem ser expurgadas como histórico comum, ou o deploy volta a semear do git em silêncio.
-SQL_FONTES_DO_TIMER = (
-    "select coalesce(string_agg(carga, ' '), '') from ("
-    "select distinct on (parametros->>'carga') parametros->>'carga' as carga, parametros->>'fresca' as fresca "
-    "from etl.execucao where estagio = 'CARREGAR' and status = 'OK' and parametros->>'carga' is not null "
-    "order by parametros->>'carga', id desc) t where fresca = 'true'"
-)
 _CONTAGEM_DA_FONTE = {"ceap": "despesas", "emendas": "emendas"}
 
 
@@ -667,12 +668,6 @@ def registrar_carga_fresca(conn: Connection, chave: str, resultado: Any, origem:
 def registrar_carga_do_git(conn: Connection, chave: str, resultado: Any, origem: str = "deploy") -> None:
     """Hook de `carregar`: o dado veio do retrato do git (semeadura do deploy, recarga manual). Revoga a posse do timer."""
     registrar_carga(conn, chave, resultado, False, origem)
-
-
-def fontes_do_timer(engine: Engine) -> Set[str]:
-    """As cargas (ceap, emendas) cuja última entrada em `etl.execucao` veio de uma extração fresca."""
-    with engine.connect() as conexao:
-        return set(str(conexao.execute(text(SQL_FONTES_DO_TIMER)).scalar() or "").split())
 
 
 def carregar(

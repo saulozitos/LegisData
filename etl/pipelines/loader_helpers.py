@@ -512,16 +512,21 @@ def cnpj_dv_valido(digitos: str) -> bool:
 # outro número de 14 dígitos com enchimento e CPF válido nos 11 últimos é tratado como CPF, mesmo que feche como CNPJ
 # (cerca de 1,4% dos CPFs com enchimento "000" fecham o CNPJ por acaso: perder um CNPJ raro é o lado seguro da D3).
 RAIZES_ZERADAS_CONHECIDAS = frozenset({"00000000", "00000531", "00070509"})
+# Só marcadores FORTES de pessoa jurídica desempatam um documento ambíguo. "SA" (sobrenome Sá sem acento), "ME", "CIA" e "EPP"
+# soltos aparecem em nomes de pessoa física e ficam de fora; só "S/A" e "S.A." com pontuação valem. Uma empresa que se escreve
+# "X SA" sem pontuação não desempata: na dúvida, "000+CPF" é CPF (perder o CNPJ de uma raiz zerada é o lado seguro da D3).
 _MARCADOR_DE_PJ = re.compile(
-    r"\b(?:LTDA|EIRELI|EPP|ME|S/?A|S\.A\.?|BANCO|COOPERATIVA|ASSOCIA[CÇ][AÃ]O|FUNDA[CÇ][AÃ]O|PARTIDO|CIA|COMPANHIA|"
+    r"\b(?:LTDA|EIRELI|S/A|S\.A\.?|BANCO|COOPERATIVA|ASSOCIA[CÇ][AÃ]O|FUNDA[CÇ][AÃ]O|PARTIDO|COMPANHIA|"
     r"EMPRESA|COM[EÉ]RCIO|IND[UÚ]STRIA|COMERCIAL)\b",
     re.IGNORECASE,
 )
 
 
 def nome_de_pj(nome: Any) -> bool:
-    """True se o nome traz um marcador de pessoa jurídica (LTDA, S/A, BANCO...): desempata um documento ambíguo."""
-    return bool(_MARCADOR_DE_PJ.search(_ascii(texto(nome)))) if nome is not None else False
+    """True se o nome traz um marcador FORTE de pessoa jurídica (LTDA, S/A, BANCO...): desempata um documento ambíguo."""
+    if nome is None:
+        return False
+    return bool(_MARCADOR_DE_PJ.search(_ascii(texto(nome))))
 
 
 def cpf_com_zeros(digitos: str, pj: bool = False) -> bool:
@@ -529,7 +534,8 @@ def cpf_com_zeros(digitos: str, pj: bool = False) -> bool:
     CPF válido nos 11 últimos dígitos com zeros de enchimento à esquerda (0 a quantos forem). Com exatamente 14 dígitos o
     número também pode ser um CNPJ de raiz zerada. Ele só é CNPJ (e não é tocado) se fecha nos dígitos verificadores de
     CNPJ E (a raiz é uma das conhecidas, ou `pj` diz que o nome é de pessoa jurídica). Fecha como CNPJ mas sem nada que
-    o confirme: é tratado como CPF.
+    o confirme: é tratado como CPF. `pj` só deve ser dado onde há um nome confiável ao lado do documento (o fornecedor da
+    CEAP); os demais chamadores (documento do doador, texto livre, nome, guarda) ficam de propósito no lado estrito.
     """
     if len(digitos) < 11 or not set(digitos[:-11]) <= {"0"} or not cpf_valido(digitos[-11:]):
         return False
@@ -635,30 +641,78 @@ def cpfs_validos_em(valor: Any) -> int:
 
 _CORRIDOS_12_A_14 = re.compile(r"(?<![0-9])[0-9]{12,14}(?![0-9])")
 _CNPJ_FORMATADO_RE = re.compile(_CNPJ_FORMATADO)
-
-
 _URL = re.compile(r"https?://\S+")
+_PEDACOS = re.compile(r"[0-9]+|[^0-9]+")
+
+
+def _cpfs_por_grupos(normal: str) -> int:
+    """
+    CPF (11 dígitos que fecham o verificador) escrito em 2 ou mais grupos ligados SEMPRE pelo mesmo separador de 1 a 4
+    caracteres que não são letra nem dígito: vírgula, barra, aspas, parênteses (`"123", "456"`, `123/456/789/01`) e também
+    os outros. O separador constante é o que distingue um documento repartido de uma lista de números diversos (tuplas
+    de teste, coordenadas), que misturam separadores e dariam falso positivo. Linear: cada início de grupo olha no máximo
+    11 dígitos adiante.
+    """
+    pedacos = _PEDACOS.findall(normal)
+    # alterna dígitos nas posições pares quando o texto começa por dígito; normaliza para (grupo, separador seguinte)
+    grupos: List[Tuple[str, str]] = []
+    for i, pedaco in enumerate(pedacos):
+        if pedaco.isdigit():
+            seguinte = pedacos[i + 1] if i + 1 < len(pedacos) and not pedacos[i + 1].isdigit() else ""
+            grupos.append((pedaco, seguinte))
+    achados = 0
+    for i in range(len(grupos)):
+        digitos = grupos[i][0]
+        separador = grupos[i][1]
+        if not 1 <= len(separador) <= 4 or re.search(r"[A-Za-z0-9_]", separador):
+            continue
+        for j in range(i + 1, len(grupos)):
+            digitos += grupos[j][0]
+            if len(digitos) > 11:
+                break
+            if len(digitos) == 11 and cpf_valido(digitos):
+                achados += 1
+                break
+            if grupos[j][1] != separador:
+                break
+    return achados
 
 
 def cpfs_suspeitos_em(valor: Any, janelas: bool = True) -> int:
     """
     Para a guarda de D3 dos arquivos versionados, que precisa ser mais desconfiada que o saneamento: além de
-    `cpfs_validos_em`, conta o CNPJ formatado que é "000"+CPF e qualquer janela de 11 dígitos com CPF válido dentro de um
-    número corrido de 12 a 14 dígitos (um CPF colado a outros dígitos), exceto o de 14 que fecha como CNPJ. As janelas
-    (`janelas=True`) valem para código escrito à mão; em dados (JSON/CSV/docs) códigos de emenda e de processo somam 12 a 14
-    dígitos e dariam falso positivo, então a guarda as desliga ali. Endereços (URLs) não entram nas janelas.
+    `cpfs_validos_em`, conta o CNPJ formatado que é "000"+CPF. Com `janelas=True` (código e texto escritos à mão) conta
+    também qualquer sequência de grupos de dígitos ligados por qualquer pontuação (vírgula, barra, aspas) que seja CPF válido
+    e qualquer janela de 11 dígitos com CPF válido dentro de um número corrido de 12 a 14 dígitos (um CPF colado a outros
+    dígitos), exceto o de 14 que fecha como CNPJ. Em dados (JSON/CSV) códigos de emenda e de processo somam 12 a 14 dígitos
+    e valores em reais vêm separados por vírgula e dariam falso positivo, então a guarda desliga `janelas` ali. Endereços
+    (URLs) não entram em `janelas`.
     """
     normal = _ascii(texto(valor))
     achados = cpfs_validos_em(valor)
     achados += sum(1 for m in _CNPJ_FORMATADO_RE.finditer(normal) if cpf_com_zeros(so_digitos(m.group("cnpj"))))
     if not janelas:
         return achados
-    for m in _CORRIDOS_12_A_14.finditer(_URL.sub(" ", normal)):
+    sem_url = _URL.sub(" ", normal)
+    achados += _cpfs_por_grupos(sem_url)
+    for m in _CORRIDOS_12_A_14.finditer(sem_url):
         d = m.group(0)
         if len(d) == 14 and cnpj_dv_valido(d):
             continue
         achados += any(cpf_valido(d[i : i + 11]) for i in range(len(d) - 10))
     return achados
+
+
+# 13 dígitos corridos: é o CNPJ que perdeu o zero à esquerda se "0"+número fecha como CNPJ; senão, com um CPF válido numa janela
+# de 11 dígitos (um CPF colado a 2 dígitos), é documento pessoal e sai do nome.
+_TREZE_DIGITOS = re.compile(r"(?<![0-9])[0-9]{13}(?![0-9])")
+
+
+def _tira_treze_digitos(achado: "re.Match[str]") -> str:
+    d = achado.group(0)
+    if cnpj_dv_valido("0" + d):
+        return d
+    return " " if any(cpf_valido(d[i : i + 11]) for i in range(3)) else d
 
 
 def nome_sem_cpf(valor: Any) -> Optional[str]:
@@ -667,6 +721,7 @@ def nome_sem_cpf(valor: Any) -> Optional[str]:
     # formas do desenho 3-3-3-2 e, por fim, o número de 11 ou 12 dígitos de documento pessoal
     sem_cpf = _DIGITOS_SEPARADOS.sub(_tira_cpf_valido_separado, _ascii(texto(valor)))
     sem_cpf = _SEQUENCIA_CPF.sub(_sem_cpf, sem_cpf)
+    sem_cpf = _TREZE_DIGITOS.sub(_tira_treze_digitos, sem_cpf)
     limpo = " ".join(_DOCUMENTO_PESSOAL.sub(_tira_documento_pessoal, sem_cpf).split())
     return limpo or None
 
@@ -700,17 +755,29 @@ def _tira_cpf_do_texto(achado: "re.Match[str]") -> str:
     return " "
 
 
+def _tira_cpf_valido_no_texto(achado: "re.Match[str]") -> str:
+    """CPF comprovado por dígito verificador em qualquer agrupamento, salvo valor em reais ("R$ ..." antes, ",NN" depois)."""
+    if not _digitos_de_cpf(achado.group(0)):
+        return achado.group(0)
+    antes = achado.string[max(0, achado.start() - 4) : achado.start()]
+    if re.search(r"R\$\s*$", antes) or _CASA_DECIMAL.match(achado.string, achado.end()):
+        return achado.group(0)
+    return " "
+
+
 def texto_sem_cpf(valor: Any) -> Optional[str]:
     """
-    Texto livre da fonte sem CPF embutido (decisão D3); None quando não sobra nada. Contrato: só as formas do desenho
-    3-3-3-2 (e dez dígitos corridos) saem, preservando valores em reais; é mais frouxo que `nome_sem_cpf`, que também
-    tira o CPF comprovado por dígito verificador em qualquer agrupamento. Campo livre que pode trazer documento solto
-    (nome de pessoa, razão social) deve passar por `nome_sem_cpf`.
+    Texto livre da fonte sem CPF embutido (decisão D3); None quando não sobra nada. Saem as formas do desenho 3-3-3-2 (e
+    dez dígitos corridos) e também o CPF comprovado por dígito verificador em qualquer agrupamento (4-4-3, um dígito por
+    espaço, zeros de enchimento), preservando valores em reais ("R$ ..." antes ou ",NN" depois do número). Não tira o
+    número de 12 dígitos de documento pessoal que `nome_sem_cpf` tira (num texto livre ele é mais provavelmente um código).
     """
     bruto = texto(valor)
     if bruto is None:
         return None
-    limpo = " ".join(_CPF_EM_TEXTO.sub(_tira_cpf_do_texto, _ascii(bruto)).split())
+    sem_cpf = _CPF_EM_TEXTO.sub(_tira_cpf_do_texto, _ascii(bruto))
+    sem_cpf = _DIGITOS_SEPARADOS.sub(_tira_cpf_valido_no_texto, sem_cpf)
+    limpo = " ".join(sem_cpf.split())
     return limpo or None
 
 

@@ -94,7 +94,9 @@ ambiente 600; o `Settings` do backend monta a URL e codifica a senha). O que ele
    com erro (o `systemd` registra) depois de recarregar a outra. Remuneração, patrimônio, doações e certidões não entram.
 
 O script usa o mesmo lock do deploy (`~/.legisdata-deploy/deploy.lock`), esperando até 30 minutos, e o pipeline tem um lock
-próprio (`etl/data/.financas.lock`) contra duas atualizações ao mesmo tempo (o timer e o `make daily`, por exemplo). Antes de
+próprio (`etl/data/.financas.lock`) contra duas atualizações ao mesmo tempo (o timer e o `make daily`, por exemplo). Onde o
+diretório de estado do deploy existe (o host que faz o deploy), o pipeline também respeita o `deploy.lock`: com o deploy em
+andamento a execução é pulada, para não reverter o JSON no meio nem carregar o retrato do git como se fosse dado fresco. Antes de
 rodar, o script confere que a imagem no ar é a do commit do checkout; depois de um rollback do deploy eles divergem e ele
 recusa a execução com uma mensagem clara.
 
@@ -150,6 +152,8 @@ cache por ano e a mesma proteção, e só dispara a carga completa (`--load-econ
 **Transição.** A cópia do `deploy.sh` instalada antes desta versão se reexecuta com o script novo sem a variável
 `_LEGISDATA_DEPLOY_REPETICAO`: assume 0, o que dispara a atualização diária uma vez a mais numa repetição de carga. Máquinas
 de desenvolvimento que rodaram a versão intermediária (marcadores em arquivo) podem apagar `etl/data/.financas_*_carregada`.
+As linhas de `etl.execucao` gravadas por versões anteriores deste branch (chave `fonte` em vez de `carga`) continuam valendo:
+as duas consultas leem `coalesce(parametros->>'carga', parametros->>'fonte')`, e a linha nova de uma fonte prevalece.
 
 Os contêineres do deploy e da atualização escondem `.env` e `.git/config` (credencial de remote); num worktree, onde `.git` é
 arquivo, não há `.git/config` a esconder e a montagem é omitida. O arquivo de ambiente com a senha vai para o
@@ -176,7 +180,8 @@ Depois, o `deploy.sh` mantém a cópia do script igual à do commit implantado. 
 Para pausar: `systemctl --user stop legisdata-financas.timer`.
 
 O `make daily` (presença, votações, séries, IPPM e grafo) é outro agendador, ainda sem timer no servidor atual. Se um dia
-ele for instalado, a etapa 1d dele já inclui esta atualização (o lock do pipeline impede a execução dupla) e o
+ele for instalado, a etapa 1d dele já inclui esta atualização (o lock do pipeline impede a execução dupla e, no host do
+deploy, ela espera o `deploy.lock` quando há deploy em andamento) e o
 `legisdata-financas.timer` pode ser removido; instale um só dos dois com o mesmo usuário, para o cache e os arquivos de
 `etl/data` não ficarem com donos diferentes.
 
@@ -202,8 +207,9 @@ bash -n ~/.legisdata-deploy/deploy.sh && echo ok
 ```
 
 Depois do merge o deploy roda com o script novo, que dali em diante se atualiza sozinho a cada deploy. Se esquecer o
-passo, rode `make run-load-economia` no servidor depois do deploy (com o `fin` já carregado ele recarrega só as cargas
-estáticas das finanças, sem desfazer a atualização diária), ou o `python -c` do passo 4 do script.
+passo, rode `make run-load-economia` no servidor depois do deploy. Ele semeia do git só a fonte que o `fin` não tem ou que o
+timer ainda não assumiu (logo depois da transição, antes da primeira execução do timer, isso é a CEAP e as emendas
+inteiras, gravadas como `fresca=false`); a fonte que o timer já assumiu não é desfeita. Ou rode o `python -c` do passo 4.
 
 ## Rollback da Entrega 3c (a API deixou de montar `etl/data`)
 

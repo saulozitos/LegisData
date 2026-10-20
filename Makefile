@@ -111,7 +111,8 @@ run-all:
 run-etl:
 	PYTHONPATH=. $(PY) etl/run_etl.py --economic --load-economia
 
-# com CEAP e emendas já no fin recarrega só as cargas estáticas; para recarregar tudo dos arquivos: --recarregar-ceap-emendas
+# semeia do git só a fonte (CEAP ou emendas) que o fin ainda não tem ou que a atualização diária ainda não assumiu; a que ela
+# assumiu fica como está. Para recarregar tudo dos arquivos: --recarregar-ceap-emendas
 # (o `make run-all`, cuja etapa --ceap roda na mesma execução, recarrega CEAP e emendas sozinho quando a extração dá certo)
 run-load-economia:
 	PYTHONPATH=. $(PY) etl/run_etl.py --load-economia

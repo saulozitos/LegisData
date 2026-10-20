@@ -3,6 +3,7 @@
 import os
 import random
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -174,8 +175,56 @@ def test_deploy_so_tolera_falha_das_financas_quando_fin_ja_tem_dados():
         assert _posicao(texto, re.escape(pergunta)) < _posicao(texto, r"um_comando python -c ")
     carga = texto[_posicao(texto, r"um_comando python -c ") :]
     assert re.search(r"os\.environ\.get\('LEGISDATA_FIN_TEM_ALGUM_DADO'\) == 't' else \(\)", carga)
-    assert "carregar_tudo(engine, toleradas=toleradas, ao_confirmar=registrar_carga_do_git, **plano)" in carga
-    assert "plano_do_modo(os.environ.get('LEGISDATA_FIN_MODO', 'nenhuma'))" in carga  # sem decisão, não toca no fin
+    assert "carregar_tudo(engine, toleradas=toleradas, **plano)" in carga
+    # sem decisão, não toca no fin
+    assert (
+        "plano_do_modo(os.environ.get('LEGISDATA_FIN_MODO', 'nenhuma'), ao_confirmar=registrar_carga_do_git)" in carga
+    )
+
+
+def _python_da_carga():
+    """O programa que o deploy passa a `python -c` (entre aspas duplas no bash, sem expansões)."""
+    texto = _texto(DEPLOY_SH)
+    achado = re.search(r'um_comando python -c "\n(.*?)\n"\)"', texto, re.DOTALL)
+    assert achado, "programa da carga não encontrado no deploy.sh"
+    assert "$" not in achado.group(1) and "`" not in achado.group(1)  # o bash não pode expandir nada dentro dele
+    return achado.group(1)
+
+
+def test_o_programa_da_carga_compila_e_roda_com_o_gancho_do_git_e_o_modo_do_ambiente(monkeypatch, capsys):
+    import sys
+    import types
+
+    from etl.pipelines import carga_economica, financas_loader
+
+    codigo = _python_da_carga()
+    compile(codigo, "deploy.sh:carga", "exec")
+    motor = object()
+    modulo_db = types.ModuleType("app.core.database")
+    modulo_db.engine = motor
+    monkeypatch.setitem(sys.modules, "app.core.database", modulo_db)
+    recebido = {}
+
+    def falso(engine, **kw):
+        recebido.update(kw, engine=engine)
+        return {"financas": {"erro": "x"}, "pnad": 1}
+
+    monkeypatch.setattr(carga_economica, "carregar_tudo", falso)
+    monkeypatch.setenv("LEGISDATA_FIN_MODO", "sem_ceap")
+    monkeypatch.setenv("LEGISDATA_FIN_TEM_ALGUM_DADO", "t")
+    exec(compile(codigo, "deploy.sh:carga", "exec"), {})
+    saida = capsys.readouterr().out
+    assert recebido["engine"] is motor and recebido["toleradas"] == carga_economica.TOLERADAS_NO_DEPLOY
+    assert recebido["chaves"] == carga_economica.chaves_do_modo("sem_ceap")
+    opcoes = recebido["opcoes"]["financas"]
+    assert opcoes["chaves"] == carga_economica.FINANCAS_POR_MODO["sem_ceap"]
+    assert opcoes["ao_confirmar"] is financas_loader.registrar_carga_do_git
+    assert "FALHA_TOLERADA financas" in saida
+
+    monkeypatch.delenv("LEGISDATA_FIN_MODO")
+    monkeypatch.delenv("LEGISDATA_FIN_TEM_ALGUM_DADO")
+    exec(compile(codigo, "deploy.sh:carga", "exec"), {})
+    assert recebido["toleradas"] == () and "financas" not in recebido["chaves"]  # sem decisão: modo "nenhuma"
 
 
 def test_modo_das_financas_chega_a_carga_pelo_um_comando():
@@ -369,7 +418,10 @@ def test_o_deploy_deriva_as_fontes_do_timer_da_resposta_do_banco(tmp_path, respo
     """A resposta do `psql` (nomes separados por espaço) vira as duas flags; só a palavra inteira conta."""
     falsos = tmp_path / "bin"
     falsos.mkdir()
-    (falsos / "docker").write_text(f"#!/usr/bin/env bash\necho '{resposta_do_banco}'\n")
+    argumentos = tmp_path / "argumentos"
+    (falsos / "docker").write_text(
+        f"#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" >{shlex.quote(str(argumentos))}\necho '{resposta_do_banco}'\n"
+    )
     (falsos / "docker").chmod(0o755)
     script = (
         "PG_USER=u PG_DB=d\n"
@@ -379,6 +431,10 @@ def test_o_deploy_deriva_as_fontes_do_timer_da_resposta_do_banco(tmp_path, respo
     resposta = _bash(script, env={"PATH": f"{falsos}:{os.environ['PATH']}"})
     assert resposta.returncode == 0, resposta.stderr
     assert resposta.stdout.strip() == esperado
+    from etl.pipelines.financas_loader import SQL_FONTES_DO_TIMER
+
+    recebidos = argumentos.read_text(encoding="utf-8").splitlines()
+    assert recebidos == ["exec", "politica_postgres", "psql", "-U", "u", "-d", "d", "-tAc", SQL_FONTES_DO_TIMER]
 
 
 @SEM_BASH
@@ -400,7 +456,9 @@ def _decidir_em_lote(repo, combinacoes):
     )
     resposta = _bash(f"{funcao}\n{linhas}", cwd=repo)
     assert resposta.returncode == 0, resposta.stderr
-    return resposta.stdout.strip().splitlines()
+    saidas = resposta.stdout.strip().splitlines()
+    assert len(saidas) == len(combinacoes), (len(saidas), len(combinacoes))  # nenhuma entrada some sem falhar
+    return saidas
 
 
 @SEM_BASH
@@ -419,6 +477,7 @@ def test_a_decisao_do_deploy_e_a_tabela_de_semeadura_do_python_nas_16_combinacoe
             for a, b, c, d in entradas
         ],
     )
+    assert len(saidas) == len(entradas) == 16  # uma saída sumida não pode passar calada pelo zip
     for (a, b, c, d), saida in zip(entradas, saidas):
         esperado = modo_de_semeadura(a, b, c, d) or "estaticas"  # nada a semear + código mudou => as estáticas
         assert saida.split()[0] == esperado, ((a, b, c, d), saida)
@@ -1348,6 +1407,62 @@ def test_a_repeticao_herdada_do_ambiente_so_aceita_0_ou_1(tmp_path, valor):
     assert "REPETICAO=0" in resposta.stdout and not armadilha.exists()
 
 
-def test_o_alvo_herdado_do_ambiente_so_aceita_um_sha_de_40_hex():
-    texto = _texto(DEPLOY_SH)
-    assert re.search(r'\[\[ "\$ALVO" =~ \^\[0-9a-f\]\{40\}\$ \]\] \|\| \{ log "alvo inválido', texto)
+@SEM_BASH
+@pytest.mark.parametrize(
+    "valor, valido",
+    [
+        ("a" * 40, True),
+        ("abc", False),
+        ("a" * 39, False),
+        ("A" * 40, False),
+        ("a" * 41, False),
+        ("$(touch {armadilha})", False),
+        ("a[$(touch {armadilha})]", False),
+    ],
+)
+def test_o_alvo_herdado_do_ambiente_so_aceita_um_sha_de_40_hex(tmp_path, valor, valido):
+    armadilha = tmp_path / "executou"
+    script = 'log() { echo "LOG: $*"; }\n' + _bloco(_texto(DEPLOY_SH), "alvo") + '\necho "SEGUIU $ALVO"'
+    resposta = _bash(script, env={"_LEGISDATA_DEPLOY_ALVO": valor.format(armadilha=armadilha)})
+    assert not armadilha.exists()
+    if valido:
+        assert resposta.returncode == 0 and f"SEGUIU {valor}" in resposta.stdout
+    else:
+        assert resposta.returncode != 0 and "alvo inválido" in resposta.stdout and "SEGUIU" not in resposta.stdout
+
+
+@SEM_BASH
+@pytest.mark.parametrize(
+    "valor, esperado",
+    [
+        ("7", "7"),
+        ("abc", "14"),
+        ("0", "14"),
+        ("-1", "14"),
+        ("", "14"),
+        ("1;echo oi", "14"),
+        ("a[$(touch {armadilha})]", "14"),
+    ],
+)
+def test_guardar_backups_so_aceita_inteiro_positivo_senao_usa_14(tmp_path, valor, esperado):
+    """Um valor inválido de DEPLOY_KEEP_BACKUPS valia 1 na conta e `tail -n +1` apagaria todos os dumps."""
+    armadilha = tmp_path / "executou"
+    script = _bloco(_texto(DEPLOY_SH), "guardar_backups") + '\necho "$GUARDAR_BACKUPS $((GUARDAR_BACKUPS + 1))"'
+    env = {"DEPLOY_KEEP_BACKUPS": valor.format(armadilha=armadilha)}
+    resposta = _bash(script, env=env)
+    assert resposta.returncode == 0, resposta.stderr
+    assert resposta.stdout.split()[0] == esperado and not armadilha.exists()
+
+
+def test_o_instalador_grava_o_diretorio_do_projeto_escapado_para_o_source(tmp_path):
+    texto = _texto(RAIZ / "scripts" / "deploy" / "instalar.sh")
+    assert 'printf \'LEGISDATA_DIR=%q\\n\' "$RAIZ" >"$DEST/ambiente"' in texto
+    estranho = tmp_path / "pasta com espaço $(touch executou)"
+    estranho.mkdir()
+    ambiente = tmp_path / "ambiente"
+    resposta = _bash(
+        f"RAIZ={shlex.quote(str(estranho))}\nprintf 'LEGISDATA_DIR=%q\\n' \"$RAIZ\" >{shlex.quote(str(ambiente))}\n"
+        f'. {shlex.quote(str(ambiente))}\nprintf %s "$LEGISDATA_DIR"',
+        cwd=tmp_path,
+    )
+    assert resposta.stdout == str(estranho) and not (tmp_path / "executou").exists()

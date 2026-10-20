@@ -2341,7 +2341,12 @@ def test_anos_publicados_da_ceap_vem_do_fin_por_casa_e_ignora_o_ano_zerado(pg_en
 def sem_execucoes_de_carga(pg_engine):
     def limpar():
         with pg_engine.begin() as conn:
-            conn.execute(text("DELETE FROM etl.execucao WHERE parametros->>'carga' IS NOT NULL"))
+            conn.execute(
+                text(
+                    "DELETE FROM etl.execucao WHERE parametros->>'carga' IS NOT NULL "
+                    "OR parametros->>'fonte' IS NOT NULL OR parametros->>'teste' = 'posse'"
+                )
+            )
 
     limpar()
     yield
@@ -2438,6 +2443,47 @@ def test_carga_do_git_revoga_a_posse_e_a_ultima_linha_de_cada_fonte_vale(pg_engi
         fin.registrar_carga_fresca(conn, "emendas", {"emendas": 3}, origem="run_etl")  # e volta com nova extração
         fin.registrar_carga_fresca(conn, "emendas", {"emendas": 3})  # linhas repetidas não duplicam a fonte
     assert fin.fontes_do_timer(pg_engine) == {"ceap", "emendas"}
+
+
+def _linha_de_execucao(conn, estagio="CARREGAR", status="OK", parametros=None):
+    conn.execute(
+        text(
+            "INSERT INTO etl.execucao (estagio, finalizado_em, status, parametros) "
+            "VALUES (:e, now(), :s, CAST(:p AS jsonb))"
+        ),
+        {"e": estagio, "s": status, "p": json.dumps({**(parametros or {}), "teste": "posse"})},
+    )
+
+
+@pytest.mark.parametrize(
+    "estagio, status, parametros",
+    [
+        ("CARREGAR", "ERRO", {"carga": "ceap", "fresca": "true"}),  # execução que falhou não dá a posse
+        ("CARREGAR", "COM_ALERTA", {"carga": "ceap", "fresca": "true"}),
+        ("CARREGAR", "EXECUTANDO", {"carga": "ceap", "fresca": "true"}),
+        ("EXTRAIR", "OK", {"carga": "ceap", "fresca": "true"}),  # outro estágio
+        ("CARREGAR", "OK", {"fresca": "true"}),  # linha de outro gravador, sem a chave da carga
+        ("CARREGAR", "OK", {"carga": "ceap", "fresca": "talvez"}),
+    ],
+)
+def test_so_a_linha_ok_de_carregar_com_carga_e_fresca_true_da_a_posse(
+    pg_engine, sem_execucoes_de_carga, estagio, status, parametros
+):
+    with pg_engine.begin() as conn:
+        fin.registrar_carga_do_git(conn, "ceap", {"despesas": 1})  # a posse parte revogada
+        _linha_de_execucao(conn, estagio, status, parametros)
+    assert fin.fontes_do_timer(pg_engine) == set()
+
+
+def test_linhas_antigas_com_a_chave_fonte_continuam_valendo_e_a_nova_prevalece(pg_engine, sem_execucoes_de_carga):
+    """Versões anteriores do branch gravavam `fonte`: um banco de desenvolvimento com elas não pode perder a posse."""
+    with pg_engine.begin() as conn:
+        _linha_de_execucao(conn, parametros={"fonte": "ceap", "fresca": "true"})
+        _linha_de_execucao(conn, parametros={"fonte": "emendas", "fresca": "true"})
+    assert fin.fontes_do_timer(pg_engine) == {"ceap", "emendas"}
+    with pg_engine.begin() as conn:
+        fin.registrar_carga_do_git(conn, "emendas", {"emendas": 1})  # a linha nova (chave `carga`) revoga a antiga
+    assert fin.fontes_do_timer(pg_engine) == {"ceap"}
 
 
 def test_a_origem_do_hook_fica_registrada(pg_engine, sem_execucoes_de_carga):

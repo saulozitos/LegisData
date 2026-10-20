@@ -271,12 +271,34 @@ def test_cpf_seguido_de_virgula_ou_barra_nao_se_esconde_atras_dela(sufixo):
     assert CPF_A[:4] not in (nome_sem_cpf(texto) or "")
 
 
-def test_texto_sem_cpf_tem_contrato_mais_frouxo_que_o_do_nome():
-    """Documentado: texto livre preserva valor em reais ('R$ ...'); o nome tira o CPF comprovado em qualquer agrupamento."""
+def test_texto_sem_cpf_tira_o_cpf_comprovado_em_qualquer_agrupamento_e_preserva_valor_em_reais():
     from etl.pipelines.loader_helpers import nome_sem_cpf, texto_sem_cpf
 
-    assert "Contrato" in texto_sem_cpf.__doc__ and "nome_sem_cpf" in texto_sem_cpf.__doc__
-    assert nome_sem_cpf(f"X {CPF_A[:4]} {CPF_A[4:8]} {CPF_A[8:]}") == "X"
+    assert "nome_sem_cpf" in texto_sem_cpf.__doc__ and "reais" in texto_sem_cpf.__doc__
+    grupos = f"{CPF_A[:4]} {CPF_A[4:8]} {CPF_A[8:]}"
+    assert nome_sem_cpf(f"X {grupos}") == "X" and texto_sem_cpf(f"X {grupos} Y") == "X Y"
+    assert texto_sem_cpf(f"X {' '.join(CPF_A)} Y") == "X Y"  # um dígito por vez
+    assert texto_sem_cpf(f"X {formatado(CPF_A)} Y") == "X Y"
+    assert texto_sem_cpf(f"pago R$ {CPF_A},50 ao fornecedor") == f"pago R$ {CPF_A},50 ao fornecedor"  # valor em reais
+    assert texto_sem_cpf(f"saldo {CPF_A},50") == f"saldo {CPF_A},50"
+    assert texto_sem_cpf("Processo 500600700800 arquivado") == "Processo 500600700800 arquivado"
+
+
+def test_nome_sem_cpf_tira_o_cpf_colado_a_dois_digitos_mas_deixa_o_cnpj_sem_o_zero():
+    """13 dígitos: ou é um CNPJ que perdeu o zero à esquerda (fecha com "0" na frente), ou um CPF com 2 dígitos grudados."""
+    from etl.pipelines.loader_helpers import cnpj_dv_valido, nome_sem_cpf
+
+    assert nome_sem_cpf(f"FULANO 99{CPF_A}") == "FULANO" and nome_sem_cpf(f"FULANO {CPF_A}99") == "FULANO"
+    from etl.pipelines.loader_helpers import cpf_valido
+
+    # um CNPJ de 14 dígitos que começa por zero, escrito sem ele (13 dígitos), e sem nenhuma janela que seja CPF
+    sem_zero = next(
+        d
+        for raiz in range(1222333, 1222333 + 5000)
+        for dv in range(100)
+        if cnpj_dv_valido("0" + (d := f"{raiz}0001{dv:02d}")) and not any(cpf_valido(d[i : i + 11]) for i in range(3))
+    )
+    assert len(sem_zero) == 13 and nome_sem_cpf(f"BANCO {sem_zero}") == f"BANCO {sem_zero}"
 
 
 @pytest.mark.parametrize("digitos", ["²" * 11, "١٢٣٤٥٦٧٨٩٠١", "１２３４５６７８９０１", "abcdefghijk"])
@@ -297,16 +319,29 @@ def test_as_raizes_zeradas_conhecidas_existem_nos_dados_versionados_ou_sao_a_do_
     if raiz == "00000000":
         return
     texto = (PROCESSED_DATA_DIR / "tse_doacoes_campanha.json").read_text(encoding="utf-8")
-    assert f"{raiz[:2]}.{raiz[2:5]}.{raiz[5:8]}" in texto or raiz in texto, raiz
+    # a máscara completa do CNPJ (XX.XXX.XXX/), não uma sequência de 8 dígitos que cairia dentro de qualquer número
+    assert f"{raiz[:2]}.{raiz[2:5]}.{raiz[5:8]}/" in texto, raiz
 
 
 @pytest.mark.parametrize(
     "nome, eh_pj",
     [
         ("BANCO DO BRASIL S.A.", True),
+        ("BANCO DO BRASIL SA", True),  # a palavra BANCO basta
+        ("ACME COMERCIO SA", True),
+        ("X Y S/A", True),
         ("EMPRESA X LTDA", True),
-        ("JOAO DA SILVA ME", True),
+        ("COOPERATIVA AGRICOLA", True),
+        ("ASSOCIAÇÃO DOS MORADORES", True),
         ("JOAO DA SILVA", False),
+        # marcadores fracos soltos não desempatam: são sobrenomes e apelidos de pessoa física
+        ("JOAO DA SILVA ME", False),
+        ("JOSE DE SA", False),
+        ("MARIA SA TELES", False),
+        ("ANTONIO ME", False),
+        ("JOAO CIA", False),
+        ("FULANO EPP", False),
+        ("ANA E SA", False),
         (None, False),
         ("", False),
     ],
@@ -334,3 +369,16 @@ def test_zero_mais_cpf_que_fecha_como_cnpj_so_e_cnpj_com_raiz_conhecida_ou_nome_
     assert cpf_com_zeros(achado) is True and cnpj_do_fornecedor(achado) is None  # sem confirmação: é CPF
     assert cnpj_do_fornecedor(achado, "FORNECEDOR EXEMPLO LTDA") == achado  # com marcador de PJ no nome: é CNPJ
     assert cnpj_do_fornecedor(achado, "JOAO DA SILVA") is None
+
+
+@pytest.mark.parametrize("nome", ["JOSE DE SA", "MARIA SA", "ANTONIO ME", "JOAO CIA", "FULANO EPP", None, ""])
+def test_zero_mais_cpf_que_fecha_como_cnpj_com_nome_de_pessoa_fisica_nunca_vira_cnpj(nome):
+    from etl.pipelines.loader_helpers import RAIZES_ZERADAS_CONHECIDAS, cnpj_do_fornecedor, cnpj_dv_valido
+    from etl.tests.sinteticos import cpf_com_digitos
+
+    achado = next(
+        d
+        for base in range(123456789, 123456789 + 40000 * 7919, 7919)
+        if cnpj_dv_valido(d := "000" + cpf_com_digitos(str(base))) and d[:8] not in RAIZES_ZERADAS_CONHECIDAS
+    )
+    assert cnpj_do_fornecedor(achado, nome) is None

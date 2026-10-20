@@ -151,8 +151,8 @@ def test_sem_chaves_o_modo_das_financas_vem_do_banco_fonte_por_fonte(
     chamadas, monkeypatch, tem_ceap, tem_emendas, ceap_timer, emendas_timer, modo
 ):
     monkeypatch.setattr(carga_economica, "estado_do_fin", lambda engine: (tem_ceap, tem_emendas))
-    assert carga_economica.modo_de_semeadura(tem_ceap, tem_emendas, ceap_timer, emendas_timer) in (
-        None if modo == "estaticas" else modo,
+    assert carga_economica.modo_de_semeadura(tem_ceap, tem_emendas, ceap_timer, emendas_timer) == (
+        None if modo == "estaticas" else modo
     )
     monkeypatch.setattr(
         carga_economica,
@@ -175,8 +175,30 @@ def test_o_gancho_ao_confirmar_chega_a_carga_de_financas(chamadas):
     def gancho(conn, chave, resultado):
         pass
 
-    resultados = carga_economica.carregar_tudo(object(), ao_confirmar=gancho)
+    resultados = carga_economica.carregar_tudo(object(), opcoes={"financas": {"ao_confirmar": gancho}})
     assert _financas_recebeu(resultados)["ao_confirmar"] is gancho
+    # e vem junto com as fontes que o modo escolheu (aqui o fin vazio: todas)
+    assert _financas_recebeu(resultados)["chaves"] is None
+
+
+def test_o_gancho_do_plano_chega_ao_loader_junto_com_as_fontes_do_modo(chamadas):
+    def gancho(conn, chave, resultado):
+        pass
+
+    plano = carga_economica.plano_do_modo("sem_ceap", ao_confirmar=gancho)
+    resultados = carga_economica.carregar_tudo(object(), **plano)
+    recebido = _financas_recebeu(resultados)
+    assert recebido["ao_confirmar"] is gancho and recebido["chaves"] == carga_economica.FINANCAS_POR_MODO["sem_ceap"]
+
+
+def test_primeiro_deploy_nao_consulta_o_timer_quando_o_fin_esta_vazio(chamadas, monkeypatch):
+    def nao_deve_ser_chamada(engine):
+        raise AssertionError("consultou etl.execucao com o fin vazio")
+
+    monkeypatch.setattr(carga_economica, "estado_do_fin", lambda engine: (False, False))
+    monkeypatch.setattr(carga_economica, "fontes_do_timer", nao_deve_ser_chamada)
+    resultados = carga_economica.carregar_tudo(object())
+    assert _financas_recebeu(resultados)["chaves"] is None  # "completa"
 
 
 def test_chaves_explicitas_nao_consultam_o_banco(chamadas, monkeypatch):
@@ -185,8 +207,31 @@ def test_chaves_explicitas_nao_consultam_o_banco(chamadas, monkeypatch):
 
     monkeypatch.setattr(carga_economica, "estado_do_fin", nao_deve_ser_chamada)
     monkeypatch.setattr(carga_economica, "fontes_do_timer", nao_deve_ser_chamada)
-    carga_economica.carregar_tudo(object(), chaves=("financas",), chaves_financas=("remuneracao",))
-    assert chamadas == ["financas"]
+    resultados = carga_economica.carregar_tudo(
+        object(), chaves=("financas",), opcoes={"financas": {"chaves": ("remuneracao",)}}
+    )
+    assert chamadas == ["financas"] and _financas_recebeu(resultados)["chaves"] == ("remuneracao",)
+
+
+def test_chaves_explicitas_com_financas_exigem_as_fontes(chamadas):
+    """Sem as fontes, a carga rodaria todas (inclusive CEAP e emendas do git) sem gancho para revogar a posse."""
+    for opcoes in (None, {}, {"financas": {}}, {"financas": {"ao_confirmar": lambda *a: None}}):
+        with pytest.raises(ValueError, match="exige opcoes"):
+            carga_economica.carregar_tudo(object(), chaves=("series", "financas"), opcoes=opcoes)
+    assert chamadas == []
+
+
+def test_sem_chaves_pedir_as_fontes_em_opcoes_e_erro_e_nao_e_ignorado(chamadas):
+    with pytest.raises(ValueError, match="vêm do modo"):
+        carga_economica.carregar_tudo(object(), opcoes={"financas": {"chaves": ("remuneracao",)}})
+    assert chamadas == []
+
+
+def test_opcoes_so_chegam_a_carga_que_as_pediu(chamadas):
+    resultados = carga_economica.carregar_tudo(
+        object(), chaves=("series", "financas"), opcoes={"financas": {"chaves": ("doacoes",)}}
+    )
+    assert resultados["series"] == {"ok": "series"} and _financas_recebeu(resultados) == {"chaves": ("doacoes",)}
 
 
 def test_o_mapa_de_modos_e_as_toleradas_derivam_das_fontes_reais_das_financas():
@@ -195,6 +240,10 @@ def test_o_mapa_de_modos_e_as_toleradas_derivam_das_fontes_reais_das_financas():
     todas = {chave for chave, _ in financas_loader.CARGAS}
     for modo, selecionadas in carga_economica.FINANCAS_POR_MODO.items():
         assert selecionadas is None or set(selecionadas) <= todas, modo
+    from etl import config
+
+    assert financas_loader.CHAVES_ESTATICAS is config.CHAVES_ESTATICAS
+    assert financas_loader.CHAVES_DO_TIMER is config.CHAVES_DO_TIMER
     assert set(carga_economica.FINANCAS_POR_MODO["estaticas"]) == set(financas_loader.CHAVES_ESTATICAS)
     assert set(carga_economica.FINANCAS_POR_MODO["sem_emendas"]) == {"ceap", *financas_loader.CHAVES_ESTATICAS}
     assert set(carga_economica.FINANCAS_POR_MODO["sem_ceap"]) == {"emendas", *financas_loader.CHAVES_ESTATICAS}
@@ -209,11 +258,11 @@ def test_chaves_do_modo_e_plano(modo):
     assert carga_economica.chaves_do_modo(modo) == esperado
     assert carga_economica.plano_do_modo(modo) == {
         "chaves": esperado,
-        "chaves_financas": carga_economica.FINANCAS_POR_MODO[modo],
+        "opcoes": {"financas": {"chaves": carga_economica.FINANCAS_POR_MODO[modo]}},
     }
 
 
-def test_chaves_do_modo_com_modo_desconhecido_falha_em_vez_de_assumir_um(chamadas):
+def test_chaves_do_modo_com_modo_desconhecido_falha_em_vez_de_assumir_um():
     for invalido in ("", "COMPLETA", "tudo", None):
         with pytest.raises(ValueError, match="modo de finanças desconhecido"):
             carga_economica.chaves_do_modo(invalido)
@@ -234,14 +283,21 @@ def test_modo_de_semeadura_cobre_as_16_combinacoes_sem_nunca_semear_fonte_assumi
 def test_carregar_tudo_chama_a_carga_de_financas_so_com_as_fontes_do_plano_e_a_falha_tolerada_vira_erro(
     chamadas, monkeypatch
 ):
+    recebidos = []
+
     def quebra(engine, **kw):
+        recebidos.append(kw)
         raise RuntimeError("tabela encolheria")
 
+    def gancho(conn, chave, resultado):
+        pass
+
     monkeypatch.setattr("etl.pipelines.financas_loader.carregar", quebra)
-    plano = carga_economica.plano_do_modo("estaticas")
+    plano = carga_economica.plano_do_modo("estaticas", ao_confirmar=gancho)
     resultados = carga_economica.carregar_tudo(object(), toleradas=("financas",), **plano)
     assert resultados["financas"] == {"erro": "tabela encolheria"}
     assert carga_economica.falhas_toleradas(resultados) == ["financas"]
+    assert recebidos == [{"chaves": carga_economica.FINANCAS_POR_MODO["estaticas"], "ao_confirmar": gancho}]
 
 
 @pytest.mark.parametrize("faltando", carga_economica.TABELAS_DA_CEAP + carga_economica.TABELAS_DAS_EMENDAS)

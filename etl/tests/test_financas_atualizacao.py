@@ -43,6 +43,9 @@ def simulado(monkeypatch, tmp_path):
     monkeypatch.setattr(atualizacao.sync_ceap_emendas, "run", run)
     monkeypatch.setattr(atualizacao.financas_loader, "carregar", carregar)
     monkeypatch.setattr(atualizacao, "LOCK", tmp_path / "lock" / ".financas.lock")
+    # nenhum teste olha o diretório de estado real do deploy desta máquina
+    cenario.lock_do_deploy = tmp_path / "estado" / "deploy.lock"
+    monkeypatch.setattr(atualizacao, "lock_do_deploy", lambda: cenario.lock_do_deploy)
     cenario.ao_confirmar = None
     return cenario
 
@@ -128,6 +131,44 @@ def test_segunda_execucao_ao_mesmo_tempo_e_pulada_sem_extrair_nem_carregar(simul
     assert "pulada" in resultado and simulado.run == [] and simulado.carga == []
     # e liberado o lock, a execução seguinte roda
     assert "pulada" not in atualizacao.atualizar(object(), hoje=HOJE)
+
+
+def test_deploy_em_andamento_pula_a_atualizacao_sem_extrair_nem_carregar_e_solta_o_lock_proprio(simulado):
+    """O `make daily` não pode extrair nem carregar enquanto o deploy descarta etl/data e semeia o fin."""
+    simulado.lock_do_deploy.parent.mkdir(parents=True)
+    with open(simulado.lock_do_deploy, "w") as deploy:
+        fcntl.flock(deploy, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        resultado = atualizacao.atualizar(object(), hoje=HOJE)
+        assert resultado == {"pulada": "deploy em andamento"} and simulado.run == [] and simulado.carga == []
+        with open(atualizacao.LOCK, "w") as proprio:  # o lock próprio não ficou preso
+            fcntl.flock(proprio, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    assert "pulada" not in atualizacao.atualizar(object(), hoje=HOJE)  # e, solto o do deploy, a execução seguinte roda
+
+
+def test_sem_diretorio_de_deploy_a_atualizacao_roda_e_nunca_cria_o_lock_do_deploy(simulado):
+    assert not simulado.lock_do_deploy.exists()
+    assert "pulada" not in atualizacao.atualizar(object(), hoje=HOJE)
+    assert not simulado.lock_do_deploy.exists() and not simulado.lock_do_deploy.parent.exists()
+
+
+def test_lock_do_deploy_que_e_link_simbolico_e_recusado_e_solta_o_lock_proprio(simulado, tmp_path):
+    alvo = tmp_path / "outro"
+    alvo.write_text("importante")
+    simulado.lock_do_deploy.parent.mkdir(parents=True)
+    simulado.lock_do_deploy.symlink_to(alvo)
+    with pytest.raises(OSError):
+        atualizacao.atualizar(object(), hoje=HOJE)
+    assert alvo.read_text() == "importante" and simulado.run == []
+    simulado.lock_do_deploy.unlink()
+    assert "pulada" not in atualizacao.atualizar(object(), hoje=HOJE)
+
+
+def test_o_lock_do_deploy_segue_a_convencao_do_deploy_sh(monkeypatch, tmp_path):
+    monkeypatch.undo()  # a fixture `simulado` troca a função; aqui vale a de verdade
+    monkeypatch.setenv("DEPLOY_STATE_DIR", str(tmp_path / "estado"))
+    assert atualizacao.lock_do_deploy() == tmp_path / "estado" / "deploy.lock"
+    monkeypatch.delenv("DEPLOY_STATE_DIR")
+    assert atualizacao.lock_do_deploy().parts[-2:] == (".legisdata-deploy", "deploy.lock")
 
 
 def test_o_lock_e_liberado_mesmo_quando_a_execucao_falha(simulado):

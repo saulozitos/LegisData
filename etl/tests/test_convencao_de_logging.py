@@ -50,6 +50,38 @@ def _importadas(arvore: ast.Module) -> dict:
     }
 
 
+def _caminho_do_modulo(modulo: str) -> Path:
+    return ETL.parent.joinpath(*modulo.split(".")).with_suffix(".py")
+
+
+def _modulos_importados(arvore: ast.Module) -> dict:
+    """Apelido local => módulo etl.* das formas `import etl.x as m` e `from etl.pipelines import x [as m]`."""
+    achados = {}
+    for n in arvore.body:
+        if isinstance(n, ast.Import):
+            for a in n.names:
+                if a.asname and a.name.split(".")[0] == "etl":
+                    achados[a.asname] = a.name
+        elif isinstance(n, ast.ImportFrom) and n.module and n.module.split(".")[0] == "etl" and n.level == 0:
+            for a in n.names:
+                if _caminho_do_modulo(f"{n.module}.{a.name}").is_file():
+                    achados[a.asname or a.name] = f"{n.module}.{a.name}"
+    return achados
+
+
+def _chama_modulo_que_configura(no, modulos: dict, vistos: set) -> Optional[str]:
+    """`m.setup()` com `m` apelido de um módulo etl.* cuja função `setup` configura o log (direto ou transitivamente)."""
+    if not (isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute) and isinstance(no.func.value, ast.Name)):
+        return None
+    modulo = modulos.get(no.func.value.id)
+    if modulo is None or not _caminho_do_modulo(modulo).is_file():
+        return None
+    alvo = ast.parse(_caminho_do_modulo(modulo).read_text(encoding="utf-8"))
+    if _configura_transitivamente(no.func.attr, _funcoes_de(alvo), vistos, _importadas(alvo), modulo):
+        return f"{no.func.value.id}.{no.func.attr}()"
+    return None
+
+
 def _configura_transitivamente(
     nome: str, funcoes: dict, vistos: set, importadas: Optional[dict] = None, modulo_atual: str = ""
 ) -> bool:
@@ -59,7 +91,7 @@ def _configura_transitivamente(
     vistos.add((modulo_atual, nome))
     if nome not in funcoes and importadas and nome in importadas:
         original, modulo = importadas[nome]
-        caminho = ETL.parent.joinpath(*modulo.split(".")).with_suffix(".py")
+        caminho = _caminho_do_modulo(modulo)
         if not caminho.is_file():
             return False
         alvo = ast.parse(caminho.read_text(encoding="utf-8"))
@@ -80,7 +112,7 @@ def _violacoes(arvore: ast.Module) -> list:
     Configurações de log executadas ao IMPORTAR o módulo: direto no nível do módulo, no corpo de uma classe (que roda no
     import), ou por uma função chamada no nível do módulo (do próprio módulo ou importada de `etl.*`), com fecho transitivo.
     """
-    funcoes, importadas = _funcoes_de(arvore), _importadas(arvore)
+    funcoes, importadas, modulos = _funcoes_de(arvore), _importadas(arvore), _modulos_importados(arvore)
     achados = []
 
     def codigo_de_import(no):
@@ -100,6 +132,8 @@ def _violacoes(arvore: ast.Module) -> list:
             elif isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name):
                 if _configura_transitivamente(sub.func.id, funcoes, set(), importadas):
                     achados.append((f"via {sub.func.id}()", sub.lineno))
+            elif (chamada := _chama_modulo_que_configura(sub, modulos, set())) is not None:
+                achados.append((f"via {chamada}", sub.lineno))
     return achados
 
 
@@ -155,6 +189,12 @@ def test_quem_delega_chama_de_fato_a_main_que_configura_o_log(nome):
         ),  # função importada de etl.* que configura o log
         ("def main():\n    logging.basicConfig()\nif __name__ == '__main__':\n    main()\n", 0),
         ("import logging\nlogger = logging.getLogger('x')\n", 0),
+        # módulo etl.* chamado pelo apelido (a forma que o fecho por nome simples não via)
+        ("import etl.pipelines.sync_ceap_emendas as m\nm.main()\n", 1),
+        ("from etl.pipelines import sync_ceap_emendas as m\nm.main()\n", 1),
+        ("from etl.pipelines import sync_ceap_emendas\nsync_ceap_emendas.main()\n", 1),
+        ("import etl.pipelines.sync_ceap_emendas as m\nm.run\n", 0),
+        ("import etl.pipelines.carga_economica as m\nm.chaves_do_modo('x')\n", 0),
     ],
 )
 def test_a_varredura_enxerga_as_formas_de_configurar_o_log_no_import(codigo, esperado):

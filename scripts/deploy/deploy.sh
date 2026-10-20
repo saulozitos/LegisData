@@ -13,7 +13,11 @@ ESTADO_DIR="${DEPLOY_STATE_DIR:-$HOME/.legisdata-deploy}"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/backups}"
 REDE="${DEPLOY_NETWORK:-legisdata_default}"
 REGISTRO="${DEPLOY_REGISTRY:-ghcr.io/saulozitos}"
+# >>> guardar_backups
 GUARDAR_BACKUPS="${DEPLOY_KEEP_BACKUPS:-14}"
+# vem do ambiente e entra em contexto aritmético: só inteiro positivo (um valor inválido apagaria todos os dumps)
+[[ "$GUARDAR_BACKUPS" =~ ^[1-9][0-9]{0,3}$ ]] || GUARDAR_BACKUPS=14
+# <<< guardar_backups
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
@@ -63,8 +67,10 @@ fi
 cd "$RAIZ"
 git fetch -q origin main
 # Numa reexecução o alvo é o da primeira execução: o script e o commit implantado não podem divergir.
+# >>> alvo
 ALVO="${_LEGISDATA_DEPLOY_ALVO:-$(git rev-parse origin/main)}"
 [[ "$ALVO" =~ ^[0-9a-f]{40}$ ]] || { log "alvo inválido ($ALVO); abortando"; exit 1; }
+# <<< alvo
 TAG="${ALVO:0:7}"
 ATUAL="$(cat "$ESTADO_DIR/ultimo_sha" 2>/dev/null || true)"
 # >>> mesmo_commit
@@ -230,12 +236,13 @@ decidir_financas() {
   local estaticas=(
     etl/data/processed/remuneracao_parlamentares.json etl/data/processed/declaracoes_patrimonio.json
     etl/data/processed/tse_doacoes_campanha.json etl/data/processed/certidoes_tse.json
-    etl/pipelines/financas_loader.py etl/pipelines/loader_helpers.py
+    etl/pipelines/financas_loader.py etl/pipelines/loader_helpers.py etl/pipelines/semeadura_das_financas.py
     etl/pipelines/pessoa_resolver.py etl/pipelines/carga_economica.py etl/config.py etl/utils backend/alembic/versions
   )
   local do_timer=(
     etl/pipelines/sync_ceap_emendas.py etl/pipelines/financas_atualizacao.py etl/pipelines/financas_loader.py
-    etl/pipelines/loader_helpers.py etl/pipelines/pessoa_resolver.py etl/extractors/emendas_extractor.py
+    etl/pipelines/loader_helpers.py etl/pipelines/semeadura_das_financas.py etl/pipelines/pessoa_resolver.py
+    etl/extractors/emendas_extractor.py
     etl/config.py etl/utils backend/alembic/versions scripts/deploy/atualizar_financas.sh
     scripts/systemd/legisdata-financas.service scripts/systemd/legisdata-financas.timer
   )
@@ -275,7 +282,6 @@ if [[ "$TEM_ECO" == "t" && -f "$RAIZ/etl/pipelines/carga_economica.py" ]]; then
   log "carga de séries, mandatos, composição do Congresso e PNAD"
   # Finanças só é tolerada se `fin` já tem dados: aí a API nova segue servindo o que já estava lá. No primeiro deploy
   # (fin recém-criado e vazio) uma falha da carga aborta antes do `compose up` e o contêiner antigo continua no ar.
-  # Duas perguntas ao banco: tem CEAP e emendas completas (decide o modo) e tem ALGUM dado de finanças (decide a tolerância).
   # Perguntas ao banco: a CEAP e as emendas têm dado (decidem o que semear), e algum dado de finanças existe (decide a tolerância).
   TEM_CEAP="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select exists(select 1 from fin.despesa_cota) and exists(select 1 from fin.despesa_cota_fornecedor) and exists(select 1 from fin.despesa_cota_resumo)")"
   TEM_EMENDAS="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select exists(select 1 from fin.emenda)")"
@@ -285,7 +291,7 @@ if [[ "$TEM_ECO" == "t" && -f "$RAIZ/etl/pipelines/carga_economica.py" ]]; then
   # >>> fontes_do_timer
   # a fonte é do timer se a ÚLTIMA carga dela no fin veio de uma extração fresca (linha em etl.execucao, gravada na
   # transação da carga; uma semeadura do git grava "fresca=false" e revoga); sem a linha o fin só tem o retrato do git
-  FONTES_DO_TIMER="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select coalesce(string_agg(carga, ' '), '') from (select distinct on (parametros->>'carga') parametros->>'carga' as carga, parametros->>'fresca' as fresca from etl.execucao where estagio = 'CARREGAR' and status = 'OK' and parametros->>'carga' is not null order by parametros->>'carga', id desc) t where fresca = 'true'")"
+  FONTES_DO_TIMER="$(docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select coalesce(string_agg(carga, ' '), '') from (select distinct on (c) c as carga, fresca from (select coalesce(parametros->>'carga', parametros->>'fonte') as c, parametros->>'fresca' as fresca, id from etl.execucao where estagio = 'CARREGAR' and status = 'OK') x where c is not null order by c, id desc) t where fresca = 'true'")"
   CEAP_DO_TIMER=f
   EMENDAS_DO_TIMER=f
   [[ " $FONTES_DO_TIMER " == *" ceap "* ]] && CEAP_DO_TIMER=t
@@ -309,8 +315,8 @@ from app.core.database import engine
 from etl.pipelines.carga_economica import TOLERADAS_NO_DEPLOY, carregar_tudo, falhas_toleradas, plano_do_modo
 from etl.pipelines.financas_loader import registrar_carga_do_git
 toleradas = TOLERADAS_NO_DEPLOY if os.environ.get('LEGISDATA_FIN_TEM_ALGUM_DADO') == 't' else ()
-plano = plano_do_modo(os.environ.get('LEGISDATA_FIN_MODO', 'nenhuma'))
-resultados = carregar_tudo(engine, toleradas=toleradas, ao_confirmar=registrar_carga_do_git, **plano)
+plano = plano_do_modo(os.environ.get('LEGISDATA_FIN_MODO', 'nenhuma'), ao_confirmar=registrar_carga_do_git)
+resultados = carregar_tudo(engine, toleradas=toleradas, **plano)
 for chave, resultado in resultados.items():
     print(chave, resultado)
 for chave in falhas_toleradas(resultados):

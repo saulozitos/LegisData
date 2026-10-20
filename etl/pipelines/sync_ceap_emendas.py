@@ -607,6 +607,7 @@ def _extrair_anos(
     cache_dir: Optional[Path],
     hoje: date,
     publicados: Optional[Set[int]] = None,
+    *,
     ignorar_cache: bool = False,
 ) -> ResultadoDosAnos:
     """
@@ -681,6 +682,7 @@ def run(
     cache_dir: Optional[Path] = None,
     hoje: Optional[date] = None,
     anos_publicados: Optional[Dict[str, Set[int]]] = None,
+    *,
     ignorar_cache: bool = False,
 ) -> Dict[str, Any]:
     """
@@ -704,7 +706,7 @@ def run(
 
     if ceap:
         try:
-            _sincronizar_ceap(http, anos, cache_dir, hoje, anos_publicados, resumo, ignorar_cache)
+            _sincronizar_ceap(http, anos, cache_dir, hoje, anos_publicados, resumo, ignorar_cache=ignorar_cache)
         except Exception as exc:  # noqa: BLE001 - uma fonte nunca derruba a outra; o erro fica no resumo e no log
             logger.error("CEAP: falha inesperada: %s", exc, exc_info=True)
             resumo["ceap_gravado"], resumo["ceap_erro"] = False, f"{type(exc).__name__}: {exc}"
@@ -727,6 +729,7 @@ def _sincronizar_ceap(
     hoje: date,
     anos_publicados: Optional[Dict[str, Set[int]]],
     resumo: Dict[str, Any],
+    *,
     ignorar_cache: bool = False,
 ) -> None:
     acc = CeapAccumulator()
@@ -737,7 +740,15 @@ def _sincronizar_ceap(
     por_casa = {}
     for casa, extrator in (("camara", extract_camara_ceap), ("senado", extract_senado_ceaps)):
         por_casa[casa] = _extrair_anos(
-            http, anos, casa, extrator, acc, cache_dir, hoje, ja_publicados.get(casa, set()), ignorar_cache
+            http,
+            anos,
+            casa,
+            extrator,
+            acc,
+            cache_dir,
+            hoje,
+            ja_publicados.get(casa, set()),
+            ignorar_cache=ignorar_cache,
         )
     falhas = {casa: r.falhas for casa, r in por_casa.items()}
     resumo["ceap_anos_baixados"] = {casa: r.baixados for casa, r in por_casa.items()}

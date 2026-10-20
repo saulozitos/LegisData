@@ -22,7 +22,7 @@ echo "==> projeto: o checkout atual; ref: $REF"
 git -C "$RAIZ" cat-file -e "$REF:scripts/deploy/deploy.sh" || { echo "ref sem scripts/deploy/deploy.sh (rode git fetch origin antes)"; exit 1; }
 
 mkdir -p "$DEST" "$UNITS" "$HOME/backups"
-echo "LEGISDATA_DIR=$RAIZ" >"$DEST/ambiente" && chmod 600 "$DEST/ambiente"
+printf 'LEGISDATA_DIR=%q\n' "$RAIZ" >"$DEST/ambiente" && chmod 600 "$DEST/ambiente"
 git -C "$RAIZ" show "$REF:scripts/deploy/deploy.sh" >"$DEST/deploy.sh" && chmod 755 "$DEST/deploy.sh"
 git -C "$RAIZ" show "$REF:scripts/deploy/atualizar_financas.sh" >"$DEST/atualizar_financas.sh" && chmod 755 "$DEST/atualizar_financas.sh"
 for u in legisdata-deploy.service legisdata-deploy.timer legisdata-financas.service legisdata-financas.timer; do

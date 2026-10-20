@@ -269,7 +269,11 @@ def _load_economia(recarregar_ceap_e_emendas: bool = False, extracao_fresca: boo
     # A carga de cada fonte das finanças registra, na própria transação, de onde veio o dado: extração fresca desta execução
     # (o `fin` passa a ter dado mais novo que o git e o deploy não semeia de novo essa fonte) ou o retrato do git.
     hook = partial(registrar_carga_fresca, origem="run_etl") if extracao_fresca else registrar_carga_do_git
-    resultados = carregar_tudo(engine, recarregar_ceap_e_emendas=recarregar_ceap_e_emendas, ao_confirmar=hook)
+    resultados = carregar_tudo(
+        engine,
+        recarregar_ceap_e_emendas=recarregar_ceap_e_emendas,
+        opcoes={"financas": {"ao_confirmar": hook}},
+    )
     nomes = {chave: nome for chave, nome, _, _ in CARGAS}
     for chave, resultado in resultados.items():
         print(f"    {nomes[chave]}:", resultado)

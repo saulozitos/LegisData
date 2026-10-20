@@ -163,3 +163,8 @@ EMENDAS_ARQUIVO = "emendas_parlamentares_2019_2026.json"
 # (`financas_loader.anos_publicados_da_ceap`) e quem consome (`sync_ceap_emendas`) os "anos já publicados por casa" usa
 # estas chaves; um teste confere a igualdade.
 CASAS_DO_CONGRESSO = ("camara", "senado")
+
+# As cargas de finanças que o timer diário atualiza (extração fresca) e as que só mudam com o commit. Ficam aqui, leves, para a
+# política de semeadura (`carga_economica`) não precisar importar o loader inteiro só para saber os nomes.
+CHAVES_DO_TIMER = ("ceap", "emendas")
+CHAVES_ESTATICAS = ("remuneracao", "patrimonio", "doacoes", "certidoes")

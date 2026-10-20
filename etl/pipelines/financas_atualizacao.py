@@ -10,7 +10,10 @@ Cada fonte é independente. A que foi gravada é recarregada no `fin`; a que fal
 Se alguma fonte falhou, a execução termina com erro depois de recarregar a outra. Os dados de remuneração, patrimônio,
 doações e certidões não mudam por dia e ficam fora desta atualização.
 
-Uma segunda execução ao mesmo tempo (o timer e o `make daily`, por exemplo) é recusada por um lock no próprio pipeline.
+Uma segunda execução ao mesmo tempo (o timer e o `make daily`, por exemplo) é recusada por um lock no próprio pipeline. Onde
+existe o lock do deploy (o diretório de estado dele, no host que faz o deploy), a execução também o respeita: o deploy
+descarta as saídas locais de `etl/data` e semeia o `fin` do git, e as duas coisas não podem se misturar com uma extração.
+O timer já segura esse lock fora do contêiner, onde o arquivo não existe e esta checagem não faz nada.
 
 Uso: python -m etl.pipelines.financas_atualizacao
 """
@@ -39,23 +42,50 @@ CACHE_DIR = RAW_DATA_DIR / sync_ceap_emendas.PASTA_DO_CACHE
 LOCK = DATA_DIR / ".financas.lock"
 
 
+def lock_do_deploy() -> Path:
+    """Onde o deploy guarda o lock dele (mesma convenção do `deploy.sh`: DEPLOY_STATE_DIR ou ~/.legisdata-deploy)."""
+    base = os.environ.get("DEPLOY_STATE_DIR")
+    return (Path(base) if base else Path.home() / ".legisdata-deploy") / "deploy.lock"
+
+
+def _travar(caminho: Path, criar: bool) -> Optional[Any]:
+    """Abre o arquivo e pega o lock sem esperar; None se está ocupado. Sem truncar e sem seguir link simbólico."""
+    descritor = os.open(caminho, os.O_RDWR | (os.O_CREAT if criar else 0) | os.O_NOFOLLOW, 0o600)
+    arquivo = os.fdopen(descritor, "r+")
+    try:
+        fcntl.flock(arquivo, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        arquivo.close()
+        return None
+    return arquivo
+
+
 def atualizar(
     engine: Engine,
     hoje: Optional[date] = None,
     cache_dir: Optional[Path] = None,
     lock: Optional[Path] = None,
+    lock_do_deploy_em: Optional[Path] = None,
 ) -> Dict[str, Any]:
     caminho_do_lock = Path(lock or LOCK)
     caminho_do_lock.parent.mkdir(parents=True, exist_ok=True)
-    # sem truncar e sem seguir link simbólico: o lock é só um ponto de encontro entre processos
-    descritor = os.open(caminho_do_lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(descritor, "r+") as arquivo:
-        try:
-            fcntl.flock(arquivo, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            logger.warning("Outra atualização das finanças está em andamento; esta execução foi pulada.")
-            return {"pulada": "outra atualização das finanças em andamento"}
+    proprio = _travar(caminho_do_lock, criar=True)
+    if proprio is None:
+        logger.warning("Outra atualização das finanças está em andamento; esta execução foi pulada.")
+        return {"pulada": "outra atualização das finanças em andamento"}
+    deploy = None
+    try:
+        caminho_do_deploy = lock_do_deploy_em or lock_do_deploy()
+        if caminho_do_deploy.exists():  # só onde há deploy; o lock nunca é criado por aqui
+            deploy = _travar(caminho_do_deploy, criar=False)
+            if deploy is None:
+                logger.warning("Deploy em andamento; esta atualização das finanças foi pulada.")
+                return {"pulada": "deploy em andamento"}
         return _atualizar(engine, hoje or sync_ceap_emendas.hoje_no_brasil(), cache_dir or CACHE_DIR)
+    finally:
+        if deploy is not None:
+            deploy.close()
+        proprio.close()
 
 
 def anos_ja_carregados(engine: Engine) -> Optional[Dict[str, Set[int]]]:

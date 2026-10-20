@@ -174,7 +174,7 @@ def test_recarregar_ceap_emendas_chega_ate_a_carga(monkeypatch):
     recebido = {}
     monkeypatch.setattr("etl.pipelines.carga_economica.carregar_tudo", lambda engine, **kw: recebido.update(kw) or {})
     cli._load_economia(recarregar_ceap_e_emendas=True)
-    assert recebido["recarregar_ceap_e_emendas"] is True and callable(recebido["ao_confirmar"])
+    assert recebido["recarregar_ceap_e_emendas"] is True and callable(recebido["opcoes"]["financas"]["ao_confirmar"])
     assert (
         cli.montar_parser().parse_args(["--load-economia", "--recarregar-ceap-emendas"]).recarregar_ceap_emendas is True
     )
@@ -247,10 +247,12 @@ def test_o_gancho_da_carga_diz_de_onde_veio_o_dado(monkeypatch):
     recebido = {}
     monkeypatch.setattr("etl.pipelines.carga_economica.carregar_tudo", lambda engine, **kw: recebido.update(kw) or {})
     cli._load_economia(recarregar_ceap_e_emendas=True, extracao_fresca=True)
-    fresca = recebido["ao_confirmar"]
-    assert fresca.func.__name__ == "registrar_carga_fresca" and fresca.keywords == {"origem": "run_etl"}
+    from etl.pipelines import financas_loader
+
+    fresca = recebido["opcoes"]["financas"]["ao_confirmar"]
+    assert fresca.func is financas_loader.registrar_carga_fresca and fresca.keywords == {"origem": "run_etl"}
     cli._load_economia(recarregar_ceap_e_emendas=True)
-    assert recebido["ao_confirmar"].__name__ == "registrar_carga_do_git"
+    assert recebido["opcoes"]["financas"]["ao_confirmar"] is financas_loader.registrar_carga_do_git
 
 
 def test_no_cache_na_extracao_manual_baixa_de_novo_sem_perder_o_cache(monkeypatch):

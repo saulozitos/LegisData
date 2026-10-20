@@ -15,23 +15,23 @@ from etl.pipelines.loader_helpers import cpfs_suspeitos_em
 from etl.tests.sinteticos import CNPJ_DE_RAIZ_ZERADA, CPF_A, DOZE_DIGITOS_SEM_CPF, formatado
 
 RAIZ = Path(__file__).resolve().parents[2]
-EXTENSOES = {
-    ".json",
-    ".csv",
-    ".md",
-    ".py",
-    ".sh",
-    ".sql",
-    ".yml",
-    ".yaml",
-    ".txt",
-    ".toml",
-    ".ini",
-    ".service",
-    ".timer",
-    *(".js", ".jsx", ".ts", ".tsx", ".css", ".html", ".cfg", ".mjs", ".example", ".env", ".ipynb"),
+# Lista de EXCLUSÕES (não de inclusões): todo arquivo versionado que decodifica como texto é varrido, qualquer que seja a
+# extensão (.prisma, .mts, .mako, .svg, dotfiles, .csv.gz...). Binários (imagens, fontes, dumps) não decodificam e saem.
+BINARIOS = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".ico",
+    ".webp",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".eot",
+    ".pdf",
+    ".dump",
+    ".zip",
 }
-NOMES_SEM_EXTENSAO = {"Makefile", "Dockerfile"}
 # Sequências de versão e hashes de lockfiles somam dígitos que passam no verificador por acaso: só eles ficam de fora.
 FORA = ("output/",)
 LOCKFILES = ("package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "Pipfile.lock")
@@ -51,7 +51,8 @@ def _versionados():
         if nome
         and not nome.startswith(FORA)
         and Path(nome).name not in LOCKFILES
-        and (Path(nome).suffix in EXTENSOES or Path(nome).name in NOMES_SEM_EXTENSAO or nome.endswith(".json.gz"))
+        and Path(nome).suffix.lower() not in BINARIOS
+        and (RAIZ / nome).is_file()
     )
 
 
@@ -78,21 +79,46 @@ def _textos(no):
         yield no
 
 
+def _e_dado(arquivo: Path) -> bool:
+    """Dados (JSON, CSV, e os compactados deles) somam códigos de emenda e de processo de 12 a 14 dígitos e valores em reais."""
+    nome = arquivo.name.lower()
+    return nome.endswith((".json", ".csv", ".json.gz", ".csv.gz")) or arquivo.parent.name == "processed"
+
+
 def _janelas(arquivo: Path) -> bool:
-    """As janelas de 11 dígitos em números corridos só valem em código; em dados, códigos de emenda dariam falso positivo."""
-    return arquivo.suffix in (".py", ".sh")
+    """As janelas (CPF colado a outros dígitos, ou em grupos com qualquer pontuação) valem em tudo que não é dado."""
+    if arquivo.suffix.lower() == ".svg":  # coordenadas de desenho: só as formas formatadas de CPF valem
+        return False
+    return not _e_dado(arquivo) and not (arquivo.suffix == ".md" and "docs" in arquivo.parts)
+
+
+def _ler(arquivo: Path):
+    """Texto do arquivo (descompactando .gz); None se não decodifica como texto (binário)."""
+    try:
+        if arquivo.name.lower().endswith(".gz"):
+            with gzip.open(arquivo, "rt", encoding="utf-8") as aberto:
+                return aberto.read()
+        return arquivo.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        return None
 
 
 def _achados(arquivo: Path) -> int:
     janelas = _janelas(arquivo)
-    if arquivo.name.endswith(".json.gz"):
-        with gzip.open(arquivo, "rt", encoding="utf-8") as aberto:
-            conteudo = aberto.read()
-    else:
-        conteudo = arquivo.read_text(encoding="utf-8", errors="replace")
-    if arquivo.suffix == ".json" or arquivo.name.endswith(".json.gz"):
-        return sum(cpfs_suspeitos_em(texto, janelas) for texto in _textos(json.loads(conteudo)))
-    if arquivo.suffix == ".csv":
+    conteudo = _ler(arquivo)
+    if conteudo is None:
+        return 0
+    nome = arquivo.name.lower()
+    if nome.endswith(".svg"):  # os números dos atributos de desenho (caminho, pontos, matriz) não são texto
+        conteudo = re.sub(r'\b(?:d|points|viewBox|transform|style)="[^"]*"', " ", conteudo)
+    if nome.endswith((".json", ".json.gz")):
+        # (texto sem nenhum dígito, inclusive Unicode, não tem CPF: o filtro só poupa tempo nas listas grandes)
+        return sum(
+            cpfs_suspeitos_em(texto, janelas)
+            for texto in _textos(json.loads(conteudo))
+            if any(c.isdigit() for c in texto)
+        )
+    if nome.endswith((".csv", ".csv.gz")):
         return _achados_no_csv(conteudo)
     return sum(cpfs_suspeitos_em(linha, janelas) for linha in conteudo.splitlines())
 
@@ -144,6 +170,13 @@ def test_a_varredura_cobre_os_arquivos_processados_e_os_testes():
         " ".join(CPF_A),  # um dígito por espaço
         f"FULANO {CPF_A[:3]}      {CPF_A[3:]}",  # separador longo
         f"FULANO 0000000{CPF_A}",  # zeros de enchimento em qualquer quantidade
+        # grupos ligados por qualquer pontuação constante (a guarda é mais desconfiada que o saneamento, não menos)
+        f'("{CPF_A[:3]}", "{CPF_A[3:6]}", "{CPF_A[6:9]}", "{CPF_A[9:]}")',
+        f"{CPF_A[:3]}/{CPF_A[3:6]}/{CPF_A[6:9]}/{CPF_A[9:]}",
+        f"{CPF_A[:4]},{CPF_A[4:8]},{CPF_A[8:]}",
+        f"{CPF_A[:2]};{CPF_A[2:5]};{CPF_A[5:8]};{CPF_A[8:]}",
+        ",".join(CPF_A),  # um dígito por vez
+        f"[{CPF_A[:3]}|{CPF_A[3:6]}|{CPF_A[6:9]}|{CPF_A[9:]}]",
     ],
 )
 def test_a_varredura_acha_cpf_sintetico_em_todas_as_formas(texto):
@@ -184,7 +217,17 @@ def test_a_varredura_le_json_gz_e_texto_comum(tmp_path):
     assert _achados(gz) == 1 and _achados(texto) == 1
 
 
-@pytest.mark.parametrize("texto", ["LOJA 2020 2021 2022", "TEL 61 3215 1234", "11.222.333/0001-81", "VALOR 1.234,56"])
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "LOJA 2020 2021 2022",
+        "TEL 61 3215 1234",
+        "11.222.333/0001-81",
+        "VALOR 1.234,56",
+        "(2023, 400.5, 2022.1, 33.5)",  # tupla de números com separadores diversos
+        "M12 3C4.567 8 9.101 2.345",  # coordenadas de desenho
+    ],
+)
 def test_a_varredura_nao_acusa_o_que_nao_e_cpf(texto):
     assert cpfs_suspeitos_em(texto) == 0
 
@@ -196,6 +239,51 @@ def test_a_varredura_acha_cpf_colado_a_outros_digitos_em_codigo_mas_nao_em_dados
     dados.write_text(json.dumps({"codigo_da_emenda": f"7{CPF_A}"}), encoding="utf-8")
     assert _achados(codigo) == 1  # em código escrito à mão, qualquer janela conta
     assert _achados(dados) == 0  # em dados, número corrido de 12 a 14 dígitos é código de emenda ou de processo
+
+
+@pytest.mark.parametrize(
+    "nome",
+    [
+        "x.ts",
+        "x.tsx",
+        "x.prisma",
+        "x.mts",
+        "x.mako",
+        "x.sql",
+        "x.yml",
+        "x.md",
+        ".dockerignore",
+        ".flake8",
+        "LICENSE",
+        "x.csv.gz",
+    ],
+)
+def test_a_varredura_cobre_qualquer_extensao_de_texto_e_o_colado_so_nao_vale_em_dados(tmp_path, nome):
+    arquivo = tmp_path / nome
+    linha = f"x = 7{CPF_A}\n"  # CPF colado a um dígito
+    if nome.endswith(".gz"):
+        arquivo.write_bytes(gzip.compress(f"valor,nome\n10,F {CPF_A}\n".encode()))
+    else:
+        arquivo.write_text(linha, encoding="utf-8")
+    assert _achados(arquivo) >= 1, nome
+
+
+def test_a_varredura_ignora_binario_e_so_vigia_as_formas_de_texto_do_svg(tmp_path):
+    binario = tmp_path / "x.dat"
+    binario.write_bytes(b"\xff\xfe\x00" + CPF_A.encode() + b"\xff")
+    assert _achados(binario) == 0  # não decodifica como texto
+    svg = tmp_path / "x.svg"
+    svg.write_text('<path d="M12 3C4.567 8 9.101 2.345 7 1 2 3 5 6"/>', encoding="utf-8")
+    assert _achados(svg) == 0
+    svg.write_text(f"<text>{CPF_A[:3]}.{CPF_A[3:6]}.{CPF_A[6:9]}-{CPF_A[9:]}</text>", encoding="utf-8")
+    assert _achados(svg) == 1
+
+
+@pytest.mark.skipif(not ARQUIVOS, reason="git indisponível")
+def test_o_conjunto_varrido_inclui_extensoes_que_a_lista_antiga_deixava_de_fora():
+    nomes = {p.name for p in ARQUIVOS} | {p.suffix for p in ARQUIVOS}
+    assert {".prisma", ".mts", ".mako", ".svg", ".gitignore", ".dockerignore", ".flake8", "LICENSE"} <= nomes
+    assert not any(p.suffix.lower() in BINARIOS for p in ARQUIVOS)
 
 
 def test_a_varredura_acha_cpf_dentro_da_mascara_de_cnpj_e_em_campo_de_cnpj(tmp_path):
