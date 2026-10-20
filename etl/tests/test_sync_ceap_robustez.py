@@ -610,3 +610,20 @@ def test_ignorar_cache_baixa_de_novo_regrava_o_cache_e_ainda_usa_a_reserva_venci
     acc = CeapAccumulator()
     r2 = sync._extrair_anos(None, [2023], "camara", falha, acc, cache, date(2027, 6, 1), ignorar_cache=True)
     assert r2.cache_vencido == [2023] and r2.falhas == [] and not acc.vazio  # a reserva vencida continua valendo
+
+
+def test_documento_zero_mais_cpf_que_fecha_como_cnpj_sai_do_acumulador_e_o_cache_com_ele_e_recusado_qualquer_que_seja_o_nome():
+    """Uma regra só, sem desempate por nome: nem "X LTDA" nem "JOSE DE SA" mantêm o documento ambíguo, na gravação e no cache."""
+    from etl.tests.sinteticos import zero_mais_cpf_que_fecha_como_cnpj
+
+    [ambiguo] = zero_mais_cpf_que_fecha_como_cnpj()
+    for fornecedor in ("FORNECEDOR EXEMPLO LTDA", "JOSE DE SA", "BANCO X S.A."):
+        acc = CeapAccumulator()
+        acc.add("DEPUTADO_FEDERAL", 1, "Ana", 2024, 1, "T", fornecedor, ambiguo, 10.0)
+        [item] = acc.para_json()
+        assert item["reg"]["fornecedores"][fornecedor]["cnpj_cpf"] is None
+        item["reg"]["fornecedores"] = {
+            f"{fornecedor} [{ambiguo}]": {"nome": fornecedor, "cnpj_cpf": ambiguo, "total": 10.0, "notas": 1}
+        }
+        with pytest.raises(ValueError, match="saneamento"):
+            CeapAccumulator.de_json([item])

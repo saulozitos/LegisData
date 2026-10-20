@@ -8,7 +8,15 @@ set -Eeuo pipefail
 
 REF="${1:-origin/main}"
 RAIZ="$(git rev-parse --show-toplevel)"
+# >>> estado_fixo
 DEST="$HOME/.legisdata-deploy"
+# As units instaladas apontam para ~/.legisdata-deploy (EnvironmentFile e ExecStart): um DEPLOY_STATE_DIR diferente instalaria o
+# estado num lugar que o timer não lê, e o deploy e a atualização das finanças passariam a travar locks diferentes.
+if [[ -n "${DEPLOY_STATE_DIR:-}" && "$DEPLOY_STATE_DIR" != "$DEST" ]]; then
+  echo "DEPLOY_STATE_DIR diferente de $DEST não é suportado pelo instalador (as units usam esse caminho); desfaça a variável"
+  exit 1
+fi
+# <<< estado_fixo
 UNITS="$HOME/.config/systemd/user"
 
 # O systemd do usuário precisa responder ANTES de qualquer alteração: sem sessão de usuário (um `su`, por exemplo) o

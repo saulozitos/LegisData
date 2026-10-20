@@ -242,10 +242,7 @@ def _validar_registro(chave: Any, reg: Any) -> Tuple[str, Any]:
         # o saneamento vale também para o que já está em disco: uma regra nova de nome ou de documento recusa o cache velho
         if nome_do_fornecedor(forn["nome"]) != forn["nome"] or not (
             forn["cnpj_cpf"] is None
-            or (
-                isinstance(forn["cnpj_cpf"], str)
-                and cnpj_do_fornecedor(forn["cnpj_cpf"], forn["nome"]) == forn["cnpj_cpf"]
-            )
+            or (isinstance(forn["cnpj_cpf"], str) and cnpj_do_fornecedor(forn["cnpj_cpf"]) == forn["cnpj_cpf"])
         ):
             raise ValueError("fornecedor ou documento fora da regra de saneamento")
     return cargo, ident
@@ -285,7 +282,7 @@ class CeapAccumulator:
         # Nada de CPF em disco (D3): só o CNPJ de 14 dígitos fica, e o nome perde o documento pessoal embutido (MEI
         # aparece como "NOME 09876543200"). O loader aplica as mesmas regras, então o `fin` recebe o mesmo de antes.
         fornecedor = nome_do_fornecedor(fornecedor)
-        cnpj = cnpj_do_fornecedor(cnpj, fornecedor)
+        cnpj = cnpj_do_fornecedor(cnpj)
         chave = (cargo, ident if ident is not None else nome)
         reg = self._dados.setdefault(chave, _registro_vazio(cargo, ident, nome, ano))
         if ano > reg["nome_ano"]:  # o rótulo é o do lançamento mais recente, na ordem que os anos chegarem

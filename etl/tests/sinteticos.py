@@ -24,3 +24,21 @@ CNPJ_DE_RAIZ_ZERADA = "00000000000191"
 
 # 12 dígitos sem nenhuma janela de 11 dígitos que seja CPF válido (documento pessoal "de 12 dígitos" dos testes de nome)
 DOZE_DIGITOS_SEM_CPF = "500600700800"
+
+
+def zero_mais_cpf_que_fecha_como_cnpj(quantos: int = 1) -> list:
+    """
+    Documentos sintéticos de 14 dígitos ("000" + CPF) que por acaso também fecham como CNPJ (cerca de 1,4%) e cuja raiz não
+    está na allowlist: o caso ambíguo que o saneamento e a guarda tratam como CPF.
+    """
+    from etl.pipelines.loader_helpers import RAIZES_ZERADAS_CONHECIDAS, cnpj_dv_valido
+
+    achados: list = []
+    for base in range(123456789, 123456789 + 40000 * 7919, 7919):
+        d = "000" + cpf_com_digitos(str(base))
+        if cnpj_dv_valido(d) and d[:8] not in RAIZES_ZERADAS_CONHECIDAS:
+            achados.append(d)
+            if len(achados) == quantos:
+                break
+    assert len(achados) == quantos, "esperava CPFs sintéticos com enchimento que também fecham como CNPJ"
+    return achados

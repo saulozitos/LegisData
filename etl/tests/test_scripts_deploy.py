@@ -247,10 +247,57 @@ def test_rollback_do_deploy_sobe_a_tag_anterior_com_o_compose_do_commit_anterior
     assert rollback.count("com o compose do commit anterior") == 1  # o comentário não pode se repetir
 
 
-def test_dry_run_do_deploy_nao_disputa_o_lock():
-    """Com a atualização das finanças segurando o lock, o dry-run do instalador sairia 0 sem testar nada."""
-    texto = _texto(DEPLOY_SH)
-    assert re.search(r'if \[\[ -z "\$\{_LEGISDATA_DEPLOY_REEXEC:-\}" && \$DRY_RUN -eq 0 \]\]; then\n  exec 9>', texto)
+@SEM_BASH
+@pytest.mark.parametrize(
+    "dry_run, reexec, esperado",
+    [
+        (0, "", "sai 0 com o lock ocupado"),
+        (1, "", "segue"),  # o dry-run não disputa o lock: com a atualização rodando, sairia "ok" sem testar nada
+        (0, "1", "segue"),  # numa reexecução o lock já foi tomado pelo processo anterior (descritor 9 herdado)
+    ],
+)
+def test_trava_do_deploy_com_o_lock_ocupado(tmp_path, dry_run, reexec, esperado):
+    import subprocess as sp
+
+    estado = tmp_path / "estado"
+    estado.mkdir()
+    segurando = sp.Popen(
+        ["bash", "-c", f'exec 9>"{estado}/deploy.lock"; flock -n 9 && echo preso && sleep 30'],
+        stdout=sp.PIPE,
+        text=True,
+    )
+    try:
+        assert segurando.stdout.readline().strip() == "preso"
+        script = (
+            f'ESTADO_DIR="{estado}"\nDRY_RUN={dry_run}\nlog() {{ echo "LOG: $*"; }}\n'
+            + _bloco(_texto(DEPLOY_SH), "trava_do_deploy")
+            + "\necho SEGUIU"
+        )
+        resposta = _bash(script, env={"_LEGISDATA_DEPLOY_REEXEC": reexec} if reexec else {})
+        if esperado == "segue":
+            assert "SEGUIU" in resposta.stdout and "outra execução" not in resposta.stdout
+        else:
+            assert resposta.returncode == 0 and "outra execução em andamento" in resposta.stdout
+            assert "SEGUIU" not in resposta.stdout
+    finally:
+        segurando.kill()
+        segurando.wait()
+
+
+@SEM_BASH
+@pytest.mark.parametrize("estado, sai", [("", False), ("PADRAO", False), ("/outro/lugar", True)])
+def test_o_instalador_recusa_um_deploy_state_dir_que_as_units_nao_usam(tmp_path, estado, sai):
+    script = (
+        f'HOME="{tmp_path}"\n'
+        + _bloco(_texto(RAIZ / "scripts" / "deploy" / "instalar.sh"), "estado_fixo")
+        + '\necho SEGUIU "$DEST"'
+    )
+    env = {"DEPLOY_STATE_DIR": estado.replace("PADRAO", f"{tmp_path}/.legisdata-deploy")} if estado else {}
+    resposta = _bash(script, env=env)
+    if sai:
+        assert resposta.returncode == 1 and "SEGUIU" not in resposta.stdout and "não é suportado" in resposta.stdout
+    else:
+        assert resposta.returncode == 0 and f"SEGUIU {tmp_path}/.legisdata-deploy" in resposta.stdout
 
 
 # ── decidir_financas: o que o deploy faz com CEAP e emendas (bash de verdade, repositório git de verdade) ───────────────
@@ -404,7 +451,7 @@ def test_fin_sem_dados_vence_qualquer_marcador_e_sem_marcadores_com_dados_semeia
 
 
 def test_a_consulta_das_fontes_do_timer_do_deploy_e_a_do_python():
-    from etl.pipelines.financas_loader import SQL_FONTES_DO_TIMER
+    from etl.pipelines.semeadura_das_financas import SQL_FONTES_DO_TIMER
 
     assert f'-tAc "{SQL_FONTES_DO_TIMER}"' in _texto(DEPLOY_SH)
 
@@ -431,7 +478,7 @@ def test_o_deploy_deriva_as_fontes_do_timer_da_resposta_do_banco(tmp_path, respo
     resposta = _bash(script, env={"PATH": f"{falsos}:{os.environ['PATH']}"})
     assert resposta.returncode == 0, resposta.stderr
     assert resposta.stdout.strip() == esperado
-    from etl.pipelines.financas_loader import SQL_FONTES_DO_TIMER
+    from etl.pipelines.semeadura_das_financas import SQL_FONTES_DO_TIMER
 
     recebidos = argumentos.read_text(encoding="utf-8").splitlines()
     assert recebidos == ["exec", "politica_postgres", "psql", "-U", "u", "-d", "d", "-tAc", SQL_FONTES_DO_TIMER]

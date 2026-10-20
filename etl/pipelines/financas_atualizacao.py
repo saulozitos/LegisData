@@ -10,10 +10,12 @@ Cada fonte é independente. A que foi gravada é recarregada no `fin`; a que fal
 Se alguma fonte falhou, a execução termina com erro depois de recarregar a outra. Os dados de remuneração, patrimônio,
 doações e certidões não mudam por dia e ficam fora desta atualização.
 
-Uma segunda execução ao mesmo tempo (o timer e o `make daily`, por exemplo) é recusada por um lock no próprio pipeline. Onde
-existe o lock do deploy (o diretório de estado dele, no host que faz o deploy), a execução também o respeita: o deploy
-descarta as saídas locais de `etl/data` e semeia o `fin` do git, e as duas coisas não podem se misturar com uma extração.
-O timer já segura esse lock fora do contêiner, onde o arquivo não existe e esta checagem não faz nada.
+Uma segunda execução ao mesmo tempo (duas manuais, ou uma manual com a do timer) é recusada por um lock no próprio pipeline,
+em `etl/data`. Onde o processo enxerga o lock do deploy (`LEGISDATA_DEPLOY_LOCK`, ou `DEPLOY_STATE_DIR`/`deploy.lock`, ou
+`~/.legisdata-deploy/deploy.lock`), a execução também o respeita e é pulada com o deploy em andamento: o deploy descarta as
+saídas locais de `etl/data` e semeia o `fin` do git, e as duas coisas não podem se misturar com uma extração. O timer segura
+esse lock fora do contêiner, onde o arquivo não existe e esta checagem não faz nada; o `make daily` do `legisdata-diario.service`
+(outro usuário, sem acesso à home do deploy) só enxerga o lock se a unit exportar `LEGISDATA_DEPLOY_LOCK` e liberar o caminho.
 
 Uso: python -m etl.pipelines.financas_atualizacao
 """
@@ -43,14 +45,23 @@ LOCK = DATA_DIR / ".financas.lock"
 
 
 def lock_do_deploy() -> Path:
-    """Onde o deploy guarda o lock dele (mesma convenção do `deploy.sh`: DEPLOY_STATE_DIR ou ~/.legisdata-deploy)."""
+    """
+    Onde o deploy guarda o lock dele: `LEGISDATA_DEPLOY_LOCK` (caminho completo, para quem roda como outro usuário), senão a
+    convenção do `deploy.sh` (`DEPLOY_STATE_DIR` ou `~/.legisdata-deploy`) mais `deploy.lock`.
+    """
+    explicito = os.environ.get("LEGISDATA_DEPLOY_LOCK")
+    if explicito:
+        return Path(explicito)
     base = os.environ.get("DEPLOY_STATE_DIR")
     return (Path(base) if base else Path.home() / ".legisdata-deploy") / "deploy.lock"
 
 
 def _travar(caminho: Path, criar: bool) -> Optional[Any]:
-    """Abre o arquivo e pega o lock sem esperar; None se está ocupado. Sem truncar e sem seguir link simbólico."""
-    descritor = os.open(caminho, os.O_RDWR | (os.O_CREAT if criar else 0) | os.O_NOFOLLOW, 0o600)
+    """
+    Abre o arquivo e pega o lock sem esperar; None se está ocupado. Sem truncar e sem seguir link simbólico. O lock próprio é
+    criado 0660: dois usuários do mesmo grupo (o timer e o `make daily`) o compartilham em vez de um negar o outro.
+    """
+    descritor = os.open(caminho, os.O_RDWR | (os.O_CREAT if criar else 0) | os.O_NOFOLLOW, 0o660)
     arquivo = os.fdopen(descritor, "r+")
     try:
         fcntl.flock(arquivo, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -77,9 +88,17 @@ def atualizar(
     try:
         caminho_do_deploy = lock_do_deploy_em or lock_do_deploy()
         if caminho_do_deploy.exists():  # só onde há deploy; o lock nunca é criado por aqui
-            deploy = _travar(caminho_do_deploy, criar=False)
+            try:
+                deploy = _travar(caminho_do_deploy, criar=False)
+            except (
+                PermissionError
+            ):  # existe e não dá para abrir: não dá para provar que não há deploy, então não extrai
+                logger.warning(
+                    "Sem permissão para o lock do deploy (%s); esta atualização foi pulada.", caminho_do_deploy
+                )
+                return {"pulada": "sem permissão para o lock do deploy"}
             if deploy is None:
-                logger.warning("Deploy em andamento; esta atualização das finanças foi pulada.")
+                logger.warning("O deploy (ou a atualização do timer) está em andamento; esta atualização foi pulada.")
                 return {"pulada": "deploy em andamento"}
         return _atualizar(engine, hoje or sync_ceap_emendas.hoje_no_brasil(), cache_dir or CACHE_DIR)
     finally:

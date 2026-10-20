@@ -80,10 +80,13 @@ def plano_do_modo(modo: str, ao_confirmar: Optional[Callable[[Any, str, Any], No
     Os argumentos de `carregar_tudo` para um modo: as cargas e as opções da carga de finanças (quais fontes rodam e, se
     dado, o gancho `ao_confirmar` que registra de onde veio o dado).
     """
+    chaves = chaves_do_modo(modo)  # valida o modo
+    if modo == "nenhuma":  # a carga de finanças não roda: nada a configurar nela
+        return {"chaves": chaves, "opcoes": {}}
     opcoes_financas: Dict[str, Any] = {"chaves": FINANCAS_POR_MODO[modo]}
     if ao_confirmar is not None:
         opcoes_financas["ao_confirmar"] = ao_confirmar
-    return {"chaves": chaves_do_modo(modo), "opcoes": {"financas": opcoes_financas}}
+    return {"chaves": chaves, "opcoes": {"financas": opcoes_financas}}
 
 
 def falhas_toleradas(resultados: Dict[str, Any]) -> List[str]:
@@ -117,7 +120,8 @@ def carregar_tudo(
     nomeados que ela recebe depois do `engine` (hoje só a de finanças: `chaves`, as fontes que rodam, e `ao_confirmar`, o
     gancho que roda na transação de cada fonte e registra de onde veio o dado). Com `chaves` explícitas que incluem
     "financas", as fontes precisam vir em `opcoes["financas"]["chaves"]` (senão rodariam todas, inclusive CEAP e emendas
-    do git); sem `chaves`, quem decide as fontes é o modo, e pedi-las em `opcoes` é erro, não é ignorado em silêncio.
+    do git); sem `chaves`, quem decide as fontes é o modo, e pedi-las em `opcoes` é erro, não é ignorado em silêncio. Também
+    é erro `opcoes` de uma carga que não existe ou que não roda nesta chamada (o gancho seria descartado).
 
     Uma carga em `toleradas` que falha não levanta: o erro é registrado no log e devolvido como `{"erro": ...}` no
     resultado dela. O deploy usa isso para as finanças: a API nova continua servindo o que já está em `fin` em vez de
@@ -125,6 +129,12 @@ def carregar_tudo(
     """
     aceitas = set(toleradas)
     opcoes_pedidas = {chave: dict(valores) for chave, valores in (opcoes or {}).items()}
+    conhecidas = {chave for chave, *_ in CARGAS}
+    if set(opcoes_pedidas) - conhecidas:
+        raise ValueError(
+            f"opcoes de carga desconhecida: {sorted(set(opcoes_pedidas) - conhecidas)} (esperado {sorted(conhecidas)})"
+        )
+    pedidas_pelo_chamador = set(opcoes_pedidas)
     if chaves is None:
         if "chaves" in opcoes_pedidas.get("financas", {}):
             raise ValueError("sem `chaves`, as fontes das finanças vêm do modo; não passe opcoes['financas']['chaves']")
@@ -141,6 +151,9 @@ def carregar_tudo(
             opcoes_pedidas[chave] = {**valores, **opcoes_pedidas.get(chave, {})}
         logger.info("Finanças em modo '%s'", modo)
     escolhidas = set(chaves)
+    if pedidas_pelo_chamador - escolhidas:
+        # um gancho de uma carga que não roda seria descartado em silêncio (e a posse da fonte não seria revogada)
+        raise ValueError(f"opcoes para cargas que não rodam: {sorted(pedidas_pelo_chamador - escolhidas)}")
     if "financas" in escolhidas and "chaves" not in opcoes_pedidas.get("financas", {}):
         raise ValueError("a carga de finanças exige opcoes['financas']['chaves'] (as fontes que rodam; None = todas)")
     nomes = {chave: nome for chave, nome, _, _ in CARGAS}

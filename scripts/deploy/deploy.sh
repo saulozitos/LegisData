@@ -59,10 +59,12 @@ chmod 700 "$BACKUP_DIR"
 chmod 600 "$BACKUP_DIR"/legisdata_*.dump 2>/dev/null || true
 # Depois de se reexecutar (abaixo) o lock já está aberto no descritor 9, herdado do processo anterior.
 # O --dry-run não altera nada, então não disputa o lock (senão, com a atualização das finanças rodando, ele sairia "ok" sem testar).
+# >>> trava_do_deploy
 if [[ -z "${_LEGISDATA_DEPLOY_REEXEC:-}" && $DRY_RUN -eq 0 ]]; then
   exec 9>"$ESTADO_DIR/deploy.lock"
   flock -n 9 || { log "outra execução em andamento"; exit 0; }
 fi
+# <<< trava_do_deploy
 
 cd "$RAIZ"
 git fetch -q origin main
@@ -214,7 +216,7 @@ um_comando() { # roda um comando Python no contêiner da imagem nova, na rede do
 #                           [t se o timer já carregou a CEAP] [t se o timer já carregou as emendas]
 #   Os dois últimos argumentos ausentes valem "t": quem esquecê-los cai no lado seguro (nunca semeia nem reescreve uma fonte
 #   do timer). O chamador real sempre os passa, começando em "f" e subindo para "t" conforme o banco responde.
-#   A tabela de semeadura (qual fonte o git semeia) é a de `carga_economica.modo_de_semeadura`; um teste compara as 16
+#   A tabela de semeadura (qual fonte o git semeia) é a de `semeadura_das_financas.modo_de_semeadura`; um teste compara as 16
 #   combinações.
 #   saída: "<modo> <refrescar>"
 #     Uma fonte só fica fora da semeadura quando o fin tem dado dela E o timer a assumiu:

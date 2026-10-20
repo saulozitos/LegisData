@@ -94,9 +94,11 @@ ambiente 600; o `Settings` do backend monta a URL e codifica a senha). O que ele
    com erro (o `systemd` registra) depois de recarregar a outra. Remuneração, patrimônio, doações e certidões não entram.
 
 O script usa o mesmo lock do deploy (`~/.legisdata-deploy/deploy.lock`), esperando até 30 minutos, e o pipeline tem um lock
-próprio (`etl/data/.financas.lock`) contra duas atualizações ao mesmo tempo (o timer e o `make daily`, por exemplo). Onde o
-diretório de estado do deploy existe (o host que faz o deploy), o pipeline também respeita o `deploy.lock`: com o deploy em
-andamento a execução é pulada, para não reverter o JSON no meio nem carregar o retrato do git como se fosse dado fresco. Antes de
+próprio (`etl/data/.financas.lock`) contra duas atualizações ao mesmo tempo (o timer e o `make daily`, por exemplo). Fora do
+contêiner do timer (que já está atrás do lock do script), onde o processo enxerga o `deploy.lock` (`LEGISDATA_DEPLOY_LOCK`, ou
+`DEPLOY_STATE_DIR`, ou `~/.legisdata-deploy`), o pipeline também o respeita: com o deploy em andamento, ou sem permissão para
+abrir o arquivo, a execução é pulada, para não reverter o JSON no meio nem carregar o retrato do git como se fosse dado fresco.
+O instalador recusa um `DEPLOY_STATE_DIR` diferente de `~/.legisdata-deploy`, porque as units instaladas usam esse caminho. Antes de
 rodar, o script confere que a imagem no ar é a do commit do checkout; depois de um rollback do deploy eles divergem e ele
 recusa a execução com uma mensagem clara.
 
@@ -181,7 +183,7 @@ Para pausar: `systemctl --user stop legisdata-financas.timer`.
 
 O `make daily` (presença, votações, séries, IPPM e grafo) é outro agendador, ainda sem timer no servidor atual. Se um dia
 ele for instalado, a etapa 1d dele já inclui esta atualização (o lock do pipeline impede a execução dupla e, no host do
-deploy, ela espera o `deploy.lock` quando há deploy em andamento) e o
+deploy, ela é pulada quando enxerga o `deploy.lock` ocupado; o `legisdata-diario.service` roda como outro usuário e só o enxerga se a unit exportar `LEGISDATA_DEPLOY_LOCK`) e o
 `legisdata-financas.timer` pode ser removido; instale um só dos dois com o mesmo usuário, para o cache e os arquivos de
 `etl/data` não ficarem com donos diferentes.
 

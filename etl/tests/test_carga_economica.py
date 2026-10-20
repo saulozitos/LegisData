@@ -258,7 +258,8 @@ def test_chaves_do_modo_e_plano(modo):
     assert carga_economica.chaves_do_modo(modo) == esperado
     assert carga_economica.plano_do_modo(modo) == {
         "chaves": esperado,
-        "opcoes": {"financas": {"chaves": carga_economica.FINANCAS_POR_MODO[modo]}},
+        # no modo "nenhuma" a carga de finanças não roda: sem opções (elas seriam descartadas em silêncio)
+        "opcoes": {} if modo == "nenhuma" else {"financas": {"chaves": carga_economica.FINANCAS_POR_MODO[modo]}},
     }
 
 
@@ -302,7 +303,10 @@ def test_carregar_tudo_chama_a_carga_de_financas_so_com_as_fontes_do_plano_e_a_f
 
 @pytest.mark.parametrize("faltando", carga_economica.TABELAS_DA_CEAP + carga_economica.TABELAS_DAS_EMENDAS)
 def test_estado_do_fin_olha_cada_fonte_com_todas_as_tabelas_dela(pg_engine, faltando):
-    """Popula tudo numa transação revertida e esvazia uma tabela por vez: a fonte dela deixa de "ter dado"."""
+    """
+    Popula tudo numa transação revertida e esvazia uma tabela por vez: a fonte dela deixa de "ter dado". O TRUNCATE ... CASCADE
+    pega lock exclusivo (em `core.pessoa` inclusive) até o rollback: este teste pressupõe a suíte em série, como no CI.
+    """
     from sqlalchemy import text
 
     with pg_engine.connect() as conexao:
@@ -414,3 +418,21 @@ _EMENDA_SQL = (
     "valor_pago, localidade_destino, fonte_id) "
     "values (:p, 'TESTE', 'INDIVIDUAL', 'IDENTIFICADO', 2023, 'Individual', 1, 1, 'X', :f)"
 )
+
+
+def test_opcoes_de_carga_desconhecida_ou_que_nao_roda_levantam_em_vez_de_descartar_o_gancho(chamadas):
+    def gancho(conn, chave, resultado):
+        pass
+
+    with pytest.raises(ValueError, match="desconhecida"):
+        carga_economica.carregar_tudo(object(), opcoes={"financa": {"ao_confirmar": gancho}})  # typo
+    with pytest.raises(ValueError, match="não rodam"):
+        carga_economica.carregar_tudo(
+            object(), chaves=("series",), opcoes={"financas": {"chaves": None, "ao_confirmar": gancho}}
+        )
+    assert chamadas == []
+
+
+def test_o_plano_do_modo_nenhuma_roda_no_carregar_tudo_sem_finanças_e_sem_opcoes(chamadas):
+    resultados = carga_economica.carregar_tudo(object(), **carga_economica.plano_do_modo("nenhuma"))
+    assert "financas" not in resultados and chamadas == ["series", "presidencia", "composicao", "pnad"]

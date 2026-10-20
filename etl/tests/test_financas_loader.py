@@ -1822,9 +1822,14 @@ def test_ceap_fornecedor_sem_cnpj_e_com_nome_igual_a_um_cnpj_ficam_em_grupos_dis
     pg_engine, banco, tmp_path, ordem
 ):
     forn = {
-        "A": {"nome": "POSTO SOL", "cnpj_cpf": "02.558.157/0001-62", "total": 10.0, "notas": 1},
+        "A": {"nome": "POSTO SOL", "cnpj_cpf": "11.222.333/0001-81", "total": 10.0, "notas": 1},
         "B": {"nome": "nome:POSTO SOL", "cnpj_cpf": None, "total": 5.0, "notas": 1},
-        "C": {"nome": "02558157000162", "cnpj_cpf": None, "total": 3.0, "notas": 1},  # nome com 14 dígitos
+        "C": {
+            "nome": "11222333000181",
+            "cnpj_cpf": None,
+            "total": 3.0,
+            "notas": 1,
+        },  # nome com 14 dígitos (sem CPF dentro)
     }
     if ordem == "invertida":
         forn = dict(reversed(list(forn.items())))
@@ -1834,7 +1839,7 @@ def test_ceap_fornecedor_sem_cnpj_e_com_nome_igual_a_um_cnpj_ficam_em_grupos_dis
     with pg_engine.connect() as conn:
         linhas = conn.execute(text("SELECT nome, cnpj, grupo FROM fin.despesa_cota_fornecedor ORDER BY grupo")).all()
     assert len(linhas) == 3 and len({r[2] for r in linhas}) == 3
-    assert {r[2] for r in linhas} == {"02558157000162", "nome:nome:POSTO SOL", "nome:02558157000162"}
+    assert {r[2] for r in linhas} == {"11222333000181", "nome:nome:POSTO SOL", "nome:11222333000181"}
 
 
 # ── 9ª revisão: letras Hangul invisíveis, quebra de linha, documento no legado, UF por extenso, caudas conhecidas ─────

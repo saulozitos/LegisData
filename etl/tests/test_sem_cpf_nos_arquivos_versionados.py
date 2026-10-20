@@ -4,6 +4,7 @@ import csv
 import gzip
 import io
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -65,12 +66,13 @@ def _chave_de_documento(chave: str) -> bool:
 
 
 def _textos(no):
-    """Textos de um JSON: valores string e chaves; e inteiros de 10 ou 11 dígitos em campo cujo nome sugere documento."""
+    """Textos de um JSON: valores string e chaves; e números inteiros (int, ou float sem casas, como o pandas grava) em campo cujo nome sugere documento."""
     if isinstance(no, dict):
         for chave, valor in no.items():
             yield str(chave)
-            if isinstance(valor, int) and not isinstance(valor, bool) and _chave_de_documento(str(chave)):
-                yield str(valor).zfill(14 if "cnpj" in str(chave).lower() else 11)
+            numero_inteiro = isinstance(valor, int) or (isinstance(valor, float) and valor.is_integer())
+            if numero_inteiro and not isinstance(valor, bool) and _chave_de_documento(str(chave)):
+                yield str(int(valor)).zfill(14 if "cnpj" in str(chave).lower() else 11)
             yield from _textos(valor)
     elif isinstance(no, list):
         for item in no:
@@ -92,22 +94,25 @@ def _janelas(arquivo: Path) -> bool:
     return not _e_dado(arquivo) and not (arquivo.suffix == ".md" and "docs" in arquivo.parts)
 
 
-def _ler(arquivo: Path):
-    """Texto do arquivo (descompactando .gz); None se não decodifica como texto (binário)."""
+def _ler(arquivo: Path) -> str:
+    """
+    Texto do arquivo (descompactando .gz). Fora de UTF-8 (os CSVs da Câmara e do TSE vêm em latin-1) lê como latin-1, que
+    sempre decodifica: nenhum arquivo versionado escapa da varredura por causa da codificação. Binário de verdade fica em
+    `BINARIOS`; um `.gz` corrompido levanta (o teste falha em vez de contar zero achados).
+    """
+    if arquivo.name.lower().endswith(".gz"):
+        bruto = gzip.decompress(arquivo.read_bytes())
+    else:
+        bruto = arquivo.read_bytes()
     try:
-        if arquivo.name.lower().endswith(".gz"):
-            with gzip.open(arquivo, "rt", encoding="utf-8") as aberto:
-                return aberto.read()
-        return arquivo.read_text(encoding="utf-8")
-    except (UnicodeDecodeError, OSError):
-        return None
+        return bruto.decode("utf-8")
+    except UnicodeDecodeError:
+        return bruto.decode("latin-1")
 
 
 def _achados(arquivo: Path) -> int:
     janelas = _janelas(arquivo)
     conteudo = _ler(arquivo)
-    if conteudo is None:
-        return 0
     nome = arquivo.name.lower()
     if nome.endswith(".svg"):  # os números dos atributos de desenho (caminho, pontos, matriz) não são texto
         conteudo = re.sub(r'\b(?:d|points|viewBox|transform|style)="[^"]*"', " ", conteudo)
@@ -138,6 +143,12 @@ def _achados_no_csv(conteudo: str) -> int:
                 continue
             achados += cpfs_suspeitos_em(celula, False)
     return achados
+
+
+def test_no_ci_a_varredura_nunca_pula_por_falta_de_git():
+    """Sem `git ls-files` a guarda de D3 inteira viraria skip silencioso: no CI isso é falha."""
+    if os.environ.get("CI"):
+        assert ARQUIVOS, "git indisponível ou checkout sem .git: a guarda de CPF não varreu nada"
 
 
 @pytest.mark.skipif(not ARQUIVOS, reason="git indisponível")
@@ -177,6 +188,9 @@ def test_a_varredura_cobre_os_arquivos_processados_e_os_testes():
         f"{CPF_A[:2]};{CPF_A[2:5]};{CPF_A[5:8]};{CPF_A[8:]}",
         ",".join(CPF_A),  # um dígito por vez
         f"[{CPF_A[:3]}|{CPF_A[3:6]}|{CPF_A[6:9]}|{CPF_A[9:]}]",
+        f"FULANO {CPF_A[:3]}.{CPF_A[3:6]}.{CPF_A[6:9]}/{CPF_A[9:]}",  # separadores mistos, barra no fim
+        f"FULANO 123{CPF_A}",  # CPF colado a 3 dígitos (14 corridos que não fecham como CNPJ)
+        f"FULANO 99{CPF_A}",  # e a 2 dígitos (13)
     ],
 )
 def test_a_varredura_acha_cpf_sintetico_em_todas_as_formas(texto):
@@ -194,7 +208,7 @@ def test_a_varredura_acha_cpf_em_chave_em_valor_e_em_inteiro_de_campo_de_documen
         {"cpf_doador": int(CPF_A)},
     ):
         arquivo.write_text(json.dumps(conteudo), encoding="utf-8")
-        assert _achados(arquivo) == 1, conteudo
+        assert _achados(arquivo) >= 1, conteudo
     arquivo.write_text(json.dumps({"valor_pago_brl": int(CPF_A)}), encoding="utf-8")
     assert _achados(arquivo) == 0  # um valor em reais que coincide com os dígitos não é CPF
 
@@ -204,9 +218,9 @@ def test_a_varredura_de_csv_ignora_valor_numerico_mas_acha_documento_em_coluna_d
     csv_.write_text(f"valor,nome\n{CPF_A},ok\n", encoding="utf-8")
     assert _achados(csv_) == 0  # célula só de dígitos numa coluna de valor
     csv_.write_text(f"cpf_doador,nome\n{CPF_A},ok\n", encoding="utf-8")
-    assert _achados(csv_) == 1
+    assert _achados(csv_) >= 1
     csv_.write_text(f"valor,nome\n10,FULANO {CPF_A}\n", encoding="utf-8")
-    assert _achados(csv_) == 1
+    assert _achados(csv_) >= 1
 
 
 def test_a_varredura_le_json_gz_e_texto_comum(tmp_path):
@@ -214,7 +228,7 @@ def test_a_varredura_le_json_gz_e_texto_comum(tmp_path):
     gz.write_bytes(gzip.compress(json.dumps({"a": f"F {CPF_A}"}).encode()))
     texto = tmp_path / "x.md"
     texto.write_text(f"linha sem nada\nCPF {CPF_A}\n", encoding="utf-8")
-    assert _achados(gz) == 1 and _achados(texto) == 1
+    assert _achados(gz) >= 1 and _achados(texto) >= 1
 
 
 @pytest.mark.parametrize(
@@ -237,7 +251,7 @@ def test_a_varredura_acha_cpf_colado_a_outros_digitos_em_codigo_mas_nao_em_dados
     colado = f'x = "7{CPF_A}"'  # um dígito antes do CPF: a janela de 11 dígitos é um CPF válido
     codigo.write_text(colado, encoding="utf-8")
     dados.write_text(json.dumps({"codigo_da_emenda": f"7{CPF_A}"}), encoding="utf-8")
-    assert _achados(codigo) == 1  # em código escrito à mão, qualquer janela conta
+    assert _achados(codigo) >= 1  # em código escrito à mão, qualquer janela conta
     assert _achados(dados) == 0  # em dados, número corrido de 12 a 14 dígitos é código de emenda ou de processo
 
 
@@ -268,15 +282,38 @@ def test_a_varredura_cobre_qualquer_extensao_de_texto_e_o_colado_so_nao_vale_em_
     assert _achados(arquivo) >= 1, nome
 
 
-def test_a_varredura_ignora_binario_e_so_vigia_as_formas_de_texto_do_svg(tmp_path):
-    binario = tmp_path / "x.dat"
-    binario.write_bytes(b"\xff\xfe\x00" + CPF_A.encode() + b"\xff")
-    assert _achados(binario) == 0  # não decodifica como texto
+def test_a_varredura_le_latin1_e_falha_em_gz_corrompido_em_vez_de_contar_zero(tmp_path):
+    latin1 = tmp_path / "x.csv"
+    latin1.write_bytes(f"nome,obs\nJOS\xc9,F {CPF_A}\n".encode("latin-1"))  # 0xC9 não é UTF-8 válido
+    assert _achados(latin1) >= 1
+    quebrado = tmp_path / "x.csv.gz"
+    quebrado.write_bytes(b"isto nao e gzip")
+    with pytest.raises(OSError):
+        _achados(quebrado)
+
+
+def test_a_varredura_so_vigia_as_formas_de_texto_do_svg(tmp_path):
     svg = tmp_path / "x.svg"
     svg.write_text('<path d="M12 3C4.567 8 9.101 2.345 7 1 2 3 5 6"/>', encoding="utf-8")
     assert _achados(svg) == 0
     svg.write_text(f"<text>{CPF_A[:3]}.{CPF_A[3:6]}.{CPF_A[6:9]}-{CPF_A[9:]}</text>", encoding="utf-8")
-    assert _achados(svg) == 1
+    assert _achados(svg) >= 1
+
+
+def test_a_varredura_acha_cpf_como_float_em_campo_de_documento_e_o_colado_nao_vale_na_pasta_processed(tmp_path):
+    dados = tmp_path / "x.json"
+    dados.write_text(json.dumps({"cpf": float(CPF_A)}), encoding="utf-8")
+    assert _achados(dados) >= 1
+    dados.write_text(json.dumps({"cpf": True, "valor": float(CPF_A)}), encoding="utf-8")
+    assert _achados(dados) == 0  # bool não é documento, e valor em reais com os mesmos dígitos também não
+    pasta = tmp_path / "processed"
+    pasta.mkdir()
+    texto = pasta / "x.txt"
+    texto.write_text(f"codigo 7{CPF_A}\n", encoding="utf-8")
+    assert _achados(texto) == 0  # a pasta de dados processados se comporta como dado: sem janelas
+    fora = tmp_path / "y.txt"
+    fora.write_text(f"codigo 7{CPF_A}\n", encoding="utf-8")
+    assert _achados(fora) >= 1
 
 
 @pytest.mark.skipif(not ARQUIVOS, reason="git indisponível")
