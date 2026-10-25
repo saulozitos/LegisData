@@ -254,6 +254,12 @@ def test_mascarar_documento():
     assert mascarar(formatado(CPF_B)) == "***.456.789-**"
     assert mascarar("12345678000195") == "12.345.678/0001-95"
     assert mascarar("#NULO#") is None and mascarar("-1") is None and mascarar("123") is None
+    # "000"+CPF é um CPF com enchimento, mesmo formatado como CNPJ: nunca sai do extrator (decisão D3)
+    mascara = f"000{CPF_B}"
+    assert mascarar(mascara) is None
+    assert mascarar(f"{mascara[:2]}.{mascara[2:5]}.{mascara[5:8]}/{mascara[8:12]}-{mascara[12:]}") is None
+    banco = "00000000000191"  # o CNPJ conhecido do Banco do Brasil continua íntegro
+    assert mascarar(banco) == f"{banco[:2]}.{banco[2:5]}.{banco[5:8]}/{banco[8:12]}-{banco[12:]}"
 
 
 RECEITA_2022 = ["SQ_CANDIDATO", "SG_UE", "NR_CPF_CNPJ_DOADOR", "NM_DOADOR", "VR_RECEITA", "DS_ORIGEM_RECEITA"]

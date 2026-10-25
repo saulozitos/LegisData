@@ -62,7 +62,7 @@ ARQUIVOS = _versionados()
 
 def _chave_de_documento(chave: str) -> bool:
     chave = chave.lower()
-    return "cpf" in chave or "cnpj" in chave or chave in CHAVES_DE_DOCUMENTO
+    return any(trecho in chave for trecho in CHAVES_DE_DOCUMENTO)  # o mesmo critério (substring) do CSV
 
 
 def _textos(no):
@@ -135,7 +135,7 @@ def _achados_no_csv(conteudo: str) -> int:
     """Célula puramente numérica é valor (reais, contagem): só vale como documento se a coluna tem nome de documento."""
     linhas = list(csv.reader(io.StringIO(conteudo)))
     cabecalho = [c.lower() for c in linhas[0]] if linhas else []
-    achados = 0
+    achados = sum(cpfs_suspeitos_em(celula, False) for celula in (linhas[0] if linhas else []))  # o cabeçalho também
     for linha in linhas[1:]:
         for i, celula in enumerate(linha):
             coluna_de_documento = i < len(cabecalho) and any(h in cabecalho[i] for h in CHAVES_DE_DOCUMENTO)

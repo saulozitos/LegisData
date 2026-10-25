@@ -831,6 +831,46 @@ def _rodar(engine, carga, pasta, conteudo):
         FUNCAO_DA_CARGA[carga](conn, pasta)
 
 
+def test_diaria_desde_2019_nao_apaga_o_ano_de_2018_de_uma_carga_manual_mesmo_com_reducao_pequena(
+    pg_engine, banco, tmp_path, monkeypatch
+):
+    """Regressão do PR #46: a guarda por quantidade de linhas (50%) deixava passar a perda de um ano inteiro de gasto."""
+    monkeypatch.delenv(fin.VARIAVEL_ACEITAR_ENCOLHIMENTO, raising=False)
+    tipos = [f"TIPO{i}" for i in range(11)]
+    desde_2018 = {"2018": {"TELEFONIA": 10.0}, "2019": {t: 5.0 for t in tipos}}
+    desde_2019 = {"2019": {t: 5.0 for t in tipos}}
+
+    def carregar(por_ano_tipo):
+        _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap(por_ano_tipo=por_ano_tipo)})
+        with pg_engine.begin() as conn:
+            return fin.carregar_ceap(conn, tmp_path)
+
+    carregar(desde_2018)
+    assert _contar(pg_engine, "despesa_cota") == 12
+    with pytest.raises(RuntimeError, match="anos que o banco já tem.*camara.*2018.*nada foi alterado"):
+        carregar(desde_2019)  # 12 -> 11 linhas: bem acima de 50%, mas o ano de 2018 sumiria
+    assert _contar(pg_engine, "despesa_cota") == 12  # tabela inteira intacta (a recusa vem antes de qualquer DELETE)
+    with pg_engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM fin.despesa_cota WHERE ano = 2018")).scalar() == 1
+
+    carregar(desde_2018)  # a mesma janela de antes continua passando (idempotente)
+    monkeypatch.setenv(fin.VARIAVEL_ACEITAR_ENCOLHIMENTO, "1")  # remoção legítima, liberada de propósito
+    carregar(desde_2019)
+    assert _contar(pg_engine, "despesa_cota") == 11
+
+
+def test_carga_que_acrescenta_anos_ou_mantem_os_mesmos_passa_sem_a_variavel(pg_engine, banco, tmp_path, monkeypatch):
+    monkeypatch.delenv(fin.VARIAVEL_ACEITAR_ENCOLHIMENTO, raising=False)
+    for por_ano_tipo in (
+        {"2023": {"T": 1.0}},
+        {"2023": {"T": 2.0}, "2024": {"T": 1.0}},
+        {"2023": {"T": 3.0}, "2024": {"T": 1.0}},
+    ):
+        _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap(por_ano_tipo=por_ano_tipo)})
+        with pg_engine.begin() as conn:
+            fin.carregar_ceap(conn, tmp_path)
+
+
 @pytest.mark.parametrize("carga", list(TABELAS_POR_CARGA))
 def test_carga_que_encolheria_a_tabela_para_menos_da_metade_aborta_sem_alterar_o_banco(
     pg_engine, banco, tmp_path, monkeypatch, carga

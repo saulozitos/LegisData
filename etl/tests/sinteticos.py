@@ -31,12 +31,12 @@ def zero_mais_cpf_que_fecha_como_cnpj(quantos: int = 1) -> list:
     Documentos sintéticos de 14 dígitos ("000" + CPF) que por acaso também fecham como CNPJ (cerca de 1,4%) e cuja raiz não
     está na allowlist: o caso ambíguo que o saneamento e a guarda tratam como CPF.
     """
-    from etl.pipelines.loader_helpers import RAIZES_ZERADAS_CONHECIDAS, cnpj_dv_valido
+    from etl.pipelines.loader_helpers import CNPJS_ZERADOS_CONHECIDOS, cnpj_dv_valido
 
     achados: list = []
     for base in range(123456789, 123456789 + 40000 * 7919, 7919):
         d = "000" + cpf_com_digitos(str(base))
-        if cnpj_dv_valido(d) and d[:8] not in RAIZES_ZERADAS_CONHECIDAS:
+        if cnpj_dv_valido(d) and d not in CNPJS_ZERADOS_CONHECIDOS:
             achados.append(d)
             if len(achados) == quantos:
                 break

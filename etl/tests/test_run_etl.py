@@ -267,3 +267,34 @@ def test_no_cache_na_extracao_manual_baixa_de_novo_sem_perder_o_cache(monkeypatc
     assert chamadas["ignorar_cache"] is True and chamadas["cache_dir"] is not None
     cli._ceap_emendas(2019)
     assert chamadas["ignorar_cache"] is False
+
+
+def test_arquivos_frescos_grava_a_posse_como_fresca_ao_recarregar_arquivos_extraidos_em_outra_execucao(monkeypatch):
+    """Regressão da 22ª revisão: `--ceap` e depois `--load-economia --recarregar-ceap-emendas` revogava a posse do timer."""
+    chamadas = []
+    monkeypatch.setattr(
+        cli, "_load_economia", lambda recarregar, extracao_fresca=False: chamadas.append((recarregar, extracao_fresca))
+    )
+
+    def etapa_de_carga(*argv):
+        [etapa] = [e for e in construir_etapas(montar_parser().parse_args(list(argv))) if e.chave == "load_economia"]
+        return etapa
+
+    etapa_de_carga("--load-economia", "--recarregar-ceap-emendas").executar()
+    etapa_de_carga("--load-economia", "--recarregar-ceap-emendas", "--arquivos-frescos").executar()
+    etapa_de_carga("--load-economia").executar()
+    assert chamadas == [(True, False), (True, True), (False, False)]
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--arquivos-frescos"],
+        ["--load-economia", "--arquivos-frescos"],
+        ["--recarregar-ceap-emendas", "--arquivos-frescos"],
+    ],
+)
+def test_arquivos_frescos_exige_load_economia_e_recarregar(argv, capsys):
+    with pytest.raises(SystemExit) as saida:
+        cli.main(argv)
+    assert saida.value.code == 2 and "--arquivos-frescos só vale com" in capsys.readouterr().err

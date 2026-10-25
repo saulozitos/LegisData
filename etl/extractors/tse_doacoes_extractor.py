@@ -29,6 +29,7 @@ from etl.extractors.tse_core import (
     ler_csv_zip,
     parse_brl,
 )
+from etl.pipelines.loader_helpers import cpf_com_zeros
 from etl.utils.io_utils import write_json_if_valid
 from etl.utils.provenance import mark_official
 from etl.utils.rotulos import DOADOR_NAO_IDENTIFICADO
@@ -118,7 +119,10 @@ NULOS = {"", "#NULO", "#NULO#", "#NE", "-1", "-3", "-4"}
 
 
 def mascarar_documento(valor: Any) -> Optional[str]:
-    """CPF (11 dígitos) -> '***.123.456-**'; CNPJ (14) fica íntegro; qualquer outro formato é descartado."""
+    """
+    CPF (11 dígitos) -> '***.123.456-**'; CNPJ (14) fica íntegro; qualquer outro formato é descartado. Um 14 dígitos que é um CPF
+    com enchimento de zeros ("000"+CPF) e não é um dos CNPJs conhecidos (`cpf_com_zeros`) é CPF: descartado, não formatado como CNPJ.
+    """
     texto = str(valor if valor is not None else "").strip()
     if texto in NULOS:
         return None
@@ -126,6 +130,8 @@ def mascarar_documento(valor: Any) -> Optional[str]:
     if len(digitos) == 11:
         return f"***.{digitos[3:6]}.{digitos[6:9]}-**"
     if len(digitos) == 14:
+        if cpf_com_zeros(digitos):
+            return None
         return f"{digitos[:2]}.{digitos[2:5]}.{digitos[5:8]}/{digitos[8:12]}-{digitos[12:]}"
     return None
 

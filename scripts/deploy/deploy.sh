@@ -60,8 +60,9 @@ chmod 600 "$BACKUP_DIR"/legisdata_*.dump 2>/dev/null || true
 # Depois de se reexecutar (abaixo) o lock já está aberto no descritor 9, herdado do processo anterior.
 # O --dry-run não altera nada, então não disputa o lock (senão, com a atualização das finanças rodando, ele sairia "ok" sem testar).
 # >>> trava_do_deploy
+# LEGISDATA_DEPLOY_LOCK (a mesma variável que a atualização das finanças lê) leva o lock para um diretório que outro usuário alcance
 if [[ -z "${_LEGISDATA_DEPLOY_REEXEC:-}" && $DRY_RUN -eq 0 ]]; then
-  exec 9>"$ESTADO_DIR/deploy.lock"
+  exec 9>"${LEGISDATA_DEPLOY_LOCK:-$ESTADO_DIR/deploy.lock}"
   flock -n 9 || { log "outra execução em andamento"; exit 0; }
 fi
 # <<< trava_do_deploy
@@ -73,6 +74,10 @@ git fetch -q origin main
 ALVO="${_LEGISDATA_DEPLOY_ALVO:-$(git rev-parse origin/main)}"
 [[ "$ALVO" =~ ^[0-9a-f]{40}$ ]] || { log "alvo inválido ($ALVO); abortando"; exit 1; }
 # <<< alvo
+# >>> alvo_na_main
+# o alvo herdado do ambiente também precisa ser um commit da main (um SHA qualquer de 40 hex não basta)
+git merge-base --is-ancestor "$ALVO" origin/main 2>/dev/null || { log "alvo $ALVO não é ancestral de origin/main; abortando"; exit 1; }
+# <<< alvo_na_main
 TAG="${ALVO:0:7}"
 ATUAL="$(cat "$ESTADO_DIR/ultimo_sha" 2>/dev/null || true)"
 # >>> mesmo_commit

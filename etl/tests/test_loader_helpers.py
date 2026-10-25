@@ -315,26 +315,46 @@ def test_cpf_valido_e_cnpj_dv_valido_nao_levantam_com_digitos_que_nao_sao_ascii(
 
 
 @pytest.mark.parametrize(
-    "raiz", sorted(__import__("etl.pipelines.loader_helpers", fromlist=["x"]).RAIZES_ZERADAS_CONHECIDAS)
+    "cnpj", sorted(__import__("etl.pipelines.loader_helpers", fromlist=["x"]).CNPJS_ZERADOS_CONHECIDOS)
 )
-def test_as_raizes_zeradas_conhecidas_existem_nos_dados_versionados_ou_sao_a_do_banco_do_brasil(raiz):
-    """A allowlist não pode acumular raízes sem origem: toda raiz é a do BB ou aparece num arquivo de dados versionado."""
-
+def test_os_cnpjs_zerados_conhecidos_sao_numeros_inteiros_medidos_nos_dados_versionados(cnpj):
+    """A allowlist não acumula números sem origem: cada um é o do BB (conhecido) ou aparece, inteiro e mascarado, nos dados."""
     from etl.config import PROCESSED_DATA_DIR
+    from etl.pipelines.loader_helpers import cnpj_dv_valido, cpf_valido
 
-    if raiz == "00000000":
+    assert len(cnpj) == 14 and cnpj_dv_valido(cnpj) and cpf_valido(cnpj[3:])  # fecha como CNPJ e também como "000"+CPF
+    if cnpj == "00000000000191":  # Banco do Brasil
         return
     texto = (PROCESSED_DATA_DIR / "tse_doacoes_campanha.json").read_text(encoding="utf-8")
-    # a máscara completa do CNPJ (XX.XXX.XXX/), não uma sequência de 8 dígitos que cairia dentro de qualquer número
-    assert f"{raiz[:2]}.{raiz[2:5]}.{raiz[5:8]}/" in texto, raiz
+    mascara = f"{cnpj[:2]}.{cnpj[2:5]}.{cnpj[5:8]}/{cnpj[8:12]}-{cnpj[12:]}"  # o número inteiro, não só a raiz
+    assert mascara in texto, cnpj
+
+
+@pytest.mark.parametrize("prefixo", ["00000", "00531", "70509"])
+def test_a_allowlist_por_numero_inteiro_nao_libera_os_cpfs_cuja_raiz_coincide_com_a_conhecida(prefixo):
+    """
+    Para as raízes 00000000 e 00000531 os pesos do dígito verificador de CNPJ coincidem com os de CPF: todo "000"+CPF com esse
+    prefixo fecha como CNPJ. Uma allowlist por raiz os liberaria quase todos; por número inteiro, só os conhecidos escapam.
+    """
+    from etl.pipelines import loader_helpers as h
+    from etl.tests.sinteticos import cpf_com_digitos
+
+    fecham = vazados = 0
+    for i in range(10000):
+        d = "000" + cpf_com_digitos(f"{prefixo}{i:04d}")
+        if h.cnpj_dv_valido(d):
+            fecham += 1
+            if h.cnpj_do_fornecedor(d) is not None and d not in h.CNPJS_ZERADOS_CONHECIDOS:
+                vazados += 1
+    assert fecham > 0 and vazados == 0
+    if prefixo in ("00000", "00531"):
+        assert fecham > 9000  # a coincidência dos pesos: quase todos fecham, e mesmo assim nenhum vaza
 
 
 def test_zero_mais_cpf_que_fecha_como_cnpj_so_escapa_com_raiz_conhecida_e_o_nome_nao_desempata():
     """Uma regra só (a mesma da guarda de D3): o nome ao lado do documento não confirma um CNPJ, só a allowlist de raízes."""
     from etl.pipelines import loader_helpers as h
 
-    assert not hasattr(h, "nome_de_pj")
-    assert "nome" not in h.cnpj_do_fornecedor.__code__.co_varnames[: h.cnpj_do_fornecedor.__code__.co_argcount]
     for achado in zero_mais_cpf_que_fecha_como_cnpj(5):
         assert h.cpf_com_zeros(achado) is True and h.cnpj_do_fornecedor(achado) is None
         mascara = f"{achado[:2]}.{achado[2:5]}.{achado[5:8]}/{achado[8:12]}-{achado[12:]}"
@@ -344,13 +364,13 @@ def test_zero_mais_cpf_que_fecha_como_cnpj_so_escapa_com_raiz_conhecida_e_o_nome
 
 
 def test_uma_raiz_zerada_legitima_entra_na_allowlist_e_deixa_de_ser_acusada_pela_guarda_e_pelo_loader(monkeypatch):
-    """O contrato: o CNPJ de raiz zerada que a guarda acusa só passa depois de ser medido e posto em RAIZES_ZERADAS_CONHECIDAS."""
+    """O contrato: o CNPJ de raiz zerada que a guarda acusa só passa depois de ser medido e posto em CNPJS_ZERADOS_CONHECIDOS."""
     from etl.pipelines import loader_helpers as h
 
     [achado] = zero_mais_cpf_que_fecha_como_cnpj()
     formatado_ = f"{achado[:2]}.{achado[2:5]}.{achado[5:8]}/{achado[8:12]}-{achado[12:]}"
     assert h.cnpj_do_fornecedor(achado) is None and h.cpfs_suspeitos_em(f"X {formatado_}") >= 1
-    monkeypatch.setattr(h, "RAIZES_ZERADAS_CONHECIDAS", h.RAIZES_ZERADAS_CONHECIDAS | {achado[:8]})
+    monkeypatch.setattr(h, "CNPJS_ZERADOS_CONHECIDOS", h.CNPJS_ZERADOS_CONHECIDOS | {achado})
     assert h.cnpj_do_fornecedor(achado) == achado and h.cpfs_suspeitos_em(f"X {formatado_}") == 0
 
 
@@ -370,7 +390,7 @@ def test_nome_sem_cpf_com_13_digitos_que_fecham_como_cnpj_e_contem_cpf_so_mantem
     vazaram, exercitados = [], 0
     for base in range(123456789, 123456789 + 30000 * 7919, 7919):
         d = "99" + cpf_com_digitos(str(base))
-        if h.cnpj_dv_valido("0" + d) and ("0" + d)[:8] not in h.RAIZES_ZERADAS_CONHECIDAS:
+        if h.cnpj_dv_valido("0" + d) and ("0" + d)[:8] not in h.CNPJS_ZERADOS_CONHECIDOS:
             exercitados += 1
             if h.nome_sem_cpf(f"FULANO {d}") != "FULANO":
                 vazaram.append(d[:2])
@@ -436,3 +456,97 @@ def test_a_guarda_nao_acusa_a_cauda_de_um_valor_em_reais_nem_listas_de_numeros_d
 
     assert cpfs_suspeitos_em("no valor de R$ 1.234.567.890,12, para os fins") == 0
     assert cpfs_suspeitos_em("(2023, 400.5, 2022.1, 33.5)") == 0
+
+
+def test_texto_e_documento_do_doador_tiram_o_zero_mais_cpf_mesmo_com_mascara_de_cnpj():
+    """O ramo do CNPJ formatado de `texto_sem_cpf` e o guard de `documento_do_doador`: "000"+CPF não passa por CNPJ."""
+    from etl.pipelines import loader_helpers as h
+    from etl.tests.sinteticos import zero_mais_cpf_que_fecha_como_cnpj
+
+    for d in ["000" + CPF_A, *zero_mais_cpf_que_fecha_como_cnpj(3)]:
+        mascara = f"{d[:2]}.{d[2:5]}.{d[5:8]}/{d[8:12]}-{d[12:]}"
+        saneado = h.texto_sem_cpf(f"X {mascara} Y")
+        assert saneado == "X Y" and h.cpfs_suspeitos_em(saneado) == 0
+        assert h.documento_do_doador(mascara) is None and h.documento_do_doador(d) is None
+    banco = "00000000000191"
+    assert h.documento_do_doador(banco) == banco  # o conhecido continua íntegro
+    assert h.texto_sem_cpf("CNPJ 00.000.000/0001-91") == "CNPJ 00.000.000/0001-91"
+
+
+def test_a_guarda_nao_acusa_um_cnpj_real_que_fecha_o_verificador_e_contem_um_cpf_valido_numa_janela():
+    from etl.pipelines.loader_helpers import cnpj_dv_valido, cpf_valido, cpfs_suspeitos_em
+
+    vivo = "02558157000162"
+    assert cnpj_dv_valido(vivo) and any(cpf_valido(vivo[i : i + 11]) for i in range(4))
+    assert cpfs_suspeitos_em(vivo, False) == 0 and cpfs_suspeitos_em(f"CNPJ {vivo}") == 0
+
+
+def test_cnpj_do_fornecedor_nao_aceita_14_digitos_que_nao_fecham_o_cnpj_e_trazem_um_cpf_numa_janela():
+    from etl.pipelines.loader_helpers import cnpj_do_fornecedor, cnpj_dv_valido
+
+    colado = f"123{CPF_A}"
+    assert not cnpj_dv_valido(colado) and cnpj_do_fornecedor(colado) is None
+    sem_cpf_na_janela = "11222333000181"  # fecha como CNPJ e nenhuma janela de 11 dígitos é CPF
+    assert cnpj_do_fornecedor(sem_cpf_na_janela) == sem_cpf_na_janela
+
+
+@pytest.mark.parametrize(
+    "montar",
+    [
+        lambda c: f"{c[:4]}.{c[4:8]}/{c[8:]}",
+        lambda c: f"{c[:2]}.{c[2:5]}.{c[5:8]}/{c[8:]}",
+        lambda c: f"{c[:4]}, {c[4:8]} {c[8:]}",
+        lambda c: f"{c[:3]}.{c[3:6]}/{c[6:9]}-{c[9:]}",
+    ],
+)
+def test_cpf_em_grupos_com_separadores_mistos_sai_do_nome_e_do_texto_e_a_guarda_acusa(montar):
+    from etl.pipelines.loader_helpers import cpfs_suspeitos_em, nome_sem_cpf, texto_sem_cpf
+
+    forma = montar(CPF_A)
+    assert cpfs_suspeitos_em(forma, False) >= 1 and cpfs_suspeitos_em(forma, True) >= 1
+    assert nome_sem_cpf(f"FULANO {forma}") == "FULANO"
+    assert texto_sem_cpf(f"saldo {forma} fim") == "saldo fim"
+
+
+def test_cnpj_formatado_e_cnpj_truncado_nao_viram_cpf_por_acaso_nos_grupos_mistos():
+    """A cadeia inteira precisa somar 11 dígitos: 13 ou 14 dígitos de um CNPJ (ainda que truncado) nunca é CPF por acaso."""
+    from etl.pipelines.loader_helpers import cpfs_suspeitos_em
+
+    assert cpfs_suspeitos_em("27.456.163/0001-30", False) == 0
+    assert cpfs_suspeitos_em("274.561.630/0013-0", False) == 0  # a "formatação torta" da fonte (13 dígitos)
+
+
+def test_cpf_que_perdeu_o_zero_inicial_no_desenho_canonico_sai_e_o_telefone_de_10_digitos_fica():
+    from etl.pipelines.loader_helpers import cpf_valido, cpfs_suspeitos_em, nome_sem_cpf, texto_sem_cpf
+    from etl.tests.sinteticos import cpf_com_digitos
+
+    com_zero = cpf_com_digitos("012345678")
+    assert cpf_valido(com_zero) and com_zero.startswith("0")
+    sem_zero = com_zero[1:]  # a planilha tratou o CPF como número e perdeu o zero
+    forma = f"{sem_zero[:2]}.{sem_zero[2:5]}.{sem_zero[5:8]}-{sem_zero[8:]}"
+    assert cpfs_suspeitos_em(forma, False) >= 1
+    assert nome_sem_cpf(f"FULANO {forma}") == "FULANO" and texto_sem_cpf(f"X {forma} Y") == "X Y"
+    assert (
+        nome_sem_cpf("CONTATO (61) 3215-1234") == "CONTATO (61) 3215-1234"
+    )  # telefone: 10 dígitos agrupados de outro jeito
+    assert cpfs_suspeitos_em("(61) 3215-1234", False) == 0
+
+
+def test_a_guarda_nao_pula_a_forma_canonica_com_hifen_precedida_de_numero():
+    """Só a cauda de um valor em reais ("1.234.567.890,12") é pulada; "1.NNN.NNN.NNN-NN" é um CPF com um dígito colado."""
+    from etl.pipelines.loader_helpers import cpfs_suspeitos_em, nome_sem_cpf
+
+    forma = f"{CPF_A[:3]}.{CPF_A[3:6]}.{CPF_A[6:9]}-{CPF_A[9:]}"
+    assert nome_sem_cpf(f"F 1.{forma}") == "F 1."  # o CPF sai (e o "1." solto não é documento)
+    assert cpfs_suspeitos_em(f"F 1.{forma}", False) >= 1
+
+
+@pytest.mark.parametrize("colados", ["1234", "12345"])
+def test_cpf_colado_a_4_ou_5_digitos_sai_do_nome_e_a_guarda_em_codigo_acusa(colados):
+    from etl.pipelines.loader_helpers import cpfs_suspeitos_em, nome_sem_cpf
+
+    assert nome_sem_cpf(f"FULANO {colados}{CPF_A}") == "FULANO"
+    assert cpfs_suspeitos_em(f"x = {colados}{CPF_A}", True) >= 1
+    processo = f"0000{CPF_A}00000"  # um código de 20 dígitos que contém um CPF numa janela de 11
+    assert cpfs_suspeitos_em(f"processo {processo}", False) == 0  # em dado, código de processo não é acusado
+    assert cpfs_suspeitos_em(f"x = {processo}", True) >= 1  # em código escrito à mão, qualquer janela conta

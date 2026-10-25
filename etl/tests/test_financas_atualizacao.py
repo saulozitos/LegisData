@@ -164,7 +164,7 @@ def test_lock_do_deploy_que_e_link_simbolico_e_recusado_e_solta_o_lock_proprio(s
 
 
 def test_o_lock_do_deploy_segue_a_variavel_explicita_depois_a_convencao_do_deploy_sh(monkeypatch, tmp_path):
-    monkeypatch.undo()  # a fixture `simulado` troca a função; aqui vale a de verdade
+    monkeypatch.setenv("HOME", str(tmp_path))  # nunca o HOME real da máquina
     monkeypatch.delenv("LEGISDATA_DEPLOY_LOCK", raising=False)
     monkeypatch.setenv("DEPLOY_STATE_DIR", str(tmp_path / "estado"))
     assert atualizacao.lock_do_deploy() == tmp_path / "estado" / "deploy.lock"
@@ -172,7 +172,7 @@ def test_o_lock_do_deploy_segue_a_variavel_explicita_depois_a_convencao_do_deplo
     assert atualizacao.lock_do_deploy() == tmp_path / "outro" / "d.lock"
     monkeypatch.delenv("LEGISDATA_DEPLOY_LOCK")
     monkeypatch.delenv("DEPLOY_STATE_DIR")
-    assert atualizacao.lock_do_deploy().parts[-2:] == (".legisdata-deploy", "deploy.lock")
+    assert atualizacao.lock_do_deploy() == tmp_path / ".legisdata-deploy" / "deploy.lock"
 
 
 def test_o_parametro_lock_do_deploy_em_escolhe_o_lock_a_respeitar(simulado, tmp_path):
@@ -185,20 +185,73 @@ def test_o_parametro_lock_do_deploy_em_escolhe_o_lock_a_respeitar(simulado, tmp_
     assert "pulada" not in atualizacao.atualizar(object(), hoje=HOJE, lock_do_deploy_em=outro)  # solto: roda
 
 
-def test_lock_do_deploy_sem_permissao_pula_em_vez_de_extrair_sem_poder_provar_que_nao_ha_deploy(simulado, tmp_path):
-    import os
+def test_lock_do_deploy_sem_permissao_pula_em_vez_de_extrair_sem_poder_provar_que_nao_ha_deploy(simulado, monkeypatch):
+    """Simulado (sem depender do uid: como root não haveria negação): o diretório de outro usuário nega o acesso."""
+    original = atualizacao._travar
 
+    def negado(caminho, criar):
+        if not criar:
+            raise PermissionError(13, "Permission denied")
+        return original(caminho, criar)
+
+    monkeypatch.setattr(atualizacao, "_travar", negado)
+    with pytest.raises(atualizacao.LockInacessivel, match="sem permissão para o lock do deploy"):
+        atualizacao.atualizar(
+            object(), hoje=HOJE
+        )  # erro de configuração visível (exit != 0), não um "pulada" silencioso
+    assert simulado.run == []
+    monkeypatch.setattr(atualizacao, "_travar", original)
+    assert "pulada" not in atualizacao.atualizar(object(), hoje=HOJE)  # e o lock próprio ficou solto
+
+
+def test_lock_proprio_sem_permissao_pula_com_aviso_em_vez_de_levantar(simulado, monkeypatch):
+    original = atualizacao._travar
+
+    def negado(caminho, criar):
+        if criar:
+            raise PermissionError(13, "Permission denied")
+        return original(caminho, criar)
+
+    monkeypatch.setattr(atualizacao, "_travar", negado)
+    with pytest.raises(atualizacao.LockInacessivel, match="sem permissão para o lock próprio"):
+        atualizacao.atualizar(object(), hoje=HOJE)
+    assert simulado.run == []
+
+
+def test_lock_explicito_que_nao_existe_e_erro_de_configuracao_e_o_da_convencao_que_nao_existe_segue(
+    monkeypatch, tmp_path
+):
+    """Um erro de digitação em LEGISDATA_DEPLOY_LOCK não pode desligar a proteção em silêncio (sem extrair nada)."""
+    monkeypatch.setattr(atualizacao, "LOCK", tmp_path / "lock" / ".financas.lock")
+    monkeypatch.setenv("LEGISDATA_DEPLOY_LOCK", str(tmp_path / "nao" / "existe.lock"))
+    assert atualizacao.lock_do_deploy_explicito() is True
+    with pytest.raises(atualizacao.LockInacessivel, match="não existe"):
+        atualizacao.atualizar(object(), hoje=HOJE)
+    with pytest.raises(atualizacao.LockInacessivel, match="não existe"):  # o parâmetro explícito vale como explícito
+        atualizacao.atualizar(object(), hoje=HOJE, lock_do_deploy_em=tmp_path / "tambem" / "nao.lock")
+
+
+def test_lock_do_deploy_que_e_link_pendente_e_recusado_e_nao_ignorado(simulado, tmp_path):
+    simulado.lock_do_deploy.parent.mkdir(parents=True)
+    simulado.lock_do_deploy.symlink_to(tmp_path / "alvo_que_nao_existe")
+    with pytest.raises(OSError):
+        atualizacao.atualizar(object(), hoje=HOJE)
+    assert simulado.run == []
+
+
+def test_o_arquivo_do_deploy_some_entre_a_checagem_e_a_abertura_e_a_execucao_segue(simulado, monkeypatch):
+    """Não há `exists()` antes do `open`: um arquivo que some é só FileNotFoundError, tratado como "sem deploy"."""
     simulado.lock_do_deploy.parent.mkdir(parents=True)
     simulado.lock_do_deploy.write_text("")
-    os.chmod(simulado.lock_do_deploy, 0)
-    try:
-        if os.access(simulado.lock_do_deploy, os.R_OK):  # root ignora as permissões
-            pytest.skip("o usuário dos testes lê qualquer arquivo")
-        resultado = atualizacao.atualizar(object(), hoje=HOJE)
-    finally:
-        os.chmod(simulado.lock_do_deploy, 0o600)
-    assert resultado == {"pulada": "sem permissão para o lock do deploy"} and simulado.run == []
-    assert "pulada" not in atualizacao.atualizar(object(), hoje=HOJE)  # e o lock próprio ficou solto
+    original = atualizacao._travar
+
+    def some(caminho, criar):
+        if not criar:
+            caminho.unlink()
+        return original(caminho, criar)
+
+    monkeypatch.setattr(atualizacao, "_travar", some)
+    assert "pulada" not in atualizacao.atualizar(object(), hoje=HOJE)
 
 
 def test_os_dois_locks_sao_fechados_de_forma_explicita_mesmo_com_referencias_vivas(simulado, monkeypatch):
@@ -223,16 +276,60 @@ def test_os_dois_locks_sao_fechados_de_forma_explicita_mesmo_com_referencias_viv
     assert len(abertos) == 2 and all(a.closed for a in abertos)
 
 
-def test_o_lock_proprio_e_criado_0660_para_dois_usuarios_do_mesmo_grupo(simulado):
+def test_o_lock_proprio_e_0660_mesmo_com_o_umask_padrao_022(simulado):
+    """Com umask 022 (o padrão do systemd) o `open(..., 0o660)` sozinho daria 0640; o `fchmod` garante o 0660 de verdade."""
     import os
     import stat
 
-    old = os.umask(0)
+    antigo = os.umask(0o022)
     try:
         atualizacao.atualizar(object(), hoje=HOJE)
     finally:
-        os.umask(old)
+        os.umask(antigo)
     assert stat.S_IMODE(atualizacao.LOCK.stat().st_mode) == 0o660
+
+
+def test_o_lock_do_deploy_abre_so_para_leitura_e_nunca_cria_nem_altera_o_arquivo(simulado):
+    import os
+    import stat
+
+    simulado.lock_do_deploy.parent.mkdir(parents=True)
+    simulado.lock_do_deploy.write_text("dono do deploy")
+    os.chmod(simulado.lock_do_deploy, 0o444)  # só leitura: o `flock` não exige escrita
+    try:
+        assert "pulada" not in atualizacao.atualizar(object(), hoje=HOJE)
+    finally:
+        os.chmod(simulado.lock_do_deploy, 0o644)
+    assert simulado.lock_do_deploy.read_text() == "dono do deploy"
+    assert stat.S_IMODE(simulado.lock_do_deploy.stat().st_mode) == 0o644
+
+
+def test_fd_nao_vaza_quando_o_flock_falha_com_erro_que_nao_e_de_lock_ocupado(simulado, monkeypatch):
+    abertos = []
+    real_fdopen = atualizacao.os.fdopen
+
+    def espiao(descritor, modo):
+        arquivo = real_fdopen(descritor, modo)
+        abertos.append(arquivo)
+        return arquivo
+
+    def quebra(arquivo, operacao):
+        raise OSError(37, "ENOLCK")
+
+    monkeypatch.setattr(atualizacao.os, "fdopen", espiao)
+    monkeypatch.setattr(atualizacao.fcntl, "flock", quebra)
+    with pytest.raises(OSError):
+        atualizacao.atualizar(object(), hoje=HOJE)
+    assert abertos and all(a.closed for a in abertos)
+
+
+def test_erro_de_lock_inacessivel_faz_o_main_sair_1_e_o_cron_registrar_a_falha(monkeypatch):
+    def quebra(engine):
+        raise atualizacao.LockInacessivel("sem permissão para o lock do deploy")
+
+    monkeypatch.setattr(atualizacao, "atualizar", quebra)
+    monkeypatch.setattr(atualizacao.logging, "basicConfig", lambda **kw: None)
+    assert atualizacao.main() == 1  # o systemd acusa a falha; só "deploy em andamento" e "outra atualização" saem 0
 
 
 def test_o_lock_e_liberado_mesmo_quando_a_execucao_falha(simulado):

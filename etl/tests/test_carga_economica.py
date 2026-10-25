@@ -436,3 +436,22 @@ def test_opcoes_de_carga_desconhecida_ou_que_nao_roda_levantam_em_vez_de_descart
 def test_o_plano_do_modo_nenhuma_roda_no_carregar_tudo_sem_finanças_e_sem_opcoes(chamadas):
     resultados = carga_economica.carregar_tudo(object(), **carga_economica.plano_do_modo("nenhuma"))
     assert "financas" not in resultados and chamadas == ["series", "presidencia", "composicao", "pnad"]
+
+
+@pytest.mark.parametrize(
+    "tem_ceap, tem_emendas, ceap_do_timer, emendas_do_timer, modo",
+    [
+        (True, True, True, True, None),  # tem e o timer assumiu as duas: nada a semear
+        (True, True, False, False, "completa"),  # tem, mas é o retrato do git: semeia as duas
+        (False, False, True, True, "completa"),  # vazio vence qualquer posse
+        (True, True, True, False, "sem_ceap"),  # a CEAP é do timer: semeia só as emendas
+        (True, True, False, True, "sem_emendas"),  # as emendas são do timer: semeia só a CEAP
+        (False, True, True, True, "sem_emendas"),  # CEAP vazia: semeia a CEAP mesmo com a posse registrada
+        (True, False, True, True, "sem_ceap"),  # emendas vazias: semeia só as emendas
+    ],
+)
+def test_modo_de_semeadura_em_casos_nomeados_independentes_da_formula(
+    tem_ceap, tem_emendas, ceap_do_timer, emendas_do_timer, modo
+):
+    """Tabela escrita à mão: uma inversão de papéis (CEAP x emendas, tem x timer) na assinatura não passa despercebida."""
+    assert carga_economica.modo_de_semeadura(tem_ceap, tem_emendas, ceap_do_timer, emendas_do_timer) == modo

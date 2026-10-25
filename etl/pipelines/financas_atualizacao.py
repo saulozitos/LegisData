@@ -12,10 +12,12 @@ doações e certidões não mudam por dia e ficam fora desta atualização.
 
 Uma segunda execução ao mesmo tempo (duas manuais, ou uma manual com a do timer) é recusada por um lock no próprio pipeline,
 em `etl/data`. Onde o processo enxerga o lock do deploy (`LEGISDATA_DEPLOY_LOCK`, ou `DEPLOY_STATE_DIR`/`deploy.lock`, ou
-`~/.legisdata-deploy/deploy.lock`), a execução também o respeita e é pulada com o deploy em andamento: o deploy descarta as
+`~/.legisdata-deploy/deploy.lock`), a execução também o respeita e é pulada com o deploy em andamento (ou sem permissão para
+abrir o arquivo, ou com `LEGISDATA_DEPLOY_LOCK` apontando para um arquivo que não existe): o deploy descarta as
 saídas locais de `etl/data` e semeia o `fin` do git, e as duas coisas não podem se misturar com uma extração. O timer segura
-esse lock fora do contêiner, onde o arquivo não existe e esta checagem não faz nada; o `make daily` do `legisdata-diario.service`
-(outro usuário, sem acesso à home do deploy) só enxerga o lock se a unit exportar `LEGISDATA_DEPLOY_LOCK` e liberar o caminho.
+esse lock fora do contêiner, onde o arquivo não existe e esta checagem não faz nada. O `make daily` do `legisdata-diario.service`
+(outro usuário, sem acesso à home do deploy) só respeita o deploy se a unit exportar `LEGISDATA_DEPLOY_LOCK` e o `deploy.sh` e o
+`atualizar_financas.sh` usarem o MESMO caminho (eles também leem a variável), num diretório que os dois usuários alcancem.
 
 Uso: python -m etl.pipelines.financas_atualizacao
 """
@@ -44,9 +46,19 @@ CACHE_DIR = RAW_DATA_DIR / sync_ceap_emendas.PASTA_DO_CACHE
 LOCK = DATA_DIR / ".financas.lock"
 
 
+class LockInacessivel(RuntimeError):
+    """O lock (próprio ou do deploy) não pode ser aberto, ou o caminho configurado não existe: erro de configuração, não um deploy."""
+
+
+def lock_do_deploy_explicito() -> bool:
+    """True se o operador apontou o lock do deploy por `LEGISDATA_DEPLOY_LOCK` (então um arquivo ausente é erro, não "sem deploy")."""
+    return bool(os.environ.get("LEGISDATA_DEPLOY_LOCK"))
+
+
 def lock_do_deploy() -> Path:
     """
-    Onde o deploy guarda o lock dele: `LEGISDATA_DEPLOY_LOCK` (caminho completo, para quem roda como outro usuário), senão a
+    Onde o deploy guarda o lock dele: `LEGISDATA_DEPLOY_LOCK` (caminho completo; o `deploy.sh` e o `atualizar_financas.sh`
+    usam a mesma variável, então vale para quem roda como outro usuário, com o arquivo num diretório que ele alcance), senão a
     convenção do `deploy.sh` (`DEPLOY_STATE_DIR` ou `~/.legisdata-deploy`) mais `deploy.lock`.
     """
     explicito = os.environ.get("LEGISDATA_DEPLOY_LOCK")
@@ -58,16 +70,30 @@ def lock_do_deploy() -> Path:
 
 def _travar(caminho: Path, criar: bool) -> Optional[Any]:
     """
-    Abre o arquivo e pega o lock sem esperar; None se está ocupado. Sem truncar e sem seguir link simbólico. O lock próprio é
-    criado 0660: dois usuários do mesmo grupo (o timer e o `make daily`) o compartilham em vez de um negar o outro.
+    Abre o arquivo e pega o lock sem esperar; None se está ocupado. Sem seguir link simbólico e sem truncar. O lock próprio
+    (`criar=True`) é criado 0660 de fato (o umask não o reduz) para o timer e o `make daily`, do mesmo grupo, o compartilharem. O
+    lock do deploy abre só para leitura, que basta para o `flock` e não exige escrita num arquivo de outro usuário.
     """
-    descritor = os.open(caminho, os.O_RDWR | (os.O_CREAT if criar else 0) | os.O_NOFOLLOW, 0o660)
-    arquivo = os.fdopen(descritor, "r+")
+    modo = os.O_RDWR | os.O_CREAT if criar else os.O_RDONLY
+    descritor = os.open(caminho, modo | os.O_NOFOLLOW, 0o660)
     try:
+        arquivo = os.fdopen(descritor, "r+" if criar else "r")
+    except BaseException:
+        os.close(descritor)
+        raise
+    try:
+        if criar:
+            try:
+                os.fchmod(descritor, 0o660)
+            except PermissionError:  # arquivo de outro dono: o modo é dele
+                pass
         fcntl.flock(arquivo, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         arquivo.close()
         return None
+    except BaseException:
+        arquivo.close()
+        raise
     return arquivo
 
 
@@ -80,23 +106,36 @@ def atualizar(
 ) -> Dict[str, Any]:
     caminho_do_lock = Path(lock or LOCK)
     caminho_do_lock.parent.mkdir(parents=True, exist_ok=True)
-    proprio = _travar(caminho_do_lock, criar=True)
+    try:
+        proprio = _travar(caminho_do_lock, criar=True)
+    except PermissionError:
+        raise LockInacessivel(
+            f"sem permissão para o lock próprio ({caminho_do_lock}); a atualização não rodou"
+        ) from None
     if proprio is None:
         logger.warning("Outra atualização das finanças está em andamento; esta execução foi pulada.")
         return {"pulada": "outra atualização das finanças em andamento"}
     deploy = None
     try:
         caminho_do_deploy = lock_do_deploy_em or lock_do_deploy()
-        if caminho_do_deploy.exists():  # só onde há deploy; o lock nunca é criado por aqui
-            try:
-                deploy = _travar(caminho_do_deploy, criar=False)
-            except (
-                PermissionError
-            ):  # existe e não dá para abrir: não dá para provar que não há deploy, então não extrai
-                logger.warning(
-                    "Sem permissão para o lock do deploy (%s); esta atualização foi pulada.", caminho_do_deploy
-                )
-                return {"pulada": "sem permissão para o lock do deploy"}
+        explicito = lock_do_deploy_em is not None or lock_do_deploy_explicito()
+        try:
+            deploy = _travar(caminho_do_deploy, criar=False)
+        except FileNotFoundError:  # nada a respeitar na convenção; um caminho EXPLÍCITO ausente é erro de configuração
+            if explicito:
+                raise LockInacessivel(
+                    f"o lock do deploy {caminho_do_deploy} não existe; a atualização não rodou"
+                ) from None
+        except NotADirectoryError:
+            if explicito:
+                raise LockInacessivel(f"o caminho do lock do deploy {caminho_do_deploy} é inválido") from None
+        except (
+            PermissionError
+        ):  # não dá para provar que não há deploy (diretório de outro usuário, sandbox): não extrai
+            raise LockInacessivel(
+                f"sem permissão para o lock do deploy ({caminho_do_deploy}); a atualização não rodou"
+            ) from None
+        else:
             if deploy is None:
                 logger.warning("O deploy (ou a atualização do timer) está em andamento; esta atualização foi pulada.")
                 return {"pulada": "deploy em andamento"}

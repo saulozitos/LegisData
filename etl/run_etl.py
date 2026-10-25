@@ -143,7 +143,8 @@ def _ceap_emendas(ano_inicio: int, usar_cache: bool = True):
     if ano_inicio != ANO_INICIAL_ARQUIVO:
         logger.warning(
             "Janela da CEAP/emendas a partir de %s (a atualização diária usa %s): se o fin crescer com anos anteriores, a "
-            "atualização diária vai recusar a carga como encolhimento; aceite uma vez com LEGISDATA_ACEITAR_ENCOLHIMENTO=1.",
+            "atualização diária vai recusar a carga porque ela deixaria esses anos sem gasto; aceite uma vez com "
+            "LEGISDATA_ACEITAR_ENCOLHIMENTO=1.",
             ano_inicio,
             ANO_INICIAL_ARQUIVO,
         )
@@ -163,7 +164,7 @@ def _ceap_emendas(ano_inicio: int, usar_cache: bool = True):
     # a API lê o banco, não os arquivos: o dossiê só enxerga o dado novo depois de `--load-economia`
     logger.info(
         "CEAP/emendas gravadas em arquivo. Com --load-economia nesta mesma execução a carga é automática; numa execução "
-        "separada, rode --load-economia --recarregar-ceap-emendas para levá-las ao schema fin."
+        "separada, rode --load-economia --recarregar-ceap-emendas --arquivos-frescos para levá-las ao schema fin."
     )
     return resumo
 
@@ -336,6 +337,13 @@ def montar_parser() -> argparse.ArgumentParser:
         "cargas estáticas, porque a atualização diária mantém CEAP e emendas mais novas que o arquivo do git)",
     )
     p.add_argument(
+        "--arquivos-frescos",
+        action="store_true",
+        help="Com --load-economia --recarregar-ceap-emendas: declara que os arquivos de CEAP e emendas foram extraídos por um "
+        "--ceap de outra execução (mais novos que o git). A carga grava a posse como fresca; sem esta opção, recarregar "
+        "de arquivos que esta execução não extraiu é tratado como o retrato do git e o deploy volta a semeá-los.",
+    )
+    p.add_argument(
         "--ceap-ano-inicio",
         type=int,
         default=2019,
@@ -464,7 +472,10 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
             "Carga das séries econômicas, mandatos presidenciais, composição do Congresso, PNAD e finanças (fin)",
             # a CEAP e as emendas extraídas COM SUCESSO nesta mesma execução são mais novas que o `fin`: entram na carga
             lambda: _load_economia(
-                args.recarregar_ceap_emendas or ceap_gravada["ok"], extracao_fresca=ceap_gravada["ok"]
+                args.recarregar_ceap_emendas or ceap_gravada["ok"],
+                # `--arquivos-frescos`: os arquivos foram extraídos por um `--ceap` de OUTRA execução (nenhum deploy os
+                # devolveu ao git desde então); sem isso, recarregar a partir deles revogaria a posse do timer
+                extracao_fresca=ceap_gravada["ok"] or args.arquivos_frescos,
             ),
             depende_de_extracao=True,
         ),
@@ -519,7 +530,10 @@ def imprimir_resumo(resultados: Dict[str, str]) -> bool:
 
 def main(argv: Optional[List[str]] = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-    args = montar_parser().parse_args(argv)
+    parser = montar_parser()
+    args = parser.parse_args(argv)
+    if args.arquivos_frescos and not (args.load_economia and args.recarregar_ceap_emendas):
+        parser.error("--arquivos-frescos só vale com --load-economia --recarregar-ceap-emendas")
     ensure_data_dirs()
 
     etapas = construir_etapas(args)

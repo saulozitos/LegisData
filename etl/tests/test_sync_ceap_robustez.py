@@ -627,3 +627,15 @@ def test_documento_zero_mais_cpf_que_fecha_como_cnpj_sai_do_acumulador_e_o_cache
         }
         with pytest.raises(ValueError, match="saneamento"):
             CeapAccumulator.de_json([item])
+
+
+def test_o_acumulador_conta_sem_expor_o_numero_os_cnpjs_ambiguos_descartados():
+    from etl.tests.sinteticos import zero_mais_cpf_que_fecha_como_cnpj
+
+    [ambiguo] = zero_mais_cpf_que_fecha_como_cnpj()
+    acc = CeapAccumulator()
+    acc.add("DEPUTADO_FEDERAL", 1, "Ana", 2024, 1, "T", "POSTO", ambiguo, 10.0)
+    acc.add("DEPUTADO_FEDERAL", 1, "Ana", 2024, 1, "T", "VIVO", "02558157000162", 10.0)  # CNPJ real: fica
+    acc.add("DEPUTADO_FEDERAL", 1, "Ana", 2024, 1, "T", "MEI", None, 10.0)  # sem documento: não conta
+    assert acc.cnpjs_ambiguos_descartados == 1
+    assert ambiguo not in str(acc.para_json())

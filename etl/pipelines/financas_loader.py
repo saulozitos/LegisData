@@ -126,6 +126,40 @@ def _recusa_encolhimento(rotulo: str, existentes: int, novas: int) -> None:
     )
 
 
+def _protege_anos_da_ceap(conn: Connection, despesas: List[Dict[str, Any]]) -> None:
+    """
+    Recusa (sem tocar no banco) a carga da CEAP que deixaria sem gasto um ano que o `fin` já tem, por fonte (Câmara/Senado).
+    A guarda por quantidade de linhas não vê isso: uma carga manual desde 2018 seguida da atualização diária (que começa em
+    2019) perde o ano inteiro de 2018 com uma redução pequena no total. `LEGISDATA_ACEITAR_ENCOLHIMENTO=1` libera.
+    """
+    existentes = {
+        (int(f), int(ano))
+        for f, ano in conn.execute(text("SELECT DISTINCT fonte_id, ano FROM fin.despesa_cota WHERE valor_liquido <> 0"))
+    }
+    novos = {(int(x["f"]), int(x["ano"])) for x in despesas if x["valor"] != 0}
+    perdidos = existentes - novos
+    if not perdidos:
+        return
+    nomes = {f: casa for f, casa in ((f, _casa_da_fonte_id(conn, f)) for f in {f for f, _ in perdidos})}
+    rotulo = "; ".join(f"{nomes[f]}: {sorted(a for g, a in perdidos if g == f)}" for f in sorted(nomes))
+    if os.environ.get(VARIAVEL_ACEITAR_ENCOLHIMENTO) == "1":
+        logger.warning(
+            "fin.despesa_cota: a carga remove anos já carregados (%s); aceito por %s.",
+            rotulo,
+            VARIAVEL_ACEITAR_ENCOLHIMENTO,
+        )
+        return
+    raise RuntimeError(
+        f"fin.despesa_cota: a carga deixaria sem gasto anos que o banco já tem ({rotulo}); nada foi alterado. "
+        f"Se a remoção é legítima, rode de novo com {VARIAVEL_ACEITAR_ENCOLHIMENTO}=1."
+    )
+
+
+def _casa_da_fonte_id(conn: Connection, fonte_id: int) -> str:
+    codigo = conn.execute(text("SELECT codigo FROM etl.fonte WHERE id = :i"), {"i": fonte_id}).scalar()
+    return _CASA_DA_FONTE.get(str(codigo), str(codigo))
+
+
 def _protege_contra_encolhimento(conn: Connection, tabela: str, novas: int) -> None:
     """Levanta RuntimeError (sem tocar no banco) se a carga reduziria `tabela` a menos de FRACAO_MINIMA do que existe."""
     _recusa_encolhimento(tabela, int(conn.execute(text(_SQL_CONTAGEM[tabela])).scalar() or 0), novas)
@@ -322,6 +356,7 @@ def carregar_ceap(conn: Connection, processed_dir: Path) -> Dict[str, int]:
         )
     contagem["mesma_fonte_repetida"] = repetidas
     contagem["resumo_incompleto"] = resumo_incompleto
+    _protege_anos_da_ceap(conn, despesas)  # antes de qualquer DELETE: a recusa não deixa o banco pela metade
     _substituir(
         conn,
         [

@@ -29,6 +29,13 @@ systemctl --user show-environment >/dev/null 2>&1 || {
 echo "==> projeto: o checkout atual; ref: $REF"
 git -C "$RAIZ" cat-file -e "$REF:scripts/deploy/deploy.sh" || { echo "ref sem scripts/deploy/deploy.sh (rode git fetch origin antes)"; exit 1; }
 
+# >>> raiz_sem_controle
+# o arquivo `ambiente` é lido pelo systemd (EnvironmentFile), que não interpreta a forma $'...' que `printf %q` gera para controles
+if [[ "$RAIZ" =~ [[:cntrl:]] ]]; then
+  echo "o caminho do projeto tem caracteres de controle; mova o checkout para um caminho comum"
+  exit 1
+fi
+# <<< raiz_sem_controle
 mkdir -p "$DEST" "$UNITS" "$HOME/backups"
 printf 'LEGISDATA_DIR=%q\n' "$RAIZ" >"$DEST/ambiente" && chmod 600 "$DEST/ambiente"
 git -C "$RAIZ" show "$REF:scripts/deploy/deploy.sh" >"$DEST/deploy.sh" && chmod 755 "$DEST/deploy.sh"

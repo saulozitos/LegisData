@@ -72,6 +72,7 @@ DEPLOY_SH = RAIZ / "scripts" / "deploy" / "deploy.sh"
 FINANCAS_SH = RAIZ / "scripts" / "deploy" / "atualizar_financas.sh"
 INSTALAR_SH = RAIZ / "scripts" / "deploy" / "instalar.sh"
 SYSTEMD = RAIZ / "scripts" / "systemd"
+SEM_FLOCK = pytest.mark.skipif(shutil.which("flock") is None, reason="flock (util-linux) indisponível")
 SEM_BASH = pytest.mark.skipif(
     shutil.which("bash") is None or shutil.which("git") is None, reason="bash ou git indisponível"
 )
@@ -248,6 +249,7 @@ def test_rollback_do_deploy_sobe_a_tag_anterior_com_o_compose_do_commit_anterior
 
 
 @SEM_BASH
+@SEM_FLOCK
 @pytest.mark.parametrize(
     "dry_run, reexec, esperado",
     [
@@ -691,7 +693,7 @@ def test_senha_com_quebra_de_linha_aborta_o_deploy_antes_de_gravar_o_arquivo_de_
 # ── Atualização diária das finanças (timer de usuário) ─────────────────────────────────────────────────────────────────
 def test_atualizacao_diaria_usa_o_mesmo_lock_do_deploy_e_espera():
     financas, deploy = _texto(FINANCAS_SH), _texto(DEPLOY_SH)
-    linha_do_lock = r'^\s*exec 9>"\$ESTADO_DIR/deploy\.lock"'
+    linha_do_lock = r'^\s*exec 9>"\$\{LEGISDATA_DEPLOY_LOCK:-\$ESTADO_DIR/deploy\.lock\}"'
     assert re.search(linha_do_lock, financas, re.MULTILINE) and re.search(linha_do_lock, deploy, re.MULTILINE)
     assert re.search(r"^flock -w \d+ 9 \|\|", financas, re.MULTILINE)  # espera o deploy terminar
     assert re.search(r"flock -n 9 \|\| \{ log \"outra execução em andamento\"; exit 0; \}", deploy)  # o deploy só pula
@@ -1513,3 +1515,109 @@ def test_o_instalador_grava_o_diretorio_do_projeto_escapado_para_o_source(tmp_pa
         cwd=tmp_path,
     )
     assert resposta.stdout == str(estranho) and not (tmp_path / "executou").exists()
+
+
+@SEM_BASH
+@SEM_FLOCK
+def test_trava_do_deploy_usa_o_lock_de_legisdata_deploy_lock_quando_a_variavel_existe(tmp_path):
+    import subprocess as sp
+
+    estado, compartilhado = tmp_path / "estado", tmp_path / "compartilhado"
+    estado.mkdir()
+    compartilhado.mkdir()
+    lock = compartilhado / "deploy.lock"
+    segurando = sp.Popen(
+        ["bash", "-c", f'exec 9>"{lock}"; flock -n 9 && echo preso && sleep 30'], stdout=sp.PIPE, text=True
+    )
+    try:
+        assert segurando.stdout.readline().strip() == "preso"
+        script = (
+            f'ESTADO_DIR="{estado}"\nDRY_RUN=0\nlog() {{ echo "LOG: $*"; }}\n'
+            + _bloco(_texto(DEPLOY_SH), "trava_do_deploy")
+            + "\necho SEGUIU"
+        )
+        ocupado = _bash(script, env={"LEGISDATA_DEPLOY_LOCK": str(lock)})
+        assert (
+            ocupado.returncode == 0
+            and "outra execução em andamento" in ocupado.stdout
+            and "SEGUIU" not in ocupado.stdout
+        )
+        livre = _bash(script)  # sem a variável o lock é o de $ESTADO_DIR, que ninguém segura
+        assert "SEGUIU" in livre.stdout and (estado / "deploy.lock").exists()
+    finally:
+        segurando.kill()
+        segurando.wait()
+
+
+@SEM_BASH
+@SEM_FLOCK
+def test_a_reexecucao_herda_o_lock_pelo_descritor_9_e_ele_continua_preso(tmp_path):
+    """O processo reexecutado não toma o lock de novo (REEXEC=1) e, por herdar o fd 9, ainda o segura: um terceiro não passa."""
+    lock = tmp_path / "deploy.lock"
+    bloco = _bloco(_texto(DEPLOY_SH), "trava_do_deploy")
+    interno = f'ESTADO_DIR="{tmp_path}"\nDRY_RUN=0\nlog() {{ :; }}\n{bloco}\necho SEGUIU\nflock -n "{lock}" true && echo LIVRE || echo PRESO'
+    externo = f'exec 9>"{lock}"\nflock -n 9\n_LEGISDATA_DEPLOY_REEXEC=1 bash -c {shlex.quote(interno)}'
+    resposta = _bash(externo)
+    assert resposta.stdout.split() == ["SEGUIU", "PRESO"], resposta.stderr
+
+
+@SEM_BASH
+def test_o_alvo_herdado_precisa_ser_ancestral_de_origin_main(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    (repo / "a").write_text("1")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "um")
+    na_main = _git(repo, "rev-parse", "HEAD").strip()
+    _git(repo, "branch", "-q", "lateral")
+    _git(repo, "checkout", "-q", "lateral")
+    (repo / "b").write_text("2")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "so na lateral")
+    fora_da_main = _git(repo, "rev-parse", "HEAD").strip()
+    _git(repo, "update-ref", "refs/remotes/origin/main", na_main)
+    bloco = _bloco(_texto(DEPLOY_SH), "alvo_na_main")
+
+    def rodar(alvo):
+        return _bash(f'log() {{ echo "LOG: $*"; }}\nALVO={alvo}\n{bloco}\necho SEGUIU', cwd=repo)
+
+    assert "SEGUIU" in rodar(na_main).stdout
+    recusado = rodar(fora_da_main)
+    assert (
+        recusado.returncode == 1
+        and "não é ancestral de origin/main" in recusado.stdout
+        and "SEGUIU" not in recusado.stdout
+    )
+
+
+@SEM_BASH
+@pytest.mark.parametrize(
+    "raiz, ok",
+    [("/opt/projeto", True), ("/opt/com espaco", True), ("/opt/proj\neto", False), ("/opt/proj\teto", False)],
+)
+def test_o_instalador_recusa_caminho_do_projeto_com_caracteres_de_controle(raiz, ok):
+    script = (
+        f"RAIZ={shlex.quote(raiz)}\n"
+        + _bloco(_texto(RAIZ / "scripts" / "deploy" / "instalar.sh"), "raiz_sem_controle")
+        + "\necho SEGUIU"
+    )
+    resposta = _bash(script)
+    assert ("SEGUIU" in resposta.stdout) is ok and (resposta.returncode == 0) is ok
+
+
+def test_o_estado_do_deploy_e_endurecido_a_cada_execucao_nos_dois_scripts():
+    """O diretório de estado guarda o lock e a senha do banco: 700 sempre (deploy.sh e atualizar_financas.sh)."""
+    assert re.search(r'^chmod 700 "\$ESTADO_DIR"', _texto(DEPLOY_SH), re.MULTILINE)
+    assert re.search(r'^chmod 700 "\$ESTADO_DIR"', _texto(FINANCAS_SH), re.MULTILINE)
+
+
+@SEM_BASH
+def test_o_script_das_financas_deixa_o_diretorio_de_estado_700(tmp_path):
+    import stat
+
+    (tmp_path / "estado").mkdir()
+    (tmp_path / "estado").chmod(0o755)
+    resposta, *_ = _ambiente_do_script_das_financas(tmp_path)
+    assert resposta.returncode == 0, resposta.stderr
+    assert stat.S_IMODE((tmp_path / "estado").stat().st_mode) == 0o700

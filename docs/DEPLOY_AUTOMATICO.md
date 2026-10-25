@@ -97,8 +97,10 @@ O script usa o mesmo lock do deploy (`~/.legisdata-deploy/deploy.lock`), esperan
 próprio (`etl/data/.financas.lock`) contra duas atualizações ao mesmo tempo (o timer e o `make daily`, por exemplo). Fora do
 contêiner do timer (que já está atrás do lock do script), onde o processo enxerga o `deploy.lock` (`LEGISDATA_DEPLOY_LOCK`, ou
 `DEPLOY_STATE_DIR`, ou `~/.legisdata-deploy`), o pipeline também o respeita: com o deploy em andamento, ou sem permissão para
-abrir o arquivo, a execução é pulada, para não reverter o JSON no meio nem carregar o retrato do git como se fosse dado fresco.
-O instalador recusa um `DEPLOY_STATE_DIR` diferente de `~/.legisdata-deploy`, porque as units instaladas usam esse caminho. Antes de
+abrir o arquivo, ou com `LEGISDATA_DEPLOY_LOCK` apontando para um arquivo que não existe, a execução FALHA (erro de configuração, exit 1, e o cron registra a etapa como falha); só com o deploy (ou outra atualização) de fato em andamento ela é pulada com sucesso, para não reverter o JSON no meio nem carregar o retrato do git como se fosse dado fresco.
+O instalador recusa um `DEPLOY_STATE_DIR` diferente de `~/.legisdata-deploy` (as units instaladas usam esse caminho) e um caminho de projeto com caracteres de controle (o `EnvironmentFile` do systemd não os entende). O deploy também confere que o alvo herdado do ambiente é ancestral de `origin/main`.
+Uma carga de CEAP que deixaria sem gasto um ANO que o `fin` já tem (por casa, Câmara ou Senado) é recusada sem tocar no banco, mesmo que a redução do total fique bem acima de 50%: uma carga manual desde 2018 seguida da atualização diária (que começa em 2019) apagaria o ano de 2018 inteiro. `LEGISDATA_ACEITAR_ENCOLHIMENTO=1` na linha de comando libera uma remoção legítima. Para levar ao `fin` arquivos extraídos por um `--ceap` de outra execução sem revogar a posse do timer, use `run_etl --load-economia --recarregar-ceap-emendas --arquivos-frescos`; sem `--arquivos-frescos` recarregar arquivos que a execução não extraiu é tratado como o retrato do git (grava `fresca=false`) e o deploy volta a semeá-los.
+Quando um commit endurece a regra de saneamento (`loader_helpers.py` está nas listas do deploy), o primeiro ciclo depois do deploy refaz o download dos anos fechados: o cache por ano antigo é recusado de propósito (`_validar_registro` reaplica o saneamento ao que está em disco) e a atualização pedida pelo deploy o reconstrói; é uma vez só. Antes de
 rodar, o script confere que a imagem no ar é a do commit do checkout; depois de um rollback do deploy eles divergem e ele
 recusa a execução com uma mensagem clara.
 
@@ -183,7 +185,7 @@ Para pausar: `systemctl --user stop legisdata-financas.timer`.
 
 O `make daily` (presença, votações, séries, IPPM e grafo) é outro agendador, ainda sem timer no servidor atual. Se um dia
 ele for instalado, a etapa 1d dele já inclui esta atualização (o lock do pipeline impede a execução dupla e, no host do
-deploy, ela é pulada quando enxerga o `deploy.lock` ocupado; o `legisdata-diario.service` roda como outro usuário e só o enxerga se a unit exportar `LEGISDATA_DEPLOY_LOCK`) e o
+deploy, ela é pulada quando enxerga o `deploy.lock` ocupado; o `legisdata-diario.service` roda como outro usuário, e para ele respeitar o deploy a unit precisa exportar `LEGISDATA_DEPLOY_LOCK` com um caminho que os dois usuários alcancem, o MESMO que o `deploy.sh` e o `atualizar_financas.sh` usam: os dois scripts leem a variável, com `$ESTADO_DIR/deploy.lock` como padrão, e o `chmod 700` do diretório de estado não vale para um arquivo fora dele) e o
 `legisdata-financas.timer` pode ser removido; instale um só dos dois com o mesmo usuário, para o cache e os arquivos de
 `etl/data` não ficarem com donos diferentes.
 

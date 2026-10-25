@@ -50,7 +50,7 @@ from etl.config import (
     TETO_DO_DOWNLOAD,
 )
 from etl.extractors.emendas_extractor import EmendasExtractor
-from etl.pipelines.loader_helpers import cnpj_do_fornecedor, nome_do_fornecedor, texto
+from etl.pipelines.loader_helpers import cnpj_do_fornecedor, cnpj_dv_valido, nome_do_fornecedor, so_digitos, texto
 from etl.utils.http_client import HttpClient, HttpError
 from etl.utils.io_utils import atomic_write_json, write_json_if_valid
 from etl.utils.provenance import mark_official
@@ -256,6 +256,9 @@ class CeapAccumulator:
 
     def __init__(self) -> None:
         self._dados: Dict[Tuple[str, Any], Dict[str, Any]] = {}
+        # documentos de 14 dígitos que fecham o CNPJ mas são "000"+CPF e não estão na allowlist: descartados como CPF (D3). A
+        # contagem (nunca o número) mostra se algum CNPJ legítimo de raiz zerada está sendo perdido e alimenta a allowlist.
+        self.cnpjs_ambiguos_descartados = 0
 
     @property
     def vazio(self) -> bool:
@@ -282,7 +285,10 @@ class CeapAccumulator:
         # Nada de CPF em disco (D3): só o CNPJ de 14 dígitos fica, e o nome perde o documento pessoal embutido (MEI
         # aparece como "NOME 09876543200"). O loader aplica as mesmas regras, então o `fin` recebe o mesmo de antes.
         fornecedor = nome_do_fornecedor(fornecedor)
+        bruto = so_digitos(cnpj)
         cnpj = cnpj_do_fornecedor(cnpj)
+        if cnpj is None and len(bruto) == 14 and cnpj_dv_valido(bruto):
+            self.cnpjs_ambiguos_descartados += 1
         chave = (cargo, ident if ident is not None else nome)
         reg = self._dados.setdefault(chave, _registro_vazio(cargo, ident, nome, ano))
         if ano > reg["nome_ano"]:  # o rótulo é o do lançamento mais recente, na ordem que os anos chegarem
@@ -750,6 +756,13 @@ def _sincronizar_ceap(
     falhas = {casa: r.falhas for casa, r in por_casa.items()}
     resumo["ceap_anos_baixados"] = {casa: r.baixados for casa, r in por_casa.items()}
     resumo["ceap_falhas"] = falhas
+    resumo["ceap_cnpjs_ambiguos_descartados"] = acc.cnpjs_ambiguos_descartados
+    if acc.cnpjs_ambiguos_descartados:
+        logger.warning(
+            "CEAP: %d lançamento(s) com documento que fecha como CNPJ mas é '000'+CPF foram descartados como CPF; se algum "
+            "for um CNPJ legítimo, meça-o e acrescente o número inteiro em CNPJS_ZERADOS_CONHECIDOS.",
+            acc.cnpjs_ambiguos_descartados,
+        )
     if cache_dir is not None:
         resumo["ceap_anos_do_cache"] = {casa: r.do_cache for casa, r in por_casa.items()}
     for chave, atributo in (("ceap_anos_sem_arquivo", "sem_arquivo"), ("ceap_anos_cache_vencido", "cache_vencido")):

@@ -16,7 +16,7 @@ log() { printf '%s [financas] %s\n' "$(date '+%F %T')" "$*"; }
 # lock do deploy e espera até 30 minutos; o deploy, ao achar o lock ocupado, tenta de novo na execução seguinte do timer.
 mkdir -p "$ESTADO_DIR"
 chmod 700 "$ESTADO_DIR"
-exec 9>"$ESTADO_DIR/deploy.lock"
+exec 9>"${LEGISDATA_DEPLOY_LOCK:-$ESTADO_DIR/deploy.lock}" # a mesma variável do deploy.sh e do pipeline
 flock -w 1800 9 || { log "deploy em andamento há mais de 30 minutos; tento amanhã"; exit 1; }
 
 set -a
