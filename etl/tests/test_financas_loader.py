@@ -23,6 +23,7 @@ from etl.pipelines.loader_helpers import (
     uf_da_localidade,
 )
 from etl.pipelines.pessoa_resolver import Resolucao, ResolvedorDePessoas
+from etl.tests.sinteticos import CPF_A, DOZE_DIGITOS_SEM_CPF
 
 # ── funções puras ─────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -828,6 +829,46 @@ def _rodar(engine, carga, pasta, conteudo):
     _gravar(pasta, ARQUIVO_DA_CARGA[carga], conteudo)
     with engine.begin() as conn:
         FUNCAO_DA_CARGA[carga](conn, pasta)
+
+
+def test_diaria_desde_2019_nao_apaga_o_ano_de_2018_de_uma_carga_manual_mesmo_com_reducao_pequena(
+    pg_engine, banco, tmp_path, monkeypatch
+):
+    """Regressão do PR #46: a guarda por quantidade de linhas (50%) deixava passar a perda de um ano inteiro de gasto."""
+    monkeypatch.delenv(fin.VARIAVEL_ACEITAR_ENCOLHIMENTO, raising=False)
+    tipos = [f"TIPO{i}" for i in range(11)]
+    desde_2018 = {"2018": {"TELEFONIA": 10.0}, "2019": {t: 5.0 for t in tipos}}
+    desde_2019 = {"2019": {t: 5.0 for t in tipos}}
+
+    def carregar(por_ano_tipo):
+        _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap(por_ano_tipo=por_ano_tipo)})
+        with pg_engine.begin() as conn:
+            return fin.carregar_ceap(conn, tmp_path)
+
+    carregar(desde_2018)
+    assert _contar(pg_engine, "despesa_cota") == 12
+    with pytest.raises(RuntimeError, match="anos que o banco já tem.*camara.*2018.*nada foi alterado"):
+        carregar(desde_2019)  # 12 -> 11 linhas: bem acima de 50%, mas o ano de 2018 sumiria
+    assert _contar(pg_engine, "despesa_cota") == 12  # tabela inteira intacta (a recusa vem antes de qualquer DELETE)
+    with pg_engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM fin.despesa_cota WHERE ano = 2018")).scalar() == 1
+
+    carregar(desde_2018)  # a mesma janela de antes continua passando (idempotente)
+    monkeypatch.setenv(fin.VARIAVEL_ACEITAR_ENCOLHIMENTO, "1")  # remoção legítima, liberada de propósito
+    carregar(desde_2019)
+    assert _contar(pg_engine, "despesa_cota") == 11
+
+
+def test_carga_que_acrescenta_anos_ou_mantem_os_mesmos_passa_sem_a_variavel(pg_engine, banco, tmp_path, monkeypatch):
+    monkeypatch.delenv(fin.VARIAVEL_ACEITAR_ENCOLHIMENTO, raising=False)
+    for por_ano_tipo in (
+        {"2023": {"T": 1.0}},
+        {"2023": {"T": 2.0}, "2024": {"T": 1.0}},
+        {"2023": {"T": 3.0}, "2024": {"T": 1.0}},
+    ):
+        _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap(por_ano_tipo=por_ano_tipo)})
+        with pg_engine.begin() as conn:
+            fin.carregar_ceap(conn, tmp_path)
 
 
 @pytest.mark.parametrize("carga", list(TABELAS_POR_CARGA))
@@ -1821,9 +1862,14 @@ def test_ceap_fornecedor_sem_cnpj_e_com_nome_igual_a_um_cnpj_ficam_em_grupos_dis
     pg_engine, banco, tmp_path, ordem
 ):
     forn = {
-        "A": {"nome": "POSTO SOL", "cnpj_cpf": "02.558.157/0001-62", "total": 10.0, "notas": 1},
+        "A": {"nome": "POSTO SOL", "cnpj_cpf": "11.222.333/0001-81", "total": 10.0, "notas": 1},
         "B": {"nome": "nome:POSTO SOL", "cnpj_cpf": None, "total": 5.0, "notas": 1},
-        "C": {"nome": "02558157000162", "cnpj_cpf": None, "total": 3.0, "notas": 1},  # nome com 14 dígitos
+        "C": {
+            "nome": "11222333000181",
+            "cnpj_cpf": None,
+            "total": 3.0,
+            "notas": 1,
+        },  # nome com 14 dígitos (sem CPF dentro)
     }
     if ordem == "invertida":
         forn = dict(reversed(list(forn.items())))
@@ -1833,7 +1879,7 @@ def test_ceap_fornecedor_sem_cnpj_e_com_nome_igual_a_um_cnpj_ficam_em_grupos_dis
     with pg_engine.connect() as conn:
         linhas = conn.execute(text("SELECT nome, cnpj, grupo FROM fin.despesa_cota_fornecedor ORDER BY grupo")).all()
     assert len(linhas) == 3 and len({r[2] for r in linhas}) == 3
-    assert {r[2] for r in linhas} == {"02558157000162", "nome:nome:POSTO SOL", "nome:02558157000162"}
+    assert {r[2] for r in linhas} == {"11222333000181", "nome:nome:POSTO SOL", "nome:11222333000181"}
 
 
 # ── 9ª revisão: letras Hangul invisíveis, quebra de linha, documento no legado, UF por extenso, caudas conhecidas ─────
@@ -2213,3 +2259,285 @@ def test_rotulo_de_fornecedor_nao_identificado_e_igual_no_backend_e_no_etl():
     from etl.utils.rotulos import FORNECEDOR_NAO_IDENTIFICADO
 
     assert financas_service.FORNECEDOR_NAO_IDENTIFICADO == FORNECEDOR_NAO_IDENTIFICADO == "Fornecedor não identificado"
+
+
+# ── 14ª revisão: fonte pela casa de origem, cargas por chave, total fora da faixa ────────────────────────────────────
+def _despesas_da_fonte(entrada):
+    despesas, _f, _r, _c = fin.linhas_da_ceap({"X": entrada}, _SempreAPessoa(), {"CAMARA_CSV": 1, "SENADO_API": 2})
+    return {d["f"] for d in despesas}
+
+
+@pytest.mark.parametrize(
+    "mudancas, fonte",
+    [
+        ({"cargo": "DEPUTADO_FEDERAL", "camara_id": None, "senado_id": None}, None),  # sem id: nem entra (liderança)
+        ({"cargo": "SENADOR", "camara_id": None, "senado_id": 7}, 2),
+        ({"cargo": "SENADOR", "camara_id": 7, "senado_id": None}, 2),  # o cargo vale mais que o identificador
+        ({"cargo": "DEPUTADO_FEDERAL", "camara_id": None, "senado_id": 7}, 1),
+        ({"cargo": None, "camara_id": 100, "senado_id": None}, 1),  # sem cargo, vale o identificador (arquivos antigos)
+        ({"cargo": None, "camara_id": None, "senado_id": 7}, 2),
+    ],
+)
+def test_a_fonte_da_ceap_e_a_casa_do_cargo_e_nao_a_presenca_do_camara_id(mudancas, fonte):
+    entrada = _ceap(**mudancas)
+    if entrada["cargo"] is None:
+        entrada.pop("cargo")
+    assert _despesas_da_fonte(entrada) == ({fonte} if fonte else set())
+
+
+def test_carregar_com_chaves_roda_so_as_pedidas_na_ordem_do_loader(pg_engine, banco, tmp_path, monkeypatch):
+    rodadas = []
+    monkeypatch.setattr(
+        fin, "CARGAS", tuple((c, lambda conn, pasta, c=c: rodadas.append(c) or {"ok": 1}) for c, _ in fin.CARGAS)
+    )
+    resultados = fin.carregar(pg_engine, tmp_path, chaves=("certidoes", "ceap"))
+    assert rodadas == ["ceap", "certidoes"] and set(resultados) == {"ceap", "certidoes"}
+    rodadas.clear()
+    assert set(fin.carregar(pg_engine, tmp_path)) == {c for c, _ in fin.CARGAS}  # sem chaves: todas
+
+
+def test_chave_desconhecida_falha_antes_de_executar_qualquer_carga(pg_engine, banco, tmp_path, monkeypatch):
+    rodadas = []
+    monkeypatch.setattr(fin, "CARGAS", tuple((c, lambda conn, pasta, c=c: rodadas.append(c)) for c, _ in fin.CARGAS))
+    with pytest.raises(ValueError, match="desconhecidas"):
+        fin.carregar(pg_engine, tmp_path, chaves=("ceap", "cep"))
+    assert rodadas == []
+
+
+def test_carga_estatica_nao_apaga_ceap_nem_emendas_ja_no_banco(pg_engine, banco, tmp_path):
+    """O `fin` tem CEAP e emendas mais novas que o git: a carga estática não pode tocá-las."""
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
+    _gravar(tmp_path, fin.EMENDAS_ARQUIVO, [_emenda("1", "Ana Souza")])
+    with pg_engine.begin() as conn:
+        fin.carregar_ceap(conn, tmp_path)
+        fin.carregar_emendas(conn, tmp_path)
+    antes = (_contar(pg_engine, "despesa_cota"), _contar(pg_engine, "emenda"))
+    (tmp_path / fin.CEAP_ARQUIVO).unlink()  # os arquivos do git, desatualizados ou ausentes, não importam
+    (tmp_path / fin.EMENDAS_ARQUIVO).unlink()
+    _gravar(
+        tmp_path,
+        fin.REMUNERACAO_ARQUIVO,
+        _oficial(registros=[{"camara_id": 100, "ano": 2024, "mes": 1, "salario_bruto": 1}]),
+    )
+    resultados = fin.carregar(pg_engine, tmp_path, chaves=fin.CHAVES_ESTATICAS)
+    assert (_contar(pg_engine, "despesa_cota"), _contar(pg_engine, "emenda")) == antes and antes[0] > 0 and antes[1] > 0
+    assert resultados["remuneracao"]["meses"] == 1 and "ceap" not in resultados
+
+
+@pytest.mark.parametrize(
+    "nome, esperado",
+    [
+        (
+            "FULANO SINTETICO DA SILVA 100200300400",
+            "FULANO SINTETICO DA SILVA",
+        ),  # 12 dígitos colados ao nome (dados reais)
+        ("Beltrana Exemplo Souza 500600700800", "Beltrana Exemplo Souza"),
+        (f"{DOZE_DIGITOS_SEM_CPF}Eletrobrás Energiza", "Eletrobrás Energiza"),
+        (
+            "RESTAURANTE SANTA CLARA LTDA:18477203000139",
+            "RESTAURANTE SANTA CLARA LTDA:18477203000139",
+        ),  # CNPJ de 14: empresa
+        ("CAFE DO CHEF LTDA.:1838408800015", "CAFE DO CHEF LTDA.:1838408800015"),  # 13 dígitos: CNPJ sem o zero inicial
+        ("LOJA 2020 2021 2022", "LOJA 2020 2021 2022"),
+        ("PEDIDO 12345678901", "PEDIDO"),  # 11 dígitos continua sendo CPF
+        ("NOTA 1234567890123456", "NOTA 1234567890123456"),  # 16 dígitos: não é 12
+        ("ONLY 500600700800", "ONLY"),
+        ("FULANO 12.345.678.901", "FULANO"),  # 11 dígitos agrupados fora do desenho 3-3-3-2
+        ("FULANO 12345-678901", "FULANO"),
+        ("FULANO 1234.5678.9012", "FULANO"),  # 12 dígitos em grupos de quatro que não são anos
+        ("CONVENIO 2019-2020-2021", "CONVENIO 2019-2020-2021"),  # lista de anos
+        ("PEDIDO 2019-10-19", "PEDIDO 2019-10-19"),  # data
+        ("TEL 61-3215-1234", "TEL 61-3215-1234"),
+        (f"FULANO 000{CPF_A}", "FULANO"),  # CPF válido com enchimento de zeros à esquerda (14 e 13 dígitos)
+        (f"FULANO 00{CPF_A}", "FULANO"),
+        (
+            f"FULANO {CPF_A[:4]} {CPF_A[4:8]} {CPF_A[8:]}",
+            "FULANO",
+        ),  # CPF válido em grupos 4-4-3 e 2-3-3-3, separados por espaço
+        (f"FULANO {CPF_A[:2]} {CPF_A[2:5]} {CPF_A[5:8]} {CPF_A[8:]}", "FULANO"),
+        (f"FULANO {CPF_A[:3]}    {CPF_A[3:]}", "FULANO"),  # separador de vários espaços
+        ("LOJA 2020 2021 2022", "LOJA 2020 2021 2022"),
+        ("TEL 61 3215 1234", "TEL 61 3215 1234"),
+        ("VALOR 1.234,56", "VALOR 1.234,56"),
+        ("LOJA 00001974000190", "LOJA 00001974000190"),  # CNPJ com zeros à esquerda que não fecha como CPF
+    ],
+)
+def test_numero_de_12_digitos_de_pessoa_fisica_sai_do_nome_e_cnpj_fica(nome, esperado):
+    assert nome_sem_cpf(nome) == esperado
+
+
+def test_so_um_numero_de_12_digitos_nao_deixa_nome_vazio_no_fornecedor():
+    assert nome_do_fornecedor("500600700800") == "Fornecedor não identificado"
+
+
+def test_anos_publicados_da_ceap_vem_do_fin_por_casa_e_ignora_o_ano_zerado(pg_engine, banco, tmp_path):
+    senador = _ceap(nome="BETO LIMA", camara_id=None, senado_id=200, cargo="SENADOR")
+    senador["por_ano_tipo"] = {"2024": {"PASSAGEM": 30.0}, "2022": {"PASSAGEM": 0.0}}  # 2022 sem gasto
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap(), "BETO LIMA": senador})
+    with pg_engine.begin() as conn:
+        fin.carregar_ceap(conn, tmp_path)
+    publicados = fin.anos_publicados_da_ceap(pg_engine)
+    assert publicados["camara"] == {2023, 2024}
+    assert publicados["senado"] == {2024}  # o ano sem gasto não conta como publicado
+
+
+# ── Quem é dono da fonte: sinal gravado no banco, na transação da carga ─────────────────────────────────────────────
+@pytest.fixture()
+def sem_execucoes_de_carga(pg_engine):
+    def limpar():
+        with pg_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "DELETE FROM etl.execucao WHERE parametros->>'carga' IS NOT NULL "
+                    "OR parametros->>'fonte' IS NOT NULL OR parametros->>'teste' = 'posse'"
+                )
+            )
+
+    limpar()
+    yield
+    limpar()
+
+
+def test_carga_fresca_registra_a_fonte_na_mesma_transacao_da_carga(pg_engine, banco, tmp_path, sem_execucoes_de_carga):
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
+    assert fin.fontes_do_timer(pg_engine) == set()
+    fin.carregar(pg_engine, tmp_path, chaves=("ceap",), ao_confirmar=fin.registrar_carga_fresca)
+    assert fin.fontes_do_timer(pg_engine) == {"ceap"}
+    with pg_engine.connect() as conn:
+        linha = conn.execute(
+            text(
+                "SELECT estagio, status, linhas_gravadas, parametros FROM etl.execucao WHERE parametros->>'carga' = 'ceap'"
+            )
+        ).one()
+    assert linha.estagio == "CARREGAR" and linha.status == "OK" and linha.linhas_gravadas == 3
+    assert linha.parametros == {"fresca": "true", "carga": "ceap", "origem": "financas_atualizacao"}
+
+
+def test_sem_o_hook_a_carga_nao_registra_nada(pg_engine, banco, tmp_path, sem_execucoes_de_carga):
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
+    fin.carregar(pg_engine, tmp_path, chaves=("ceap",))
+    assert fin.fontes_do_timer(pg_engine) == set()
+
+
+def test_se_o_registro_grava_e_depois_falha_a_carga_da_fonte_volta_junto(
+    pg_engine, banco, tmp_path, sem_execucoes_de_carga
+):
+    """O hook grava a linha E levanta: o `ROLLBACK` leva os dados da carga e o sinal juntos (atomicidade de verdade)."""
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
+
+    def grava_e_quebra(conn, chave, resultado):
+        fin.registrar_carga_fresca(conn, chave, resultado)
+        raise RuntimeError("falhou depois de registrar")
+
+    with pytest.raises(RuntimeError, match="falhou depois de registrar"):
+        fin.carregar(pg_engine, tmp_path, chaves=("ceap",), ao_confirmar=grava_e_quebra)
+    assert _contar(pg_engine, "despesa_cota") == 0 and fin.fontes_do_timer(pg_engine) == set()
+
+
+def test_so_a_fonte_que_carregou_ganha_o_registro_quando_a_outra_falha(
+    pg_engine, banco, tmp_path, monkeypatch, sem_execucoes_de_carga
+):
+    """Uma transação por fonte: a CEAP entra e fica registrada mesmo que as emendas falhem depois."""
+    _gravar(tmp_path, fin.CEAP_ARQUIVO, {"ANA SOUZA": _ceap()})
+    _gravar(tmp_path, fin.EMENDAS_ARQUIVO, [_emenda("1", "Ana Souza")])
+
+    def emendas_quebram(conn, pasta):
+        raise RuntimeError("emendas fora do ar")
+
+    originais = dict(fin.CARGAS)
+    monkeypatch.setattr(
+        fin, "CARGAS", tuple((c, emendas_quebram if c == "emendas" else f) for c, f in originais.items())
+    )
+    with pytest.raises(RuntimeError, match="emendas fora do ar"):
+        fin.carregar(pg_engine, tmp_path, chaves=("ceap", "emendas"), ao_confirmar=fin.registrar_carga_fresca)
+    assert fin.fontes_do_timer(pg_engine) == {"ceap"} and _contar(pg_engine, "despesa_cota") == 3
+
+
+@pytest.mark.parametrize(
+    "chave, resultado",
+    [
+        ("ceap", {"despesas": 0}),  # carga que não gravou linha nenhuma
+        ("ceap", {"arquivo_ausente": 1}),
+        ("emendas", {"emendas": True}),  # bool não é contagem
+        ("emendas", {"emendas": -3}),
+        ("remuneracao", {"meses": 5}),  # fonte que não é do timer
+        ("inexistente", {"despesas": 5}),
+        ("ceap", "texto"),
+        ("ceap", None),
+    ],
+)
+def test_so_conta_a_carga_que_gravou_linhas_de_uma_fonte_do_timer(pg_engine, chave, resultado, sem_execucoes_de_carga):
+    with pg_engine.begin() as conn:
+        fin.registrar_carga_fresca(conn, chave, resultado)
+        fin.registrar_carga_do_git(conn, chave, resultado)
+    with pg_engine.connect() as conn:
+        assert (
+            conn.execute(text("SELECT count(*) FROM etl.execucao WHERE parametros->>'carga' IS NOT NULL")).scalar() == 0
+        )
+
+
+def test_carga_do_git_revoga_a_posse_e_a_ultima_linha_de_cada_fonte_vale(pg_engine, sem_execucoes_de_carga):
+    with pg_engine.begin() as conn:
+        fin.registrar_carga_fresca(conn, "ceap", {"despesas": 3})
+        fin.registrar_carga_fresca(conn, "emendas", {"emendas": 3})
+    assert fin.fontes_do_timer(pg_engine) == {"ceap", "emendas"}
+    with pg_engine.begin() as conn:
+        fin.registrar_carga_do_git(conn, "emendas", {"emendas": 3})  # semeadura do git: a posse das emendas acaba
+    assert fin.fontes_do_timer(pg_engine) == {"ceap"}
+    with pg_engine.begin() as conn:
+        fin.registrar_carga_fresca(conn, "emendas", {"emendas": 3}, origem="run_etl")  # e volta com nova extração
+        fin.registrar_carga_fresca(conn, "emendas", {"emendas": 3})  # linhas repetidas não duplicam a fonte
+    assert fin.fontes_do_timer(pg_engine) == {"ceap", "emendas"}
+
+
+def _linha_de_execucao(conn, estagio="CARREGAR", status="OK", parametros=None):
+    conn.execute(
+        text(
+            "INSERT INTO etl.execucao (estagio, finalizado_em, status, parametros) "
+            "VALUES (:e, now(), :s, CAST(:p AS jsonb))"
+        ),
+        {"e": estagio, "s": status, "p": json.dumps({**(parametros or {}), "teste": "posse"})},
+    )
+
+
+@pytest.mark.parametrize(
+    "estagio, status, parametros",
+    [
+        ("CARREGAR", "ERRO", {"carga": "ceap", "fresca": "true"}),  # execução que falhou não dá a posse
+        ("CARREGAR", "COM_ALERTA", {"carga": "ceap", "fresca": "true"}),
+        ("CARREGAR", "EXECUTANDO", {"carga": "ceap", "fresca": "true"}),
+        ("EXTRAIR", "OK", {"carga": "ceap", "fresca": "true"}),  # outro estágio
+        ("CARREGAR", "OK", {"fresca": "true"}),  # linha de outro gravador, sem a chave da carga
+        ("CARREGAR", "OK", {"carga": "ceap", "fresca": "talvez"}),
+    ],
+)
+def test_so_a_linha_ok_de_carregar_com_carga_e_fresca_true_da_a_posse(
+    pg_engine, sem_execucoes_de_carga, estagio, status, parametros
+):
+    with pg_engine.begin() as conn:
+        fin.registrar_carga_do_git(conn, "ceap", {"despesas": 1})  # a posse parte revogada
+        _linha_de_execucao(conn, estagio, status, parametros)
+    assert fin.fontes_do_timer(pg_engine) == set()
+
+
+def test_linhas_antigas_com_a_chave_fonte_continuam_valendo_e_a_nova_prevalece(pg_engine, sem_execucoes_de_carga):
+    """Versões anteriores do branch gravavam `fonte`: um banco de desenvolvimento com elas não pode perder a posse."""
+    with pg_engine.begin() as conn:
+        _linha_de_execucao(conn, parametros={"fonte": "ceap", "fresca": "true"})
+        _linha_de_execucao(conn, parametros={"fonte": "emendas", "fresca": "true"})
+    assert fin.fontes_do_timer(pg_engine) == {"ceap", "emendas"}
+    with pg_engine.begin() as conn:
+        fin.registrar_carga_do_git(conn, "emendas", {"emendas": 1})  # a linha nova (chave `carga`) revoga a antiga
+    assert fin.fontes_do_timer(pg_engine) == {"ceap"}
+
+
+def test_a_origem_do_hook_fica_registrada(pg_engine, sem_execucoes_de_carga):
+    with pg_engine.begin() as conn:
+        fin.registrar_carga_fresca(conn, "ceap", {"despesas": 1}, origem="run_etl")
+    with pg_engine.connect() as conn:
+        assert (
+            conn.execute(
+                text("SELECT parametros->>'origem' FROM etl.execucao WHERE parametros->>'carga' = 'ceap'")
+            ).scalar()
+            == "run_etl"
+        )

@@ -12,13 +12,21 @@ registro utilizável ou que reduziria a tabela a menos da metade (arquivo trunca
 que já está no banco. Cada carga é uma transação: ou grava inteira ou não grava.
 """
 
+import json
 import logging
 import os
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
-from etl.config import PROCESSED_DATA_DIR
+from etl.config import (  # noqa: F401 - CHAVES_* são reexportadas para quem já importa daqui
+    CASAS_DO_CONGRESSO,
+    CEAP_ARQUIVO,
+    CHAVES_DO_TIMER,
+    CHAVES_ESTATICAS,
+    EMENDAS_ARQUIVO,
+    PROCESSED_DATA_DIR,
+)
 from etl.pipelines.loader_helpers import (
     LIMITE_CEAP,
     LIMITE_EMENDA,
@@ -42,6 +50,7 @@ from etl.pipelines.loader_helpers import (
     uf_da_localidade,
 )
 from etl.pipelines.pessoa_resolver import ResolvedorDePessoas
+from etl.pipelines.semeadura_das_financas import SQL_FONTES_DO_TIMER, fontes_do_timer  # noqa: F401 - reexportadas
 from etl.utils.bootstrap import ensure_backend_on_path
 from etl.utils.datafiles import load_json
 
@@ -53,8 +62,6 @@ from sqlalchemy.exc import DBAPIError  # noqa: E402
 
 logger = logging.getLogger("FinancasLoader")
 
-CEAP_ARQUIVO = "despesas_ceap_2019_2026.json"
-EMENDAS_ARQUIVO = "emendas_parlamentares_2019_2026.json"
 REMUNERACAO_ARQUIVO = "remuneracao_parlamentares.json"
 PATRIMONIO_ARQUIVO = "declaracoes_patrimonio.json"
 DOACOES_ARQUIVO = "tse_doacoes_campanha.json"
@@ -117,6 +124,40 @@ def _recusa_encolhimento(rotulo: str, existentes: int, novas: int) -> None:
         f"{rotulo}: a carga traria {novas} linhas e o banco tem {existentes}; nada foi alterado. "
         f"Se a redução é legítima, rode de novo com {VARIAVEL_ACEITAR_ENCOLHIMENTO}=1."
     )
+
+
+def _protege_anos_da_ceap(conn: Connection, despesas: List[Dict[str, Any]]) -> None:
+    """
+    Recusa (sem tocar no banco) a carga da CEAP que deixaria sem gasto um ano que o `fin` já tem, por fonte (Câmara/Senado).
+    A guarda por quantidade de linhas não vê isso: uma carga manual desde 2018 seguida da atualização diária (que começa em
+    2019) perde o ano inteiro de 2018 com uma redução pequena no total. `LEGISDATA_ACEITAR_ENCOLHIMENTO=1` libera.
+    """
+    existentes = {
+        (int(f), int(ano))
+        for f, ano in conn.execute(text("SELECT DISTINCT fonte_id, ano FROM fin.despesa_cota WHERE valor_liquido <> 0"))
+    }
+    novos = {(int(x["f"]), int(x["ano"])) for x in despesas if x["valor"] != 0}
+    perdidos = existentes - novos
+    if not perdidos:
+        return
+    nomes = {f: casa for f, casa in ((f, _casa_da_fonte_id(conn, f)) for f in {f for f, _ in perdidos})}
+    rotulo = "; ".join(f"{nomes[f]}: {sorted(a for g, a in perdidos if g == f)}" for f in sorted(nomes))
+    if os.environ.get(VARIAVEL_ACEITAR_ENCOLHIMENTO) == "1":
+        logger.warning(
+            "fin.despesa_cota: a carga remove anos já carregados (%s); aceito por %s.",
+            rotulo,
+            VARIAVEL_ACEITAR_ENCOLHIMENTO,
+        )
+        return
+    raise RuntimeError(
+        f"fin.despesa_cota: a carga deixaria sem gasto anos que o banco já tem ({rotulo}); nada foi alterado. "
+        f"Se a remoção é legítima, rode de novo com {VARIAVEL_ACEITAR_ENCOLHIMENTO}=1."
+    )
+
+
+def _casa_da_fonte_id(conn: Connection, fonte_id: int) -> str:
+    codigo = conn.execute(text("SELECT codigo FROM etl.fonte WHERE id = :i"), {"i": fonte_id}).scalar()
+    return _CASA_DA_FONTE.get(str(codigo), str(codigo))
 
 
 def _protege_contra_encolhimento(conn: Connection, tabela: str, novas: int) -> None:
@@ -203,6 +244,40 @@ def _carga_simples(
 
 
 # ── CEAP ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
+def _fonte_da_ceap(dados: Dict[str, Any]) -> str:
+    """
+    A casa de origem do registro: o `cargo` que a extração grava (SENADOR ou DEPUTADO_FEDERAL). Uma conta da Câmara ligada
+    por nome (sem `camara_id`) continua sendo da Câmara; sem `cargo`, vale o identificador que o registro carrega.
+    """
+    cargo = dados.get("cargo")
+    if cargo == "SENADOR":
+        return FONTE_CEAP_SENADO
+    if cargo == "DEPUTADO_FEDERAL":
+        return FONTE_CEAP_CAMARA
+    return FONTE_CEAP_CAMARA if dados.get("camara_id") else FONTE_CEAP_SENADO
+
+
+_CASA_DA_FONTE = {FONTE_CEAP_CAMARA: "camara", FONTE_CEAP_SENADO: "senado"}
+
+
+def anos_publicados_da_ceap(engine: Engine) -> Dict[str, Set[int]]:
+    """
+    Os anos em que o `fin` já tem gasto da CEAP, por casa ("camara"/"senado"). É o que a atualização diária usa para não
+    tratar como "ainda sem arquivo" um ano que já foi carregado (o arquivo processado do git não serve: o deploy o devolve
+    ao retrato antigo).
+    """
+    consulta = text(
+        "SELECT f.codigo, d.ano FROM fin.despesa_cota d JOIN etl.fonte f ON f.id = d.fonte_id "
+        "WHERE d.valor_liquido <> 0 GROUP BY f.codigo, d.ano"
+    )
+    publicados: Dict[str, Set[int]] = {casa: set() for casa in CASAS_DO_CONGRESSO}
+    with engine.connect() as conexao:
+        for codigo, ano in conexao.execute(consulta):
+            if codigo in _CASA_DA_FONTE:
+                publicados[_CASA_DA_FONTE[codigo]].add(int(ano))
+    return publicados
+
+
 def linhas_da_ceap(
     ceap: Dict[str, Any], resolvedor: ResolvedorDePessoas, fontes: Dict[str, int]
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, int]]:
@@ -231,7 +306,7 @@ def linhas_da_ceap(
             contagem["sem_pessoa"] += 1
             continue
         # a origem é o identificador que o registro carrega (nenhum registro do arquivo traz os dois)
-        fonte_id = fontes[FONTE_CEAP_CAMARA if dados.get("camara_id") else FONTE_CEAP_SENADO]
+        fonte_id = fontes[_fonte_da_ceap(dados)]
         contagem["parlamentares"] += 1
         despesas += [
             {"p": pessoa, "ano": ano, "tipo": tipo, "valor": valor, "f": fonte_id}
@@ -281,6 +356,7 @@ def carregar_ceap(conn: Connection, processed_dir: Path) -> Dict[str, int]:
         )
     contagem["mesma_fonte_repetida"] = repetidas
     contagem["resumo_incompleto"] = resumo_incompleto
+    _protege_anos_da_ceap(conn, despesas)  # antes de qualquer DELETE: a recusa não deixa o banco pela metade
     _substituir(
         conn,
         [
@@ -586,15 +662,76 @@ CARGAS: Tuple[Tuple[str, Callable[[Connection, Path], Dict[str, int]]], ...] = (
 )
 
 
-def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, Any]:
-    """Executa as seis cargas, cada uma na sua transação; uma que falha não impede as demais e o erro sobe no fim."""
+# CEAP e emendas são atualizadas todo dia pelo timer (arquivos extraídos na hora); as demais só mudam com o commit que
+# traz um arquivo novo. O deploy usa esta divisão para não devolver CEAP e emendas ao retrato do git.
+# (definidas em `etl.config`, leves, para a política de semeadura não precisar importar este módulo inteiro)
+
+
+# ── Quem é dono da fonte: a atualização diária (extração fresca) ou o retrato do git ───────────────────────────────────
+# O deploy precisa saber, por fonte, se o `fin` já traz dado MAIS NOVO que o git (então não pode semeá-la de novo). O sinal
+# vai para o próprio banco, na MESMA transação da carga: volta junto com um backup restaurado, e uma carga que falhou não
+# deixa sinal. Cada carga de CEAP ou de emendas que gravou linhas escreve uma linha em `etl.execucao` (estágio CARREGAR,
+# status OK) com `parametros = {"carga", "fresca", "origem"}`: `fresca = "true"` quando veio de uma extração nova e
+# `"false"` quando veio do retrato do git (que revoga a posse). Vale a ÚLTIMA linha de cada carga. INVARIANTE: essas
+# linhas não podem ser expurgadas como histórico comum, ou o deploy volta a semear do git em silêncio.
+_CONTAGEM_DA_FONTE = {"ceap": "despesas", "emendas": "emendas"}
+
+
+def registrar_carga(conn: Connection, chave: str, resultado: Any, fresca: bool, origem: str) -> None:
+    """Registra de onde veio o dado de uma fonte do timer. Só conta se a carga de fato gravou linhas."""
+    campo = _CONTAGEM_DA_FONTE.get(chave)
+    gravadas = resultado.get(campo) if campo and isinstance(resultado, dict) else None
+    if not isinstance(gravadas, int) or isinstance(gravadas, bool) or gravadas <= 0:
+        return
+    conn.execute(
+        text(
+            "INSERT INTO etl.execucao (estagio, finalizado_em, status, linhas_gravadas, parametros) "
+            "VALUES ('CARREGAR', now(), 'OK', :n, CAST(:p AS jsonb))"
+        ),
+        {
+            "n": min(gravadas, 2**31 - 1),
+            "p": json.dumps({"fresca": "true" if fresca else "false", "carga": chave, "origem": origem}),
+        },
+    )
+
+
+def registrar_carga_fresca(conn: Connection, chave: str, resultado: Any, origem: str = "financas_atualizacao") -> None:
+    """Hook de `carregar`: o dado acabou de vir de uma extração nova (a atualização diária ou o `run_etl --ceap`)."""
+    registrar_carga(conn, chave, resultado, True, origem)
+
+
+def registrar_carga_do_git(conn: Connection, chave: str, resultado: Any, origem: str = "deploy") -> None:
+    """Hook de `carregar`: o dado veio do retrato do git (semeadura do deploy, recarga manual). Revoga a posse do timer."""
+    registrar_carga(conn, chave, resultado, False, origem)
+
+
+def carregar(
+    engine: Engine,
+    processed_dir: Optional[Path] = None,
+    chaves: Optional[Iterable[str]] = None,
+    ao_confirmar: Optional[Callable[[Connection, str, Any], None]] = None,
+) -> Dict[str, Any]:
+    """
+    Executa as cargas (todas, ou só as `chaves`), cada uma na sua transação; uma que falha não impede as demais e o erro
+    sobe no fim. Chave desconhecida levanta ValueError antes de tocar no banco. `ao_confirmar(conn, chave, resultado)`
+    roda DENTRO da transação da chave, depois de a carga gravar: o que ele grava vale ou some junto com a carga.
+    """
     pasta = Path(processed_dir or PROCESSED_DATA_DIR)
+    escolhidas = None if chaves is None else tuple(chaves)
+    if escolhidas is not None:
+        desconhecidas = [c for c in escolhidas if c not in {chave for chave, _ in CARGAS}]
+        if desconhecidas:
+            raise ValueError(f"cargas de finanças desconhecidas: {desconhecidas}")
     resultados: Dict[str, Any] = {}
     falhas: List[str] = []
     for chave, funcao in CARGAS:
+        if escolhidas is not None and chave not in escolhidas:
+            continue
         try:
             with engine.begin() as conn:
                 resultados[chave] = funcao(conn, pasta)
+                if ao_confirmar is not None:
+                    ao_confirmar(conn, chave, resultados[chave])
             logger.info("Finanças — %s: %s", chave, resultados[chave])
         except Exception as exc:  # noqa: BLE001 - isolada de propósito; relatada abaixo
             # o erro do banco traz os valores da linha no DETAIL: só a descrição saneada vai para o log e para o erro final

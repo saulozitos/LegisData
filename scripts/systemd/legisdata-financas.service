@@ -1,0 +1,13 @@
+[Unit]
+Description=LegisData - atualização diária de CEAP e emendas (extração incremental e recarga do schema fin)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+# Serviço do USUÁRIO (systemctl --user), sem sudo. O caminho do projeto no servidor NÃO fica no repositório: ele vem do
+# arquivo ~/.legisdata-deploy/ambiente (LEGISDATA_DIR=...), criado na instalação (docs/DEPLOY_AUTOMATICO.md).
+Type=oneshot
+EnvironmentFile=%h/.legisdata-deploy/ambiente
+# Executa a cópia instalada (o deploy a mantém igual à do commit implantado)
+ExecStart=%h/.legisdata-deploy/atualizar_financas.sh
+TimeoutStartSec=3h

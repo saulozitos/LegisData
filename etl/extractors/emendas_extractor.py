@@ -15,12 +15,11 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from etl.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
+from etl.config import PROCESSED_DATA_DIR, RAW_DATA_DIR, TETO_DO_CSV, TETO_DO_DOWNLOAD
 from etl.utils.http_client import HttpClient, HttpError
 from etl.utils.names import normalize_plain
 from etl.utils.provenance import mark_official, mark_synthetic
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("EmendasExtractor")
 
 PORTAL_EMENDAS_URL = "https://portaldatransparencia.gov.br/download-de-dados/emendas-parlamentares/UNICO"
@@ -157,16 +156,18 @@ class EmendasExtractor:
         """Baixa e converte o CSV oficial. Falha => lista vazia (quem grava deve preservar o arquivo anterior)."""
         logger.info("Baixando emendas parlamentares do Portal da Transparência...")
         try:
-            bruto = self.http.get_bytes(PORTAL_EMENDAS_URL)
+            bruto = self.http.get_bytes(PORTAL_EMENDAS_URL, max_bytes=TETO_DO_DOWNLOAD)
             with zipfile.ZipFile(io.BytesIO(bruto)) as zf:
                 nome_csv = next(
                     (n for n in zf.namelist() if n.lower().endswith(".csv") and "emenda" in n.lower()), None
                 )
                 if nome_csv is None:
                     nome_csv = zf.namelist()[0]
+                if zf.getinfo(nome_csv).file_size > TETO_DO_CSV:
+                    raise ValueError(f"CSV de emendas descomprimido passa do teto de {TETO_DO_CSV} bytes")
                 conteudo = zf.read(nome_csv)
             registros = parse_emendas_csv(conteudo)
-        except (HttpError, zipfile.BadZipFile, ValueError, IndexError) as exc:
+        except (HttpError, zipfile.BadZipFile, ValueError, IndexError, EOFError, OSError, zlib.error) as exc:
             logger.error("Não foi possível obter emendas do Portal da Transparência: %s", exc)
             return []
         logger.info("%d emendas oficiais obtidas.", len(registros))

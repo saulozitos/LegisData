@@ -16,7 +16,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from etl.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
 from etl.utils.provenance import mark_synthetic
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("JusticaExtractor")
 
 

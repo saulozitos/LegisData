@@ -13,7 +13,6 @@ from etl.config import IBGE_SIDRA_API_URL, RAW_DATA_DIR
 from etl.utils.http_client import HttpClient, HttpError
 from etl.utils.io_utils import atomic_write_json
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("IBGEExtractor")
 
 
