@@ -475,3 +475,111 @@ def test_doacoes_de_campanha_traz_se_a_linha_e_agregada_e_quantos_doadores_ela_v
     db.commit()
     linhas = {d["nome_doador"]: (d["agregado"], d["quantidade_doadores"]) for d in fs.doacoes_de_campanha(db, [pessoa])}
     assert linhas == {"Ana": (False, 1), "Demais doadores (4)": (True, 4)}
+
+
+def test_processos_do_mesmo_numero_em_dois_cadastros_da_pessoa_saem_uma_vez_com_o_movimento_mais_novo(db, pessoa):
+    outro = db.execute(text("INSERT INTO core.pessoa (nome_exibicao) VALUES ('Ana (2)') RETURNING id")).scalar_one()
+    for dono, movimento, data in ((pessoa, "Distribuição", "2023-01-01"), (outro, "Conclusão", "2024-05-06")):
+        inserir_fin(
+            db,
+            "processo_judicial",
+            pessoa_id=dono,
+            numero_cnj="0000001-78.2020.8.26.0100",
+            classe="Ação Penal",
+            ultimo_movimento=movimento,
+            data_ultimo_movimento=data,
+            vinculo_url="https://exemplo.jus.br/p",
+            fonte_id=fonte_id(db, "DATAJUD"),
+        )
+    db.commit()
+    (processo,) = fs.processos(db, [pessoa, outro])
+    assert processo.ultimo_movimento == "Conclusão" and processo.data_ultimo_movimento == "2024-05-06"
+
+
+def test_processos_ordena_pelo_mais_recente_e_sem_pessoa_nao_consulta(db, pessoa):
+    for numero, ajuizado in (("0000001-78.2020.8.26.0100", "2020-03-04"), ("0000002-46.2021.4.03.6100", "2021-07-01")):
+        inserir_fin(
+            db,
+            "processo_judicial",
+            pessoa_id=pessoa,
+            numero_cnj=numero,
+            classe="Classe",
+            assuntos="{A,B}",
+            data_ajuizamento=ajuizado,
+            vinculo_url="https://exemplo.jus.br/p",
+            fonte_id=fonte_id(db, "DATAJUD"),
+        )
+    db.commit()
+    achados = fs.processos(db, [pessoa])
+    assert [p.numero_processo for p in achados] == ["0000002-46.2021.4.03.6100", "0000001-78.2020.8.26.0100"]
+    assert achados[0].classe_assunto == "Classe / A, B" and achados[0].data_processo == "2021-07-01"
+    assert fs.processos(db, []) == []
+
+
+VALIDO = {
+    "numero_cnj": "0000001-78.2020.8.26.0100",
+    "classe": "Classe",
+    "assuntos": "{A,B}",
+    "total_movimentacoes": 3,
+    "vinculo_url": "https://exemplo.jus.br/p",
+}
+
+
+@pytest.mark.parametrize(
+    "coluna, valor",
+    [
+        ("numero_cnj", "6527"),
+        ("numero_cnj", "0000001-78.2020.8.26.010"),  # origem com 3 dígitos
+        ("numero_cnj", "0000001-78.2020.8.26.01000"),  # origem com 5 dígitos
+        ("numero_cnj", "00000017820208260100"),  # sem a formatação
+        ("numero_cnj", "AIJE 0000001-78.2020.8.26.0100"),  # texto em volta
+        (
+            "numero_cnj",
+            VALIDO["numero_cnj"].translate({ord(c): ord(c) + 0xFEE0 for c in "0123456789"}),
+        ),  # dígitos de largura total
+        ("total_movimentacoes", -1),
+        ("classe", "   "),
+        ("assuntos", "{A,NULL}"),
+        ("vinculo_url", "javascript:alert(1)"),
+        ("vinculo_url", "ftp://exemplo.jus.br/x"),
+        ("vinculo_url", "https://exemplo.jus.br/a b"),  # espaço no link
+        ("vinculo_url", "http:/exemplo"),
+        ("vinculo_url", "https://"),
+    ],
+)
+def test_tabela_de_processos_recusa_o_que_o_check_nao_aceita(db, pessoa, coluna, valor):
+    """O CHECK é a última camada: vale mesmo se alguém gravar sem passar pelo ETL (inserção manual, outra carga)."""
+    with pytest.raises(Exception, match="check"):
+        inserir_fin(
+            db, "processo_judicial", pessoa_id=pessoa, fonte_id=fonte_id(db, "DATAJUD"), **{**VALIDO, coluna: valor}
+        )
+    db.rollback()
+
+
+def test_tabela_de_processos_aceita_o_valido_e_o_minimo(db, pessoa):
+    inserir_fin(db, "processo_judicial", pessoa_id=pessoa, fonte_id=fonte_id(db, "DATAJUD"), **VALIDO)
+    inserir_fin(
+        db,
+        "processo_judicial",
+        pessoa_id=pessoa,
+        fonte_id=fonte_id(db, "DATAJUD"),
+        numero_cnj="0000002-46.2021.4.03.6100",
+        classe="Classe",
+        vinculo_url="http://exemplo.jus.br/p",
+    )
+    db.commit()
+    assert db.execute(text("SELECT count(*) FROM fin.processo_judicial")).scalar_one() == 2
+
+
+@pytest.mark.parametrize(
+    "classe, assuntos, esperado",
+    [
+        ("Classe", ["A", "B"], "Classe / A, B"),
+        ("Classe", [], "Classe"),
+        ("Classe", None, "Classe"),
+        ("Classe", [None, "A", ""], "Classe / A"),  # elemento NULL do text[] não quebra o dossiê
+        ("Classe", [None], "Classe"),
+    ],
+)
+def test_classe_e_assuntos_ignora_elemento_nulo_do_array(classe, assuntos, esperado):
+    assert fs._classe_e_assuntos(classe, assuntos) == esperado

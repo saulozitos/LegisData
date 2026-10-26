@@ -1094,6 +1094,89 @@ def ler_certidao(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     }, None
 
 
+# [0-9] e re.ASCII: `\d` casaria dígitos de outros alfabetos (largura total, árabe-índicos), que `int()` converte mas o CHECK
+# de `fin.processo_judicial.numero_cnj` (`[0-9]`) recusa, e a carga inteira abortaria no INSERT.
+_CNJ_FORMATADO = re.compile(r"([0-9]{7})-([0-9]{2})\.([0-9]{4})\.([0-9])\.([0-9]{2})\.([0-9]{4})", re.ASCII)
+_LINK_HTTP = re.compile(r"https?://\S+", re.ASCII)
+
+
+def link_http(valor: Any) -> Optional[str]:
+    """O link quando é `http(s)://...` sem espaços (o mesmo critério do CHECK de `vinculo_url`); senão None."""
+    link = texto(valor)
+    return link if link is not None and _LINK_HTTP.fullmatch(link) else None
+
+
+def cnj_valido(numero: Any) -> Optional[str]:
+    """
+    O número no formato CNJ (`NNNNNNN-DD.AAAA.J.TR.OOOO`) quando os dígitos verificadores fecham (ISO 7064, módulo
+    97, Resolução CNJ nº 65/2008); qualquer outra coisa é None. Só o formato exato vale: um 20 dígitos solto ou um
+    número com texto em volta não é aceito, para o vínculo com a pessoa nunca depender de adivinhação.
+    """
+    casou = _CNJ_FORMATADO.fullmatch(texto(numero) or "")
+    if casou is None:
+        return None
+    sequencial, digito, ano, segmento, tribunal, origem = casou.groups()
+    resto = int(f"{sequencial}{ano}{segmento}{tribunal}{origem}00") % 97
+    if 98 - resto != int(digito):
+        return None
+    return casou.group(0)
+
+
+def _data_iso(valor: Any) -> Optional[date]:
+    """Data `AAAA-MM-DD` (com ou sem hora depois); formato diferente ou data impossível é None."""
+    bruto = texto(valor)
+    if bruto is None:
+        return None
+    try:
+        return date.fromisoformat(bruto[:10])
+    except ValueError:
+        return None
+
+
+def _texto_oficial_sem_cpf(valor: Any) -> Optional[str]:
+    """
+    `texto_sem_cpf` sem a normalização de compatibilidade quando nada foi retirado: o nome oficial de um órgão ("1ª Vara
+    Cível") não vira "1a Vara Cível" só porque o detector de CPF lê o texto normalizado. Com CPF removido, vale o texto
+    limpo (já normalizado), porque a posição do trecho vem dele.
+    """
+    original = texto(valor)
+    limpo = texto_sem_cpf(original)
+    if original is None or limpo is None:
+        return limpo
+    return original if limpo == " ".join(_ascii(original).split()) else limpo
+
+
+def ler_processo(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Campos de um processo já enriquecido pelo DataJud, ou (None, "sem_proveniencia" | "invalidas"). Regra única.
+    Só entra processo com número CNJ de dígitos verificadores corretos, classe e o link da fonte oficial que liga o
+    processo à pessoa (o DataJud não expõe as partes, então o vínculo vem da curadoria). O que o DataJud não devolveu
+    fica nulo; texto livre passa por `texto_sem_cpf` (D3).
+    """
+    if not isinstance(item, dict) or not is_trusted(item):
+        return None, "sem_proveniencia"
+    numero = cnj_valido(item.get("numero_processo"))
+    classe = _texto_oficial_sem_cpf(item.get("classe_tpu_nome"))
+    vinculo = link_http(item.get("link_comprovacao"))
+    if numero is None or not classe or vinculo is None:
+        return None, "invalidas"
+    assuntos = item.get("assuntos_tpu")
+    movimentacoes = inteiro(item.get("total_movimentacoes"))
+    return {
+        "numero": numero,
+        "tribunal": _texto_oficial_sem_cpf(item.get("tribunal")),
+        "grau": _texto_oficial_sem_cpf(item.get("grau")),
+        "classe": classe,
+        "assuntos": [a for a in (_texto_oficial_sem_cpf(x) for x in assuntos) if a] if isinstance(assuntos, list) else [],
+        "orgao": _texto_oficial_sem_cpf(item.get("orgao_julgador")),
+        "ajuizado": _data_iso(item.get("data_processo")),
+        "movimento": _texto_oficial_sem_cpf(item.get("ultimo_movimento")),
+        "data_movimento": _data_iso(item.get("data_ultimo_movimento")),
+        "movimentacoes": movimentacoes if movimentacoes is not None and movimentacoes >= 0 else None,
+        "vinculo": vinculo,
+    }, None
+
+
 def ler_registros_da_remuneracao(corpo: Any) -> Tuple[Optional[List[Any]], Optional[str]]:
     """
     Nível de arquivo: os meses de remuneração, ou (None, "sem_proveniencia") quando o arquivo não é um objeto ou não

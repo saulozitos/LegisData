@@ -33,7 +33,8 @@ Este documento é um plano, não uma implementação. Nenhuma tabela ou código 
 | 3a | Economia e Executivo (Fase 6): schema `eco`, mandatos presidenciais em `core`, corte em 1995, remoção de `seed_executivo.py` e de toda leitura de arquivo pela API | Em andamento (branch `refactor/db-entrega-3a-economia`) |
 | 3b | Dados curados do Executivo e do Congresso (IPLE, composição, salário parlamentar, PNAD) e cron das séries | Em andamento (branch `refactor/db-entrega-3b-curados`) |
 | 3c | Finanças e fiscalização (Fase 5): schema `fin` com CEAP, emendas, remuneração, patrimônio, doações de campanha e certidões do TSE; dossiê e rotas de emendas lendo `fin` | Em andamento (branch `refactor/db-entrega-3c-financas`) |
-| 3d | Processos judiciais (DataJud), novo ETL (Fase 7) e limpeza do legado (Fase 9) | A fazer |
+| 3d | Processos judiciais (DataJud): `fin.processo_judicial`, extrator, carga e dossiê, sem acervo | Em andamento (branch `refactor/db-entrega-3d-processos`) |
+| 3e | Novo ETL (Fase 7), corte da API (Fase 8) e limpeza do legado (Fase 9) | A fazer |
 
 ### Entrega 3a — economia e Executivo no banco (2026-10-16)
 
@@ -107,11 +108,27 @@ Este documento é um plano, não uma implementação. Nenhuma tabela ou código 
 **Ao aplicar esta branch num banco que já rodou a 0031 antiga:** a 0031 foi editada antes de qualquer deploy (ela não está em `main`), então bancos de desenvolvimento precisam ser recriados com `alembic downgrade 0030 && alembic upgrade head` e a carga rodada de novo (`run_etl --load-economia`).
 
 **Fica para a 3d**
-- Processos judiciais (`fin.processo_judicial`): o acervo atual foi transcrito à mão e não é verificado contra os tribunais (D7). Entra com a fonte oficial (DataJud) no novo ETL; até lá a tabela legada continua só alimentada com autorização explícita.
+- Processos judiciais: entregues na 3d (estrutura, sem acervo; ver abaixo).
 - Novo ETL (Fase 7) e remoção das tabelas legadas (Fase 9, depois de duas semanas de observação).
 - Unificação de pessoas duplicadas: é ela que vincula as emendas dos 68 nomes ambíguos e as doações de Bolsonaro e Temer.
 
 **Deploy:** o script de deploy já roda `carregar_tudo`; a migration 0031 e a carga de finanças entram sozinhas. A API perde a montagem de `./etl/data`, então o `docker compose up` recria o contêiner do backend. **Rollback:** se a verificação de saúde falhar, o script volta a imagem anterior com o `docker-compose.yml` novo (sem o volume `/etl_data`); a imagem da 3b lê CEAP e emendas de arquivo e, sem o volume, essas rotas respondem vazias sem erro. Se isso acontecer, restaure o volume no compose do commit anterior ou corrija para frente.
+
+### Entrega 3d — processos judiciais (DataJud)
+
+**Decisão sobre a fonte (D7):** o DataJud (CNJ) só consulta por número de processo e não expõe as partes, então ele nunca descobre os processos de uma pessoa. O acervo que existia (`REGISTROS_PROCESSUAIS_NOTORIOS`, números, ementas e desfechos de pessoas reais transcritos à mão e nunca conferidos nos tribunais) foi removido junto com `processos_loader.py` e a opção `--allow-unverified-legal`. As certidões do TSE do `fin` não servem de ponte: são 4 registros de candidatura (2006 e 2010) cujo número de processo (`6527`, 17 dígitos) não tem o formato CNJ. Resultado: **a tabela nasce vazia** e só recebe um processo quando ele vier de uma fonte oficial que ligue processo e pessoa.
+
+**Como entra um processo:** `etl/data/processed/processos_curados.json` é uma lista de entradas (`nome_civil`/`nome_eleitoral`/`camara_id`/`senado_id`, `numero_processo` no formato CNJ e `link_comprovacao`, o link `http(s)` da fonte oficial que liga o processo à pessoa). `python -m etl.run_etl --processos` (`etl/extractors/processos_extractor.py`) valida o número (formato exato ASCII e dígitos verificadores, módulo 97 da Resolução CNJ nº 65/2008), consulta o DataJud e grava `processos_judiciais.json`; só extrai, e `--load-economia` carrega o arquivo na carga `processos` do `fin` (uma das estáticas). A pessoa é resolvida pelo mesmo `ResolvedorDePessoas`, sem palpite; texto livre passa pelo saneamento de CPF (D3), preservando o nome oficial (`1ª Vara`, que a normalização do detector viraria `1a`).
+
+**A curadoria é a fonte de verdade.** O arquivo gerado reflete exatamente o que ela contém e o DataJud confirma, e fica de fora (e é contado) o processo com número inválido, link que não é `http(s)`, que o DataJud não tem (`nao_encontrados`), de documento malformado, sem classe oficial (`sem_classe`, a classe nunca é inventada), sob sigilo (`sigilosos`: `nivelSigilo` diferente de zero ou ilegível) ou cujo documento devolvido não é o número pedido (`divergentes`). Uma curadoria válida e vazia grava `[]`, e a carga trata `[]` como "limpar a tabela": é o caminho para retirar um vínculo errado do dossiê. Arquivo ausente, de formato inválido, ou com registros dos quais nenhum serve (número inválido, ninguém se resolve, sem proveniência) não apaga nada, e a guarda contra encolhimento vale (esvaziar 10 processos ou mais exige `LEGISDATA_ACEITAR_ENCOLHIMENTO=1`).
+
+**Falha de rede não apaga processo.** `DataJudClient.consultar_processo` devolve `None` só quando todos os tribunais consultados responderam e nenhum tem o processo; 429 esgotado, HTTP diferente de 200, timeout, corpo ilegível ou hit sem documento levantam `ErroDoDataJud`, que o extrator conta como `erros` e que faz `extrair` abortar SEM gravar (o arquivo anterior fica e a etapa falha para o cron registrar). "Não encontrado" fica em cache só por `CACHE_NEGATIVO_DIAS` (7), porque o tribunal pode indexar o processo depois; o achado não expira. O mapa de tribunais tinha 25/26 trocados (Sergipe e São Paulo): os processos do TJSP (`8.26`) eram consultados no TJSE; corrigido, e a Justiça Militar de SP (`9.26`) também.
+
+**`fin.processo_judicial`** (migração 0032): `numero_cnj` (formato CNJ, com `CHECK`), tribunal, grau, classe (obrigatória e não vazia), assuntos (sem elemento nulo), órgão julgador, datas de ajuizamento e do último movimento, `total_movimentacoes` (>= 0), `vinculo_url` (obrigatório, `http(s)://` sem espaços), fonte `DATAJUD`; único por `(pessoa_id, numero_cnj)`. O que o DataJud não devolve fica nulo. A 0032 foi editada antes de qualquer deploy (não está em `main`): bancos de desenvolvimento que já a aplicaram precisam de `alembic downgrade 0031 && alembic upgrade head`.
+
+**Dossiê:** `_enrich_judicial_records` lê `fin.processo_judicial` e `fin.certidao`, não mais `public.processos_judiciais` (que fica até a Fase 9). A flag legada `politicos.possuiProcessosDeclarados` deixou de contar (veio do acervo manual e, sem processo para mostrar, o selo não teria o que comprovar): `ficha_limpa.possui_processos_declarados` e `perfil.possui_processos_declarados` vêm do que existe no `fin` (processo localizado ou certidão positiva). A certidão positiva do TSE aparece em `processos_detalhados` junto dos processos do DataJud (antes só aparecia na ausência de processo detalhado). Não há desfecho inferido (presunção de inocência): `situacao_juridica` mostra só "Último movimento registrado no DataJud: ..." e, sem dado, o texto é "n/d". O rótulo "Processos Declarados" significa "há processo ou certidão positiva ligado à pessoa por fonte oficial"; a curadoria não guarda o papel da pessoa no processo. O contrato do frontend não mudou.
+
+**Para a Fase 7 e a 9:** o `DataJudClient` ainda usa `requests` direto (a regra de ETL pede `HttpClient`); migrar quando o conector do DataJud virar um `Conector` do novo ETL. `backend/app/main.py` ainda recria a tabela legada `processos_judiciais` no `CREATE TABLE IF NOT EXISTS` do boot; some junto com ela na Fase 9.
 
 ### Entrega 2b — cobertura de proposições e de cadeiras (2026-10-15)
 

@@ -228,7 +228,7 @@ um_comando() { # roda um comando Python no contêiner da imagem nova, na rede do
 #     modo "completa":    nenhuma das duas fontes está nesse caso: semeia tudo dos arquivos do git;
 #     modo "sem_emendas": só as emendas estão: semeia a CEAP e as estáticas, sem tocar nas emendas;
 #     modo "sem_ceap":    só a CEAP está: semeia as emendas e as estáticas, sem tocar na CEAP;
-#     modo "estaticas":   recarrega só remuneração, patrimônio, doações e certidões (um arquivo ou o código mudou);
+#     modo "estaticas":   recarrega só remuneração, patrimônio, doações, certidões e processos (um arquivo ou o código mudou);
 #     modo "nenhuma":     nada mudou, mantém o fin;
 #     refrescar 1:        o commit mudou a extração/carga de CEAP e emendas (ou o fin acabou de ser semeado do git): vale
 #                         rodar a atualização diária já, para o fin não esperar até a madrugada.
@@ -243,6 +243,7 @@ decidir_financas() {
   local estaticas=(
     etl/data/processed/remuneracao_parlamentares.json etl/data/processed/declaracoes_patrimonio.json
     etl/data/processed/tse_doacoes_campanha.json etl/data/processed/certidoes_tse.json
+    etl/data/processed/processos_judiciais.json
     etl/pipelines/financas_loader.py etl/pipelines/loader_helpers.py etl/pipelines/semeadura_das_financas.py
     etl/pipelines/pessoa_resolver.py etl/pipelines/carga_economica.py etl/config.py etl/utils backend/alembic/versions
   )
@@ -313,7 +314,7 @@ if [[ "$TEM_ECO" == "t" && -f "$RAIZ/etl/pipelines/carga_economica.py" ]]; then
     completa) log "finanças: fin sem dados ou ainda sem nenhuma fonte do timer; semeando tudo dos arquivos do git" ;;
     sem_emendas) log "finanças: as emendas já são do timer; semeio a CEAP e recarrego as estáticas" ;;
     sem_ceap) log "finanças: a CEAP já é do timer; semeio as emendas e recarrego as estáticas" ;;
-    estaticas) log "finanças: recarrego remuneração, patrimônio, doações e certidões; CEAP e emendas ficam como a atualização diária deixou" ;;
+    estaticas) log "finanças: recarrego remuneração, patrimônio, doações, certidões e processos; CEAP e emendas ficam como a atualização diária deixou" ;;
     *) log "finanças: este commit não mudou os arquivos nem o código da carga; mantenho o fin atual" ;;
   esac
   SAIDA_CARGA="$(um_comando python -c "

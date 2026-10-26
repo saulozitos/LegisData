@@ -17,12 +17,11 @@ from app.models import (
     PartyAffiliation,
     PoliticalParty,
     Politician,
-    ProcessoJudicial,
 )
 from app.models.leg import Autoria, Proposicao, Votacao, Voto
 from app.services import financas_service
 from app.services.basometro import calcular_basometro
-from app.services.financas_service import Certidao
+from app.services.financas_service import Certidao, Processo
 from app.services.ialp_pesos import carregar_pesos_ialp
 from app.services.ialp_pontos import pontos_ialp_pessoa
 from app.services.presidencia_service import listar_presidentes, periodo_do_mandato, presidente_por_referencia
@@ -528,59 +527,57 @@ def _resolve_politician(db: Session, politician_id: str) -> Politician:
     raise HTTPException(status_code=404, detail=f"Político '{politician_id}' não encontrado.")
 
 
-def _enrich_judicial_records(pol: Politician, certidoes_db: List[Certidao], db: Session) -> Dict[str, Any]:
+def _processo_detalhado(p: Processo) -> Dict[str, Any]:
+    """Processo do DataJud no contrato do Raio-X: sem desfecho inferido, só o último movimento que o tribunal registrou."""
+    if p.ultimo_movimento:
+        quando = f" ({p.data_ultimo_movimento})" if p.data_ultimo_movimento else ""
+        situacao = f"Último movimento registrado no DataJud: {p.ultimo_movimento}{quando}."
+    else:
+        situacao = "Sem movimentação registrada no DataJud."
+    return {
+        "numero_processo": p.numero_processo,
+        "tribunal": p.tribunal or "n/d",
+        "data_processo": p.data_processo or "n/d",
+        "classe_assunto": p.classe_assunto,
+        "descricao": f"Órgão julgador: {p.orgao_julgador}" if p.orgao_julgador else "n/d",
+        "situacao_juridica": situacao,
+        "link_comprovacao": p.link_comprovacao,
+        "status_resumo": f"DataJud · {p.grau}" if p.grau else "DataJud",
+    }
+
+
+def _enrich_judicial_records(certidoes_db: List[Certidao], processos_db: List[Processo]) -> Dict[str, Any]:
     """
-    Consolida dados judiciais a partir de `processos_judiciais` e `certidoes_judiciais`.
-    Campos ausentes são devolvidos como None: nenhum número de processo, data ou código é inventado.
+    Consolida dados judiciais a partir de `fin.processo_judicial` (DataJud) e `fin.certidao` (TSE).
+    Campos ausentes são devolvidos como None: nenhum número de processo, data ou código é inventado. A flag legada
+    `politicos.possuiProcessosDeclarados` não conta: ela foi copiada de um acervo transcrito à mão (D7) e, sem o processo
+    para mostrar, o selo "Processos Declarados" não teria o que comprovar.
     """
-    processos_db = (
-        db.query(ProcessoJudicial)
-        .filter(ProcessoJudicial.politician_id == pol.id)
-        .order_by(desc(ProcessoJudicial.process_date))
-        .all()
-    )
-    processos_detalhados: List[Dict[str, Any]] = [
-        {
-            "numero_processo": p.process_number,
-            "tribunal": p.court_agency,
-            "data_processo": p.process_date,
-            "classe_assunto": p.case_class,
-            "descricao": p.description,
-            "situacao_juridica": p.legal_status,
-            "link_comprovacao": p.proof_url,
-            "status_resumo": p.status_summary,
-        }
-        for p in processos_db
-    ]
+    processos_detalhados: List[Dict[str, Any]] = [_processo_detalhado(p) for p in processos_db]
 
     def _is_positive(cert: Certidao) -> bool:
         status_clean = (cert.status or "").lower()
         return "positiva" in status_clean or "declarada" in status_clean
 
-    # Certidão positiva/declarada registrada também significa que há processos, mesmo que o sinalizador esteja desligado
-    possui_processos = (
-        len(processos_detalhados) > 0
-        or bool(pol.possui_processos_declarados)
-        or any(_is_positive(c) for c in certidoes_db)
-    )
+    # Processo localizado ou certidão positiva/declarada registrada significa que há processos
+    possui_processos = len(processos_detalhados) > 0 or any(_is_positive(c) for c in certidoes_db)
 
-    # Sinalizado como positivo mas sem detalhamento individual: usa apenas o que a certidão realmente registra
-    if possui_processos and not processos_detalhados:
-        for c in certidoes_db:
-            status_clean = (c.status or "").lower()
-            if "positiva" in status_clean or "declarada" in status_clean:
-                processos_detalhados.append(
-                    {
-                        "numero_processo": c.process_number,
-                        "tribunal": c.court_agency,
-                        "data_processo": c.issue_date,
-                        "classe_assunto": c.certificate_type,
-                        "descricao": c.details,
-                        "situacao_juridica": None,
-                        "link_comprovacao": c.proof_url,
-                        "status_resumo": "Declarado no TSE",
-                    }
-                )
+    # A certidão positiva entra na lista com o que ela realmente registra, junto dos processos do DataJud (os dois
+    # dizem coisas diferentes: o TSE declara o registro, o DataJud traz o processo)
+    for c in certidoes_db:
+        if _is_positive(c):
+            processos_detalhados.append(
+                {
+                    "numero_processo": c.process_number,
+                    "tribunal": c.court_agency,
+                    "data_processo": c.issue_date,
+                    "classe_assunto": c.certificate_type,
+                    "descricao": c.details,
+                    "situacao_juridica": None,
+                    "link_comprovacao": c.proof_url,
+                    "status_resumo": "Declarado no TSE",
+                }
+            )
 
     certidoes_lista = []
     orgaos_declarados = []
@@ -1125,7 +1122,9 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     emendas_parlamentares = financas_service.emendas_do_parlamentar(db, pessoas) or financas_service.vazio_emendas()
 
     # J. Raio-X Judicial e Ficha Limpa
-    ficha_limpa = _enrich_judicial_records(pol, financas_service.certidoes(db, pessoas), db)
+    ficha_limpa = _enrich_judicial_records(
+        financas_service.certidoes(db, pessoas), financas_service.processos(db, pessoas)
+    )
 
     # K. Financiamento de Campanha (Doações Eleitorais TSE) — o CPF de doador pessoa física já vem mascarado do TSE
     doacoes_db = financas_service.doacoes_de_campanha(db, pessoas)
@@ -1340,7 +1339,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             "redes_sociais": pol.social_links,
             "camara_id": pol.camara_id,
             "senado_id": pol.senado_id,
-            "possui_processos_declarados": pol.possui_processos_declarados,
+            "possui_processos_declarados": ficha_limpa["possui_processos_declarados"],
         },
         "trajetoria_mandatos": mandatos_list,
         "filiacoes_partidarias": filiacoes_list,
@@ -1417,7 +1416,10 @@ def get_politician_emendas(politician_id: str, db: Session = Depends(get_db)):
 def get_politician_certidoes(politician_id: str, db: Session = Depends(get_db)):
     """Retorna as certidões judiciais e status perante a Lei da Ficha Limpa."""
     pol = _resolve_politician(db, politician_id)
-    ficha_data = _enrich_judicial_records(pol, financas_service.certidoes(db, _pessoas_financas(db, pol)), db)
+    pessoas = _pessoas_financas(db, pol)
+    ficha_data = _enrich_judicial_records(
+        financas_service.certidoes(db, pessoas), financas_service.processos(db, pessoas)
+    )
     return {"politico_id": str(pol.id), "nome": pol.electoral_name, **ficha_data}
 
 

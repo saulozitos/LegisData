@@ -666,3 +666,56 @@ def certidoes(db: Session, pessoas: Sequence[int]) -> List[Certidao]:
         {"ids": list(pessoas)},
     ).all()
     return [Certidao(r.id, r.orgao, r.tipo, r.situacao, r.detalhes, r.numero_processo) for r in linhas]
+
+
+@dataclass(frozen=True)
+class Processo:
+    """
+    Linha de `fin.processo_judicial` já com os nomes que o Raio-X Judicial usa. Os metadados vêm do DataJud (CNJ) e o
+    vínculo com a pessoa vem do link da fonte oficial da curadoria. Nada aqui diz como o processo terminou: só o último
+    movimento que o tribunal registrou (presunção de inocência).
+    """
+
+    numero_processo: str
+    tribunal: Optional[str]
+    grau: Optional[str]
+    data_processo: Optional[str]
+    classe_assunto: str
+    orgao_julgador: Optional[str]
+    ultimo_movimento: Optional[str]
+    data_ultimo_movimento: Optional[str]
+    link_comprovacao: str
+
+
+def _classe_e_assuntos(classe: str, assuntos: Optional[Sequence[Optional[str]]]) -> str:
+    """ "Classe / Assunto 1, Assunto 2"; um elemento NULL do `text[]` (o CHECK não o impede) é ignorado, não quebra o dossiê."""
+    nomes = [a for a in (assuntos or []) if a]
+    return f"{classe} / {', '.join(nomes)}" if nomes else classe
+
+
+def processos(db: Session, pessoas: Sequence[int]) -> List[Processo]:
+    if not pessoas:
+        return []
+    linhas = db.execute(
+        text(
+            "SELECT DISTINCT ON (numero_cnj) numero_cnj, tribunal, grau, classe, assuntos, orgao_julgador, "
+            "data_ajuizamento, ultimo_movimento, data_ultimo_movimento, vinculo_url FROM fin.processo_judicial "
+            "WHERE pessoa_id = ANY(:ids) ORDER BY numero_cnj, data_ultimo_movimento DESC NULLS LAST, id"
+        ),
+        {"ids": list(pessoas)},
+    ).all()
+    achados = [
+        Processo(
+            numero_processo=r.numero_cnj,
+            tribunal=r.tribunal,
+            grau=r.grau,
+            data_processo=r.data_ajuizamento.isoformat() if r.data_ajuizamento else None,
+            classe_assunto=_classe_e_assuntos(r.classe, r.assuntos),
+            orgao_julgador=r.orgao_julgador,
+            ultimo_movimento=r.ultimo_movimento,
+            data_ultimo_movimento=r.data_ultimo_movimento.isoformat() if r.data_ultimo_movimento else None,
+            link_comprovacao=r.vinculo_url,
+        )
+        for r in linhas
+    ]
+    return sorted(achados, key=lambda p: p.data_processo or "", reverse=True)

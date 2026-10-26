@@ -54,7 +54,7 @@ CARGAS: Tuple[Tuple[str, str, str, Optional[str]], ...] = (
 #   completa    - o git semeia CEAP, emendas e as estáticas;
 #   sem_emendas - o git semeia a CEAP e as estáticas (as emendas já são do timer);
 #   sem_ceap    - o git semeia as emendas e as estáticas (a CEAP já é do timer);
-#   estaticas   - só remuneração, patrimônio, doações e certidões;
+#   estaticas   - só remuneração, patrimônio, doações, certidões e processos;
 #   nenhuma     - nada de finanças.
 FINANCAS_POR_MODO: Dict[str, Optional[Tuple[str, ...]]] = {
     "completa": None,

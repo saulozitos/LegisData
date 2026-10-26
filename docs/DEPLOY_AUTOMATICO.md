@@ -22,7 +22,7 @@ Todo commit que entra na `main` e passa no CI é implantado sozinho em https://l
    4. Carga das séries econômicas, dos mandatos presidenciais, da composição do Congresso, da PNAD e das finanças
       (`economia_loader`, `presidencia_loader`, `composicao_loader`, `pnad_loader` e, das finanças, só o que a função
       `decidir_financas` manda: tudo se o `fin` está vazio ou se o timer ainda não assumiu nenhuma fonte; só a CEAP
-      ou só as emendas, conforme a que o timer ainda não assumiu; remuneração, patrimônio, doações e certidões se o
+      ou só as emendas, conforme a que o timer ainda não assumiu; remuneração, patrimônio, doações, certidões e processos se o
       commit mudou os arquivos ou o código delas; nada caso contrário. Uma fonte que o timer já assumiu nunca volta ao
       retrato do git), se o schema `eco` já existe.
       São idempotentes e rodam por `etl.pipelines.carga_economica.carregar_tudo` (a mesma função do
@@ -91,7 +91,7 @@ ambiente 600; o `Settings` do backend monta a URL e codifica a senha). O que ele
 3. Só as fontes **gravadas** são recarregadas no `fin` (`financas_loader.carregar(chaves=...)`), com a proteção contra
    encolhimento e os erros do Postgres saneados. Nunca se recarrega uma fonte a partir de um arquivo que a extração não
    renovou, porque depois de um deploy esse arquivo é o retrato antigo do git. Se alguma fonte falhou, a execução termina
-   com erro (o `systemd` registra) depois de recarregar a outra. Remuneração, patrimônio, doações e certidões não entram.
+   com erro (o `systemd` registra) depois de recarregar a outra. Remuneração, patrimônio, doações, certidões e processos não entram.
 
 O script usa o mesmo lock do deploy (`~/.legisdata-deploy/deploy.lock`), esperando até 30 minutos, e o pipeline tem um lock
 próprio (`etl/data/.financas.lock`) contra duas atualizações ao mesmo tempo (o timer e o `make daily`, por exemplo). Fora do
@@ -118,8 +118,8 @@ recusa a execução com uma mensagem clara.
   deploy volta a semear do git em silêncio (cerca de 2 linhas por dia). Por isso ela volta junto com um `pg_restore` de dump antigo, some se
   a carga falhou (o cache de extração não serve: existe mesmo quando a carga falhou) e não depende de arquivo em disco
   (`git clean -x` não apaga nada). Cada fonte é uma transação: a CEAP entra e fica assumida mesmo que as emendas falhem.
-  `run_etl --ceap --load-economia` bem-sucedido também registra as duas. Recarrega só remuneração, patrimônio, doações e
-  certidões, e apenas se o commit mudou os arquivos delas, o código da carga, `etl/utils` ou as migrações;
+  `run_etl --ceap --load-economia` bem-sucedido também registra as duas. Recarrega só remuneração, patrimônio, doações,
+  certidões e processos, e apenas se o commit mudou os arquivos delas, o código da carga, `etl/utils` ou as migrações;
 - se o commit mudou a extração ou a carga de CEAP e emendas (qualquer módulo `etl` que elas importam: um teste confere
   as listas de `decidir_financas` contra as importações), o deploy dispara `legisdata-financas.service` na hora (sem
   esperar a madrugada), quando a unit está instalada. Sem a unit, o log do deploy avisa e registra o pedido em

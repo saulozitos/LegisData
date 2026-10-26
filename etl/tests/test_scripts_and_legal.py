@@ -1,4 +1,4 @@
-"""Scripts de saneamento, carga de processos (gated) e cargas sintéticas de presença/remuneração."""
+"""Scripts de saneamento e cargas sintéticas de presença/remuneração."""
 
 from datetime import date
 
@@ -6,13 +6,11 @@ import pytest
 from app.models import (
     Base,
     Politician,
-    ProcessoJudicial,
     Proposition,
 )
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from etl.extractors.processos_loader import chave_registro, populate_processos_judiciais
 from etl.scripts.diagnose_anomalies import nome_aparece
 from etl.scripts.fix_author_associations import sanitize_all_proposition_authors
 
@@ -90,23 +88,3 @@ def test_diagnostico_ignora_nome_vazio_e_acentos():
     # suspeitos, não para decidir vínculos. O vínculo em si é decidido pelo AuthorResolver (igualdade exata).
     assert nome_aparece("Dr. Flávio", "Flávio Dino")
     assert not nome_aparece("Eduardo Bolsonaro", "Flávio Dino")
-
-
-def test_chave_registro_por_igualdade_exata():
-    assert chave_registro("Lula (Lula 3)", "Luiz Inácio Lula da Silva") == "lula"
-    assert chave_registro("Lula da Fonte", "Lula da Fonte") is None
-    assert chave_registro("Eduardo Bolsonaro", None) == "eduardo_bolsonaro"
-    assert chave_registro("Moroni", "Moroni da Silva") is None  # "moro" in "moroni" não casa mais
-    assert chave_registro("Jairo Souza", None) is None
-
-
-def test_processos_so_com_autorizacao_explicita(sessao):
-    politico(sessao, "Jair Bolsonaro", "Jair Messias Bolsonaro")
-    sessao.commit()
-    assert populate_processos_judiciais(sessao) == 0
-    assert sessao.query(ProcessoJudicial).count() == 0
-    inseridos = populate_processos_judiciais(sessao, allow_unverified=True)
-    assert inseridos > 0
-    # idempotente: segunda execução substitui os do político, não duplica
-    assert populate_processos_judiciais(sessao, allow_unverified=True) == inseridos
-    assert sessao.query(ProcessoJudicial).count() == inseridos

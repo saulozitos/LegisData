@@ -313,6 +313,7 @@ def repo_de_decisao(tmp_path):
         "etl/data/processed/declaracoes_patrimonio.json": "[]",
         "etl/data/processed/tse_doacoes_campanha.json": "[]",
         "etl/data/processed/certidoes_tse.json": "[]",
+        "etl/data/processed/processos_judiciais.json": "[]",
         "etl/pipelines/financas_loader.py": "a",
         "etl/pipelines/loader_helpers.py": "a",
         "etl/pipelines/pessoa_resolver.py": "a",
@@ -376,6 +377,9 @@ def _decidir(
         ({"etl/data/processed/declaracoes_patrimonio.json": '[{"x":1}]'}, "estaticas 0"),
         ({"etl/data/processed/tse_doacoes_campanha.json": '[{"x":1}]'}, "estaticas 0"),
         ({"etl/data/processed/certidoes_tse.json": '[{"x":1}]'}, "estaticas 0"),
+        ({"etl/data/processed/processos_judiciais.json": '[{"x":1}]'}, "estaticas 0"),
+        # a curadoria é só a entrada do extrator (manual): mexer nela não recarrega o fin; o arquivo gerado é que vale
+        ({"etl/data/processed/processos_curados.json": '[{"x":1}]'}, "nenhuma 0"),
         ({"etl/pipelines/financas_loader.py": "b"}, "estaticas 1"),  # código da carga: estáticas e atualização diária
         ({"etl/pipelines/loader_helpers.py": "b"}, "estaticas 1"),
         ({"etl/pipelines/pessoa_resolver.py": "b"}, "estaticas 1"),

@@ -11,7 +11,7 @@ import logging
 import os
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -24,7 +24,20 @@ logger = logging.getLogger("DataJudClient")
 
 DEFAULT_API_KEY = "ApiKey cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw=="
 DATAJUD_BASE_URL = "https://api-publica.datajud.cnj.jus.br"
+# "Não encontrado" só vale por este tempo: o tribunal pode indexar o processo depois, e um miss guardado para sempre o
+# esconderia até alguém apagar o cache à mão. O achado (cache positivo) não expira.
+CACHE_NEGATIVO_DIAS = 7
 
+
+class ErroDoDataJud(RuntimeError):
+    """
+    O DataJud não deu uma resposta conclusiva (429 esgotado, HTTP diferente de 200, timeout, corpo ilegível). Não é "o
+    processo não existe": quem trata os dois como o mesmo caso apaga processos reais por causa de uma falha de rede.
+    """
+
+
+# Código do tribunal (TR) da Resolução CNJ nº 65/2008 para a Justiça Estadual (J=8) e a Eleitoral (J=6): ordem alfabética da
+# sigla da UF, então 25 é Sergipe e 26 é São Paulo (a tabela estava com os dois trocados e mandava os processos do TJSP ao TJSE).
 UF_CODE_MAP = {
     "01": "ac",
     "02": "al",
@@ -50,8 +63,8 @@ UF_CODE_MAP = {
     "22": "ro",
     "23": "rr",
     "24": "sc",
-    "25": "sp",
-    "26": "se",
+    "25": "se",
+    "26": "sp",
     "27": "to",
 }
 
@@ -142,7 +155,7 @@ def deduzir_aliases_datajud(parsed_cnj: Dict[str, str]) -> List[str]:
             aliases.append("api_publica_tjmmg")
         elif tr == "21":
             aliases.append("api_publica_tjmrs")
-        elif tr == "25":
+        elif tr == "26":  # mesma numeração por UF da Justiça Estadual: 13 MG, 21 RS, 26 SP
             aliases.append("api_publica_tjmsp")
 
     return aliases
@@ -176,6 +189,16 @@ class DataJudClient:
     def _cache_path(self, clean_number: str, alias: str) -> Path:
         return self.raw_dir / alias / f"{clean_number}.json"
 
+    @staticmethod
+    def _miss_vigente(conteudo: Dict[str, Any]) -> bool:
+        """O "não encontrado" guardado ainda vale (tem menos de CACHE_NEGATIVO_DIAS); data ilegível conta como vencido."""
+        try:
+            return datetime.now() - datetime.fromisoformat(str(conteudo.get("fetched_at"))) < timedelta(
+                days=CACHE_NEGATIVO_DIAS
+            )
+        except ValueError:
+            return False
+
     def consultar_processo(
         self,
         numero_processo: str,
@@ -183,8 +206,10 @@ class DataJudClient:
         usar_cache: bool = True,
     ) -> Optional[Dict[str, Any]]:
         """
-        Consulta um processo no DataJud e retorna o primeiro documento (_source) encontrado.
-        Armazena em cache atômico para não repetir requisições onerosas à base nacional.
+        Consulta um processo no DataJud e retorna o primeiro documento (_source) encontrado, ou None quando TODOS os
+        tribunais consultados responderam e nenhum o tem. Se algum não deu resposta conclusiva e o processo não apareceu
+        em outro, levanta `ErroDoDataJud` (inconclusivo, não "inexistente"). Achado e "não encontrado" recente ficam
+        em cache atômico para não repetir requisições onerosas à base nacional.
         """
         parsed = parse_cnj_parts(numero_processo)
         if not parsed:
@@ -193,16 +218,18 @@ class DataJudClient:
 
         limpo = parsed["limpo"]
         aliases = [alias_forcado] if alias_forcado else deduzir_aliases_datajud(parsed)
+        inconclusivo: List[str] = []
 
         for alias in aliases:
             caminho_cache = self._cache_path(limpo, alias)
             if usar_cache and caminho_cache.exists():
                 try:
                     conteudo = json.loads(caminho_cache.read_text(encoding="utf-8"))
-                    if conteudo.get("found"):
-                        return conteudo.get("source")
-                    continue
-                except (OSError, json.JSONDecodeError):
+                    if conteudo.get("found") and isinstance(conteudo.get("source"), dict):
+                        return conteudo["source"]
+                    if not conteudo.get("found") and self._miss_vigente(conteudo):
+                        continue
+                except (OSError, ValueError, AttributeError):
                     pass
 
             url = f"{self.base_url}/{alias}/_search"
@@ -217,66 +244,89 @@ class DataJudClient:
                         time.sleep(wait)
                         continue
                     if resp.status_code != 200:
-                        logger.debug("DataJud %s HTTP %s: %s", alias, resp.status_code, resp.text[:200])
+                        logger.warning("DataJud %s HTTP %s: %s", alias, resp.status_code, resp.text[:200])
+                        inconclusivo.append(alias)
                         break
 
-                    data = resp.json()
-                    hits = (data.get("hits") or {}).get("hits") or []
+                    hits = ((resp.json() or {}).get("hits") or {}).get("hits") or []
                     if hits:
-                        source = hits[0].get("_source") or {}
+                        source = hits[0].get("_source")
+                        if not isinstance(source, dict) or not source:
+                            inconclusivo.append(alias)
+                            break
                         atomic_write_json(
                             caminho_cache,
                             {"found": True, "fetched_at": datetime.now().isoformat(), "alias": alias, "source": source},
                         )
                         logger.info("DataJud: processo %s localizado com sucesso em %s", parsed["formatado"], alias)
                         return source
-                    else:
-                        atomic_write_json(
-                            caminho_cache,
-                            {"found": False, "fetched_at": datetime.now().isoformat(), "alias": alias},
-                        )
+                    atomic_write_json(
+                        caminho_cache,
+                        {"found": False, "fetched_at": datetime.now().isoformat(), "alias": alias},
+                    )
                     break
-                except (requests.RequestException, TimeoutError) as exc:
+                except (requests.RequestException, TimeoutError, ValueError, AttributeError) as exc:
                     logger.warning("Erro de requisição DataJud (%s, tentativa %d): %s", alias, tentativa, exc)
                     time.sleep(tentativa * 3.0)
+            else:  # as três tentativas terminaram em 429 ou erro de rede
+                inconclusivo.append(alias)
 
+        if inconclusivo:
+            raise ErroDoDataJud(
+                f"DataJud sem resposta conclusiva para {parsed['formatado']} em: {', '.join(sorted(set(inconclusivo)))}"
+            )
         return None
 
     @staticmethod
     def consolidar_resumo_processo(source: Dict[str, Any]) -> Dict[str, Any]:
-        """Extrai metadados estruturados e padronizados da resposta oficial do DataJud."""
-        classe = source.get("classe") or {}
-        assuntos = source.get("assuntos") or []
-        orgao = source.get("orgaoJulgador") or {}
-        movs = source.get("movimentos") or []
+        """
+        Extrai metadados estruturados e padronizados da resposta oficial do DataJud. Campo ausente ou de tipo inesperado
+        fica `None` (a classe também: nada é inventado); um movimento malformado é ignorado, não derruba a extração.
+        """
 
-        movs_ordenados = sorted(movs, key=lambda m: m.get("dataHora", ""), reverse=True)
+        def _dict(valor: Any) -> Dict[str, Any]:
+            return valor if isinstance(valor, dict) else {}
+
+        def _nome(valor: Any) -> Optional[str]:
+            nome = _dict(valor).get("nome")
+            return nome.strip() if isinstance(nome, str) and nome.strip() else None
+
+        classe = _dict(source.get("classe"))
+        assuntos = source.get("assuntos")
+        movs = (
+            [m for m in (source.get("movimentos") or []) if isinstance(m, dict)]
+            if isinstance(source.get("movimentos"), list)
+            else []
+        )
+
+        movs_ordenados = sorted(movs, key=lambda m: str(m.get("dataHora") or ""), reverse=True)
         ultimo_mov = movs_ordenados[0] if movs_ordenados else {}
 
-        classe_nome = classe.get("nome") or "Processo Judicial"
-        assuntos_nomes = [a.get("nome") for a in assuntos if isinstance(a, dict) and a.get("nome")]
-        assuntos_str = ", ".join(assuntos_nomes)
-        classe_assunto = f"{classe_nome} / {assuntos_str}" if assuntos_nomes else classe_nome
-
-        data_ajuizamento = source.get("dataAjuizamento")
-        if data_ajuizamento and "T" in str(data_ajuizamento):
-            data_str = str(data_ajuizamento).split("T")[0]
+        classe_nome = _nome(classe)
+        assuntos_nomes = [n for n in (_nome(a) for a in assuntos) if n] if isinstance(assuntos, list) else []
+        if classe_nome is None:
+            classe_assunto = None
         else:
-            data_str = str(data_ajuizamento or "")[:10]
+            classe_assunto = f"{classe_nome} / {', '.join(assuntos_nomes)}" if assuntos_nomes else classe_nome
+
+        data_ajuizamento = str(source.get("dataAjuizamento") or "")
+        data_str = data_ajuizamento.split("T")[0] if "T" in data_ajuizamento else data_ajuizamento[:10]
+        nome_mov = ultimo_mov.get("nome")
 
         return {
             "numero_processo": source.get("numeroProcesso"),
             "tribunal": source.get("tribunal"),
             "grau": source.get("grau"),
+            "nivel_sigilo": source.get("nivelSigilo"),
             "classe_assunto": classe_assunto,
             "classe_tpu_codigo": classe.get("codigo"),
             "classe_tpu_nome": classe_nome,
             "assuntos_tpu": assuntos_nomes,
-            "orgao_julgador": orgao.get("nome"),
+            "orgao_julgador": _nome(source.get("orgaoJulgador")),
             "data_processo": data_str,
             "total_movimentacoes": len(movs),
-            "ultimo_movimento": ultimo_mov.get("nome"),
-            "data_ultimo_movimento": (ultimo_mov.get("dataHora") or "")[:10],
+            "ultimo_movimento": nome_mov if isinstance(nome_mov, str) and nome_mov.strip() else None,
+            "data_ultimo_movimento": str(ultimo_mov.get("dataHora") or "")[:10],
             "fonte": "CNJ / DataJud (Base Nacional de Dados do Poder Judiciário)",
             "is_synthetic": False,
         }

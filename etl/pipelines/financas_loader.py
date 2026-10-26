@@ -5,7 +5,7 @@ Seis cargas independentes, todas idempotentes e ligadas a `core.pessoa` pelo `Re
 - CEAP (`despesas_ceap_2019_2026.json`): total por pessoa, ano e tipo; maiores fornecedores e quantidade de notas;
 - emendas (`emendas_parlamentares_2019_2026.json`): uma linha por emenda/localidade/função, atualizada pela chave
   natural (o `uid` público não muda entre cargas); o que saiu da fonte sai da tabela;
-- remuneração (`remuneracao_parlamentares.json`), patrimônio, doações de campanha e situação de registro do TSE.
+- remuneração (`remuneracao_parlamentares.json`), patrimônio, doações de campanha, situação de registro do TSE e processos judiciais (DataJud).
 
 Só entram registros com proveniência oficial (`fonte` presente e `is_synthetic` falso). Um arquivo ausente, sem nenhum
 registro utilizável ou que reduziria a tabela a menos da metade (arquivo truncado, resolvedor degradado) nunca apaga o
@@ -26,6 +26,7 @@ from etl.config import (  # noqa: F401 - CHAVES_* são reexportadas para quem j�
     CHAVES_ESTATICAS,
     EMENDAS_ARQUIVO,
     PROCESSED_DATA_DIR,
+    PROCESSOS_ARQUIVO,
 )
 from etl.pipelines.loader_helpers import (
     LIMITE_CEAP,
@@ -40,6 +41,7 @@ from etl.pipelines.loader_helpers import (
     ler_doacoes,
     ler_emenda,
     ler_patrimonio,
+    ler_processo,
     ler_registros_da_remuneracao,
     ler_remuneracao,
     manter_a_melhor,
@@ -72,6 +74,7 @@ FONTE_CEAP_SENADO = "SENADO_API"
 FONTE_EMENDAS = "PORTAL_TRANSPARENCIA"
 FONTE_REMUNERACAO = "CAMARA_PORTAL"
 FONTE_TSE = "TSE"
+FONTE_DATAJUD = "DATAJUD"
 
 LOTE = 5000
 
@@ -90,6 +93,7 @@ _SQL_CONTAGEM = {
     "fin.declaracao_patrimonio": "SELECT count(*) FROM fin.declaracao_patrimonio",
     "fin.doacao_campanha": "SELECT count(*) FROM fin.doacao_campanha",
     "fin.certidao": "SELECT count(*) FROM fin.certidao",
+    "fin.processo_judicial": "SELECT count(*) FROM fin.processo_judicial",
     "fin.despesa_cota_fornecedor": "SELECT count(*) FROM fin.despesa_cota_fornecedor",
     "fin.despesa_cota_resumo": "SELECT count(*) FROM fin.despesa_cota_resumo",
 }
@@ -102,6 +106,7 @@ _SQL_DELETE = {
     "fin.declaracao_patrimonio": "DELETE FROM fin.declaracao_patrimonio",
     "fin.doacao_campanha": "DELETE FROM fin.doacao_campanha",
     "fin.certidao": "DELETE FROM fin.certidao",
+    "fin.processo_judicial": "DELETE FROM fin.processo_judicial",
     "fin.despesa_cota_fornecedor": "DELETE FROM fin.despesa_cota_fornecedor",
     "fin.despesa_cota_resumo": "DELETE FROM fin.despesa_cota_resumo",
 }
@@ -652,6 +657,59 @@ def carregar_certidoes(conn: Connection, processed_dir: Path) -> Dict[str, int]:
     )
 
 
+def linhas_dos_processos(
+    ocorrencias: List[Any], resolvedor: ResolvedorDePessoas, fonte_id: int
+) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    contagem: Dict[str, int] = defaultdict(
+        int, {"sem_pessoa": 0, "sem_proveniencia": 0, "invalidas": 0, "repetidas": 0}
+    )
+    unicas: Dict[Tuple[int, str], Dict[str, Any]] = {}
+    for item in ocorrencias:
+        lido, motivo = ler_processo(item)
+        if lido is None:
+            contagem[str(motivo)] += 1
+            continue
+        pessoa = resolvedor.resolver(item).pessoa_id
+        if pessoa is None:
+            contagem["sem_pessoa"] += 1
+            continue
+        linha = {"p": pessoa, **lido, "f": fonte_id}
+        # o mesmo processo da mesma pessoa vale uma vez; fica o de último movimento mais recente (critério fixo)
+        if manter_a_melhor(
+            unicas, (pessoa, lido["numero"]), linha, ("data_movimento", "movimentacoes", "vinculo", "classe")
+        ):
+            contagem["repetidas"] += 1
+    return list(unicas.values()), contagem
+
+
+_INSERCAO_DE_PROCESSOS = (
+    "INSERT INTO fin.processo_judicial (pessoa_id, numero_cnj, tribunal, grau, classe, assuntos, orgao_julgador, "
+    "data_ajuizamento, ultimo_movimento, data_ultimo_movimento, total_movimentacoes, vinculo_url, fonte_id) "
+    "VALUES (:p, :numero, :tribunal, :grau, :classe, :assuntos, :orgao, :ajuizado, :movimento, :data_movimento, "
+    ":movimentacoes, :vinculo, :f)"
+)
+
+
+def carregar_processos(conn: Connection, processed_dir: Path) -> Dict[str, int]:
+    """
+    Ao contrário das outras cargas simples, uma lista VAZIA e válida limpa a tabela: o extrator só a grava quando a
+    curadoria (a fonte de verdade) ficou vazia ou nenhum processo se confirmou, e é o único jeito de retirar do dossiê
+    um vínculo errado. Arquivo ausente, de formato inválido, ou com registros dos quais nenhum serve, não apaga nada; e
+    a guarda contra encolhimento ainda vale (esvaziar 10 processos ou mais exige LEGISDATA_ACEITAR_ENCOLHIMENTO=1).
+    """
+    dados, recusa = _ler_arquivo(processed_dir, PROCESSOS_ARQUIVO, lambda d: isinstance(d, list))
+    if recusa is not None:
+        return recusa
+    linhas, contagem = linhas_dos_processos(dados, ResolvedorDePessoas(conn), _fontes(conn)[FONTE_DATAJUD])
+    if dados and not linhas:
+        logger.warning(
+            "Processos judiciais sem nenhum registro utilizável (%s); o banco não foi alterado.", dict(contagem)
+        )
+        return {**contagem, "processos": 0}
+    _substituir(conn, [("fin.processo_judicial", _INSERCAO_DE_PROCESSOS, linhas)])
+    return {**contagem, "processos": len(linhas)}
+
+
 CARGAS: Tuple[Tuple[str, Callable[[Connection, Path], Dict[str, int]]], ...] = (
     ("ceap", carregar_ceap),
     ("emendas", carregar_emendas),
@@ -659,6 +717,7 @@ CARGAS: Tuple[Tuple[str, Callable[[Connection, Path], Dict[str, int]]], ...] = (
     ("patrimonio", carregar_patrimonio),
     ("doacoes", carregar_doacoes),
     ("certidoes", carregar_certidoes),
+    ("processos", carregar_processos),
 )
 
 
