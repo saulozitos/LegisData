@@ -11,9 +11,12 @@ import logging
 import os
 import re
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
+from datetime import time as hora_do_dia
+from datetime import timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 
@@ -25,8 +28,66 @@ logger = logging.getLogger("DataJudClient")
 DEFAULT_API_KEY = "ApiKey cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw=="
 DATAJUD_BASE_URL = "https://api-publica.datajud.cnj.jus.br"
 # "Não encontrado" só vale por este tempo: o tribunal pode indexar o processo depois, e um miss guardado para sempre o
-# esconderia até alguém apagar o cache à mão. O achado (cache positivo) não expira.
+# esconderia até alguém apagar o cache à mão.
 CACHE_NEGATIVO_DIAS = 7
+# O achado também vence: um processo muda (um julgamento depois do primeiro registro), e um último movimento congelado no
+# cache faria o dossiê mostrar o andamento antigo como se fosse o atual. Um dia basta para repetir a extração sem martelar a API.
+CACHE_POSITIVO_DIAS = 1
+PROVENIENCIA_DATAJUD = "CNJ / DataJud (Base Nacional de Dados do Poder Judiciário)"
+
+
+def _fuso_de_brasilia():
+    """Horário de Brasília; sem a base de fusos do sistema, o deslocamento fixo de -03:00 (sem horário de verão desde 2019)."""
+    try:
+        return ZoneInfo("America/Sao_Paulo")
+    except ZoneInfoNotFoundError:
+        return timezone(timedelta(hours=-3))
+
+
+_FUSO = _fuso_de_brasilia()
+_DATA_COMPACTA = re.compile(r"([0-9]{8})([0-9]{6})?", re.ASCII)
+
+
+def _como_escrito(valor: Any) -> Optional[datetime]:
+    """
+    A data/hora do DataJud como veio: ISO (com ou sem hora, com `Z` ou deslocamento) ou compacta (`AAAAMMDD` e
+    `AAAAMMDDHHMMSS`, as duas aparecem nos tribunais). Sem fuso no texto, vale o de Brasília. Não é data: None.
+    """
+    if valor is None or isinstance(valor, (bool, float)):
+        return None
+    bruto = str(valor).strip()
+    if not bruto:
+        return None
+    try:
+        compacta = _DATA_COMPACTA.fullmatch(bruto)
+        if compacta:
+            return datetime.strptime(compacta.group(1) + (compacta.group(2) or "000000"), "%Y%m%d%H%M%S").replace(
+                tzinfo=_FUSO
+            )
+        instante = datetime.fromisoformat(bruto)
+    except ValueError:
+        return None
+    return instante if instante.tzinfo else instante.replace(tzinfo=_FUSO)
+
+
+def _dia_do_datajud(valor: Any) -> Optional[str]:
+    """
+    O dia (`AAAA-MM-DD`) no horário de Brasília, ou None quando não é data. O DataJud grava em UTC (`...Z`): `01:15Z` é
+    o dia anterior em Brasília. Meia-noite em UTC, porém, é como ele escreve uma data sem hora (`2018-10-29T00:00:00.000Z`
+    é o dia 29), então vale o dia escrito.
+    """
+    escrito = _como_escrito(valor)
+    if escrito is None:
+        return None
+    if escrito.utcoffset() == timedelta(0) and escrito.time() == hora_do_dia(0):
+        return escrito.date().isoformat()
+    return escrito.astimezone(_FUSO).date().isoformat()
+
+
+def _chave_de_instante(valor: Any) -> float:
+    """Ordem cronológica do movimento (`dataHora` ilegível vai para o fim)."""
+    escrito = _como_escrito(valor)
+    return escrito.timestamp() if escrito is not None else float("-inf")
 
 
 class ErroDoDataJud(RuntimeError):
@@ -72,7 +133,11 @@ _CNJ_RE = re.compile(r"(\d{7})-?(\d{2})\.?(\d{4})\.?(\d)\.?(\d{2})\.?(\d{4})")
 
 
 def parse_cnj_parts(numero_processo: str) -> Optional[Dict[str, str]]:
-    """Extrai os componentes da numeração única CNJ (Resolução CNJ nº 65/2008)."""
+    """
+    Extrai os componentes da numeração única CNJ (Resolução CNJ nº 65/2008). É tolerante de propósito (aceita texto em
+    volta e 20 dígitos soltos, sem conferir o dígito verificador); a validação rígida do número que entra na carga é
+    `loader_helpers.cnj_valido`, e o extrator só consulta o que ela aceitou.
+    """
     m = _CNJ_RE.search(numero_processo or "")
     if not m:
         digitos = re.sub(r"\D", "", numero_processo or "")
@@ -113,7 +178,7 @@ def deduzir_aliases_datajud(parsed_cnj: Dict[str, str]) -> List[str]:
 
     aliases: List[str] = []
     if seg == "1":
-        # STF está fora do CNJ DataJud
+        # o STF não está no DataJud: a lista fica vazia e o extrator conta o processo como sem cobertura
         pass
     elif seg == "3":
         aliases.append("api_publica_stj")
@@ -190,14 +255,26 @@ class DataJudClient:
         return self.raw_dir / alias / f"{clean_number}.json"
 
     @staticmethod
-    def _miss_vigente(conteudo: Dict[str, Any]) -> bool:
-        """O "não encontrado" guardado ainda vale (tem menos de CACHE_NEGATIVO_DIAS); data ilegível conta como vencido."""
+    def _cache_vigente(conteudo: Dict[str, Any], dias: int) -> bool:
+        """O cache tem menos de `dias`; data ilegível (ou sem fuso comparável) conta como vencido."""
         try:
-            return datetime.now() - datetime.fromisoformat(str(conteudo.get("fetched_at"))) < timedelta(
-                days=CACHE_NEGATIVO_DIAS
-            )
-        except ValueError:
+            gravado = datetime.fromisoformat(str(conteudo.get("fetched_at")))
+            return datetime.now(gravado.tzinfo) - gravado < timedelta(days=dias)
+        except (ValueError, TypeError):
             return False
+
+    @staticmethod
+    def _documento_do_numero(hits: List[Any], limpo: str) -> Optional[Dict[str, Any]]:
+        """
+        O documento a usar entre os hits: o mesmo número pode vir uma vez por grau (G1, G2, JE), e a ordem por relevância
+        da busca é arbitrária. Entre os do número pedido vale o de atualização mais recente (empate: o primeiro); sem
+        nenhum documento legível, None (o chamador trata como inconclusivo).
+        """
+        fontes = [h.get("_source") for h in hits if isinstance(h, dict)]
+        docs = [f for f in fontes if isinstance(f, dict) and f]
+        do_numero = [d for d in docs if re.sub(r"[^0-9]", "", str(d.get("numeroProcesso") or "")) == limpo]
+        candidatos = do_numero or docs
+        return max(candidatos, key=lambda d: _chave_de_instante(d.get("dataHoraUltimaAtualizacao")), default=None)
 
     def consultar_processo(
         self,
@@ -206,10 +283,11 @@ class DataJudClient:
         usar_cache: bool = True,
     ) -> Optional[Dict[str, Any]]:
         """
-        Consulta um processo no DataJud e retorna o primeiro documento (_source) encontrado, ou None quando TODOS os
+        Consulta um processo no DataJud e retorna o documento (_source) encontrado, ou None quando TODOS os
         tribunais consultados responderam e nenhum o tem. Se algum não deu resposta conclusiva e o processo não apareceu
-        em outro, levanta `ErroDoDataJud` (inconclusivo, não "inexistente"). Achado e "não encontrado" recente ficam
-        em cache atômico para não repetir requisições onerosas à base nacional.
+        em outro, levanta `ErroDoDataJud` (inconclusivo, não "inexistente"). Achado (CACHE_POSITIVO_DIAS) e "não encontrado"
+        (CACHE_NEGATIVO_DIAS) ficam em cache atômico por tempo limitado, para não repetir requisições onerosas à base
+        nacional nem congelar o andamento de um processo.
         """
         parsed = parse_cnj_parts(numero_processo)
         if not parsed:
@@ -225,9 +303,12 @@ class DataJudClient:
             if usar_cache and caminho_cache.exists():
                 try:
                     conteudo = json.loads(caminho_cache.read_text(encoding="utf-8"))
-                    if conteudo.get("found") and isinstance(conteudo.get("source"), dict):
-                        return conteudo["source"]
-                    if not conteudo.get("found") and self._miss_vigente(conteudo):
+                    if conteudo.get("found"):
+                        if isinstance(conteudo.get("source"), dict) and self._cache_vigente(
+                            conteudo, CACHE_POSITIVO_DIAS
+                        ):
+                            return conteudo["source"]
+                    elif self._cache_vigente(conteudo, CACHE_NEGATIVO_DIAS):
                         continue
                 except (OSError, ValueError, AttributeError):
                     pass
@@ -250,8 +331,8 @@ class DataJudClient:
 
                     hits = ((resp.json() or {}).get("hits") or {}).get("hits") or []
                     if hits:
-                        source = hits[0].get("_source")
-                        if not isinstance(source, dict) or not source:
+                        source = self._documento_do_numero(hits, limpo)
+                        if source is None:
                             inconclusivo.append(alias)
                             break
                         atomic_write_json(
@@ -299,7 +380,8 @@ class DataJudClient:
             else []
         )
 
-        movs_ordenados = sorted(movs, key=lambda m: str(m.get("dataHora") or ""), reverse=True)
+        # cronológica por instante (ISO e compacto se misturam; a ordem por texto errava), o mais recente primeiro
+        movs_ordenados = sorted(movs, key=lambda m: _chave_de_instante(m.get("dataHora")), reverse=True)
         ultimo_mov = movs_ordenados[0] if movs_ordenados else {}
 
         classe_nome = _nome(classe)
@@ -309,8 +391,6 @@ class DataJudClient:
         else:
             classe_assunto = f"{classe_nome} / {', '.join(assuntos_nomes)}" if assuntos_nomes else classe_nome
 
-        data_ajuizamento = str(source.get("dataAjuizamento") or "")
-        data_str = data_ajuizamento.split("T")[0] if "T" in data_ajuizamento else data_ajuizamento[:10]
         nome_mov = ultimo_mov.get("nome")
 
         return {
@@ -323,10 +403,10 @@ class DataJudClient:
             "classe_tpu_nome": classe_nome,
             "assuntos_tpu": assuntos_nomes,
             "orgao_julgador": _nome(source.get("orgaoJulgador")),
-            "data_processo": data_str,
+            "data_processo": _dia_do_datajud(source.get("dataAjuizamento")),
             "total_movimentacoes": len(movs),
             "ultimo_movimento": nome_mov if isinstance(nome_mov, str) and nome_mov.strip() else None,
-            "data_ultimo_movimento": str(ultimo_mov.get("dataHora") or "")[:10],
-            "fonte": "CNJ / DataJud (Base Nacional de Dados do Poder Judiciário)",
+            "data_ultimo_movimento": _dia_do_datajud(ultimo_mov.get("dataHora")),
+            "fonte": PROVENIENCIA_DATAJUD,
             "is_synthetic": False,
         }

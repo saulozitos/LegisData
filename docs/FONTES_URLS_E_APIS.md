@@ -136,7 +136,8 @@ Cópias em markdown das especificações oficiais, para consultar campos, parâm
   liga o processo à pessoa). `python -m etl.run_etl --processos` enriquece a curadoria e grava
   `processos_judiciais.json`, que `--load-economia` carrega em `fin.processo_judicial`. Falha de rede (429, timeout, HTTP de
   erro) aborta a extração sem gravar; processo sob sigilo (`nivelSigilo` diferente de zero) não entra; "não encontrado" fica
-  em cache por 7 dias. Os códigos de tribunal seguem a Resolução CNJ nº 65/2008 (8.25 é TJSE, 8.26 é TJSP).
+  em cache por 7 dias e o achado por 1 dia. O DataJud não tem índice do STF (J=1): processo de lá não é extraído.
+  O link da curadoria é `https` de domínio público (`.jus.br`, `.gov.br`, `.leg.br`, `.mp.br`) e sem CPF. Os códigos de tribunal seguem a Resolução CNJ nº 65/2008 (8.25 é TJSE, 8.26 é TJSP).
 - **Formato**: Requisições HTTP POST com consultas JSON no padrão Elasticsearch.
 
 #### Padrão de Numeração e Tribunais Suportados:

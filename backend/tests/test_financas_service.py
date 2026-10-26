@@ -479,7 +479,8 @@ def test_doacoes_de_campanha_traz_se_a_linha_e_agregada_e_quantos_doadores_ela_v
 
 def test_processos_do_mesmo_numero_em_dois_cadastros_da_pessoa_saem_uma_vez_com_o_movimento_mais_novo(db, pessoa):
     outro = db.execute(text("INSERT INTO core.pessoa (nome_exibicao) VALUES ('Ana (2)') RETURNING id")).scalar_one()
-    for dono, movimento, data in ((pessoa, "Distribuição", "2023-01-01"), (outro, "Conclusão", "2024-05-06")):
+    # o mais novo entra primeiro (menor id) e há um cadastro sem data de movimento: nem o id nem o NULL decidem
+    for dono, movimento, data in ((outro, "Conclusão", "2024-05-06"), (pessoa, "Distribuição", None)):
         inserir_fin(
             db,
             "processo_judicial",
@@ -488,16 +489,22 @@ def test_processos_do_mesmo_numero_em_dois_cadastros_da_pessoa_saem_uma_vez_com_
             classe="Ação Penal",
             ultimo_movimento=movimento,
             data_ultimo_movimento=data,
+            consultado_em="2026-10-26",
             vinculo_url="https://exemplo.jus.br/p",
             fonte_id=fonte_id(db, "DATAJUD"),
         )
     db.commit()
     (processo,) = fs.processos(db, [pessoa, outro])
     assert processo.ultimo_movimento == "Conclusão" and processo.data_ultimo_movimento == "2024-05-06"
+    assert processo.consultado_em == "2026-10-26"
 
 
 def test_processos_ordena_pelo_mais_recente_e_sem_pessoa_nao_consulta(db, pessoa):
-    for numero, ajuizado in (("0000001-78.2020.8.26.0100", "2020-03-04"), ("0000002-46.2021.4.03.6100", "2021-07-01")):
+    for numero, ajuizado in (
+        ("0000001-78.2020.8.26.0100", "2020-03-04"),
+        ("0000002-46.2021.4.03.6100", "2021-07-01"),
+        ("0000003-14.2022.8.26.0100", None),  # sem data de ajuizamento: vai para o fim
+    ):
         inserir_fin(
             db,
             "processo_judicial",
@@ -511,8 +518,15 @@ def test_processos_ordena_pelo_mais_recente_e_sem_pessoa_nao_consulta(db, pessoa
         )
     db.commit()
     achados = fs.processos(db, [pessoa])
-    assert [p.numero_processo for p in achados] == ["0000002-46.2021.4.03.6100", "0000001-78.2020.8.26.0100"]
-    assert achados[0].classe_assunto == "Classe / A, B" and achados[0].data_processo == "2021-07-01"
+    assert [p.numero_processo for p in achados] == [
+        "0000002-46.2021.4.03.6100",
+        "0000001-78.2020.8.26.0100",
+        "0000003-14.2022.8.26.0100",
+    ]
+    assert (
+        achados[0].classe == "Classe" and achados[0].assuntos == ("A", "B") and achados[0].data_processo == "2021-07-01"
+    )
+    assert achados[2].data_processo is None and achados[2].consultado_em is None
     assert fs.processos(db, []) == []
 
 
@@ -542,6 +556,7 @@ VALIDO = {
         ("assuntos", "{A,NULL}"),
         ("vinculo_url", "javascript:alert(1)"),
         ("vinculo_url", "ftp://exemplo.jus.br/x"),
+        ("vinculo_url", "http://exemplo.jus.br/p"),  # só https
         ("vinculo_url", "https://exemplo.jus.br/a b"),  # espaço no link
         ("vinculo_url", "http:/exemplo"),
         ("vinculo_url", "https://"),
@@ -549,7 +564,7 @@ VALIDO = {
 )
 def test_tabela_de_processos_recusa_o_que_o_check_nao_aceita(db, pessoa, coluna, valor):
     """O CHECK é a última camada: vale mesmo se alguém gravar sem passar pelo ETL (inserção manual, outra carga)."""
-    with pytest.raises(Exception, match="check"):
+    with pytest.raises(Exception, match=f"processo_judicial_{coluna}_check"):  # a constraint da coluna testada
         inserir_fin(
             db, "processo_judicial", pessoa_id=pessoa, fonte_id=fonte_id(db, "DATAJUD"), **{**VALIDO, coluna: valor}
         )
@@ -565,21 +580,20 @@ def test_tabela_de_processos_aceita_o_valido_e_o_minimo(db, pessoa):
         fonte_id=fonte_id(db, "DATAJUD"),
         numero_cnj="0000002-46.2021.4.03.6100",
         classe="Classe",
-        vinculo_url="http://exemplo.jus.br/p",
+        vinculo_url="https://exemplo.jus.br/p",
     )
     db.commit()
     assert db.execute(text("SELECT count(*) FROM fin.processo_judicial")).scalar_one() == 2
 
 
-@pytest.mark.parametrize(
-    "classe, assuntos, esperado",
-    [
-        ("Classe", ["A", "B"], "Classe / A, B"),
-        ("Classe", [], "Classe"),
-        ("Classe", None, "Classe"),
-        ("Classe", [None, "A", ""], "Classe / A"),  # elemento NULL do text[] não quebra o dossiê
-        ("Classe", [None], "Classe"),
-    ],
-)
-def test_classe_e_assuntos_ignora_elemento_nulo_do_array(classe, assuntos, esperado):
-    assert fs._classe_e_assuntos(classe, assuntos) == esperado
+def test_assunto_vazio_do_array_nao_chega_ao_dossie(db, pessoa):
+    inserir_fin(
+        db,
+        "processo_judicial",
+        pessoa_id=pessoa,
+        fonte_id=fonte_id(db, "DATAJUD"),
+        **{**VALIDO, "assuntos": '{A,"",B}'},
+    )
+    db.commit()
+    (processo,) = fs.processos(db, [pessoa])
+    assert processo.assuntos == ("A", "B")

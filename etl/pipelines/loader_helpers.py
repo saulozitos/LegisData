@@ -10,6 +10,7 @@ from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+from urllib.parse import unquote, urlsplit
 
 import pandas as pd
 from sqlalchemy.exc import DBAPIError
@@ -1097,13 +1098,33 @@ def ler_certidao(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
 # [0-9] e re.ASCII: `\d` casaria dígitos de outros alfabetos (largura total, árabe-índicos), que `int()` converte mas o CHECK
 # de `fin.processo_judicial.numero_cnj` (`[0-9]`) recusa, e a carga inteira abortaria no INSERT.
 _CNJ_FORMATADO = re.compile(r"([0-9]{7})-([0-9]{2})\.([0-9]{4})\.([0-9])\.([0-9]{2})\.([0-9]{4})", re.ASCII)
-_LINK_HTTP = re.compile(r"https?://\S+", re.ASCII)
+# ASCII imprimível sem espaço: o CHECK do banco (`[^[:space:]]`) aceita mais que isso (um espaço Unicode colado de um PDF
+# passaria no Python e abortaria a carga se a regra fosse mais frouxa aqui), então o que o ETL aceita o banco também aceita.
+_LINK_HTTPS = re.compile(r"https://[\x21-\x7e]+")
+# Domínios de órgãos públicos brasileiros: a fonte que liga o processo à pessoa tem de ser oficial (decisão D7).
+SUFIXOS_OFICIAIS = (".jus.br", ".gov.br", ".leg.br", ".mp.br")
 
 
-def link_http(valor: Any) -> Optional[str]:
-    """O link quando é `http(s)://...` sem espaços (o mesmo critério do CHECK de `vinculo_url`); senão None."""
+def link_oficial(valor: Any) -> Optional[str]:
+    """
+    O link da fonte oficial que liga o processo à pessoa, ou None. Vale `https://` de um domínio público (`.jus.br`,
+    `.gov.br`, `.leg.br`, `.mp.br`), sem credencial embutida, sem espaço e sem CPF: a consulta de um tribunal por
+    documento da parte leva o CPF na query string, e um link mascarado não comprovaria nada, então o link inteiro é
+    recusado (decisão D3), inclusive quando o CPF vem codificado (`%2E`, `%2D`). Um identificador de 10 ou 11 dígitos
+    corridos que não seja CPF também é recusado (na dúvida a curadoria escolhe outro link).
+    """
     link = texto(valor)
-    return link if link is not None and _LINK_HTTP.fullmatch(link) else None
+    if link is None or not _LINK_HTTPS.fullmatch(link):
+        return None
+    partes = urlsplit(link)
+    if "@" in partes.netloc or not (partes.hostname or "").endswith(SUFIXOS_OFICIAIS):
+        return None
+    decodificado = link
+    for _ in range(2):  # a segunda volta pega a codificação dupla (%252E)
+        decodificado = unquote(decodificado)
+        if texto_sem_cpf(decodificado) != decodificado:
+            return None
+    return link
 
 
 def cnj_valido(numero: Any) -> Optional[str]:
@@ -1122,6 +1143,21 @@ def cnj_valido(numero: Any) -> Optional[str]:
     return casou.group(0)
 
 
+def cnj_digitos(numero: Any) -> str:
+    """Só os dígitos do número do processo (o DataJud indexa e devolve o número sem pontuação)."""
+    return re.sub(r"[^0-9]", "", str(numero or ""))
+
+
+def sob_sigilo(nivel: Any) -> bool:
+    """Sigilo informado e diferente de zero. Um valor que não se lê como número também conta: na dúvida, não publica."""
+    if nivel is None or isinstance(nivel, bool):
+        return nivel is True
+    try:
+        return int(str(nivel).strip()) != 0
+    except ValueError:
+        return True
+
+
 def _data_iso(valor: Any) -> Optional[date]:
     """Data `AAAA-MM-DD` (com ou sem hora depois); formato diferente ou data impossível é None."""
     bruto = texto(valor)
@@ -1133,7 +1169,7 @@ def _data_iso(valor: Any) -> Optional[date]:
         return None
 
 
-def _texto_oficial_sem_cpf(valor: Any) -> Optional[str]:
+def texto_oficial_sem_cpf(valor: Any) -> Optional[str]:
     """
     `texto_sem_cpf` sem a normalização de compatibilidade quando nada foi retirado: o nome oficial de um órgão ("1ª Vara
     Cível") não vira "1a Vara Cível" só porque o detector de CPF lê o texto normalizado. Com CPF removido, vale o texto
@@ -1156,23 +1192,26 @@ def ler_processo(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     if not isinstance(item, dict) or not is_trusted(item):
         return None, "sem_proveniencia"
     numero = cnj_valido(item.get("numero_processo"))
-    classe = _texto_oficial_sem_cpf(item.get("classe_tpu_nome"))
-    vinculo = link_http(item.get("link_comprovacao"))
+    classe = texto_oficial_sem_cpf(item.get("classe_tpu_nome"))
+    vinculo = link_oficial(item.get("link_comprovacao"))
     if numero is None or not classe or vinculo is None:
         return None, "invalidas"
     assuntos = item.get("assuntos_tpu")
     movimentacoes = inteiro(item.get("total_movimentacoes"))
     return {
         "numero": numero,
-        "tribunal": _texto_oficial_sem_cpf(item.get("tribunal")),
-        "grau": _texto_oficial_sem_cpf(item.get("grau")),
+        "tribunal": texto_oficial_sem_cpf(item.get("tribunal")),
+        "grau": texto_oficial_sem_cpf(item.get("grau")),
         "classe": classe,
-        "assuntos": [a for a in (_texto_oficial_sem_cpf(x) for x in assuntos) if a] if isinstance(assuntos, list) else [],
-        "orgao": _texto_oficial_sem_cpf(item.get("orgao_julgador")),
+        "assuntos": (
+            [a for a in (texto_oficial_sem_cpf(x) for x in assuntos) if a] if isinstance(assuntos, list) else []
+        ),
+        "orgao": texto_oficial_sem_cpf(item.get("orgao_julgador")),
         "ajuizado": _data_iso(item.get("data_processo")),
-        "movimento": _texto_oficial_sem_cpf(item.get("ultimo_movimento")),
+        "movimento": texto_oficial_sem_cpf(item.get("ultimo_movimento")),
         "data_movimento": _data_iso(item.get("data_ultimo_movimento")),
         "movimentacoes": movimentacoes if movimentacoes is not None and movimentacoes >= 0 else None,
+        "consultado": _data_iso(item.get("consultado_em")),
         "vinculo": vinculo,
     }, None
 

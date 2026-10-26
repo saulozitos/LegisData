@@ -1,7 +1,7 @@
 from datetime import date
 
 import pytest
-from app.api.v1.politicians import _normalize_name, _processo_detalhado
+from app.api.v1.politicians import _classe_e_assuntos, _normalize_name, _processo_detalhado
 from app.core.query_utils import escape_like as _escape_like
 from app.models import (
     AttendanceRecord,
@@ -331,13 +331,14 @@ def test_name_based_certidoes_hack_is_gone_real_processes_are_shown(client, db, 
         data_ajuizamento=date(2020, 5, 1),
         ultimo_movimento="Conclusão",
         data_ultimo_movimento=date(2024, 5, 6),
+        consultado_em=date(2026, 10, 26),
         vinculo_url="https://exemplo.jus.br/p",
         fonte_id=fonte_id(db, "DATAJUD"),
     )
     db.commit()
     ficha = client.get(f"{BASE}/{seed.lula_fonte.id}").json()["ficha_limpa"]
     assert ficha["possui_processos_declarados"] is True
-    assert ficha["status_geral"] == "Processos Declarados"
+    assert ficha["status_geral"] == "Processos Vinculados"
     (processo,) = ficha["processos_detalhados"]
     assert processo == {
         "numero_processo": "0000001-78.2020.8.26.0100",
@@ -346,13 +347,13 @@ def test_name_based_certidoes_hack_is_gone_real_processes_are_shown(client, db, 
         "classe_assunto": "Ação Penal / Peculato",
         "descricao": "Órgão julgador: 1ª Vara Criminal",
         # só o que o tribunal registrou: nenhum desfecho é inferido (presunção de inocência)
-        "situacao_juridica": "Último movimento registrado no DataJud: Conclusão (2024-05-06).",
+        "situacao_juridica": "Último movimento registrado no DataJud: Conclusão (2024-05-06). Consultado em 2026-10-26.",
         "link_comprovacao": "https://exemplo.jus.br/p",
         "status_resumo": "DataJud · G1",
     }
 
 
-def test_processo_sem_movimento_nem_orgao_sai_com_n_d_e_nunca_com_desfecho_inventado(client, db, seed):
+def test_processo_sem_movimento_nem_orgao_sai_com_null_e_nunca_com_desfecho_inventado(client, db, seed):
     inserir_fin(
         db,
         "processo_judicial",
@@ -364,7 +365,8 @@ def test_processo_sem_movimento_nem_orgao_sai_com_n_d_e_nunca_com_desfecho_inven
     )
     db.commit()
     (processo,) = client.get(f"{BASE}/{seed.lula_fonte.id}").json()["ficha_limpa"]["processos_detalhados"]
-    assert processo["tribunal"] == "n/d" and processo["data_processo"] == "n/d" and processo["descricao"] == "n/d"
+    # ausente é None, como na certidão do TSE: o "n/d" é da tela, não do contrato
+    assert processo["tribunal"] is None and processo["data_processo"] is None and processo["descricao"] is None
     assert processo["situacao_juridica"] == "Sem movimentação registrada no DataJud."
     assert processo["status_resumo"] == "DataJud"
 
@@ -449,21 +451,62 @@ def test_processo_detalhado_sem_data_do_movimento_sem_assuntos_e_sem_grau():
         tribunal="TJSP",
         grau=None,
         data_processo="2020-05-01",
-        classe_assunto="Ação Penal",
+        classe="Ação Penal",
+        assuntos=(),
         orgao_julgador=None,
         ultimo_movimento="Conclusão",
         data_ultimo_movimento=None,
+        consultado_em=None,
         link_comprovacao="https://exemplo.jus.br/p",
     )
     detalhado = _processo_detalhado(Processo(**base))
     assert detalhado["situacao_juridica"] == "Último movimento registrado no DataJud: Conclusão."  # sem "(None)"
-    assert detalhado["status_resumo"] == "DataJud" and detalhado["descricao"] == "n/d"
+    assert detalhado["status_resumo"] == "DataJud" and detalhado["descricao"] is None
     assert detalhado["classe_assunto"] == "Ação Penal"
-    com_data = _processo_detalhado(Processo(**{**base, "data_ultimo_movimento": "2024-05-06", "grau": "G2"}))
+    com_data = _processo_detalhado(
+        Processo(**{**base, "data_ultimo_movimento": "2024-05-06", "grau": "G2", "consultado_em": "2026-10-26"})
+    )
     assert (
-        com_data["situacao_juridica"].endswith("Conclusão (2024-05-06).")
+        com_data["situacao_juridica"].endswith("Conclusão (2024-05-06). Consultado em 2026-10-26.")
         and com_data["status_resumo"] == "DataJud · G2"
     )
+    sem_movimento = _processo_detalhado(Processo(**{**base, "ultimo_movimento": None, "consultado_em": "2026-10-26"}))
+    assert sem_movimento["situacao_juridica"] == "Sem movimentação registrada no DataJud. Consultado em 2026-10-26."
+
+
+@pytest.mark.parametrize(
+    "classe, assuntos, esperado",
+    [
+        ("Classe", ("A", "B"), "Classe / A, B"),
+        ("Classe", (), "Classe"),
+    ],
+)
+def test_classe_e_assuntos_do_raio_x(classe, assuntos, esperado):
+    base = dict(
+        numero_processo="1", tribunal=None, grau=None, data_processo=None, orgao_julgador=None,
+        ultimo_movimento=None, data_ultimo_movimento=None, consultado_em=None, link_comprovacao="https://x.jus.br/p",
+    )  # fmt: skip
+    assert _classe_e_assuntos(Processo(classe=classe, assuntos=assuntos, **base)) == esperado
+
+
+def test_processo_e_certidao_do_tse_saem_com_as_mesmas_chaves_e_ausente_e_sempre_none(client, db, seed):
+    """Os dois tipos de item ficam em `processos_detalhados`; o front lê os dois do mesmo jeito."""
+    _processo_fin(db, seed.beltrano)
+    inserir_fin(
+        db,
+        "certidao",
+        pessoa_id=pessoa_do(db, seed.beltrano),
+        orgao="TSE",
+        tipo="Registro 2018",
+        situacao="Declarada: registro indeferido",
+        fonte_id=fonte_id(db, "TSE"),
+    )
+    db.commit()
+    datajud, tse = client.get(f"{BASE}/{seed.beltrano.id}/certidoes").json()["processos_detalhados"]
+    assert set(datajud) == set(tse)
+    assert tse["situacao_juridica"] is None and tse["data_processo"] is None and tse["link_comprovacao"] is None
+    assert datajud["tribunal"] is None and datajud["data_processo"] is None and datajud["descricao"] is None
+    assert not [v for v in (*datajud.values(), *tse.values()) if v == "n/d"]  # nenhum placeholder no contrato
 
 
 def test_certidoes_never_get_invented_numbers_dates_or_codes(client, db, seed):
@@ -482,7 +525,7 @@ def test_certidoes_never_get_invented_numbers_dates_or_codes(client, db, seed):
     assert cert["numero_processo"] is None and cert["data_emissao"] is None and cert["codigo_autenticidade"] is None
     assert cert["link_comprovacao"] is None
     # Certidão positiva registrada: nunca pode sair "Nada Consta"
-    assert data["status_geral"] == "Processos Declarados" and data["possui_processos_declarados"] is True
+    assert data["status_geral"] == "Processos Vinculados" and data["possui_processos_declarados"] is True
     assert data["orgaos_declarados"] == ["TSE"]
     assert (
         data["link_tse_divulgacand"] == "https://divulgacandcontas.tse.jus.br/divulga/#/"

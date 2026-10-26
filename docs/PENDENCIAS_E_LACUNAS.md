@@ -56,6 +56,7 @@ A refatoração da branch `fix/analise-completa-correcoes` concluiu **100%** das
 - **Status**: a tabela `fin.processo_judicial`, o extrator (`etl/extractors/processos_extractor.py`), a carga `processos` do `fin` e a leitura do dossiê estão prontos. O acervo digitado à mão (não verificado contra os tribunais) foi removido (D7) e **nenhum processo está carregado**: `processos_curados.json` está vazio.
 - **Por que vazio**: o DataJud só consulta por número de processo e não expõe as partes, então ele não descobre os processos de um parlamentar. Falta uma fonte oficial que ligue processo e pessoa; as certidões do TSE hoje no `fin` são só de registro de candidatura, e o número de processo delas não tem o formato CNJ.
 - **Conformidade Legal**: Observância à Portaria CNJ nº 160/2020, Resolução CNJ nº 332/2020 e LGPD, com resguardo à presunção de inocência (Art. 5º, LVII da CF/88): o dossiê mostra só o último movimento que o tribunal registrou, nunca um desfecho inferido.
+- **Limites conhecidos**: processo do STF (foro privilegiado) não tem índice no DataJud e precisa de outra fonte; o acervo manual antigo ainda está em `public.processos_judiciais` e a flag `possuiProcessosDeclarados` em produção, sem nenhum código que os leia, até a limpeza da Fase 9.
 - **Metadados**: classe e assuntos (TPU), órgão julgador, datas de ajuizamento e do último movimento, vindos do DataJud.
 
 ### 2.4 Votações Secretas no Senado [CONCLUÍDO 100%]

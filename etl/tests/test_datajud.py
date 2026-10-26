@@ -1,14 +1,16 @@
 """Testes para a integração oficial com a API do DataJud (CNJ)."""
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from etl.utils.datajud_client import (
     CACHE_NEGATIVO_DIAS,
+    CACHE_POSITIVO_DIAS,
     DataJudClient,
     ErroDoDataJud,
+    _dia_do_datajud,
     deduzir_aliases_datajud,
     parse_cnj_parts,
 )
@@ -98,6 +100,7 @@ def test_consolidar_resumo_processo():
     assert summary["data_processo"] == "2022-08-19"
     assert summary["total_movimentacoes"] == 2
     assert summary["ultimo_movimento"] == "Julgamento de Mérito - Procedência"
+    assert summary["data_ultimo_movimento"] == "2023-06-30"
     assert summary["is_synthetic"] is False
 
 
@@ -195,13 +198,17 @@ def test_achado_em_um_tribunal_vale_mesmo_com_o_outro_fora_do_ar(tmp_path, monke
     assert cliente.consultar_processo("0604176-51.2022.6.16.0000") == {"numeroProcesso": "x"}
 
 
-def _plantar_miss(tmp_path, idade_dias):
+def _plantar_cache(tmp_path, idade_dias, found=False, fetched_at=None, **extra):
     caminho = tmp_path / "datajud" / "api_publica_tjsp" / "00000017820208260100.json"
-    caminho.parent.mkdir(parents=True)
-    quando = (datetime.now() - timedelta(days=idade_dias)).isoformat()
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    quando = fetched_at if fetched_at is not None else (datetime.now() - timedelta(days=idade_dias)).isoformat()
     caminho.write_text(
-        json.dumps({"found": False, "fetched_at": quando, "alias": "api_publica_tjsp"}), encoding="utf-8"
+        json.dumps({"found": found, "fetched_at": quando, "alias": "api_publica_tjsp", **extra}), encoding="utf-8"
     )
+
+
+def _plantar_miss(tmp_path, idade_dias):
+    _plantar_cache(tmp_path, idade_dias)
 
 
 def test_nao_encontrado_recente_nao_repete_a_consulta(tmp_path, monkeypatch):
@@ -218,13 +225,76 @@ def test_nao_encontrado_vencido_consulta_de_novo_e_acha_o_processo_indexado_depo
     assert cliente.session.chamadas == 1
 
 
-def test_data_ilegivel_no_cache_negativo_conta_como_vencido(tmp_path, monkeypatch):
-    caminho = tmp_path / "datajud" / "api_publica_tjsp" / "00000017820208260100.json"
-    caminho.parent.mkdir(parents=True)
-    caminho.write_text(json.dumps({"found": False, "fetched_at": "ontem"}), encoding="utf-8")
+def test_nao_encontrado_gravado_pelo_cliente_e_lido_de_volta_sem_nova_consulta(tmp_path, monkeypatch):
     cliente = _cliente(tmp_path, monkeypatch, SEM_HIT)
     assert cliente.consultar_processo(CNJ) is None
-    assert cliente.session.chamadas == 1
+    assert cliente.consultar_processo(CNJ) is None
+    assert cliente.session.chamadas == 1  # o formato que o cliente grava é o que ele lê
+
+
+@pytest.mark.parametrize(
+    "quando",
+    [
+        "ontem",  # ilegível
+        "",
+        "None",  # o que `str(None)` dá quando a chave falta
+        "2024-01-01T00:00:00+00:00",  # com fuso e antigo: vencido, sem TypeError ao comparar com o relógio local
+        "2999-01-01T00:00:00",  # no futuro: ainda "recente" (o relógio local é a referência)
+    ],
+)
+def test_data_do_cache_ilegivel_ou_com_fuso_e_tratada_sem_quebrar(tmp_path, monkeypatch, quando):
+    _plantar_cache(tmp_path, 0, fetched_at=quando)
+    cliente = _cliente(tmp_path, monkeypatch, SEM_HIT)
+    assert cliente.consultar_processo(CNJ) is None
+    esperado = 0 if quando == "2999-01-01T00:00:00" else 1
+    assert cliente.session.chamadas == esperado
+
+
+def test_data_com_fuso_recente_no_cache_vale(tmp_path, monkeypatch):
+    agora = datetime.now(timezone.utc).isoformat()
+    _plantar_cache(tmp_path, 0, found=True, fetched_at=agora, source={"numeroProcesso": "cache"})
+    cliente = _cliente(tmp_path, monkeypatch, _com_hit({"numeroProcesso": "rede"}))
+    assert cliente.consultar_processo(CNJ) == {"numeroProcesso": "cache"} and cliente.session.chamadas == 0
+
+
+def test_achado_recente_sai_do_cache(tmp_path, monkeypatch):
+    _plantar_cache(tmp_path, 0, found=True, source={"numeroProcesso": "cache"})
+    cliente = _cliente(tmp_path, monkeypatch, _com_hit({"numeroProcesso": "rede"}))
+    assert cliente.consultar_processo(CNJ) == {"numeroProcesso": "cache"} and cliente.session.chamadas == 0
+
+
+def test_achado_vencido_e_consultado_de_novo_para_o_andamento_nao_ficar_congelado(tmp_path, monkeypatch):
+    _plantar_cache(tmp_path, CACHE_POSITIVO_DIAS + 1, found=True, source={"numeroProcesso": "antigo"})
+    cliente = _cliente(tmp_path, monkeypatch, _com_hit({"numeroProcesso": "novo"}))
+    assert cliente.consultar_processo(CNJ) == {"numeroProcesso": "novo"} and cliente.session.chamadas == 1
+
+
+def test_achado_vencido_com_o_datajud_fora_do_ar_levanta_erro_em_vez_de_servir_o_antigo(tmp_path, monkeypatch):
+    _plantar_cache(tmp_path, CACHE_POSITIVO_DIAS + 1, found=True, source={"numeroProcesso": "antigo"})
+    cliente = _cliente(tmp_path, monkeypatch, _Resposta(status=503))
+    with pytest.raises(ErroDoDataJud):
+        cliente.consultar_processo(CNJ)
+
+
+def test_cache_de_achado_sem_documento_e_ignorado(tmp_path, monkeypatch):
+    _plantar_cache(tmp_path, 0, found=True, source=None)
+    cliente = _cliente(tmp_path, monkeypatch, _com_hit({"numeroProcesso": "rede"}))
+    assert cliente.consultar_processo(CNJ) == {"numeroProcesso": "rede"}
+
+
+def test_mesmo_numero_em_varios_graus_vale_o_documento_atualizado_mais_recentemente(tmp_path, monkeypatch):
+    numero = "00000017820208260100"
+    g2 = {"numeroProcesso": numero, "grau": "G2", "dataHoraUltimaAtualizacao": "2024-03-01T10:00:00.000Z"}
+    g1 = {"numeroProcesso": numero, "grau": "G1", "dataHoraUltimaAtualizacao": "2024-07-01T10:00:00.000Z"}
+    sem_data = {"numeroProcesso": numero, "grau": "JE"}
+    outro = {
+        "numeroProcesso": "99999999999999999999",
+        "grau": "G9",
+        "dataHoraUltimaAtualizacao": "2030-01-01T00:00:00Z",
+    }
+    resposta = _Resposta(corpo={"hits": {"hits": [{"_source": x} for x in (g2, sem_data, outro, g1)]}})
+    cliente = _cliente(tmp_path, monkeypatch, resposta)
+    assert cliente.consultar_processo(CNJ)["grau"] == "G1"  # nem a ordem da busca, nem o documento de outro número
 
 
 def test_numero_fora_do_padrao_cnj_nao_consulta(tmp_path, monkeypatch):
@@ -264,14 +334,50 @@ def test_resumo_tolera_movimento_sem_data_ou_malformado_e_assunto_sem_nome():
         }
     )
     assert resumo["assuntos_tpu"] == ["A"] and resumo["classe_assunto"] == "Classe / A"
-    assert resumo["ultimo_movimento"] == "Número" or resumo["ultimo_movimento"] == "Conclusão"
+    # a data numérica (2024-01-01) é anterior a 2024-05-06: a ordem é cronológica, não a do texto ('0' > '-' em ASCII)
+    assert resumo["ultimo_movimento"] == "Conclusão" and resumo["data_ultimo_movimento"] == "2024-05-06"
     assert resumo["total_movimentacoes"] == 3  # só os dicionários contam
 
 
 @pytest.mark.parametrize("campo", ["movimentos", "assuntos", "orgaoJulgador", "classe"])
 @pytest.mark.parametrize("valor", ["texto", 5, True, {"a": 1}, [[]]])
 def test_resumo_nunca_levanta_para_campo_de_tipo_inesperado(campo, valor):
-    DataJudClient.consolidar_resumo_processo({campo: valor})
+    resumo = DataJudClient.consolidar_resumo_processo({campo: valor})
+    # nada é inventado: o que não se lê fica vazio
+    assert resumo["classe_tpu_nome"] is None and resumo["classe_assunto"] is None
+    assert resumo["orgao_julgador"] is None and resumo["assuntos_tpu"] == []
+    assert resumo["ultimo_movimento"] is None and resumo["total_movimentacoes"] == 0
+
+
+@pytest.mark.parametrize(
+    "valor, dia",
+    [
+        ("2018-10-29T00:00:00.000Z", "2018-10-29"),  # meia-noite UTC é como o DataJud escreve uma data sem hora
+        ("2019-05-30T01:15:00Z", "2019-05-29"),  # 01:15 UTC ainda é 29/05 em Brasília
+        ("2019-05-30T12:00:00.000Z", "2019-05-30"),
+        ("2024-05-06T10:00:00", "2024-05-06"),  # sem fuso: já é horário de Brasília
+        ("2024-05-06", "2024-05-06"),
+        ("20180309000000", "2018-03-09"),  # formato compacto de alguns tribunais
+        ("20180309", "2018-03-09"),
+        (20240101, "2024-01-01"),
+        ("ontem", None),
+        ("2024-02-30", None),
+        ("", None),
+        (None, None),
+        (True, None),
+        (1.5, None),
+    ],
+)
+def test_dia_do_datajud_em_horario_de_brasilia(valor, dia):
+    assert _dia_do_datajud(valor) == dia
+
+
+def test_resumo_com_data_ilegivel_fica_sem_data_em_vez_de_vazia():
+    resumo = DataJudClient.consolidar_resumo_processo(
+        {"dataAjuizamento": "ontem", "movimentos": [{"dataHora": "sem data", "nome": "X"}]}
+    )
+    assert resumo["data_processo"] is None and resumo["data_ultimo_movimento"] is None
+    assert resumo["ultimo_movimento"] == "X"
 
 
 def test_resumo_expoe_o_nivel_de_sigilo_para_quem_decide_publicar():

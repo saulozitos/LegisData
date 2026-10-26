@@ -14,6 +14,7 @@ from etl.pipelines.loader_helpers import (
     documento_do_doador,
     ler_certidao,
     ler_doacoes,
+    ler_processo,
     nome_do_fornecedor,
     nome_sem_cpf,
     resumos_completos,
@@ -207,6 +208,7 @@ def _processo(**campos):
         "total_movimentacoes": 7,
         "ultimo_movimento": "Conclusão",
         "data_ultimo_movimento": "2024-05-06",
+        "consultado_em": "2026-10-26",
         "link_comprovacao": "https://exemplo.jus.br/processo/1",
     }
     return _oficial(**{**base, **campos})
@@ -2601,7 +2603,8 @@ def test_processo_grava_os_metadados_do_datajud_e_o_vinculo(pg_engine, banco, tm
         linha = conn.execute(
             text(
                 "SELECT pessoa_id, numero_cnj, tribunal, grau, classe, assuntos, orgao_julgador, data_ajuizamento, "
-                "ultimo_movimento, data_ultimo_movimento, total_movimentacoes, vinculo_url FROM fin.processo_judicial"
+                "ultimo_movimento, data_ultimo_movimento, total_movimentacoes, consultado_em, vinculo_url "
+                "FROM fin.processo_judicial"
             )
         ).one()
     assert linha.pessoa_id == banco["ana"] and linha.numero_cnj == CNJ_A
@@ -2609,12 +2612,21 @@ def test_processo_grava_os_metadados_do_datajud_e_o_vinculo(pg_engine, banco, tm
     assert linha.assuntos == ["Improbidade Administrativa"] and linha.orgao_julgador == "1ª Vara Cível"
     assert str(linha.data_ajuizamento) == "2020-03-04" and str(linha.data_ultimo_movimento) == "2024-05-06"
     assert (linha.ultimo_movimento, linha.total_movimentacoes) == ("Conclusão", 7)
+    assert str(linha.consultado_em) == "2026-10-26"
     assert linha.vinculo_url == "https://exemplo.jus.br/processo/1"
 
 
 def test_processo_sem_o_que_o_datajud_nao_devolve_fica_nulo_nunca_zero(pg_engine, banco, tmp_path):
     item = _processo(camara_id=100)
-    for campo in ("tribunal", "grau", "orgao_julgador", "data_processo", "ultimo_movimento", "data_ultimo_movimento"):
+    for campo in (
+        "tribunal",
+        "grau",
+        "orgao_julgador",
+        "data_processo",
+        "ultimo_movimento",
+        "data_ultimo_movimento",
+        "consultado_em",
+    ):
         item.pop(campo)
     item.pop("total_movimentacoes")
     item.pop("assuntos_tpu")
@@ -2623,7 +2635,16 @@ def test_processo_sem_o_que_o_datajud_nao_devolve_fica_nulo_nunca_zero(pg_engine
         fin.carregar_processos(conn, tmp_path)
     with pg_engine.connect() as conn:
         linha = conn.execute(text("SELECT * FROM fin.processo_judicial")).one()._mapping
-    for campo in ("tribunal", "grau", "orgao_julgador", "data_ajuizamento", "ultimo_movimento", "total_movimentacoes"):
+    for campo in (
+        "tribunal",
+        "grau",
+        "orgao_julgador",
+        "data_ajuizamento",
+        "ultimo_movimento",
+        "data_ultimo_movimento",
+        "total_movimentacoes",
+        "consultado_em",
+    ):
         assert linha[campo] is None
     assert linha["assuntos"] == []
 
@@ -2641,6 +2662,10 @@ def test_processo_sem_o_que_o_datajud_nao_devolve_fica_nulo_nunca_zero(pg_engine
         ({"link_comprovacao": "ftp://exemplo.jus.br/x"}, "invalidas"),
         ({"link_comprovacao": "https://exemplo.jus.br/a b"}, "invalidas"),  # o CHECK do banco também recusa espaço
         ({"link_comprovacao": "https://"}, "invalidas"),
+        ({"link_comprovacao": "http://exemplo.jus.br/p"}, "invalidas"),  # sem TLS
+        ({"link_comprovacao": "https://exemplo.com/p"}, "invalidas"),  # não é de órgão público
+        ({"link_comprovacao": f"https://exemplo.jus.br/a?doc={CPF_A}"}, "invalidas"),  # CPF na consulta (D3)
+        ({"link_comprovacao": "https://exemplo.jus.br/a\u2003b"}, "invalidas"),  # espaço Unicode: o CHECK recusaria
         (
             {"numero_processo": CNJ_A.translate({ord(c): ord(c) + 0xFEE0 for c in "0123456789"})},
             "invalidas",
@@ -2719,8 +2744,28 @@ def test_esvaziar_dez_processos_ou_mais_exige_a_variavel_de_encolhimento(pg_engi
     assert _contar(pg_engine, "processo_judicial") == 0
 
 
+@pytest.mark.parametrize(
+    "campos, esperado",
+    [
+        ({"total_movimentacoes": -1}, {"movimentacoes": None}),  # o CHECK do banco recusa negativo
+        ({"total_movimentacoes": 0}, {"movimentacoes": 0}),  # zero legítimo é preservado
+        ({"total_movimentacoes": True}, {"movimentacoes": None}),
+        ({"assuntos_tpu": [None, "", "  ", "A"]}, {"assuntos": ["A"]}),  # o CHECK recusa elemento nulo
+        ({"assuntos_tpu": "A"}, {"assuntos": []}),  # não é lista
+        ({"assuntos_tpu": [{"a": 1}, ["x"], "B"]}, {"assuntos": ["B"]}),
+        ({"data_processo": "2024-02-30"}, {"ajuizado": None}),  # data impossível
+        ({"data_processo": "ontem"}, {"ajuizado": None}),
+        ({"data_ultimo_movimento": "2024-13-01"}, {"data_movimento": None}),
+        ({"consultado_em": "xx"}, {"consultado": None}),
+    ],
+)
+def test_ler_processo_so_entrega_o_que_o_banco_aceita(campos, esperado):
+    lido, motivo = ler_processo(_processo(camara_id=1, **campos))
+    assert motivo is None and {k: lido[k] for k in esperado} == esperado
+
+
 def test_processo_com_cpf_no_texto_livre_perde_o_cpf_antes_de_ir_ao_banco():
-    cpf = "09876543200"
+    cpf = CPF_A
     linhas, _ = fin.linhas_dos_processos(
         [_processo(camara_id=1, ultimo_movimento=f"Intimação de {cpf}", orgao_julgador=f"Vara {cpf}")],
         _SempreAPessoa(),

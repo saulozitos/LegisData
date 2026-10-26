@@ -995,19 +995,22 @@ export interface CertidaoItem {
   status?: string;
 }
 
+/** Processo do DataJud ou certidão positiva do TSE; dado que a fonte não trouxe vem `null` (a tela mostra "n/d"). */
 export interface ProcessoDetalhadoItem {
-  numero_processo: string;
-  tribunal: string;
-  data_processo: string;
-  classe_assunto: string;
-  descricao: string;
-  situacao_juridica: string;
-  link_comprovacao: string;
-  status_resumo: string;
+  numero_processo: string | null;
+  tribunal: string | null;
+  data_processo: string | null;
+  classe_assunto: string | null;
+  descricao: string | null;
+  situacao_juridica: string | null;
+  link_comprovacao: string | null;
+  status_resumo: string | null;
 }
 
 export interface FichaLimpaData {
   possui_processos_declarados: boolean;
+  /** `false` quando não há nenhuma certidão nem processo: a ausência de dado não é "nada consta". */
+  dados_certidoes_disponiveis?: boolean;
   status_geral: string;
   orgaos_declarados: string[];
   link_tse_divulgacand?: string;

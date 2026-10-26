@@ -232,16 +232,19 @@ def _carga_simples(
     chave_total: str,
     tabela: str,
     insercao: str,
+    vazio_limpa: bool = False,
 ) -> Dict[str, int]:
     """
     Roteiro das cargas que trocam uma tabela inteira: lê o arquivo, monta as linhas, e só substitui a tabela se alguma
     linha serviu (arquivo ausente, de formato inválido ou sem nenhum registro utilizável nunca apaga o que já está lá).
+    Com `vazio_limpa`, uma lista válida SEM nenhum registro também limpa a tabela (só a lista vazia: registros dos quais
+    nenhum serve continuam sem apagar nada).
     """
     dados, recusa = _ler_arquivo(processed_dir, arquivo, aceita)
     if recusa is not None:
         return recusa
     linhas, contagem = montar(dados, ResolvedorDePessoas(conn), _fontes(conn)[fonte])
-    if not linhas:
+    if not linhas and not (vazio_limpa and not dados):
         logger.warning("%s sem nenhum registro utilizável (%s); o banco não foi alterado.", rotulo, contagem)
         return {**contagem, chave_total: 0}
     _substituir(conn, [(tabela, insercao, linhas)])
@@ -684,9 +687,10 @@ def linhas_dos_processos(
 
 _INSERCAO_DE_PROCESSOS = (
     "INSERT INTO fin.processo_judicial (pessoa_id, numero_cnj, tribunal, grau, classe, assuntos, orgao_julgador, "
-    "data_ajuizamento, ultimo_movimento, data_ultimo_movimento, total_movimentacoes, vinculo_url, fonte_id) "
+    "data_ajuizamento, ultimo_movimento, data_ultimo_movimento, total_movimentacoes, consultado_em, vinculo_url, "
+    "fonte_id) "
     "VALUES (:p, :numero, :tribunal, :grau, :classe, :assuntos, :orgao, :ajuizado, :movimento, :data_movimento, "
-    ":movimentacoes, :vinculo, :f)"
+    ":movimentacoes, :consultado, :vinculo, :f)"
 )
 
 
@@ -697,17 +701,19 @@ def carregar_processos(conn: Connection, processed_dir: Path) -> Dict[str, int]:
     um vínculo errado. Arquivo ausente, de formato inválido, ou com registros dos quais nenhum serve, não apaga nada; e
     a guarda contra encolhimento ainda vale (esvaziar 10 processos ou mais exige LEGISDATA_ACEITAR_ENCOLHIMENTO=1).
     """
-    dados, recusa = _ler_arquivo(processed_dir, PROCESSOS_ARQUIVO, lambda d: isinstance(d, list))
-    if recusa is not None:
-        return recusa
-    linhas, contagem = linhas_dos_processos(dados, ResolvedorDePessoas(conn), _fontes(conn)[FONTE_DATAJUD])
-    if dados and not linhas:
-        logger.warning(
-            "Processos judiciais sem nenhum registro utilizável (%s); o banco não foi alterado.", dict(contagem)
-        )
-        return {**contagem, "processos": 0}
-    _substituir(conn, [("fin.processo_judicial", _INSERCAO_DE_PROCESSOS, linhas)])
-    return {**contagem, "processos": len(linhas)}
+    return _carga_simples(
+        conn,
+        processed_dir,
+        arquivo=PROCESSOS_ARQUIVO,
+        aceita=lambda dados: isinstance(dados, list),
+        montar=linhas_dos_processos,
+        fonte=FONTE_DATAJUD,
+        rotulo="Processos judiciais",
+        chave_total="processos",
+        tabela="fin.processo_judicial",
+        insercao=_INSERCAO_DE_PROCESSOS,
+        vazio_limpa=True,
+    )
 
 
 CARGAS: Tuple[Tuple[str, Callable[[Connection, Path], Dict[str, int]]], ...] = (

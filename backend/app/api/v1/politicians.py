@@ -527,64 +527,78 @@ def _resolve_politician(db: Session, politician_id: str) -> Politician:
     raise HTTPException(status_code=404, detail=f"Político '{politician_id}' não encontrado.")
 
 
+def _classe_e_assuntos(p: Processo) -> str:
+    """ "Classe / Assunto 1, Assunto 2" (a classe sozinha quando o DataJud não trouxe assunto)."""
+    return f"{p.classe} / {', '.join(p.assuntos)}" if p.assuntos else p.classe
+
+
 def _processo_detalhado(p: Processo) -> Dict[str, Any]:
-    """Processo do DataJud no contrato do Raio-X: sem desfecho inferido, só o último movimento que o tribunal registrou."""
+    """
+    Processo do DataJud no contrato do Raio-X: sem desfecho inferido, só o último movimento que o tribunal registrou e o
+    dia em que o DataJud foi consultado (o andamento pode ter mudado depois). Dado que o DataJud não trouxe vai como None.
+    """
     if p.ultimo_movimento:
         quando = f" ({p.data_ultimo_movimento})" if p.data_ultimo_movimento else ""
         situacao = f"Último movimento registrado no DataJud: {p.ultimo_movimento}{quando}."
     else:
         situacao = "Sem movimentação registrada no DataJud."
+    if p.consultado_em:
+        situacao += f" Consultado em {p.consultado_em}."
     return {
         "numero_processo": p.numero_processo,
-        "tribunal": p.tribunal or "n/d",
-        "data_processo": p.data_processo or "n/d",
-        "classe_assunto": p.classe_assunto,
-        "descricao": f"Órgão julgador: {p.orgao_julgador}" if p.orgao_julgador else "n/d",
+        "tribunal": p.tribunal,
+        "data_processo": p.data_processo,
+        "classe_assunto": _classe_e_assuntos(p),
+        "descricao": f"Órgão julgador: {p.orgao_julgador}" if p.orgao_julgador else None,
         "situacao_juridica": situacao,
         "link_comprovacao": p.link_comprovacao,
         "status_resumo": f"DataJud · {p.grau}" if p.grau else "DataJud",
     }
 
 
+def _certidao_positiva(c: Certidao) -> bool:
+    status = (c.status or "").lower()
+    return "positiva" in status or "declarada" in status
+
+
+def _certidao_detalhada(c: Certidao) -> Dict[str, Any]:
+    """
+    Certidão positiva/declarada do TSE no mesmo contrato do processo do DataJud. O TSE declara o registro, não o
+    andamento: a situação jurídica fica None (nada é inferido) e o front mostra "n/d".
+    """
+    return {
+        "numero_processo": c.process_number,
+        "tribunal": c.court_agency,
+        "data_processo": c.issue_date,
+        "classe_assunto": c.certificate_type,
+        "descricao": c.details,
+        "situacao_juridica": None,
+        "link_comprovacao": c.proof_url,
+        "status_resumo": "Declarado no TSE",
+    }
+
+
 def _enrich_judicial_records(certidoes_db: List[Certidao], processos_db: List[Processo]) -> Dict[str, Any]:
     """
     Consolida dados judiciais a partir de `fin.processo_judicial` (DataJud) e `fin.certidao` (TSE).
-    Campos ausentes são devolvidos como None: nenhum número de processo, data ou código é inventado. A flag legada
-    `politicos.possuiProcessosDeclarados` não conta: ela foi copiada de um acervo transcrito à mão (D7) e, sem o processo
-    para mostrar, o selo "Processos Declarados" não teria o que comprovar.
+    Campos ausentes são devolvidos como None, nos dois tipos de item: nenhum número de processo, data ou código é
+    inventado. A flag legada `politicos.possuiProcessosDeclarados` não conta: ela foi copiada de um acervo transcrito à
+    mão (D7) e, sem o processo para mostrar, o selo "Processos Vinculados" não teria o que comprovar. O selo vale para
+    "há processo ou certidão positiva ligado por fonte oficial": a curadoria não guarda o papel da pessoa no processo.
     """
-    processos_detalhados: List[Dict[str, Any]] = [_processo_detalhado(p) for p in processos_db]
-
-    def _is_positive(cert: Certidao) -> bool:
-        status_clean = (cert.status or "").lower()
-        return "positiva" in status_clean or "declarada" in status_clean
-
-    # Processo localizado ou certidão positiva/declarada registrada significa que há processos
-    possui_processos = len(processos_detalhados) > 0 or any(_is_positive(c) for c in certidoes_db)
-
     # A certidão positiva entra na lista com o que ela realmente registra, junto dos processos do DataJud (os dois
     # dizem coisas diferentes: o TSE declara o registro, o DataJud traz o processo)
-    for c in certidoes_db:
-        if _is_positive(c):
-            processos_detalhados.append(
-                {
-                    "numero_processo": c.process_number,
-                    "tribunal": c.court_agency,
-                    "data_processo": c.issue_date,
-                    "classe_assunto": c.certificate_type,
-                    "descricao": c.details,
-                    "situacao_juridica": None,
-                    "link_comprovacao": c.proof_url,
-                    "status_resumo": "Declarado no TSE",
-                }
-            )
+    processos_detalhados: List[Dict[str, Any]] = [_processo_detalhado(p) for p in processos_db]
+    processos_detalhados += [_certidao_detalhada(c) for c in certidoes_db if _certidao_positiva(c)]
+
+    # Processo localizado ou certidão positiva/declarada registrada significa que há processos
+    possui_processos = len(processos_detalhados) > 0
 
     certidoes_lista = []
     orgaos_declarados = []
     for c in certidoes_db:
         status_c = c.status or ""
-        is_pos = "positiva" in status_c.lower() or "declarada" in status_c.lower()
-        if is_pos:
+        if _certidao_positiva(c):
             orgaos_declarados.append(c.court_agency)
 
         certidoes_lista.append(
@@ -607,7 +621,7 @@ def _enrich_judicial_records(certidoes_db: List[Certidao], processos_db: List[Pr
         "possui_processos_declarados": possui_processos,
         # "Nada Consta" só é afirmado quando há certidão registrada; sem nenhum dado o status é null (desconhecido)
         "status_geral": (
-            "Processos Declarados" if possui_processos else ("Nada Consta (Ficha Limpa)" if certidoes_lista else None)
+            "Processos Vinculados" if possui_processos else ("Nada Consta (Ficha Limpa)" if certidoes_lista else None)
         ),
         "dados_certidoes_disponiveis": len(certidoes_lista) > 0 or len(processos_detalhados) > 0,
         "orgaos_declarados": sorted(set(orgaos_declarados)),

@@ -680,17 +680,13 @@ class Processo:
     tribunal: Optional[str]
     grau: Optional[str]
     data_processo: Optional[str]
-    classe_assunto: str
+    classe: str
+    assuntos: Tuple[str, ...]
     orgao_julgador: Optional[str]
     ultimo_movimento: Optional[str]
     data_ultimo_movimento: Optional[str]
+    consultado_em: Optional[str]
     link_comprovacao: str
-
-
-def _classe_e_assuntos(classe: str, assuntos: Optional[Sequence[Optional[str]]]) -> str:
-    """ "Classe / Assunto 1, Assunto 2"; um elemento NULL do `text[]` (o CHECK não o impede) é ignorado, não quebra o dossiê."""
-    nomes = [a for a in (assuntos or []) if a]
-    return f"{classe} / {', '.join(nomes)}" if nomes else classe
 
 
 def processos(db: Session, pessoas: Sequence[int]) -> List[Processo]:
@@ -699,7 +695,7 @@ def processos(db: Session, pessoas: Sequence[int]) -> List[Processo]:
     linhas = db.execute(
         text(
             "SELECT DISTINCT ON (numero_cnj) numero_cnj, tribunal, grau, classe, assuntos, orgao_julgador, "
-            "data_ajuizamento, ultimo_movimento, data_ultimo_movimento, vinculo_url FROM fin.processo_judicial "
+            "data_ajuizamento, ultimo_movimento, data_ultimo_movimento, consultado_em, vinculo_url FROM fin.processo_judicial "
             "WHERE pessoa_id = ANY(:ids) ORDER BY numero_cnj, data_ultimo_movimento DESC NULLS LAST, id"
         ),
         {"ids": list(pessoas)},
@@ -710,12 +706,15 @@ def processos(db: Session, pessoas: Sequence[int]) -> List[Processo]:
             tribunal=r.tribunal,
             grau=r.grau,
             data_processo=r.data_ajuizamento.isoformat() if r.data_ajuizamento else None,
-            classe_assunto=_classe_e_assuntos(r.classe, r.assuntos),
+            classe=r.classe,
+            # um elemento NULL do `text[]` (o CHECK da tabela não o impede) é ignorado, não quebra o dossiê
+            assuntos=tuple(a for a in (r.assuntos or []) if a),
             orgao_julgador=r.orgao_julgador,
             ultimo_movimento=r.ultimo_movimento,
             data_ultimo_movimento=r.data_ultimo_movimento.isoformat() if r.data_ultimo_movimento else None,
+            consultado_em=r.consultado_em.isoformat() if r.consultado_em else None,
             link_comprovacao=r.vinculo_url,
         )
         for r in linhas
     ]
-    return sorted(achados, key=lambda p: p.data_processo or "", reverse=True)
+    return sorted(achados, key=lambda p: (p.data_processo or "", p.numero_processo), reverse=True)
