@@ -1,4 +1,3 @@
-import enum
 import uuid
 from datetime import date, datetime
 from typing import List, Optional
@@ -19,70 +18,15 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimeStampedModel
-
-
-class TipoProposicaoEnum(str, enum.Enum):
-    PEC = "PEC"
-    PL = "PL"
-    PLP = "PLP"
-    MPV = "MPV"
-    PDL = "PDL"
-    PR = "PR"
-    PRC = "PRC"
-    PDS = "PDS"
-    REQ = "REQ"
-    INC = "INC"
-    DECRETO_PRES = "DECRETO_PRES"
-    LEI_DELEGADA = "LEI_DELEGADA"
-
-
-class TipoDeliberacaoEnum(str, enum.Enum):
-    DELIBERACAO_COMISSAO = "COMISSAO"
-    VOTACAO_SIMBOLICA = "SIMBOLICA"
-    VOTACAO_NOMINAL = "NOMINAL"
-
-
-class StatusTramitacaoEnum(str, enum.Enum):
-    APROVADA_E_SANCIONADA = "APROVADA_E_SANCIONADA"
-    APROVADA_E_PROMULGADA = "APROVADA_E_PROMULGADA"
-    APROVADO_PLENARIO = "APROVADO_PLENARIO"
-    APROVADO_COMISSAO = "APROVADO_COMISSAO"
-    VETADA_TOTAL = "VETADA_TOTAL"
-    VETADA_PARCIAL = "VETADA_PARCIAL"
-    REJEITADA = "REJEITADA"
-    EM_TRAMITACAO = "EM_TRAMITACAO"
-    ARQUIVADA = "ARQUIVADA"
-
-
-class CasaLegislativaEnum(str, enum.Enum):
-    CAMARA_DOS_DEPUTADOS = "CAMARA_DOS_DEPUTADOS"
-    SENADO_FEDERAL = "SENADO_FEDERAL"
-    CONGRESSO_NACIONAL = "CONGRESSO_NACIONAL"
-    ASSEMBLEIA_LEGISLATIVA = "ASSEMBLEIA_LEGISLATIVA"
-
-
-class VotoOpcaoEnum(str, enum.Enum):
-    SIM = "SIM"
-    NAO = "NAO"
-    ABSTENCAO = "ABSTENCAO"
-    OBSTRUCAO = "OBSTRUCAO"
-    AUSENTE = "AUSENTE"
-    ARTIGO_17 = "ARTIGO_17"
-
-
-class TipoPresencaEnum(str, enum.Enum):
-    PRESENTE = "PRESENTE"
-    AUSENCIA_JUSTIFICADA = "AUSENCIA_JUSTIFICADA"
-    AUSENCIA_NAO_JUSTIFICADA = "AUSENCIA_NAO_JUSTIFICADA"
-    LICENCA_MEDICA = "LICENCA_MEDICA"
-    MISSAO_OFICIAL = "MISSAO_OFICIAL"
-
-
-class TipoAutoriaEnum(str, enum.Enum):
-    AUTOR_PRINCIPAL = "AUTOR_PRINCIPAL"
-    RELATOR = "RELATOR"
-    COAUTOR = "COAUTOR"
-    INSTITUCIONAL = "INSTITUCIONAL"
+from .enums import (
+    CasaLegislativaEnum,
+    StatusTramitacaoEnum,
+    TipoAutoriaEnum,
+    TipoDeliberacaoEnum,
+    TipoPresencaEnum,
+    TipoProposicaoEnum,
+    VotoOpcaoEnum,
+)
 
 
 class Proposition(TimeStampedModel):

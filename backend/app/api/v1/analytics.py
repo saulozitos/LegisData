@@ -8,12 +8,7 @@ from app.core.database import get_db
 from app.core.numeros import opt_float as _opt_float
 from app.models import (
     AnnualSocialIndicator,
-    CargoPoliticoEnum,
     FederalTransferByState,
-    Mandate,
-    PartyAffiliation,
-    PoliticalParty,
-    Politician,
     StatePresidentialElectionResult,
     StateSocialIndicator,
 )
@@ -22,6 +17,7 @@ from app.schemas.analytics import (
     FederalTransfersResponse,
     WageDisparityResponse,
 )
+from app.services import party_fidelity_service
 from app.services.composicao_service import composicao_do_mandato
 from app.services.eco_dados import macro_por_ano, seguranca_por_ano, sociais_por_ano
 from app.services.iple_service import get_all_mandates_iple, get_mandate_iple
@@ -30,7 +26,6 @@ from app.services.pnad_service import classes_sociais
 from app.services.presidencia_service import presidente_por_referencia
 from app.services.salario_service import disparidade_salarial
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 router = APIRouter()
@@ -497,21 +492,6 @@ def compare_mandates(
     }
 
 
-def _current_mandates_by_politician(db: Session) -> Dict[Any, Mandate]:
-    """Mandato federal (deputado/senador) em curso de cada parlamentar em exercício."""
-    today = date.today()
-    mandates = (
-        db.query(Mandate)
-        .filter(
-            Mandate.office.in_([CargoPoliticoEnum.DEPUTADO_FEDERAL, CargoPoliticoEnum.SENADOR]),
-            or_(Mandate.end_date.is_(None), Mandate.end_date >= today),
-        )
-        .order_by(Mandate.start_date.asc())
-        .all()
-    )
-    return {m.politician_id: m for m in mandates}  # ordem crescente: prevalece o mais recente
-
-
 @router.get("/party-fidelity", response_model=Dict[str, Any])
 def get_party_fidelity(db: Session = Depends(get_db)):
     """
@@ -520,128 +500,7 @@ def get_party_fidelity(db: Session = Depends(get_db)):
     - Top nômades partidários: parlamentares em exercício que mais trocaram de partido em suas carreiras.
     - Resumo e métricas gerais de infidelidade partidária.
     """
-    empty_response = {
-        "dados_disponiveis": False,
-        "party_balance": [],
-        "top_nomads": [],
-        "summary": {
-            "total_parlamentares": 0,
-            "total_nomades": 0,
-            "taxa_migracao_pct": 0,
-            "partido_maior_ganho": None,
-            "saldo_maior_ganho": 0,
-            "partido_maior_perda": None,
-            "saldo_maior_perda": 0,
-        },
-    }
-
-    current_mandates = _current_mandates_by_politician(db)
-    if not current_mandates:
-        return empty_response
-
-    party_map = {p.id: {"sigla": p.acronym, "nome": p.full_name} for p in db.query(PoliticalParty).all()}
-
-    affs = db.query(PartyAffiliation).filter(PartyAffiliation.politician_id.in_(list(current_mandates))).all()
-    if not affs:
-        return empty_response
-
-    by_pol = defaultdict(list)
-    for a in affs:
-        by_pol[a.politician_id].append(a)
-
-    # Dados dos políticos com mais de uma filiação em uma única consulta (sem N+1)
-    multi_ids = [pid for pid, items in by_pol.items() if len(items) > 1]
-    pol_map = {p.id: p for p in db.query(Politician).filter(Politician.id.in_(multi_ids)).all()} if multi_ids else {}
-
-    gains: Dict[str, int] = defaultdict(int)
-    losses: Dict[str, int] = defaultdict(int)
-    current_seats: Dict[str, int] = defaultdict(int)
-    initial_seats: Dict[str, int] = defaultdict(int)
-    nomads = []
-
-    for pid, p_affs in by_pol.items():
-        sorted_affs = sorted(p_affs, key=lambda x: x.start_date)
-        first_aff = sorted_affs[0]
-        curr_aff = next((x for x in reversed(sorted_affs) if x.is_current), sorted_affs[-1])
-
-        first_sigla = party_map.get(first_aff.party_id, {}).get("sigla", "OUTROS")
-        curr_sigla = party_map.get(curr_aff.party_id, {}).get("sigla", "OUTROS")
-
-        initial_seats[first_sigla] += 1
-        current_seats[curr_sigla] += 1
-
-        if len(sorted_affs) > 1 and first_sigla != curr_sigla:
-            losses[first_sigla] += 1
-            gains[curr_sigla] += 1
-
-        pol = pol_map.get(pid)
-        if len(sorted_affs) > 1 and pol:
-            mandate = current_mandates[pid]
-            history_list = []
-            for x in sorted_affs:
-                history_list.append(
-                    {
-                        "partido": party_map.get(x.party_id, {}).get("sigla", "S.PART."),
-                        "data_filiacao": x.start_date.isoformat(),
-                        "data_desfiliacao": (x.end_date.isoformat() if x.end_date else None),
-                        "motivo": (x.disaffiliation_reason.value if x.disaffiliation_reason else None),
-                        "is_atual": bool(x.is_current),
-                    }
-                )
-
-            nomads.append(
-                {
-                    "id": str(pol.id),
-                    "nome_eleitoral": pol.electoral_name,
-                    "nome_civil": pol.civil_name,
-                    "cargo": "SENADOR" if mandate.office == CargoPoliticoEnum.SENADOR else "DEPUTADO FEDERAL",
-                    "uf": mandate.jurisdiction_state,
-                    "foto_url": pol.photo_url,
-                    "partido_atual": curr_sigla,
-                    "total_trocas": len(sorted_affs) - 1,
-                    "total_partidos": len(set(x["partido"] for x in history_list)),
-                    "siglas_sequencia": [x["partido"] for x in history_list],
-                    "historico": history_list,
-                }
-            )
-
-    nomads.sort(key=lambda x: (x["total_trocas"], x["total_partidos"], x["nome_eleitoral"]), reverse=True)
-
-    party_balance = []
-    for p in sorted(set(current_seats) | set(initial_seats)):
-        if p in ("S.PART.", "OUTROS"):
-            continue
-        g = gains[p]
-        loss = losses[p]
-        party_balance.append(
-            {
-                "partido": p,
-                "bancada_atual": current_seats[p],
-                "bancada_inicial": initial_seats[p],
-                "ganhos": g,
-                "perdas": loss,
-                "saldo_liquido": g - loss,
-            }
-        )
-
-    party_balance.sort(key=lambda x: (x["saldo_liquido"], x["partido"]), reverse=True)
-
-    summary = {
-        "total_parlamentares": len(by_pol),
-        "total_nomades": len(nomads),
-        "taxa_migracao_pct": (round((len(nomads) / len(by_pol)) * 100, 1) if by_pol else 0),
-        "partido_maior_ganho": party_balance[0]["partido"] if party_balance else None,
-        "saldo_maior_ganho": party_balance[0]["saldo_liquido"] if party_balance else 0,
-        "partido_maior_perda": party_balance[-1]["partido"] if party_balance else None,
-        "saldo_maior_perda": party_balance[-1]["saldo_liquido"] if party_balance else 0,
-    }
-
-    return {
-        "dados_disponiveis": True,
-        "party_balance": party_balance,
-        "top_nomads": nomads[:35],
-        "summary": summary,
-    }
+    return party_fidelity_service.analise_de_fidelidade(db)
 
 
 @router.get("/wage-disparity", response_model=WageDisparityResponse)

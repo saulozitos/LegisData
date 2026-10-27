@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.core.errors import ErroDeDominio
 from app.core.links import url_oficial_proposicao
 from app.core.query_utils import contains, escape_like, is_filter_all
-from app.models import CasaLegislativaEnum
 from app.models.core import Mandato
+from app.models.enums import CasaLegislativaEnum
 from app.models.leg import Autoria, Proposicao, Votacao
 from app.services.ialp_pesos import carregar_pesos_ialp
 from app.services.party_catalog_service import SEM_PARTIDO_SIGLA

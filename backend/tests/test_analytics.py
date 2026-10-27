@@ -476,3 +476,27 @@ def test_party_fidelity_counts_only_sitting_parliamentarians(client, db, seed):
     assert nomad["nome_eleitoral"] == "Fulano" and nomad["siglas_sequencia"] == ["PTB", "PT"]
     assert nomad["total_trocas"] == 1 and nomad["cargo"] == "DEPUTADO FEDERAL" and nomad["uf"] == "SP"
     assert body["summary"]["partido_maior_ganho"] == "PT" and body["summary"]["partido_maior_perda"] == "PTB"
+
+
+def test_party_fidelity_historico_traz_datas_motivo_e_filiacao_atual(client, db, seed):
+    db.add(
+        PartyAffiliation(
+            politician_id=seed.fulano.id,
+            party_id=seed.ptb.id,
+            start_date=date(2015, 1, 1),
+            end_date=date(2019, 12, 31),
+            is_current=False,
+        )
+    )
+    db.commit()
+    nomad = client.get(f"{BASE}/party-fidelity").json()["top_nomads"][0]
+    ptb, pt = nomad["historico"]
+    assert (ptb["partido"], ptb["data_filiacao"], ptb["data_desfiliacao"], ptb["is_atual"]) == (
+        "PTB",
+        "2015-01-01",
+        "2019-12-31",
+        False,
+    )
+    assert pt["partido"] == "PT" and pt["data_desfiliacao"] is None and pt["is_atual"] is True
+    assert nomad["partido_atual"] == "PT" and nomad["total_partidos"] == 2
+    assert nomad["id"] == str(seed.fulano.id)  # o identificador público continua sendo o uid do dossiê
