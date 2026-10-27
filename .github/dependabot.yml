@@ -32,6 +32,11 @@ updates:
       frontend-dependencies:
         patterns:
           - "*"
+    ignore:
+      # O eslint-config-next (typescript-eslint) ainda não aceita o TypeScript 7: o lint quebra. Tirar esta regra
+      # quando o eslint-config-next passar a aceitá-lo.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
