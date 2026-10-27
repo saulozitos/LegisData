@@ -7,6 +7,7 @@ import pytest
 
 from etl.config import PROCESSED_DATA_DIR, PROCESSOS_ARQUIVO, PROCESSOS_CURADORIA_ARQUIVO
 from etl.extractors import processos_extractor as ext
+from etl.extractors.processos_extractor import ProcessoPublicadoSemConfirmacao
 from etl.pipelines.loader_helpers import cnj_digitos, cnj_valido, ler_processo, link_oficial, sob_sigilo
 from etl.tests.sinteticos import CPF_A
 from etl.utils.datajud_client import PROVENIENCIA_DATAJUD, DataJudClient, ErroDoDataJud
@@ -21,10 +22,12 @@ ARABE_INDICO = {ord(c): ord(c) + 0x0660 - ord("0") for c in "0123456789"}  # U+0
 class _ClienteFalso:
     """DataJud em memória: devolve a fonte do processo pedido; um valor que é exceção é levantado."""
 
-    def __init__(self, base, consolidar=DataJudClient.consolidar_resumo_processo):
+    def __init__(self, base, consolidar=DataJudClient.consolidar_resumo_processo, dia=None):
         self.base = base
         self.consultas = []
         self.consolidar_resumo_processo = consolidar
+        if dia is not None:
+            self.dia_da_consulta = lambda _numero: dia  # o dia em que o cliente de verdade leu o documento
 
     def consultar_processo(self, numero):
         self.consultas.append(numero)
@@ -32,6 +35,13 @@ class _ClienteFalso:
         if isinstance(achado, Exception):
             raise achado
         return achado
+
+
+def _em_camadas(texto, camadas):
+    """O texto com o `%` codificado `camadas` vezes (`%41` vira `%2541`, depois `%252541`...)."""
+    for _ in range(camadas):
+        texto = texto.replace("%", "%25")
+    return texto
 
 
 def _cnj_do_stf():
@@ -101,9 +111,16 @@ def test_enriquecer_junta_a_pessoa_da_curadoria_com_os_metadados_do_datajud():
     assert p["ultimo_movimento"] == "Conclusão" and p["data_ultimo_movimento"] == "2024-05-06"
     assert p["fonte"] == PROVENIENCIA_DATAJUD and p["is_synthetic"] is False
     assert p["consultado_em"] == "2026-10-26"  # o andamento é o do dia da consulta
+    assert "classe_assunto" not in p  # texto derivado: quem compõe "Classe / Assuntos" é a API
     assert "nivel_sigilo" not in p  # só serve para decidir; não vai para o arquivo
     assert cliente.consultas == [CNJ_A]
     assert ler_processo(p)[1] is None  # o que o extrator grava é exatamente o que a carga aceita
+
+
+def test_consultado_em_e_o_dia_em_que_o_datajud_foi_lido_nao_o_da_rodada():
+    cliente = _ClienteFalso({CNJ_A: _fonte(CNJ_A)}, dia="2026-10-25")  # veio do cache de ontem
+    (p,), _ = ext.enriquecer([_entrada()], cliente, hoje=date(2026, 10, 26))
+    assert p["consultado_em"] == "2026-10-25"
 
 
 @pytest.mark.parametrize(
@@ -117,6 +134,8 @@ def test_enriquecer_junta_a_pessoa_da_curadoria_com_os_metadados_do_datajud():
         (_entrada(link_comprovacao="http://exemplo.jus.br/p"), {}, "invalidas", False),  # sem TLS
         (_entrada(link_comprovacao="https://exemplo.com/p"), {}, "invalidas", False),  # fonte que não é oficial
         (_entrada(numero_processo=_cnj_do_stf()), {}, "sem_cobertura", False),  # o STF não está no DataJud
+        (_entrada(camara_id=None), {}, "sem_identificador", False),  # só o nome: homônimo levaria a ação alheia
+        (_entrada(camara_id=True, senado_id="x"), {}, "sem_identificador", False),
         ("lixo", {}, "invalidas", False),
         (_entrada(), {CNJ_A: _fonte(CNJ_A, nivelSigilo=1)}, "sigilosos", True),
         (_entrada(), {CNJ_A: _fonte(CNJ_A, nivelSigilo="abc")}, "sigilosos", True),  # ilegível: na dúvida, não publica
@@ -140,9 +159,10 @@ def test_sem_sigilo_informado_o_processo_entra(nivel):
     assert len(processos) == 1 and contagem == {}
 
 
-def test_documento_malformado_nao_derruba_o_lote():
+@pytest.mark.parametrize("erro", [TypeError, AttributeError, ValueError])
+def test_documento_malformado_nao_derruba_o_lote(erro):
     def quebra(_origem):
-        raise TypeError("documento inesperado")
+        raise erro("documento inesperado")
 
     cliente = _ClienteFalso({CNJ_A: _fonte(CNJ_A), CNJ_B: _fonte(CNJ_B)}, consolidar=quebra)
     processos, contagem = ext.enriquecer([_entrada(), _entrada(numero_processo=CNJ_B)], cliente)
@@ -185,7 +205,36 @@ def test_link_com_cpf_ou_fora_de_fonte_oficial_e_recusado_inteiro(link):
 @pytest.mark.parametrize(
     "link",
     [
+        "https://evil.example\\.jus.br/x",  # o navegador trata `\` como caminho e vai a evil.example
+        "https://evil.example\\@x.jus.br/x",
+        "https://tj.jus.br\\@evil.example/x",
+        "https://[tj.jus.br/p",  # colchete desbalanceado: urlsplit levantaria ValueError
+        "https://[x].jus.br/p",
+        "https://[::1]/p",
+        "https://tj.jus.br:99999/x",  # porta fora de 0-65535
+        "https://tj.jus.br:abc/x",
+        "https://a.jus.br;b.example.com/x",
+        "https://.jus.br/p",
+        "https://tj..jus.br/p",
+        f"https://exemplo.jus.br/a?doc={CPF_A[:3]}%25252E{CPF_A[3:6]}%25252E{CPF_A[6:9]}%25252D{CPF_A[9:]}",  # 3 camadas
+        "https://exemplo.jus.br/a?q=" + _em_camadas("%41", 10),  # 10 camadas de `%`: na dúvida, recusa
+        "https://exemplo.jus.br/c?cpf=1234567890",  # 10 dígitos corridos que não são CPF: a docstring promete recusar
+        "https://exemplo.jus.br/c?doc=12345678901",  # 11 dígitos corridos
+    ],
+)
+def test_link_ardiloso_ou_malformado_e_recusado_sem_derrubar_o_lote(link):
+    assert link_oficial(link) is None
+    processos, contagem = ext.enriquecer([_entrada(link_comprovacao=link)], _ClienteFalso({CNJ_A: _fonte(CNJ_A)}))
+    assert processos == [] and contagem == {"invalidas": 1}
+
+
+@pytest.mark.parametrize(
+    "link",
+    [
         "https://www.tjsp.jus.br/processo/1",
+        "https://www.tjsp.jus.br/cpopg/show.do?processo.numero=00000017820208260100",  # CNJ sem pontuação (20 dígitos)
+        "https://www.tjsp.jus.br:8443/processo/1",
+        "https://tj.jus.br/a%5Cb",  # `%5C` no caminho não muda o host
         "https://pje.tse.jus.br/pje/ConsultaPublica/listView.seam?numero=0600814-85.2022.6.00.0000",
         "https://www.camara.leg.br/deputados/204514",
         "https://www.gov.br/pgr/pt-br/p",
@@ -194,6 +243,17 @@ def test_link_com_cpf_ou_fora_de_fonte_oficial_e_recusado_inteiro(link):
 )
 def test_link_oficial_de_orgao_publico_passa(link):
     assert link_oficial(link) == link
+
+
+def test_codificacao_em_camadas_sem_cpf_chega_ao_ponto_fixo_e_passa():
+    # a decodificação vai até o ponto fixo (não só 2 voltas): 3 camadas de um `%41` inofensivo ainda passam
+    link = "https://exemplo.jus.br/a?q=" + _em_camadas("%41", 3)
+    assert link_oficial(link) == link
+
+
+def test_classe_que_e_so_um_cpf_nao_vira_classe_e_o_cpf_nao_vai_para_o_arquivo():
+    processos, contagem = ext.enriquecer([_entrada()], _ClienteFalso({CNJ_A: _fonte(CNJ_A, classe={"nome": CPF_A})}))
+    assert processos == [] and contagem == {"sem_classe": 1}
 
 
 def test_texto_do_datajud_vai_para_o_arquivo_sem_cpf():
@@ -211,9 +271,50 @@ def test_texto_do_datajud_vai_para_o_arquivo_sem_cpf():
 def test_processo_ja_publicado_que_some_do_datajud_aborta_em_vez_de_ser_retirado(tmp_path):
     _gravar(tmp_path, PROCESSOS_CURADORIA_ARQUIVO, [_entrada(), _entrada(numero_processo=CNJ_B)])
     _gravar(tmp_path, PROCESSOS_ARQUIVO, [{"numero_processo": CNJ_A}])
-    with pytest.raises(ErroDoDataJud):
+    with pytest.raises(ProcessoPublicadoSemConfirmacao, match="1 processo"):
         ext.extrair(tmp_path, _ClienteFalso({CNJ_A: None, CNJ_B: _fonte(CNJ_B)}))
     assert _ler(tmp_path, PROCESSOS_ARQUIVO) == [{"numero_processo": CNJ_A}]  # nada foi alterado
+
+
+def _quebra(_origem):
+    raise TypeError("documento inesperado")
+
+
+@pytest.mark.parametrize(
+    "base, kwargs",
+    [
+        ({CNJ_A: None}, {}),  # o DataJud não acha
+        ({CNJ_A: _fonte(CNJ_A)}, {"consolidar": _quebra}),  # documento malformado
+        ({CNJ_A: _fonte(CNJ_B)}, {}),  # devolveu outro processo
+        ({CNJ_A: _fonte(CNJ_A, classe=None)}, {}),  # sem classe oficial
+    ],
+)
+def test_processo_ja_publicado_que_volta_fraco_do_datajud_nunca_e_retirado_em_silencio(tmp_path, base, kwargs):
+    # com 1 linha a guarda de encolhimento da carga (10) não protegeria: quem protege é o extrator
+    _gravar(tmp_path, PROCESSOS_CURADORIA_ARQUIVO, [_entrada()])
+    _gravar(tmp_path, PROCESSOS_ARQUIVO, [{"numero_processo": CNJ_A}])
+    with pytest.raises(ProcessoPublicadoSemConfirmacao):
+        ext.extrair(tmp_path, _ClienteFalso(base, **kwargs))
+    assert _ler(tmp_path, PROCESSOS_ARQUIVO) == [{"numero_processo": CNJ_A}]
+
+
+def test_processo_ja_publicado_que_perde_a_cobertura_do_tribunal_tambem_aborta(tmp_path):
+    stf = _cnj_do_stf()
+    _gravar(tmp_path, PROCESSOS_CURADORIA_ARQUIVO, [_entrada(numero_processo=stf)])
+    _gravar(tmp_path, PROCESSOS_ARQUIVO, [{"numero_processo": stf}])
+    with pytest.raises(ProcessoPublicadoSemConfirmacao):
+        ext.extrair(tmp_path, _ClienteFalso({}))
+    assert _ler(tmp_path, PROCESSOS_ARQUIVO) == [{"numero_processo": stf}]
+
+
+def test_processo_publicado_que_passou_a_correr_em_sigilo_e_retirado(tmp_path):
+    _gravar(tmp_path, PROCESSOS_CURADORIA_ARQUIVO, [_entrada()])
+    _gravar(tmp_path, PROCESSOS_ARQUIVO, [{"numero_processo": CNJ_A}])
+    assert ext.extrair(tmp_path, _ClienteFalso({CNJ_A: _fonte(CNJ_A, nivelSigilo=1)})) == {
+        "sigilosos": 1,
+        "processos": 0,
+    }
+    assert _ler(tmp_path, PROCESSOS_ARQUIVO) == []
 
 
 def test_retirar_o_vinculo_publicado_e_so_pela_curadoria(tmp_path):

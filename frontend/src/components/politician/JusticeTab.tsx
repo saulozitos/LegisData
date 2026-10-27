@@ -60,7 +60,7 @@ export default function JusticeTab({ dossier }: JusticeTabProps) {
                           </span>
                         </div>
                         <p className="text-xs text-slate-300 leading-relaxed max-w-2xl">
-                          Foram identificadas certidões judiciais positivas ou procedimentos protocolados perante os órgãos informados à Justiça Eleitoral. Veja abaixo os processos com comprovação e detalhamento por tribunal.
+                          Há processo ligado à pessoa por fonte oficial ou registro declarado no TSE. A base não informa o papel da pessoa no processo nem o desfecho: leia cada registro abaixo e consulte a fonte.
                         </p>
                         {dossier.ficha_limpa?.orgaos_declarados && dossier.ficha_limpa?.orgaos_declarados.length > 0 && (
                           <div className="flex items-center gap-2 pt-1 flex-wrap">
@@ -138,14 +138,14 @@ export default function JusticeTab({ dossier }: JusticeTabProps) {
                     <div className="flex items-center gap-2">
                       <Scale className="w-5 h-5 text-rose-400" aria-hidden="true" />
                       <h4 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                        Processos com Comprovação Oficial nos Tribunais
+                        Processos e registros vinculados
                         <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                          {dossier.ficha_limpa?.processos_detalhados.length} {dossier.ficha_limpa?.processos_detalhados.length === 1 ? "registro comprovado" : "registros comprovados"}
+                          {dossier.ficha_limpa?.processos_detalhados.length} {dossier.ficha_limpa?.processos_detalhados.length === 1 ? "registro" : "registros"}
                         </span>
                       </h4>
                     </div>
                     <span className="text-xs text-slate-400">
-                      Autuações, decisões colegiadas e andamentos processuais públicos
+                      Dados públicos do DataJud (CNJ) e do TSE, sem inferência de desfecho
                     </span>
                   </div>
 
@@ -194,11 +194,11 @@ export default function JusticeTab({ dossier }: JusticeTabProps) {
                             </p>
                           </div>
 
-                          <div className="pt-1 flex items-center justify-between flex-wrap gap-2">
-                            <span className="text-[11px] font-mono text-slate-400">
-                              Fonte oficial que liga o processo à pessoa
-                            </span>
-                            {linkDoVinculo && (
+                          {linkDoVinculo && (
+                            <div className="pt-1 flex items-center justify-between flex-wrap gap-2">
+                              <span className="text-[11px] font-mono text-slate-400">
+                                Fonte oficial que liga o processo à pessoa
+                              </span>
                               <a
                                 href={linkDoVinculo}
                                 target="_blank"
@@ -208,8 +208,8 @@ export default function JusticeTab({ dossier }: JusticeTabProps) {
                                 <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
                                 Consultar a fonte do vínculo ↗
                               </a>
-                            )}
-                          </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}

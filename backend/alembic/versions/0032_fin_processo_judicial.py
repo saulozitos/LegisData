@@ -8,7 +8,7 @@ o que o dossiê mostra, e a presunção de inocência é respeitada (sem pontua�
 
 - `numero_cnj` guarda o número no formato CNJ (`NNNNNNN-DD.AAAA.J.TR.OOOO`), o mesmo que o DataJud indexa sem pontuação.
 - Campos que o DataJud não devolve ficam nulos (nunca zero nem texto inventado). A classe, porém, é obrigatória e não pode
-  ser vazia: um processo sem classe oficial não entra. `assuntos` não aceita elemento nulo e o link é `https://` sem espaços
+  ser vazia: um processo sem classe oficial não entra. `assuntos` não aceita elemento nulo e o link é `https://` sem espaços nem barra invertida
   (o ETL ainda exige domínio público e a ausência de CPF; o banco guarda o que passou por ele).
 - `consultado_em` é o dia em que o DataJud foi consultado: o último movimento é o desse dia, não necessariamente o de hoje.
 - Um mesmo processo pode ligar a mais de uma pessoa (litisconsórcio): a unicidade é por `(pessoa_id, numero_cnj)`.
@@ -43,7 +43,7 @@ def upgrade() -> None:
             data_ultimo_movimento date,
             total_movimentacoes integer CHECK (total_movimentacoes IS NULL OR total_movimentacoes >= 0),
             consultado_em date,
-            vinculo_url text NOT NULL CHECK (vinculo_url ~ '^https://[^[:space:]]+$'),
+            vinculo_url text NOT NULL CHECK (vinculo_url ~ '^https://[^[:space:]\\\\]+$'),
             fonte_id smallint NOT NULL REFERENCES etl.fonte(id),
             atualizado_em timestamptz NOT NULL DEFAULT now(),
             UNIQUE (pessoa_id, numero_cnj)

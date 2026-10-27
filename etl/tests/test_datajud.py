@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from etl.utils.datajud_client import (
+    _FUSO,
     CACHE_NEGATIVO_DIAS,
     CACHE_POSITIVO_DIAS,
     DataJudClient,
@@ -170,6 +171,7 @@ def test_resposta_sem_hit_e_nao_encontrado_e_nao_erro(tmp_path, monkeypatch):
         _Resposta(status=401, texto="chave inválida"),
         _Resposta(status=429),  # as três tentativas terminam em 429
         _Resposta(invalido=True),  # 200 com corpo ilegível
+        _Resposta(corpo=[1]),  # 200 com JSON que não é objeto
         _Resposta(corpo={"hits": {"hits": [{"_source": None}]}}),  # hit sem documento
         TimeoutError("lento"),
     ],
@@ -239,15 +241,61 @@ def test_nao_encontrado_gravado_pelo_cliente_e_lido_de_volta_sem_nova_consulta(t
         "",
         "None",  # o que `str(None)` dá quando a chave falta
         "2024-01-01T00:00:00+00:00",  # com fuso e antigo: vencido, sem TypeError ao comparar com o relógio local
-        "2999-01-01T00:00:00",  # no futuro: ainda "recente" (o relógio local é a referência)
+        "2999-01-01T00:00:00",  # no futuro: um cache copiado ou de relógio atrasado ficaria congelado, então vence
+        "2999-01-01T00:00:00+00:00",
     ],
 )
 def test_data_do_cache_ilegivel_ou_com_fuso_e_tratada_sem_quebrar(tmp_path, monkeypatch, quando):
     _plantar_cache(tmp_path, 0, fetched_at=quando)
     cliente = _cliente(tmp_path, monkeypatch, SEM_HIT)
     assert cliente.consultar_processo(CNJ) is None
-    esperado = 0 if quando == "2999-01-01T00:00:00" else 1
-    assert cliente.session.chamadas == esperado
+    assert cliente.session.chamadas == 1
+
+
+def test_achado_gravado_no_futuro_nao_fica_congelado(tmp_path, monkeypatch):
+    futuro = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+    _plantar_cache(tmp_path, 0, found=True, fetched_at=futuro, source={"numeroProcesso": "cache"})
+    cliente = _cliente(tmp_path, monkeypatch, _com_hit({"numeroProcesso": "rede"}))
+    assert cliente.consultar_processo(CNJ) == {"numeroProcesso": "rede"} and cliente.session.chamadas == 1
+
+
+def test_pequena_deriva_de_relogio_ainda_vale(tmp_path, monkeypatch):
+    # 1 minuto à frente: diferença normal entre máquinas, o cache continua valendo
+    quase_agora = (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat()
+    _plantar_cache(tmp_path, 0, found=True, fetched_at=quase_agora, source={"numeroProcesso": "cache"})
+    cliente = _cliente(tmp_path, monkeypatch, _com_hit({"numeroProcesso": "rede"}))
+    assert cliente.consultar_processo(CNJ) == {"numeroProcesso": "cache"} and cliente.session.chamadas == 0
+
+
+@pytest.mark.parametrize("conteudo", ["{", "[]", "null", '"texto"'])
+def test_cache_corrompido_ou_que_nao_e_objeto_vai_a_rede(tmp_path, monkeypatch, conteudo):
+    caminho = tmp_path / "datajud" / "api_publica_tjsp" / "00000017820208260100.json"
+    caminho.parent.mkdir(parents=True)
+    caminho.write_text(conteudo, encoding="utf-8")
+    cliente = _cliente(tmp_path, monkeypatch, _com_hit({"numeroProcesso": "x"}))
+    assert cliente.consultar_processo(CNJ) == {"numeroProcesso": "x"} and cliente.session.chamadas == 1
+
+
+def test_dia_da_consulta_e_o_da_gravacao_do_cache_ou_o_de_hoje(tmp_path, monkeypatch):
+    ontem = datetime.now(timezone.utc) - timedelta(hours=20)
+    _plantar_cache(tmp_path, 0, found=True, fetched_at=ontem.isoformat(), source={"numeroProcesso": "cache"})
+    cliente = _cliente(tmp_path, monkeypatch)
+    assert cliente.dia_da_consulta(CNJ) is None  # ainda não consultou
+    assert cliente.consultar_processo(CNJ) == {"numeroProcesso": "cache"}
+    assert cliente.dia_da_consulta(CNJ) == ontem.astimezone(_FUSO).date().isoformat()
+    # o formato com pontuação e o sem pontuação dão o mesmo número
+    assert cliente.dia_da_consulta("00000017820208260100") == cliente.dia_da_consulta(CNJ)
+
+    novo = _cliente(tmp_path / "outro", monkeypatch, _com_hit({"numeroProcesso": "rede"}))
+    assert novo.consultar_processo(CNJ) == {"numeroProcesso": "rede"}
+    assert novo.dia_da_consulta(CNJ) == datetime.now(_FUSO).date().isoformat()
+
+
+def test_cache_gravado_pelo_cliente_leva_o_fuso_de_brasilia(tmp_path, monkeypatch):
+    cliente = _cliente(tmp_path, monkeypatch, _com_hit({"numeroProcesso": "x"}))
+    cliente.consultar_processo(CNJ)
+    gravado = json.loads(next((tmp_path / "datajud").rglob("*.json")).read_text(encoding="utf-8"))
+    assert datetime.fromisoformat(gravado["fetched_at"]).utcoffset() == datetime.now(_FUSO).utcoffset()
 
 
 def test_data_com_fuso_recente_no_cache_vale(tmp_path, monkeypatch):

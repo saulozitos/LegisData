@@ -1098,33 +1098,46 @@ def ler_certidao(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
 # [0-9] e re.ASCII: `\d` casaria dígitos de outros alfabetos (largura total, árabe-índicos), que `int()` converte mas o CHECK
 # de `fin.processo_judicial.numero_cnj` (`[0-9]`) recusa, e a carga inteira abortaria no INSERT.
 _CNJ_FORMATADO = re.compile(r"([0-9]{7})-([0-9]{2})\.([0-9]{4})\.([0-9])\.([0-9]{2})\.([0-9]{4})", re.ASCII)
-# ASCII imprimível sem espaço: o CHECK do banco (`[^[:space:]]`) aceita mais que isso (um espaço Unicode colado de um PDF
-# passaria no Python e abortaria a carga se a regra fosse mais frouxa aqui), então o que o ETL aceita o banco também aceita.
-_LINK_HTTPS = re.compile(r"https://[\x21-\x7e]+")
+# Host de nome DNS (rótulos de letra, dígito e hífen), porta opcional e, depois, ASCII imprimível sem espaço: o CHECK do
+# banco (`[^[:space:]]`) aceita mais que isso (um espaço Unicode colado de um PDF passaria no Python e abortaria a carga se
+# a regra fosse mais frouxa aqui), então o que o ETL aceita o banco também aceita. Prender o host aos caracteres de nome
+# DNS tira `\`, `@`, `[` e `;` do lugar onde o Python e o navegador leem o host de jeitos diferentes: o navegador trata
+# `\` como separador de caminho, então `https://x.example\.jus.br/` vai para `x.example`, não para um domínio `.jus.br`.
+_LINK_HTTPS = re.compile(r"https://(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?::[0-9]{1,5})?(?:[/?#][\x21-\x7e]*)?")
 # Domínios de órgãos públicos brasileiros: a fonte que liga o processo à pessoa tem de ser oficial (decisão D7).
 SUFIXOS_OFICIAIS = (".jus.br", ".gov.br", ".leg.br", ".mp.br")
+# Voltas de decodificação de percentual: um CPF em camadas demais de %25 é recusado em vez de adivinhado.
+_VOLTAS_DE_DECODIFICACAO = 6
 
 
 def link_oficial(valor: Any) -> Optional[str]:
     """
     O link da fonte oficial que liga o processo à pessoa, ou None. Vale `https://` de um domínio público (`.jus.br`,
-    `.gov.br`, `.leg.br`, `.mp.br`), sem credencial embutida, sem espaço e sem CPF: a consulta de um tribunal por
-    documento da parte leva o CPF na query string, e um link mascarado não comprovaria nada, então o link inteiro é
-    recusado (decisão D3), inclusive quando o CPF vem codificado (`%2E`, `%2D`). Um identificador de 10 ou 11 dígitos
-    corridos que não seja CPF também é recusado (na dúvida a curadoria escolhe outro link).
+    `.gov.br`, `.leg.br`, `.mp.br`), sem credencial embutida, sem barra invertida, sem espaço e sem CPF: a consulta de um
+    tribunal por documento da parte leva o CPF na query string, e um link mascarado não comprovaria nada, então o link
+    inteiro é recusado (decisão D3), inclusive quando o CPF vem codificado (`%2E`, `%2D`) em quantas camadas forem: a
+    decodificação vai até o ponto fixo e um link que ainda muda depois do limite de voltas é recusado. Um identificador
+    de 10 ou 11 dígitos corridos que não seja CPF também é recusado (na dúvida a curadoria escolhe outro link).
     """
     link = texto(valor)
     if link is None or not _LINK_HTTPS.fullmatch(link):
         return None
-    partes = urlsplit(link)
-    if "@" in partes.netloc or not (partes.hostname or "").endswith(SUFIXOS_OFICIAIS):
+    try:
+        partes = urlsplit(link)
+        host, _ = partes.hostname or "", partes.port  # `.port` levanta ValueError fora de 0-65535
+    except ValueError:  # link malformado nunca derruba o lote
+        return None
+    if not host.endswith(SUFIXOS_OFICIAIS):
         return None
     decodificado = link
-    for _ in range(2):  # a segunda volta pega a codificação dupla (%252E)
-        decodificado = unquote(decodificado)
+    for _ in range(_VOLTAS_DE_DECODIFICACAO):
         if texto_sem_cpf(decodificado) != decodificado:
             return None
-    return link
+        proximo = unquote(decodificado)
+        if proximo == decodificado:
+            return link
+        decodificado = proximo
+    return None
 
 
 def cnj_valido(numero: Any) -> Optional[str]:
@@ -1182,6 +1195,13 @@ def texto_oficial_sem_cpf(valor: Any) -> Optional[str]:
     return original if limpo == " ".join(_ascii(original).split()) else limpo
 
 
+def assuntos_sem_cpf(valor: Any) -> List[str]:
+    """Os assuntos de um processo como lista de textos sem CPF (D3); o que não é lista, ou é vazio, não entra."""
+    if not isinstance(valor, list):
+        return []
+    return [a for a in (texto_oficial_sem_cpf(x) for x in valor) if a]
+
+
 def ler_processo(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """
     Campos de um processo já enriquecido pelo DataJud, ou (None, "sem_proveniencia" | "invalidas"). Regra única.
@@ -1196,16 +1216,13 @@ def ler_processo(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     vinculo = link_oficial(item.get("link_comprovacao"))
     if numero is None or not classe or vinculo is None:
         return None, "invalidas"
-    assuntos = item.get("assuntos_tpu")
     movimentacoes = inteiro(item.get("total_movimentacoes"))
     return {
         "numero": numero,
         "tribunal": texto_oficial_sem_cpf(item.get("tribunal")),
         "grau": texto_oficial_sem_cpf(item.get("grau")),
         "classe": classe,
-        "assuntos": (
-            [a for a in (texto_oficial_sem_cpf(x) for x in assuntos) if a] if isinstance(assuntos, list) else []
-        ),
+        "assuntos": assuntos_sem_cpf(item.get("assuntos_tpu")),
         "orgao": texto_oficial_sem_cpf(item.get("orgao_julgador")),
         "ajuizado": _data_iso(item.get("data_processo")),
         "movimento": texto_oficial_sem_cpf(item.get("ultimo_movimento")),

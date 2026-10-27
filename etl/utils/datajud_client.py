@@ -45,6 +45,8 @@ def _fuso_de_brasilia():
 
 
 _FUSO = _fuso_de_brasilia()
+# Quanto o relógio gravado no cache pode estar à frente do desta máquina sem o cache deixar de valer.
+_DERIVA_DO_RELOGIO = timedelta(minutes=5)
 _DATA_COMPACTA = re.compile(r"([0-9]{8})([0-9]{6})?", re.ASCII)
 
 
@@ -82,6 +84,15 @@ def _dia_do_datajud(valor: Any) -> Optional[str]:
     if escrito.utcoffset() == timedelta(0) and escrito.time() == hora_do_dia(0):
         return escrito.date().isoformat()
     return escrito.astimezone(_FUSO).date().isoformat()
+
+
+def _agora_em_brasilia() -> str:
+    """O instante de agora, ISO com o deslocamento de Brasília (o cache não depende do fuso da máquina)."""
+    return datetime.now(_FUSO).isoformat()
+
+
+def _hoje_em_brasilia() -> str:
+    return datetime.now(_FUSO).date().isoformat()
 
 
 def _chave_de_instante(valor: Any) -> float:
@@ -242,6 +253,7 @@ class DataJudClient:
         self.base_url = base_url.rstrip("/")
         self.raw_dir = Path(raw_dir or RAW_DATA_DIR) / "datajud"
         self.timeout = timeout
+        self._consultas: Dict[str, str] = {}
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -256,12 +268,34 @@ class DataJudClient:
 
     @staticmethod
     def _cache_vigente(conteudo: Dict[str, Any], dias: int) -> bool:
-        """O cache tem menos de `dias`; data ilegível (ou sem fuso comparável) conta como vencido."""
+        """
+        O cache tem menos de `dias`. Data ilegível (ou sem fuso comparável) conta como vencida, e a do futuro também: um
+        cache copiado de outra máquina, ou de um relógio que andou para trás, ficaria congelado até a data gravada e o
+        dossiê mostraria um andamento antigo como atual. A folga de `_DERIVA_DO_RELOGIO` cobre só a diferença normal de
+        relógio entre máquinas.
+        """
         try:
             gravado = datetime.fromisoformat(str(conteudo.get("fetched_at")))
-            return datetime.now(gravado.tzinfo) - gravado < timedelta(days=dias)
+            idade = datetime.now(gravado.tzinfo) - gravado
         except (ValueError, TypeError):
             return False
+        return -_DERIVA_DO_RELOGIO <= idade < timedelta(days=dias)
+
+    @staticmethod
+    def _dia_da_gravacao(conteudo: Dict[str, Any]) -> Optional[str]:
+        """O dia (Brasília) em que o cache foi gravado; sem fuso no texto vale o dia escrito; ilegível, None."""
+        try:
+            gravado = datetime.fromisoformat(str(conteudo.get("fetched_at")))
+        except (ValueError, TypeError):
+            return None
+        return (gravado.astimezone(_FUSO) if gravado.tzinfo else gravado).date().isoformat()
+
+    def dia_da_consulta(self, numero: str) -> Optional[str]:
+        """
+        O dia (`AAAA-MM-DD`, Brasília) em que o documento devolvido por `consultar_processo(numero)` foi lido do
+        DataJud: o da gravação do cache quando veio dele, o de hoje quando veio da rede. None se ainda não consultou.
+        """
+        return self._consultas.get(re.sub(r"[^0-9]", "", str(numero)))
 
     @staticmethod
     def _documento_do_numero(hits: List[Any], limpo: str) -> Optional[Dict[str, Any]]:
@@ -307,6 +341,7 @@ class DataJudClient:
                         if isinstance(conteudo.get("source"), dict) and self._cache_vigente(
                             conteudo, CACHE_POSITIVO_DIAS
                         ):
+                            self._consultas[limpo] = self._dia_da_gravacao(conteudo) or _hoje_em_brasilia()
                             return conteudo["source"]
                     elif self._cache_vigente(conteudo, CACHE_NEGATIVO_DIAS):
                         continue
@@ -337,13 +372,14 @@ class DataJudClient:
                             break
                         atomic_write_json(
                             caminho_cache,
-                            {"found": True, "fetched_at": datetime.now().isoformat(), "alias": alias, "source": source},
+                            {"found": True, "fetched_at": _agora_em_brasilia(), "alias": alias, "source": source},
                         )
+                        self._consultas[limpo] = _hoje_em_brasilia()
                         logger.info("DataJud: processo %s localizado com sucesso em %s", parsed["formatado"], alias)
                         return source
                     atomic_write_json(
                         caminho_cache,
-                        {"found": False, "fetched_at": datetime.now().isoformat(), "alias": alias},
+                        {"found": False, "fetched_at": _agora_em_brasilia(), "alias": alias},
                     )
                     break
                 except (requests.RequestException, TimeoutError, ValueError, AttributeError) as exc:

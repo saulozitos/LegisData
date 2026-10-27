@@ -641,7 +641,7 @@ class Certidao:
     """
     Linha de `fin.certidao` com os nomes que o Raio-X Judicial usa; o TSE não informa data, link nem autenticidade.
     Adaptador temporário: os nomes seguem o ORM legado (`court_agency`, `certificate_type`...) enquanto
-    `_enrich_judicial_records` vive na rota; ambos mudam juntos na limpeza do legado (Fase 9).
+    `judicial_service.enriquecer_registros_judiciais` os consome; ambos mudam juntos na limpeza do legado (Fase 9).
     """
 
     id: int
@@ -707,7 +707,7 @@ def processos(db: Session, pessoas: Sequence[int]) -> List[Processo]:
             grau=r.grau,
             data_processo=r.data_ajuizamento.isoformat() if r.data_ajuizamento else None,
             classe=r.classe,
-            # um elemento NULL do `text[]` (o CHECK da tabela não o impede) é ignorado, não quebra o dossiê
+            # o CHECK da 0032 já impede elemento NULL em `assuntos`; o filtro é só defesa em profundidade
             assuntos=tuple(a for a in (r.assuntos or []) if a),
             orgao_julgador=r.orgao_julgador,
             ultimo_movimento=r.ultimo_movimento,

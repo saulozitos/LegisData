@@ -461,7 +461,12 @@ describe('JusticeTab', () => {
     const declared = render(<JusticeTab dossier={d} />);
     expect(screen.getByText('Possui processos vinculados na Justiça')).toBeInTheDocument();
     expect(screen.getByText('Nº 0001')).toBeInTheDocument();
-    expect(screen.getByText('1 registro comprovado')).toBeInTheDocument();
+    expect(screen.getByText('1 registro')).toBeInTheDocument();
+    // link inseguro: nada de botão nem de "fonte oficial que liga" sem link para mostrar
+    expect(screen.queryByText(/Consultar a fonte do vínculo/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Fonte oficial que liga o processo à pessoa/)).not.toBeInTheDocument();
+    // o texto não afirma o que a fonte não diz (o aviso legal sobre a LC 135 continua, é outro trecho)
+    expect(document.body.textContent).not.toMatch(/registros? comprovados?|decisões colegiadas e andamentos|certidões judiciais positivas/i);
     declared.unmount();
 
     render(<JusticeTab dossier={sparseDossier()} />);
@@ -486,6 +491,7 @@ describe('JusticeTab: itens de processo', () => {
     expect(screen.getByText('Declarado no TSE')).toBeInTheDocument();
     expect(screen.getByText('Nº n/d')).toBeInTheDocument();
     expect(screen.queryByText(/Consultar a fonte do vínculo/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Fonte oficial que liga o processo à pessoa/)).not.toBeInTheDocument();
   });
 
   it('o texto do último movimento nunca vira desfecho: "improcedente" não pinta de verde nem "inelegibilidade" de vermelho', () => {
@@ -503,6 +509,7 @@ describe('JusticeTab: itens de processo', () => {
     // nem o selo de status do processo tem cor de desfecho
     expect(screen.getAllByText('DataJud · G1').every((el) => el.className.includes('bg-slate-800'))).toBe(true);
     expect(screen.getAllByText(/Consultar a fonte do vínculo/)).toHaveLength(2);
+    expect(screen.getAllByText(/Fonte oficial que liga o processo à pessoa/)).toHaveLength(2);
   });
 });
 

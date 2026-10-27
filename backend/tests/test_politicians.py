@@ -1,7 +1,7 @@
 from datetime import date
 
 import pytest
-from app.api.v1.politicians import _classe_e_assuntos, _normalize_name, _processo_detalhado
+from app.api.v1.politicians import _normalize_name
 from app.core.query_utils import escape_like as _escape_like
 from app.models import (
     AttendanceRecord,
@@ -12,6 +12,7 @@ from app.models import (
 )
 from app.services import financas_service
 from app.services.financas_service import Processo
+from app.services.judicial_service import classe_e_assuntos, processo_detalhado
 from sqlalchemy import text
 
 from .conftest import criar_mandato_presidencial, fonte_id, inserir_fin, pessoa_do
@@ -459,18 +460,18 @@ def test_processo_detalhado_sem_data_do_movimento_sem_assuntos_e_sem_grau():
         consultado_em=None,
         link_comprovacao="https://exemplo.jus.br/p",
     )
-    detalhado = _processo_detalhado(Processo(**base))
+    detalhado = processo_detalhado(Processo(**base))
     assert detalhado["situacao_juridica"] == "Último movimento registrado no DataJud: Conclusão."  # sem "(None)"
     assert detalhado["status_resumo"] == "DataJud" and detalhado["descricao"] is None
     assert detalhado["classe_assunto"] == "Ação Penal"
-    com_data = _processo_detalhado(
+    com_data = processo_detalhado(
         Processo(**{**base, "data_ultimo_movimento": "2024-05-06", "grau": "G2", "consultado_em": "2026-10-26"})
     )
     assert (
         com_data["situacao_juridica"].endswith("Conclusão (2024-05-06). Consultado em 2026-10-26.")
         and com_data["status_resumo"] == "DataJud · G2"
     )
-    sem_movimento = _processo_detalhado(Processo(**{**base, "ultimo_movimento": None, "consultado_em": "2026-10-26"}))
+    sem_movimento = processo_detalhado(Processo(**{**base, "ultimo_movimento": None, "consultado_em": "2026-10-26"}))
     assert sem_movimento["situacao_juridica"] == "Sem movimentação registrada no DataJud. Consultado em 2026-10-26."
 
 
@@ -486,7 +487,7 @@ def test_classe_e_assuntos_do_raio_x(classe, assuntos, esperado):
         numero_processo="1", tribunal=None, grau=None, data_processo=None, orgao_julgador=None,
         ultimo_movimento=None, data_ultimo_movimento=None, consultado_em=None, link_comprovacao="https://x.jus.br/p",
     )  # fmt: skip
-    assert _classe_e_assuntos(Processo(classe=classe, assuntos=assuntos, **base)) == esperado
+    assert classe_e_assuntos(Processo(classe=classe, assuntos=assuntos, **base)) == esperado
 
 
 def test_processo_e_certidao_do_tse_saem_com_as_mesmas_chaves_e_ausente_e_sempre_none(client, db, seed):

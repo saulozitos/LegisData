@@ -244,7 +244,8 @@ def _carga_simples(
     if recusa is not None:
         return recusa
     linhas, contagem = montar(dados, ResolvedorDePessoas(conn), _fontes(conn)[fonte])
-    if not linhas and not (vazio_limpa and not dados):
+    lista_vazia_valida = vazio_limpa and not dados
+    if not linhas and not lista_vazia_valida:
         logger.warning("%s sem nenhum registro utilizável (%s); o banco não foi alterado.", rotulo, contagem)
         return {**contagem, chave_total: 0}
     _substituir(conn, [(tabela, insercao, linhas)])
@@ -672,7 +673,9 @@ def linhas_dos_processos(
         if lido is None:
             contagem[str(motivo)] += 1
             continue
-        pessoa = resolvedor.resolver(item).pessoa_id
+        # Só pelo identificador oficial: a regra de nome único das emendas e da CEAP, num processo judicial, poderia
+        # atribuir uma ação a um homônimo de quem não está no cadastro.
+        pessoa = resolvedor.por_identificador(item.get("camara_id"), item.get("senado_id"))
         if pessoa is None:
             contagem["sem_pessoa"] += 1
             continue

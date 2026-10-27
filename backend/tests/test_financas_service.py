@@ -558,6 +558,7 @@ VALIDO = {
         ("vinculo_url", "ftp://exemplo.jus.br/x"),
         ("vinculo_url", "http://exemplo.jus.br/p"),  # só https
         ("vinculo_url", "https://exemplo.jus.br/a b"),  # espaço no link
+        ("vinculo_url", "https://evil.example\\.jus.br/x"),  # barra invertida: o navegador a lê como caminho
         ("vinculo_url", "http:/exemplo"),
         ("vinculo_url", "https://"),
     ],

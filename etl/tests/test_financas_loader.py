@@ -2595,6 +2595,17 @@ def test_a_origem_do_hook_fica_registrada(pg_engine, sem_execucoes_de_carga):
 # ── Processos judiciais (DataJud) ─────────────────────────────────────────────────────────────────────────────────
 
 
+def test_processo_so_liga_a_pessoa_pelo_identificador_oficial_nunca_pelo_nome(pg_engine, banco, tmp_path):
+    # "Ana Souza" existe no cadastro com camara_id 100; o registro traz só o nome (ou um identificador que o cadastro
+    # não conhece): um homônimo fora do cadastro herdaria a ação, então o processo fica sem pessoa
+    sem_id = _processo(nome_civil="Ana Souza")
+    id_desconhecido = _processo(nome_civil="Ana Souza", camara_id=999999, numero_processo=CNJ_B)
+    _gravar(tmp_path, fin.PROCESSOS_ARQUIVO, [sem_id, id_desconhecido])
+    with pg_engine.begin() as conn:
+        resultado = fin.carregar_processos(conn, tmp_path)
+    assert resultado["processos"] == 0 and resultado["sem_pessoa"] == 2
+
+
 def test_processo_grava_os_metadados_do_datajud_e_o_vinculo(pg_engine, banco, tmp_path):
     _gravar(tmp_path, fin.PROCESSOS_ARQUIVO, [_processo(camara_id=100, nome_civil="Ana Souza")])
     with pg_engine.begin() as conn:
