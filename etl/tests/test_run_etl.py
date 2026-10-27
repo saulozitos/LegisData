@@ -123,7 +123,14 @@ def test_carga_economica_sem_falha_nao_levanta_e_com_duas_falhas_relata_as_duas(
 
         return _
 
-    for modulo in ("economia_loader", "presidencia_loader", "composicao_loader", "pnad_loader", "financas_loader"):
+    for modulo in (
+        "economia_loader",
+        "presidencia_loader",
+        "composicao_loader",
+        "pnad_loader",
+        "territorial_loader",
+        "financas_loader",
+    ):
         monkeypatch.setattr(f"etl.pipelines.{modulo}.carregar", lambda engine, **kw: {})
     cli._load_economia()  # nenhuma falha: sem exceção
 

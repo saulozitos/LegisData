@@ -47,6 +47,7 @@ CARGAS: Tuple[Tuple[str, str, str, Optional[str]], ...] = (
         "presidencia",
     ),
     ("pnad", "PNAD (classes sociais)", "etl.pipelines.pnad_loader", None),
+    ("territorial", "Repasses e eleições por UF", "etl.pipelines.territorial_loader", "presidencia"),
     ("financas", "Finanças (fin)", "etl.pipelines.financas_loader", None),
 )
 # Quais cargas de finanças (de `financas_loader.CARGAS`) cada modo roda; None = todas. Um só mapa: o deploy, o

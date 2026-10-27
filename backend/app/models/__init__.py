@@ -1,5 +1,4 @@
 from .analytics import (
-    FederalTransferByState,
     LogExecucaoCron,
     MandateEconomicPerformance,
     PolicyEconomicImpact,
@@ -8,13 +7,10 @@ from .base import Base, MigratedBase, TimeStampedModel
 from .core import Entidade, Mandato, Midia, Partido, Pessoa
 from .economic import (
     AnnualMacroeconomicSummary,
-    AnnualSocialIndicator,
     CategoriaIndicadorEnum,
     EconomicIndicatorSeries,
     EconomicIndicatorValue,
     PeriodicidadeIndicadorEnum,
-    StatePresidentialElectionResult,
-    StateSocialIndicator,
     UnidadeMedidaEnum,
 )
 from .leg import Autoria, Casa, Orientacao, Proposicao, Votacao, Voto
@@ -99,12 +95,8 @@ __all__ = [
     "CategoriaIndicadorEnum",
     "PeriodicidadeIndicadorEnum",
     "UnidadeMedidaEnum",
-    "AnnualSocialIndicator",
-    "StateSocialIndicator",
-    "StatePresidentialElectionResult",
     "MandateEconomicPerformance",
     "PolicyEconomicImpact",
-    "FederalTransferByState",
     "HistoricoMandato",
     "SituacaoMandatoEnum",
     "LogExecucaoCron",

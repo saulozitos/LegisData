@@ -51,12 +51,17 @@ SERIES_ANUAIS_BR: Dict[str, Dict[str, str]] = {
         "pobreza_pct": "POBREZA_PCT",
         "inseguranca_alimentar_pct": "INSEGURANCA_ALIMENTAR_PCT",
         "inseguranca_alimentar_milhoes": "INSEGURANCA_ALIMENTAR_MILHOES",
+        "inseguranca_alimentar_total_pct": "INSEGURANCA_ALIMENTAR_TOTAL_PCT",
     },
     "seguranca_publica_historico.csv": {
         "taxa_homicidios": "HOMICIDIOS_TAXA",
         "homicidios_total": "HOMICIDIOS_TOTAL",
     },
 }
+
+# série -> coluna do mesmo arquivo que vai para a `nota` da observação (a pesquisa de onde o número saiu: o Gini tem
+# quebra metodológica em 2012 e a tela precisa dizer qual pesquisa é cada ponto)
+NOTAS_DAS_SERIES: Dict[str, str] = {"GINI": "serie_gini"}
 
 SERIES_ANUAIS_UF: Dict[str, Dict[str, str]] = {
     "indicadores_sociais_uf.csv": {
@@ -122,7 +127,8 @@ def observacoes_anuais(linhas: Iterable[Dict[str, str]], colunas: Dict[str, str]
         for coluna, codigo in colunas.items():
             valor = numero(linha.get(coluna))
             if valor is not None:
-                resultado.append(Observacao(codigo, date(int(ano), 1, 1), uf, valor, parcial(linha)))
+                nota = (linha.get(NOTAS_DAS_SERIES.get(codigo, "")) or "").strip() or None
+                resultado.append(Observacao(codigo, date(int(ano), 1, 1), uf, valor, parcial(linha), nota))
     return resultado
 
 

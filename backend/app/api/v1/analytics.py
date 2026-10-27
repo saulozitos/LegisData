@@ -6,12 +6,6 @@ from typing import Any, Dict, List, Optional
 from app.core.data_files import FIRST_SERIES_YEAR, mandate_year_range
 from app.core.database import get_db
 from app.core.numeros import opt_float as _opt_float
-from app.models import (
-    AnnualSocialIndicator,
-    FederalTransferByState,
-    StatePresidentialElectionResult,
-    StateSocialIndicator,
-)
 from app.schemas.analytics import (
     CongressCompositionResponse,
     FederalTransfersResponse,
@@ -25,6 +19,12 @@ from app.services.mandato_economia_service import matriz_de_mandatos
 from app.services.pnad_service import classes_sociais
 from app.services.presidencia_service import presidente_por_referencia
 from app.services.salario_service import disparidade_salarial
+from app.services.territorial_service import (
+    indicadores_sociais_anuais,
+    indicadores_sociais_por_uf,
+    repasses_federais,
+    resultados_presidenciais,
+)
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -190,16 +190,16 @@ def get_mandates_economic_performance(db: Session = Depends(get_db)):
     ]
 
 
-def _repasse_como_dict(r: FederalTransferByState) -> Dict[str, Any]:
+def _repasse_como_dict(r: Dict[str, Any]) -> Dict[str, Any]:
     """Repasse em dict. Total é obrigatório na tabela; per capita desconhecido continua None (nunca vira 0)."""
     return {
-        "mandato_id_ref": r.mandate_id_ref,
-        "uf": r.uf,
-        "estado_nome": r.estado_nome,
-        "regiao": r.regiao,
-        "area_tematica": r.area_tematica,
-        "valor_pago_brl": float(r.valor_pago_brl),
-        "valor_per_capita_brl": float(r.valor_per_capita_brl) if r.valor_per_capita_brl is not None else None,
+        "mandato_id_ref": r["mandato_id_ref"],
+        "uf": r["uf"],
+        "estado_nome": r["estado_nome"],
+        "regiao": r["regiao"],
+        "area_tematica": r["area_tematica"],
+        "valor_pago_brl": float(r["valor_pago_brl"]),
+        "valor_per_capita_brl": float(r["valor_per_capita_brl"]) if r["valor_per_capita_brl"] is not None else None,
     }
 
 
@@ -239,7 +239,7 @@ def compare_mandates(
     macro_dict = macro_por_ano(db)
     sociais_map = sociais_por_ano(db)
     seg_map = seguranca_por_ano(db)
-    repasses_list = [_repasse_como_dict(r) for r in db.query(FederalTransferByState).all()]
+    repasses_list = [_repasse_como_dict(r) for r in repasses_federais(db)]
 
     # Anos cobertos por cada mandato
     years1 = _get_mandate_years(m1)
@@ -570,27 +570,28 @@ def get_federal_transfers(
     - Totais gerais, agregados por região e valores per capita
     Mandato sem repasses carregados devolve a lista vazia.
     """
-    if presidente_por_referencia(db, mandate_id) is None:
+    presidente = presidente_por_referencia(db, mandate_id)
+    if presidente is None:
         raise HTTPException(status_code=404, detail=f"Mandato '{mandate_id}' não encontrado.")
 
-    query = db.query(FederalTransferByState).filter(FederalTransferByState.mandate_id_ref == mandate_id)
-    if area and area.strip():
-        escaped = area.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        query = query.filter(FederalTransferByState.area_tematica.ilike(f"%{escaped}%", escape="\\"))
-    rows = query.order_by(FederalTransferByState.uf, FederalTransferByState.area_tematica).all()
+    rows = repasses_federais(
+        db, mandato=presidente["id_referencia"], area=area.strip() if area and area.strip() else None
+    )
     items: List[Dict[str, Any]] = [
         {
-            "uf": r.uf,
-            "estado_nome": r.estado_nome,
-            "regiao": r.regiao,
-            "area_tematica": r.area_tematica,
-            "valor_pago_brl": float(r.valor_pago_brl),
-            "populacao_estimada": r.populacao_estimada or 0,
-            "valor_per_capita_brl": float(r.valor_per_capita_brl) if r.valor_per_capita_brl is not None else None,
+            "uf": r["uf"],
+            "estado_nome": r["estado_nome"],
+            "regiao": r["regiao"],
+            "area_tematica": r["area_tematica"],
+            "valor_pago_brl": float(r["valor_pago_brl"]),
+            "populacao_estimada": r["populacao_estimada"] or 0,
+            "valor_per_capita_brl": float(r["valor_per_capita_brl"]) if r["valor_per_capita_brl"] is not None else None,
         }
         for r in rows
     ]
-    cobertura = _cobertura_repasses([(r.periodo_inicio, r.periodo_fim, r.meses_cobertos, r.parcial) for r in rows])
+    cobertura = _cobertura_repasses(
+        [(r["periodo_inicio"], r["periodo_fim"], r["meses_cobertos"], r["parcial"]) for r in rows]
+    )
 
     total_brl = sum(i["valor_pago_brl"] for i in items)
     areas_sum: Dict[str, float] = {}
@@ -621,27 +622,7 @@ def get_social_indicators(db: Session = Depends(get_db)):
     índice de Gini (`serie_gini` informa a pesquisa; há quebra metodológica em 2012) e desemprego.
     Lacunas de pesquisa vêm como null; nada é interpolado.
     """
-    records = db.query(AnnualSocialIndicator).order_by(AnnualSocialIndicator.year.asc()).all()
-    if records:
-        return [
-            {
-                "ano": r.year,
-                "analfabetismo_pct": _opt_float(r.illiteracy_rate_pct),
-                "extrema_pobreza_pct": _opt_float(r.extreme_poverty_pct),
-                "extrema_pobreza_milhoes": _opt_float(r.extreme_poverty_millions),
-                "inseguranca_alimentar_pct": _opt_float(r.food_insecurity_pct),
-                "inseguranca_alimentar_milhoes": _opt_float(r.food_insecurity_millions),
-                "gini": _opt_float(r.gini_index),
-                "serie_gini": r.gini_series,
-                "pobreza_pct": _opt_float(r.poverty_pct),
-                "inseguranca_alimentar_total_pct": _opt_float(r.food_insecurity_total_pct),
-                "desemprego_pct": _opt_float(r.unemployment_pct),
-                "fonte": r.data_source,
-            }
-            for r in records
-        ]
-
-    return []
+    return indicadores_sociais_anuais(db)
 
 
 @router.get("/social-classes")
@@ -677,36 +658,29 @@ def get_social_elections_correlation(
         )
     selected_year = ano
 
-    eleicoes_db = (
-        db.query(StatePresidentialElectionResult)
-        .filter(StatePresidentialElectionResult.election_year == selected_year)
-        .order_by(StatePresidentialElectionResult.uf)
-        .all()
-    )
-
-    sociais_db = db.query(StateSocialIndicator).filter(StateSocialIndicator.year == selected_year).all()
-    sociais_map = {s.uf: s for s in sociais_db}
+    eleicoes_db = resultados_presidenciais(db, selected_year)
+    sociais_map = indicadores_sociais_por_uf(db, selected_year)
 
     merged = []
     for el in eleicoes_db:
-        soc = sociais_map.get(el.uf)
+        soc = sociais_map.get(el["uf"], {})
 
         merged.append(
             {
-                "uf": el.uf,
-                "estado_nome": el.state_name,
-                "regiao": el.region,
-                "ano_eleicao": el.election_year,
-                "vencedor_nome": el.winner_candidate_name,
-                "vencedor_partido": el.winner_party_acronym,
-                "vencedor_votos_pct": _opt_float(el.winner_votes_pct),
-                "segundo_nome": el.runner_up_candidate_name,
-                "segundo_partido": el.runner_up_party_acronym,
-                "segundo_votos_pct": _opt_float(el.runner_up_votes_pct),
-                "taxa_analfabetismo_pct": _opt_float(soc.illiteracy_rate_pct) if soc else None,
-                "extrema_pobreza_pct": _opt_float(soc.extreme_poverty_pct) if soc else None,
-                "inseguranca_alimentar_pct": _opt_float(soc.food_insecurity_pct) if soc else None,
-                "indice_gini": _opt_float(soc.gini_index) if soc else None,
+                "uf": el["uf"],
+                "estado_nome": el["estado_nome"],
+                "regiao": el["regiao"],
+                "ano_eleicao": el["ano_eleicao"],
+                "vencedor_nome": el["vencedor_nome"],
+                "vencedor_partido": el["vencedor_partido"],
+                "vencedor_votos_pct": _opt_float(el["vencedor_votos_pct"]),
+                "segundo_nome": el["segundo_nome"],
+                "segundo_partido": el["segundo_partido"],
+                "segundo_votos_pct": _opt_float(el["segundo_votos_pct"]),
+                "taxa_analfabetismo_pct": soc.get("taxa_analfabetismo_pct"),
+                "extrema_pobreza_pct": soc.get("extrema_pobreza_pct"),
+                "inseguranca_alimentar_pct": soc.get("inseguranca_alimentar_pct"),
+                "indice_gini": soc.get("indice_gini"),
             }
         )
 

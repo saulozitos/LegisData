@@ -14,7 +14,13 @@ def sync_legacy_to_core(db: Session) -> Dict[str, Any]:
     core = db.execute(text("SELECT etl.sincronizar_legado()")).scalar_one()
     leg = db.execute(text("SELECT etl.sincronizar_legado_leg()")).scalar_one()
     db.execute(text("SELECT etl.aplicar_linhagens()"))
+    unidos = db.execute(text("SELECT core.unificar_duplicadas()")).scalar_one()
     db.commit()
-    summary = {**dict(core), "legislativo": dict(leg), "rejeitos": core["rejeitos"] + leg["rejeitos"]}
+    summary = {
+        **dict(core),
+        "legislativo": dict(leg),
+        "rejeitos": core["rejeitos"] + leg["rejeitos"],
+        "cadastros_unificados": unidos,
+    }
     logger.info("Sincronização legado -> core/leg: %s", summary)
     return summary

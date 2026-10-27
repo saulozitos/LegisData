@@ -561,8 +561,6 @@ def test_renamed_party_points_to_the_current_one_and_is_hidden_from_the_catalog(
 
 
 def test_authorship_under_the_old_acronym_counts_for_the_current_party(db, client):
-    from datetime import date
-
     db.execute(text("INSERT INTO core.partido (sigla, nome) VALUES ('MDB', 'MDB'), ('PMDB', 'PMDB')"))
     db.execute(text("SELECT etl.aplicar_linhagens()"))
     db.execute(

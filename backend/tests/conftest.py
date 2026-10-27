@@ -62,6 +62,8 @@ _ETL_DATA_TABLES = (
     "etl.rejeito",
     "etl.verificacao",
     "eco.observacao",
+    "eco.repasse_federal",
+    "eco.resultado_eleitoral_uf",
     "eco.pnad_ano",
     "eco.pnad_metodologia",
 )
@@ -180,14 +182,56 @@ def criar_mandato_presidencial(db, nome, inicio, fim, slug, rotulo=None, partido
     return mandato
 
 
-def observar_serie(db, codigo, referencia, valor):
-    """Grava uma observação de `eco.observacao` para a série do catálogo."""
+def observar_serie(db, codigo, referencia, valor, uf=None, nota=None):
+    """Grava uma observação de `eco.observacao` para a série do catálogo (nacional, ou de uma UF)."""
     db.execute(
         text(
-            "INSERT INTO eco.observacao (serie_id, referencia, valor) "
-            "VALUES ((SELECT id FROM eco.serie WHERE codigo = :c), :r, :v)"
+            "INSERT INTO eco.observacao (serie_id, referencia, uf, valor, nota) "
+            "VALUES ((SELECT id FROM eco.serie WHERE codigo = :c), :r, :uf, :v, :n)"
         ),
-        {"c": codigo, "r": referencia, "v": valor},
+        {"c": codigo, "r": referencia, "uf": uf, "v": valor, "n": nota},
+    )
+
+
+def registrar_repasse(db, slug="lula-2023", uf="SP", area="Saúde", valor="100.00", **campos):
+    """Linha de `eco.repasse_federal` do mandato presidencial `slug` (que já deve existir)."""
+    dados = {
+        "slug": slug, "uf": uf, "area": area, "valor": valor, "ano": 2023, "pop": 1000, "pc": "0.10",
+        "inicio": None, "fim": None, "meses": None, "parcial": None,
+    }  # fmt: skip
+    dados.update(campos)
+    db.execute(
+        text(
+            "INSERT INTO eco.repasse_federal (mandato_id, uf, area_tematica, ano_referencia, valor_pago, "
+            "populacao_estimada, valor_per_capita, periodo_inicio, periodo_fim, meses_cobertos, parcial, fonte_id) "
+            "SELECT p.mandato_id, :uf, :area, :ano, :valor, :pop, :pc, :inicio, :fim, :meses, :parcial, f.id "
+            "FROM core.mandato_presidencial p, etl.fonte f WHERE p.slug = :slug AND f.codigo = 'PORTAL_TRANSPARENCIA'"
+        ),
+        dados,
+    )
+
+
+def registrar_resultado_eleitoral(db, uf, ano=2022, turno=2, **campos):
+    """Linha de `eco.resultado_eleitoral_uf` (vencedor A/PT 55%, segundo B/PL 45%, salvo o que `campos` mudar)."""
+    dados = {
+        "uf": uf,
+        "ano": ano,
+        "turno": turno,
+        "vn": "A",
+        "vp": "PT",
+        "vpct": "55.0",
+        "sn": "B",
+        "sp": "PL",
+        "spct": "45.0",
+    }
+    dados.update(campos)
+    db.execute(
+        text(
+            "INSERT INTO eco.resultado_eleitoral_uf (ano_eleicao, turno, uf, vencedor_nome, vencedor_partido, "
+            "vencedor_votos_pct, segundo_nome, segundo_partido, segundo_votos_pct, fonte_id) "
+            "SELECT :ano, :turno, :uf, :vn, :vp, :vpct, :sn, :sp, :spct, id FROM etl.fonte WHERE codigo = 'TSE'"
+        ),
+        dados,
     )
 
 

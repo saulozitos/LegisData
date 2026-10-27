@@ -1233,6 +1233,93 @@ def ler_processo(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     }, None
 
 
+LIMITE_REPASSE = Decimal(10) ** 16  # numeric(18,2)
+LIMITE_PER_CAPITA = Decimal(10) ** 10  # numeric(12,2)
+_MES_ISO = re.compile(r"([0-9]{4})-(0[1-9]|1[0-2])", re.ASCII)
+_SIGLA_UF = re.compile(r"[A-Za-z]{2}", re.ASCII)
+
+
+def _uf_valida(valor: Any) -> Optional[str]:
+    sigla = texto(valor)
+    return sigla.upper() if sigla and _SIGLA_UF.fullmatch(sigla) else None
+
+
+def _mes_iso(valor: Any) -> Optional[date]:
+    """`AAAA-MM` -> primeiro dia do mês; qualquer outra coisa é None."""
+    casou = _MES_ISO.fullmatch(texto(valor) or "")
+    return date(int(casou.group(1)), int(casou.group(2)), 1) if casou else None
+
+
+def ler_repasse(item: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Repasse da União a uma UF numa área, no período de um mandato, ou (None, "sem_proveniencia" | "invalidas"). Só entra
+    registro de fonte oficial com mandato, UF, área, ano e valor válidos. O que a fonte não informa (população,
+    per capita, período, cobertura parcial) fica nulo, nunca zero; um período com fim antes do início é descartado, não
+    corrigido. Valor negativo é estorno e vale.
+    """
+    if not isinstance(item, dict) or not is_trusted(item):
+        return None, "sem_proveniencia"
+    mandato, uf, area = texto(item.get("mandato_id_ref")), _uf_valida(item.get("uf")), texto(item.get("area_tematica"))
+    ano = inteiro_em(item.get("ano"), ANO_MINIMO, ANO_MAXIMO)
+    valor = decimal_de(item.get("valor_pago_brl"), LIMITE_REPASSE)
+    if not (mandato and uf and area and ano is not None and valor is not None):
+        return None, "invalidas"
+    inicio, fim = _mes_iso(item.get("periodo_inicio")), _mes_iso(item.get("periodo_fim"))
+    if inicio is not None and fim is not None and fim < inicio:
+        inicio = fim = None
+    parcial = item.get("parcial")
+    return {
+        "mandato": mandato,
+        "uf": uf,
+        "area": area,
+        "ano": ano,
+        "valor": valor,
+        "populacao": inteiro_em(item.get("populacao_estimada"), 1, LIMITE_INT4),
+        "per_capita": decimal_de(item.get("valor_per_capita_brl"), LIMITE_PER_CAPITA),
+        "inicio": inicio,
+        "fim": fim,
+        "meses": inteiro_em(item.get("meses_cobertos"), 1, 1200),
+        "parcial": parcial if isinstance(parcial, bool) else None,
+    }, None
+
+
+def _percentual(valor: Any) -> Optional[Decimal]:
+    numero = decimal_de(valor, Decimal(1000))
+    return numero if numero is not None and 0 <= numero <= 100 else None
+
+
+def ler_resultado_eleitoral(linha: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Resultado presidencial de uma UF (linha do CSV do TSE), ou (None, "nao_verificada" | "invalidas"). Só entra linha
+    marcada `verificado` contra o TSE e não sintética: a digitação manual antiga não passa (decisão D7). O total de
+    votos válidos pode faltar (nulo).
+    """
+    if not isinstance(linha, dict) or str(linha.get("verificado", "")).strip().lower() != "true":
+        return None, "nao_verificada"
+    if str(linha.get("is_synthetic", "")).strip().lower() == "true" or not texto(linha.get("fonte")):
+        return None, "nao_verificada"
+    ano, turno = inteiro_em(linha.get("ano_eleicao"), 1994, ANO_MAXIMO), inteiro_em(linha.get("turno"), 1, 2)
+    uf = _uf_valida(linha.get("uf"))
+    nomes = [texto(linha.get(c)) for c in ("candidato_vencedor_nome", "partido_vencedor_sigla")]
+    nomes += [texto(linha.get(c)) for c in ("candidato_segundo_nome", "partido_segundo_sigla")]
+    vencedor, segundo = _percentual(linha.get("votos_vencedor_pct")), _percentual(linha.get("votos_segundo_pct"))
+    if ano is None or turno is None or uf is None or not all(nomes) or vencedor is None or segundo is None:
+        return None, "invalidas"
+    return {
+        "ano": ano,
+        "turno": turno,
+        "uf": uf,
+        "mandato": texto(linha.get("mandato_id_ref")),
+        "vencedor": nomes[0],
+        "vencedor_partido": nomes[1],
+        "vencedor_pct": vencedor,
+        "segundo": nomes[2],
+        "segundo_partido": nomes[3],
+        "segundo_pct": segundo,
+        "total_votos": contagem_int4(linha.get("total_votos_validos")),
+    }, None
+
+
 def ler_registros_da_remuneracao(corpo: Any) -> Tuple[Optional[List[Any]], Optional[str]]:
     """
     Nível de arquivo: os meses de remuneração, ou (None, "sem_proveniencia") quando o arquivo não é um objeto ou não

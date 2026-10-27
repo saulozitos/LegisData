@@ -21,7 +21,7 @@ def chamadas(monkeypatch):
 
 def test_executa_todas_na_ordem_e_devolve_o_resultado_de_cada_uma(chamadas):
     resultados = carga_economica.carregar_tudo(object())
-    assert chamadas == ["series", "presidencia", "composicao", "pnad", "financas"]
+    assert chamadas == ["series", "presidencia", "composicao", "pnad", "territorial", "financas"]
     assert resultados["composicao"] == {"ok": "composicao"}
 
 
@@ -47,7 +47,7 @@ def test_carga_tolerada_que_falha_nao_levanta_e_devolve_o_erro(chamadas, monkeyp
 
     monkeypatch.setattr("etl.pipelines.financas_loader.carregar", quebra)
     resultados = carga_economica.carregar_tudo(object(), toleradas=("financas",))
-    assert resultados["financas"] == {"erro": "tabela encolheria"} and chamadas[-1] == "pnad"
+    assert resultados["financas"] == {"erro": "tabela encolheria"} and chamadas[-1] == "territorial"
     with pytest.raises(RuntimeError, match="tabela encolheria"):  # sem tolerância, o erro sobe como sempre
         carga_economica.carregar_tudo(object())
 
@@ -254,7 +254,9 @@ def test_o_mapa_de_modos_e_as_toleradas_derivam_das_fontes_reais_das_financas():
 
 @pytest.mark.parametrize("modo", sorted(carga_economica.FINANCAS_POR_MODO))
 def test_chaves_do_modo_e_plano(modo):
-    esperado = ["series", "presidencia", "composicao", "pnad"] + ([] if modo == "nenhuma" else ["financas"])
+    esperado = ["series", "presidencia", "composicao", "pnad", "territorial"] + (
+        [] if modo == "nenhuma" else ["financas"]
+    )
     assert carga_economica.chaves_do_modo(modo) == esperado
     assert carga_economica.plano_do_modo(modo) == {
         "chaves": esperado,
@@ -435,7 +437,7 @@ def test_opcoes_de_carga_desconhecida_ou_que_nao_roda_levantam_em_vez_de_descart
 
 def test_o_plano_do_modo_nenhuma_roda_no_carregar_tudo_sem_finanças_e_sem_opcoes(chamadas):
     resultados = carga_economica.carregar_tudo(object(), **carga_economica.plano_do_modo("nenhuma"))
-    assert "financas" not in resultados and chamadas == ["series", "presidencia", "composicao", "pnad"]
+    assert "financas" not in resultados and chamadas == ["series", "presidencia", "composicao", "pnad", "territorial"]
 
 
 @pytest.mark.parametrize(

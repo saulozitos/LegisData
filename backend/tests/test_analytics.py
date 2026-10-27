@@ -1,6 +1,5 @@
 import math
 from datetime import date
-from decimal import Decimal
 
 import pytest
 from app.api.v1.analytics import (
@@ -11,15 +10,9 @@ from app.api.v1.analytics import (
     _num,
     _relative,
 )
-from app.models import (
-    AnnualSocialIndicator,
-    FederalTransferByState,
-    PartyAffiliation,
-    StatePresidentialElectionResult,
-    StateSocialIndicator,
-)
+from app.models import PartyAffiliation
 
-from .conftest import criar_mandato_presidencial, observar_serie
+from .conftest import criar_mandato_presidencial, observar_serie, registrar_repasse, registrar_resultado_eleitoral
 
 BASE = "/api/v1/analytics"
 
@@ -222,12 +215,8 @@ def test_compare_mandates_trajectory_uses_exclusive_end_years(client, mandates_d
 def test_compare_mandates_joins_optional_datasets(client, db, mandates_db):
     observar_serie(db, "PIB_CRESC_REAL", date(2015, 1, 1), -3.5)
     observar_serie(db, "IPCA_ACUM_ANO", date(2011, 1, 1), 6.5)
-    db.add_all(
-        [
-            _transfer(mandate_id_ref="a-2011", valor_pago_brl=Decimal("100.00"), valor_per_capita_brl=Decimal("2.00")),
-            _transfer(mandate_id_ref="b-2015", valor_pago_brl=Decimal("150.00"), valor_per_capita_brl=Decimal("3.00")),
-        ]
-    )
+    registrar_repasse(db, slug="a-2011", valor="100.00", pc="2.00")
+    registrar_repasse(db, slug="b-2015", valor="150.00", pc="3.00")
     db.commit()
     body = client.get(f"{BASE}/compare-mandates", params={"mandate1": "a-2011", "mandate2": "b-2015"}).json()
     assert body["normalized_trajectory"][0]["m1_pib"] == 1.0 and body["normalized_trajectory"][0]["m1_ipca"] == 6.5
@@ -250,22 +239,6 @@ def test_compare_mandates_requires_both_parameters(client, mandates_db):
 # ---------------------------------------------------------------------------
 # federal-transfers
 # ---------------------------------------------------------------------------
-def _transfer(**kw):
-    base = dict(
-        mandate_id_ref="lula-2023",
-        ano=2023,
-        uf="SP",
-        estado_nome="São Paulo",
-        regiao="Sudeste",
-        area_tematica="Saúde",
-        valor_pago_brl=Decimal("100.00"),
-        populacao_estimada=1000,
-        valor_per_capita_brl=Decimal("0.10"),
-    )
-    base.update(kw)
-    return FederalTransferByState(**base)
-
-
 @pytest.fixture()
 def known_mandates(db):
     criar_mandato_presidencial(db, "Lula", date(2023, 1, 1), None, "lula-2023")
@@ -274,23 +247,46 @@ def known_mandates(db):
 
 
 def test_federal_transfers_from_database(client, db, known_mandates):
-    db.add_all(
-        [_transfer(), _transfer(uf="RJ", estado_nome="Rio", area_tematica="Educação", valor_pago_brl=Decimal("50.00"))]
-    )
+    registrar_repasse(db)
+    registrar_repasse(db, uf="RJ", area="Educação", valor="50.00")
     db.commit()
     body = client.get(f"{BASE}/federal-transfers", params={"mandate_id": "lula-2023"}).json()
     assert body["total_repassado_brl"] == 150.0
     assert body["areas_resumo"] == {"Saúde": 100.0, "Educação": 50.0}
     assert [i["uf"] for i in body["por_uf"]] == ["RJ", "SP"]
+    sp = body["por_uf"][1]  # estado e região vêm de ref.uf, no mesmo rótulo que as telas sempre mostraram
+    assert (sp["estado_nome"], sp["regiao"]) == ("São Paulo", "Sudeste")
+    assert body["por_uf"][0]["regiao"] == "Sudeste" and sp["populacao_estimada"] == 1000
+
+
+def test_federal_transfers_only_of_the_requested_mandate(client, db, known_mandates):
+    registrar_repasse(db)
+    registrar_repasse(db, slug="outro-2019", valor="7.00")
+    db.commit()
+    body = client.get(f"{BASE}/federal-transfers", params={"mandate_id": "outro-2019"}).json()
+    assert body["total_repassado_brl"] == 7.0 and len(body["por_uf"]) == 1
+
+
+def test_federal_transfers_negative_value_is_a_reversal_and_counts(client, db, known_mandates):
+    registrar_repasse(db)
+    registrar_repasse(db, uf="RJ", valor="-30.00", pc=None)
+    db.commit()
+    body = client.get(f"{BASE}/federal-transfers", params={"mandate_id": "lula-2023"}).json()
+    assert body["total_repassado_brl"] == 70.0
+    assert next(i for i in body["por_uf"] if i["uf"] == "RJ")["valor_per_capita_brl"] is None  # nunca vira 0
+
+
+def test_federal_transfers_region_labels_follow_the_catalogue(client, db, known_mandates):
+    registrar_repasse(db, uf="GO", area="Saúde")  # CENTRO_OESTE em ref.uf
+    db.commit()
+    body = client.get(f"{BASE}/federal-transfers", params={"mandate_id": "lula-2023"}).json()
+    assert body["por_uf"][0]["regiao"] == "Centro-Oeste" and list(body["regioes_resumo"]) == ["Centro-Oeste"]
 
 
 def test_federal_transfers_report_the_period_actually_covered(client, db, known_mandates):
-    db.add_all(
-        [
-            _transfer(periodo_inicio="2023-01", periodo_fim="2026-09", meses_cobertos=45, parcial=False),
-            _transfer(uf="RJ", estado_nome="Rio", periodo_inicio="2023-01", periodo_fim="2026-09", meses_cobertos=45),
-        ]
-    )
+    periodo = dict(inicio=date(2023, 1, 1), fim=date(2026, 9, 1), meses=45, parcial=False)
+    registrar_repasse(db, **periodo)
+    registrar_repasse(db, uf="RJ", **periodo)
     db.commit()
     body = client.get(f"{BASE}/federal-transfers", params={"mandate_id": "lula-2023"}).json()
     assert body["periodo_inicio"] == "2023-01" and body["periodo_fim"] == "2026-09"
@@ -299,14 +295,14 @@ def test_federal_transfers_report_the_period_actually_covered(client, db, known_
 
 
 def test_federal_transfers_flag_partial_coverage_in_the_period_text(client, db, known_mandates):
-    db.add(_transfer(periodo_inicio="2014-01", periodo_fim="2014-12", meses_cobertos=12, parcial=True))
+    registrar_repasse(db, inicio=date(2014, 1, 1), fim=date(2014, 12, 1), meses=12, parcial=True)
     db.commit()
     body = client.get(f"{BASE}/federal-transfers", params={"mandate_id": "lula-2023"}).json()
     assert body["cobertura_parcial"] is True and "cobertura parcial" in body["periodo"]
 
 
 def test_federal_transfers_without_period_info_do_not_invent_one(client, db, known_mandates):
-    db.add(_transfer())  # linha legada, sem período
+    registrar_repasse(db)  # sem período
     db.commit()
     body = client.get(f"{BASE}/federal-transfers", params={"mandate_id": "lula-2023"}).json()
     assert body["periodo_inicio"] is None and body["cobertura_parcial"] is None
@@ -314,7 +310,7 @@ def test_federal_transfers_without_period_info_do_not_invent_one(client, db, kno
 
 
 def test_federal_transfers_area_filter_is_literal_not_a_wildcard(client, db, known_mandates):
-    db.add(_transfer())
+    registrar_repasse(db)
     db.commit()
     assert (
         client.get(f"{BASE}/federal-transfers", params={"mandate_id": "lula-2023", "area": "%"}).json()["por_uf"] == []
@@ -324,13 +320,16 @@ def test_federal_transfers_area_filter_is_literal_not_a_wildcard(client, db, kno
         == []
     )
     assert (
+        client.get(f"{BASE}/federal-transfers", params={"mandate_id": "lula-2023", "area": "\\"}).json()["por_uf"] == []
+    )
+    assert (
         len(client.get(f"{BASE}/federal-transfers", params={"mandate_id": "lula-2023", "area": "saú"}).json()["por_uf"])
         == 1
     )
 
 
 def test_federal_transfers_area_filter_without_hits_is_empty(client, db, known_mandates):
-    db.add(_transfer())
+    registrar_repasse(db)
     db.commit()
     body = client.get(f"{BASE}/federal-transfers", params={"mandate_id": "lula-2023", "area": "Segurança"}).json()
     assert body["por_uf"] == [] and body["total_repassado_brl"] == 0.0
@@ -349,11 +348,8 @@ def test_federal_transfers_unknown_mandate_is_404(client, known_mandates):
 # indicadores sociais / classes / eleições
 # ---------------------------------------------------------------------------
 def test_social_indicators_zero_is_preserved(client, db):
-    db.add(
-        AnnualSocialIndicator(
-            year=2020, illiteracy_rate_pct=Decimal("0.00"), extreme_poverty_pct=None, gini_index=Decimal("0.000")
-        )
-    )
+    observar_serie(db, "ANALFABETISMO", date(2020, 1, 1), 0.0)
+    observar_serie(db, "GINI", date(2020, 1, 1), 0.0)
     db.commit()
     row = client.get(f"{BASE}/social-indicators").json()[0]
     assert row["analfabetismo_pct"] == 0.0 and row["gini"] == 0.0  # zero NÃO vira null
@@ -361,74 +357,74 @@ def test_social_indicators_zero_is_preserved(client, db):
 
 
 def test_social_indicators_expose_official_series_fields(client, db):
-    db.add(
-        AnnualSocialIndicator(
-            year=2024,
-            gini_index=Decimal("0.504"),
-            gini_series="PNAD Contínua — rendimento domiciliar per capita (t7435)",
-            poverty_pct=Decimal("26.50"),
-            food_insecurity_total_pct=Decimal("24.20"),
-            unemployment_pct=Decimal("6.9"),
-            data_source="IBGE / SIDRA (PNAD, PNAD Contínua, ODS)",
-        )
-    )
+    ano = date(2024, 1, 1)
+    observar_serie(db, "GINI", ano, 0.504, nota="PNAD Contínua — rendimento domiciliar per capita (t7435)")
+    observar_serie(db, "POBREZA_PCT", ano, 26.5)
+    observar_serie(db, "INSEGURANCA_ALIMENTAR_TOTAL_PCT", ano, 24.2)
+    observar_serie(db, "DESEMPREGO_ANUAL", ano, 6.9)
     db.commit()
     row = client.get(f"{BASE}/social-indicators").json()[0]
+    assert row["ano"] == 2024 and row["gini"] == 0.504
     assert row["pobreza_pct"] == 26.5 and row["inseguranca_alimentar_total_pct"] == 24.2
     assert row["desemprego_pct"] == 6.9 and "t7435" in row["serie_gini"]
     assert row["analfabetismo_pct"] is None  # lacuna de pesquisa continua null, nunca zero
+    assert "SIDRA" in row["fonte"] and "Séries Temporais" in row["fonte"]  # fontes das séries com dado no ano
+
+
+def test_social_indicators_are_ordered_by_year_and_only_years_with_data(client, db):
+    observar_serie(db, "GINI", date(2012, 1, 1), 0.53)
+    observar_serie(db, "GINI", date(2010, 1, 1), 0.55)
+    observar_serie(db, "ANALFABETISMO", date(2011, 1, 1), 8.6)
+    db.commit()
+    assert [r["ano"] for r in client.get(f"{BASE}/social-indicators").json()] == [2010, 2011, 2012]
+
+
+def test_social_indicators_ignore_state_level_and_monthly_series(client, db):
+    observar_serie(db, "GINI_UF", date(2020, 1, 1), 0.5, uf="SP")  # por UF: não é o histórico nacional
+    db.commit()
+    assert client.get(f"{BASE}/social-indicators").json() == []
 
 
 def test_social_indicators_empty_table_is_an_empty_list(client):
     assert client.get(f"{BASE}/social-indicators").json() == []
 
 
-def _election(uf, year=2022, region="Sudeste", **kw):
-    base = dict(
-        election_year=year,
-        mandate_ref_id="x",
-        uf=uf,
-        state_name=uf,
-        region=region,
-        winner_candidate_name="A",
-        winner_party_acronym="PT",
-        winner_votes_pct=Decimal("55.0"),
-        runner_up_candidate_name="B",
-        runner_up_party_acronym="PL",
-        runner_up_votes_pct=Decimal("45.0"),
-    )
-    base.update(kw)
-    return StatePresidentialElectionResult(**base)
-
-
 def test_social_elections_joins_same_year_only_and_keeps_missing_as_null(client, db):
-    db.add_all([_election("SP"), _election("RJ"), _election("AC", region="Norte")])
-    db.add(
-        StateSocialIndicator(
-            year=2022,
-            uf="SP",
-            state_name="SP",
-            region="Sudeste",
-            extreme_poverty_pct=Decimal("0.00"),
-            illiteracy_rate_pct=Decimal("2.5"),
-        )
-    )
+    for uf in ("SP", "RJ", "AC"):
+        registrar_resultado_eleitoral(db, uf)
+    ano = date(2022, 1, 1)
+    observar_serie(db, "EXTREMA_POBREZA_UF", ano, 0.0, uf="SP")
+    observar_serie(db, "ANALFABETISMO_UF", ano, 2.5, uf="SP")
     # Indicador de OUTRO ano para o RJ: nunca pode ser usado no cruzamento de 2022
-    db.add(
-        StateSocialIndicator(year=2018, uf="RJ", state_name="RJ", region="Sudeste", extreme_poverty_pct=Decimal("9.9"))
-    )
+    observar_serie(db, "EXTREMA_POBREZA_UF", date(2018, 1, 1), 9.9, uf="RJ")
     db.commit()
 
     body = client.get(f"{BASE}/social-elections", params={"ano": 2022}).json()
     by_uf = {e["uf"]: e for e in body["estados"]}
     assert by_uf["SP"]["extrema_pobreza_pct"] == 0.0  # zero preservado
+    assert by_uf["SP"]["taxa_analfabetismo_pct"] == 2.5
     assert by_uf["RJ"]["extrema_pobreza_pct"] is None
     assert by_uf["AC"]["indice_gini"] is None
     assert body["estados"][0]["uf"] == "SP"  # com dado primeiro, sem dado depois
+    assert (by_uf["SP"]["estado_nome"], by_uf["SP"]["regiao"]) == ("São Paulo", "Sudeste")
     sudeste = next(r for r in body["regioes_resumo"] if r["regiao"] == "Sudeste")
     assert sudeste["total_estados"] == 2 and sudeste["media_extrema_pobreza_pct"] == 0.0
     norte = next(r for r in body["regioes_resumo"] if r["regiao"] == "Norte")
     assert norte["media_extrema_pobreza_pct"] is None
+
+
+def test_social_elections_exposes_winner_and_runner_up_from_eco(client, db):
+    registrar_resultado_eleitoral(db, "BA", vn="Fulano", vp="PT", vpct="70.25", sn="Beltrano", sp="PL", spct="29.75")
+    registrar_resultado_eleitoral(db, "BA", ano=2018)  # outra eleição: fora do cruzamento de 2022
+    db.commit()
+    (estado,) = client.get(f"{BASE}/social-elections", params={"ano": 2022}).json()["estados"]
+    assert (estado["vencedor_nome"], estado["vencedor_partido"], estado["vencedor_votos_pct"]) == (
+        "Fulano",
+        "PT",
+        70.25,
+    )
+    assert (estado["segundo_nome"], estado["segundo_partido"], estado["segundo_votos_pct"]) == ("Beltrano", "PL", 29.75)
+    assert estado["ano_eleicao"] == 2022 and estado["regiao"] == "Nordeste"
 
 
 @pytest.mark.parametrize("year", [1999, 0, 2023])

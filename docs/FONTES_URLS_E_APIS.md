@@ -161,6 +161,12 @@ Cópias em markdown das especificações oficiais, para consultar campos, parâm
 
 ## 5. Portal da Transparência do Governo Federal (CGU)
 
+### 5.0 Destino no banco dos arquivos territoriais
+
+- `repasses_federais_uf.json` (Transferências da União por UF, CSV mensal do Portal da Transparência) vai para `eco.repasse_federal`, ligado ao mandato presidencial (`core.mandato_presidencial.slug`). Só entra registro com proveniência oficial; estorno entra negativo; o que a fonte não informa fica nulo.
+- `eleicoes_presidenciais_uf_tse.csv` (apuração do TSE por UF) vai para `eco.resultado_eleitoral_uf`. Só entram linhas `verificado` contra o TSE; a digitação manual antiga (`resultados_eleicoes_presidenciais_uf.csv`) nunca é carregada.
+- Os dois são carregados por `etl.pipelines.territorial_loader` (carga `territorial`) e servidos por `GET /analytics/federal-transfers`, `/social-elections` e `/compare-mandates`.
+
 ### 5.1 Emendas Parlamentares
 - **URL**: `https://portaldatransparencia.gov.br/download-de-dados/emendas-parlamentares`
 - **Período**: 2019 a 2026.

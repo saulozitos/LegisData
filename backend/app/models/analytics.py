@@ -54,25 +54,6 @@ class MandateEconomicPerformance(TimeStampedModel):
     mandate: Mapped["Mandate"] = relationship("Mandate", back_populates="economic_performance")
 
 
-class FederalTransferByState(TimeStampedModel):
-    __tablename__ = "repasses_federais_uf"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    mandate_id_ref: Mapped[str] = mapped_column("mandatoIdRef", String(100), nullable=False, index=True)
-    ano: Mapped[int] = mapped_column("ano", Integer, nullable=False, index=True)
-    uf: Mapped[str] = mapped_column("uf", String(2), nullable=False, index=True)
-    estado_nome: Mapped[str] = mapped_column("estadoNome", String(100), nullable=False)
-    regiao: Mapped[str] = mapped_column("regiao", String(50), nullable=False, index=True)
-    area_tematica: Mapped[str] = mapped_column("areaTematica", String(100), nullable=False, index=True)
-    valor_pago_brl: Mapped[Decimal] = mapped_column("valorPagoBrl", Numeric(18, 2), nullable=False)
-    populacao_estimada: Mapped[Optional[int]] = mapped_column("populacaoEstimada", Integer, nullable=True)
-    valor_per_capita_brl: Mapped[Optional[Decimal]] = mapped_column("valorPerCapitaBrl", Numeric(12, 2), nullable=True)
-    periodo_inicio: Mapped[Optional[str]] = mapped_column("periodoInicio", String(7), nullable=True)
-    periodo_fim: Mapped[Optional[str]] = mapped_column("periodoFim", String(7), nullable=True)
-    meses_cobertos: Mapped[Optional[int]] = mapped_column("mesesCobertos", Integer, nullable=True)
-    parcial: Mapped[Optional[bool]] = mapped_column("coberturaParcial", Boolean, nullable=True)
-
-
 class PolicyEconomicImpact(TimeStampedModel):
     __tablename__ = "analises_impacto_politica"
 
