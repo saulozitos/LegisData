@@ -177,16 +177,10 @@ def _load_db(allow_synthetic: bool, allow_unverified: bool, purge: bool):
     ).load_all()
 
 
-def _processos(allow_unverified_legal: bool):
-    from etl.utils.bootstrap import ensure_backend_on_path
+def _processos():
+    from etl.extractors.processos_extractor import extrair
 
-    ensure_backend_on_path()
-    from app.core.database import SessionLocal  # backend já está no path (db_loader/bootstrap) — importado sob demanda
-
-    from etl.extractors.processos_loader import populate_processos_judiciais
-
-    with SessionLocal() as session:
-        return populate_processos_judiciais(session, allow_unverified=allow_unverified_legal)
+    return extrair()
 
 
 def _camara_bulk(force: bool, ano_inicio: int):
@@ -327,7 +321,10 @@ def montar_parser() -> argparse.ArgumentParser:
         ("load-db", "Carga e upsert no PostgreSQL"),
         ("load-presenca", "Carga de presença e remuneração oficiais no PostgreSQL"),
         ("load-economia", "Carga das séries econômicas, mandatos, composição, PNAD (eco/leg) e finanças (fin)"),
-        ("processos", "Carga do acervo manual de processos judiciais (exige --allow-unverified-legal)"),
+        (
+            "processos",
+            "Processos judiciais: enriquece a curadoria com o DataJud (CNJ) e grava o arquivo da carga; só extrai, carregue com --load-economia",
+        ),
     ]:
         p.add_argument(f"--{flag}", action="store_true", help=ajuda)
     p.add_argument(
@@ -366,9 +363,6 @@ def montar_parser() -> argparse.ArgumentParser:
         "--allow-unverified", action="store_true", help="Carrega dados digitados e não verificados (eleições por UF)"
     )
     p.add_argument(
-        "--allow-unverified-legal", action="store_true", help="Autoriza o acervo manual de processos judiciais"
-    )
-    p.add_argument(
         "--purge-legacy-synthetic",
         action="store_true",
         help="DESTRUTIVO: apaga sintéticos legados do banco antes da carga",
@@ -405,9 +399,9 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
     modo_completo = not selecionadas
 
     def quer(chave: str) -> bool:
-        # Etapas que exigem autorização explícita nunca entram só por "modo completo"
+        # O DataJud só entra quando pedido (consulta uma API externa por processo)
         if chave == "processos":
-            return args.processos or args.allow_unverified_legal
+            return args.processos
         return modo_completo or chave in selecionadas
 
     cache = not args.no_cache
@@ -467,6 +461,7 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
             _load_presenca_remuneracao,
             depende_de_extracao=True,
         ),
+        Etapa("processos", "Processos judiciais (DataJud)", _processos),
         Etapa(
             "load_economia",
             "Carga das séries econômicas, mandatos presidenciais, composição do Congresso, PNAD e finanças (fin)",
@@ -477,12 +472,6 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
                 # devolveu ao git desde então); sem isso, recarregar a partir deles revogaria a posse do timer
                 extracao_fresca=ceap_gravada["ok"] or args.arquivos_frescos,
             ),
-            depende_de_extracao=True,
-        ),
-        Etapa(
-            "processos",
-            "Processos judiciais (acervo manual)",
-            lambda: _processos(args.allow_unverified_legal),
             depende_de_extracao=True,
         ),
     ]

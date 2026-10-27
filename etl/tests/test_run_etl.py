@@ -27,8 +27,12 @@ def test_modo_completo_tem_a_carga_economica_depois_do_load_db_e_nao_tem_mais_re
         montar_parser().parse_args(["--renda"])  # a etapa foi removida do CLI
 
 
-def test_processos_so_com_autorizacao():
-    assert "processos" in [e.chave for e in construir_etapas(args("--allow-unverified-legal"))]
+def test_processos_do_datajud_so_quando_pedidos_e_antes_da_carga_economica():
+    assert "processos" not in [e.chave for e in construir_etapas(args())]  # consulta uma API externa por processo
+    chaves = [e.chave for e in construir_etapas(args("--processos", "--load-economia"))]
+    assert chaves == ["processos", "load_economia"]
+    with pytest.raises(SystemExit):
+        montar_parser().parse_args(["--allow-unverified-legal"])  # o acervo manual não verificado deixou de existir
     # a presença/remuneração SINTÉTICAS deixaram de existir: --allow-synthetic não cria etapa de dados sorteados
     assert "sinteticos" not in [e.chave for e in construir_etapas(args("--allow-synthetic"))]
 
@@ -298,3 +302,25 @@ def test_arquivos_frescos_exige_load_economia_e_recarregar(argv, capsys):
     with pytest.raises(SystemExit) as saida:
         cli.main(argv)
     assert saida.value.code == 2 and "--arquivos-frescos só vale com" in capsys.readouterr().err
+
+
+def test_etapa_de_processos_chama_o_extrator_do_datajud(monkeypatch):
+    from etl import run_etl
+    from etl.extractors import processos_extractor
+
+    chamadas = []
+    monkeypatch.setattr(processos_extractor, "extrair", lambda: chamadas.append(1) or {"processos": 0})
+    assert run_etl._processos() == {"processos": 0} and chamadas == [1]
+
+
+def test_falha_do_datajud_derruba_a_etapa_de_processos_para_o_cron_registrar(monkeypatch):
+    from etl import run_etl
+    from etl.extractors import processos_extractor
+    from etl.utils.datajud_client import ErroDoDataJud
+
+    def sem_resposta():
+        raise ErroDoDataJud("429")
+
+    monkeypatch.setattr(processos_extractor, "extrair", sem_resposta)
+    with pytest.raises(ErroDoDataJud):
+        run_etl._processos()

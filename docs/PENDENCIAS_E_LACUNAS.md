@@ -30,7 +30,7 @@ A refatoração da branch `fix/analise-completa-correcoes` concluiu **100%** das
 | Classes sociais por faixa de salário mínimo | Microdados da PNAD Contínua (IBGE), 2016–2024 | Auditado contra a Síntese de Indicadores Sociais (SIS/IBGE) |
 | Presença em plenário | Câmara (relatório oficial) e Senado (derivada das votações) | **100% Concluído** (Câmara 2020–2026: 328.715 dias carregados; nota oficial de 2019) |
 | Remuneração e folha | Câmara dos Deputados (Dados Abertos / portal) | **100% Concluído** (39.263 folhas salariais de 2019–2026 carregadas) |
-| Processos e Certidões | DataJud / CNJ (API Pública Oficial) | **100% Concluído** (enriquecido com classes/assuntos TPU e conformidade legal) |
+| Processos e Certidões | DataJud / CNJ (API Pública Oficial) | **Parcial**: estrutura pronta, sem acervo (falta fonte oficial que ligue processo e pessoa) |
 
 ---
 
@@ -52,10 +52,12 @@ A refatoração da branch `fix/analise-completa-correcoes` concluiu **100%** das
 - **Banco de Dados**: 39.263 registros no Postgres na tabela `remuneracoes_politicos`.
 - **Senado**: Permanece `null` exibindo "Dado indisponível" por inexistência de API pública estruturada de contracheques nominais.
 
-### 2.3 Certidões e Processos Judiciais [CONCLUÍDO 100% — INTEGRAÇÃO DATAJUD CNJ]
-- **Status**: Cliente oficial implementado em `etl/utils/datajud_client.py` e integrado ao loader em `etl/extractors/processos_loader.py`.
-- **Conformidade Legal**: Observância à Portaria CNJ nº 160/2020, Resolução CNJ nº 332/2020 e LGPD, com resguardo à presunção de inocência (Art. 5º, LVII da CF/88) e vedação a pontuação discriminatória.
-- **Metadados**: Enriquecimento com classes e assuntos oficiais das Tabelas Processuais Unificadas (TPU), órgãos julgadores e datas de ajuizamento.
+### 2.3 Certidões e Processos Judiciais [PARCIAL — ESTRUTURA PRONTA, SEM ACERVO]
+- **Status**: a tabela `fin.processo_judicial`, o extrator (`etl/extractors/processos_extractor.py`), a carga `processos` do `fin` e a leitura do dossiê estão prontos. O acervo digitado à mão (não verificado contra os tribunais) foi removido (D7) e **nenhum processo está carregado**: `processos_curados.json` está vazio.
+- **Por que vazio**: o DataJud só consulta por número de processo e não expõe as partes, então ele não descobre os processos de um parlamentar. Falta uma fonte oficial que ligue processo e pessoa; as certidões do TSE hoje no `fin` são só de registro de candidatura, e o número de processo delas não tem o formato CNJ.
+- **Conformidade Legal**: Observância à Portaria CNJ nº 160/2020, Resolução CNJ nº 332/2020 e LGPD, com resguardo à presunção de inocência (Art. 5º, LVII da CF/88): o dossiê mostra só o último movimento que o tribunal registrou, nunca um desfecho inferido.
+- **Limites conhecidos**: processo do STF (foro privilegiado) não tem índice no DataJud e precisa de outra fonte; o acervo manual antigo ainda está em `public.processos_judiciais` e a flag `possuiProcessosDeclarados` em produção, sem nenhum código que os leia, até a limpeza da Fase 9.
+- **Metadados**: classe e assuntos (TPU), órgão julgador, datas de ajuizamento e do último movimento, vindos do DataJud.
 
 ### 2.4 Votações Secretas no Senado [CONCLUÍDO 100%]
 - **Status**: Implementado no backend (`backend/app/api/v1/legislative.py`) e frontend (`frontend/src/components/LegislativePanel.tsx`).

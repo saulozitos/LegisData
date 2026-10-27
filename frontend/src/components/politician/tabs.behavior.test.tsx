@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { fullDossier, sparseDossier } from '@/test/dossier';
+import type { ProcessoDetalhadoItem } from '@/services/api';
 import OverviewTab from './OverviewTab';
 import IntelligenceTab from './IntelligenceTab';
 import PropositionsTab from './PropositionsTab';
@@ -55,6 +56,12 @@ describe('format helpers', () => {
     const odd = fullDossier();
     (odd.ficha_limpa as unknown as { possui_processos_declarados: unknown }).possui_processos_declarados = undefined;
     expect(getFichaStatus(odd)).toBe('unknown');
+    // sem nenhuma certidão ou processo na base o dado é desconhecido: o selo verde "sem processos" seria afirmar o que ninguém checou
+    const semDados = fullDossier();
+    semDados.ficha_limpa = { ...semDados.ficha_limpa!, possui_processos_declarados: false, dados_certidoes_disponiveis: false };
+    expect(getFichaStatus(semDados)).toBe('unknown');
+    semDados.ficha_limpa.dados_certidoes_disponiveis = true;
+    expect(getFichaStatus(semDados)).toBe('none');
   });
 
   it('selos usam classe neutra quando não há classificação (nunca alarme por padrão)', () => {
@@ -267,7 +274,7 @@ describe('PoliticianHeaderCard', () => {
     const d = fullDossier();
     d.ficha_limpa = { ...d.ficha_limpa!, possui_processos_declarados: true, orgaos_declarados: ['STF', 'TSE'] };
     render(<PoliticianHeaderCard dossier={d} onBack={() => {}} onChangeTab={() => {}} />);
-    expect(screen.getByText('Ficha/Certidões: Possui Processos Declarados')).toBeInTheDocument();
+    expect(screen.getByText('Ficha/Certidões: Possui processos vinculados')).toBeInTheDocument();
     expect(screen.getByText('STF, TSE')).toBeInTheDocument();
   });
 });
@@ -452,14 +459,57 @@ describe('JusticeTab', () => {
       processos_detalhados: [{ numero_processo: '0001', tribunal: 'STF', data_processo: '2020-01-01', classe_assunto: 'Inquérito', descricao: 'Desc', situacao_juridica: 'Em andamento', link_comprovacao: 'javascript:x', status_resumo: 'x' }],
     };
     const declared = render(<JusticeTab dossier={d} />);
-    expect(screen.getByText('Possui Processos Declarados na Justiça')).toBeInTheDocument();
+    expect(screen.getByText('Possui processos vinculados na Justiça')).toBeInTheDocument();
     expect(screen.getByText('Nº 0001')).toBeInTheDocument();
-    expect(screen.getByText('1 registro comprovado')).toBeInTheDocument();
+    expect(screen.getByText('1 registro')).toBeInTheDocument();
+    // link inseguro: nada de botão nem de "fonte oficial que liga" sem link para mostrar
+    expect(screen.queryByText(/Consultar a fonte do vínculo/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Fonte oficial que liga o processo à pessoa/)).not.toBeInTheDocument();
+    // o texto não afirma o que a fonte não diz (o aviso legal sobre a LC 135 continua, é outro trecho)
+    expect(document.body.textContent).not.toMatch(/registros? comprovados?|decisões colegiadas e andamentos|certidões judiciais positivas/i);
     declared.unmount();
 
     render(<JusticeTab dossier={sparseDossier()} />);
     expect(screen.getByRole('status')).toHaveTextContent('Dado indisponível');
     expect(document.body.textContent).not.toMatch(/Nada Consta|Nenhum processo declarado/);
+  });
+});
+
+describe('JusticeTab: itens de processo', () => {
+  const dossierCom = (itens: ProcessoDetalhadoItem[]) => {
+    const d = fullDossier();
+    d.ficha_limpa = { ...d.ficha_limpa!, possui_processos_declarados: true, orgaos_declarados: ['TSE'], processos_detalhados: itens };
+    return d;
+  };
+
+  it('certidão do TSE sem situação, data nem link não derruba a aba e mostra n/d', () => {
+    const item: ProcessoDetalhadoItem = {
+      numero_processo: null, tribunal: 'TSE', data_processo: null, classe_assunto: 'Certidão', descricao: null,
+      situacao_juridica: null, link_comprovacao: null, status_resumo: 'Declarado no TSE',
+    };
+    render(<JusticeTab dossier={dossierCom([item])} />);
+    expect(screen.getByText('Declarado no TSE')).toBeInTheDocument();
+    expect(screen.getByText('Nº n/d')).toBeInTheDocument();
+    expect(screen.queryByText(/Consultar a fonte do vínculo/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Fonte oficial que liga o processo à pessoa/)).not.toBeInTheDocument();
+  });
+
+  it('o texto do último movimento nunca vira desfecho: "improcedente" não pinta de verde nem "inelegibilidade" de vermelho', () => {
+    const base = { numero_processo: '1', tribunal: 'TJSP', data_processo: '2020-01-01', classe_assunto: 'Ação', descricao: null, link_comprovacao: 'https://x.jus.br/p', status_resumo: 'DataJud · G1' };
+    render(
+      <JusticeTab
+        dossier={dossierCom([
+          { ...base, numero_processo: '1', situacao_juridica: 'Último movimento registrado no DataJud: Julgado improcedente o pedido.' },
+          { ...base, numero_processo: '2', situacao_juridica: 'Último movimento registrado no DataJud: Declaração de inelegibilidade.' },
+        ])}
+      />,
+    );
+    expect(screen.getByText(/Julgado improcedente/)).toHaveClass('text-slate-200');
+    expect(screen.getByText(/Declaração de inelegibilidade/)).toHaveClass('text-slate-200');
+    // nem o selo de status do processo tem cor de desfecho
+    expect(screen.getAllByText('DataJud · G1').every((el) => el.className.includes('bg-slate-800'))).toBe(true);
+    expect(screen.getAllByText(/Consultar a fonte do vínculo/)).toHaveLength(2);
+    expect(screen.getAllByText(/Fonte oficial que liga o processo à pessoa/)).toHaveLength(2);
   });
 });
 

@@ -30,6 +30,8 @@ export function getFichaStatus(dossier: PoliticoDossier): FichaStatus {
   const ficha = dossier.ficha_limpa;
   if (!ficha) return "unknown";
   if (ficha.possui_processos_declarados === true) return "declared";
+  // sem nenhuma certidão ou processo na base o dado é desconhecido, não "sem processos"
+  if (ficha.dados_certidoes_disponiveis === false) return "unknown";
   if (ficha.possui_processos_declarados === false) return "none";
   return "unknown";
 }
@@ -62,6 +64,11 @@ export function compatBadgeClass(compat: string | null | undefined): string {
   if (compat === "MODERADO") return WARN_BADGE;
   if (compat === "ATÍPICO") return BAD_BADGE;
   return NA_BADGE;
+}
+
+/** Campo que a fonte não trouxe: "n/d" (nunca vazio, nunca zero). */
+export function orNd(value: string | null | undefined): string {
+  return value ? value : "n/d";
 }
 
 /** Texto de classificação: valor da API ou "Indisponível". */

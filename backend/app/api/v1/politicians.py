@@ -17,14 +17,13 @@ from app.models import (
     PartyAffiliation,
     PoliticalParty,
     Politician,
-    ProcessoJudicial,
 )
 from app.models.leg import Autoria, Proposicao, Votacao, Voto
 from app.services import financas_service
 from app.services.basometro import calcular_basometro
-from app.services.financas_service import Certidao
 from app.services.ialp_pesos import carregar_pesos_ialp
 from app.services.ialp_pontos import pontos_ialp_pessoa
+from app.services.judicial_service import enriquecer_registros_judiciais
 from app.services.presidencia_service import listar_presidentes, periodo_do_mandato, presidente_por_referencia
 from app.services.resumo_votos_service import resumo_votos as resumo_votos_do_parlamentar
 from app.services.roi_cidadao import METODOLOGIA as ROI_METODOLOGIA
@@ -526,99 +525,6 @@ def _resolve_politician(db: Session, politician_id: str) -> Politician:
             raise HTTPException(status_code=409, detail=f"Identificador '{politician_id}' é ambíguo; use o ID.")
 
     raise HTTPException(status_code=404, detail=f"Político '{politician_id}' não encontrado.")
-
-
-def _enrich_judicial_records(pol: Politician, certidoes_db: List[Certidao], db: Session) -> Dict[str, Any]:
-    """
-    Consolida dados judiciais a partir de `processos_judiciais` e `certidoes_judiciais`.
-    Campos ausentes são devolvidos como None: nenhum número de processo, data ou código é inventado.
-    """
-    processos_db = (
-        db.query(ProcessoJudicial)
-        .filter(ProcessoJudicial.politician_id == pol.id)
-        .order_by(desc(ProcessoJudicial.process_date))
-        .all()
-    )
-    processos_detalhados: List[Dict[str, Any]] = [
-        {
-            "numero_processo": p.process_number,
-            "tribunal": p.court_agency,
-            "data_processo": p.process_date,
-            "classe_assunto": p.case_class,
-            "descricao": p.description,
-            "situacao_juridica": p.legal_status,
-            "link_comprovacao": p.proof_url,
-            "status_resumo": p.status_summary,
-        }
-        for p in processos_db
-    ]
-
-    def _is_positive(cert: Certidao) -> bool:
-        status_clean = (cert.status or "").lower()
-        return "positiva" in status_clean or "declarada" in status_clean
-
-    # Certidão positiva/declarada registrada também significa que há processos, mesmo que o sinalizador esteja desligado
-    possui_processos = (
-        len(processos_detalhados) > 0
-        or bool(pol.possui_processos_declarados)
-        or any(_is_positive(c) for c in certidoes_db)
-    )
-
-    # Sinalizado como positivo mas sem detalhamento individual: usa apenas o que a certidão realmente registra
-    if possui_processos and not processos_detalhados:
-        for c in certidoes_db:
-            status_clean = (c.status or "").lower()
-            if "positiva" in status_clean or "declarada" in status_clean:
-                processos_detalhados.append(
-                    {
-                        "numero_processo": c.process_number,
-                        "tribunal": c.court_agency,
-                        "data_processo": c.issue_date,
-                        "classe_assunto": c.certificate_type,
-                        "descricao": c.details,
-                        "situacao_juridica": None,
-                        "link_comprovacao": c.proof_url,
-                        "status_resumo": "Declarado no TSE",
-                    }
-                )
-
-    certidoes_lista = []
-    orgaos_declarados = []
-    for c in certidoes_db:
-        status_c = c.status or ""
-        is_pos = "positiva" in status_c.lower() or "declarada" in status_c.lower()
-        if is_pos:
-            orgaos_declarados.append(c.court_agency)
-
-        certidoes_lista.append(
-            {
-                "id": str(c.id),
-                "orgao": c.court_agency,
-                "tipo_certidao": c.certificate_type,
-                "tipo": c.certificate_type,
-                "status_ficha": status_c,
-                "status": status_c,
-                "detalhes": c.details,
-                "numero_processo": c.process_number,
-                "data_emissao": c.issue_date,
-                "link_comprovacao": c.proof_url,
-                "codigo_autenticidade": c.auth_code,
-            }
-        )
-
-    return {
-        "possui_processos_declarados": possui_processos,
-        # "Nada Consta" só é afirmado quando há certidão registrada; sem nenhum dado o status é null (desconhecido)
-        "status_geral": (
-            "Processos Declarados" if possui_processos else ("Nada Consta (Ficha Limpa)" if certidoes_lista else None)
-        ),
-        "dados_certidoes_disponiveis": len(certidoes_lista) > 0 or len(processos_detalhados) > 0,
-        "orgaos_declarados": sorted(set(orgaos_declarados)),
-        # Portal público de consulta (não aponta para um candidato específico)
-        "link_tse_divulgacand": "https://divulgacandcontas.tse.jus.br/divulga/#/",
-        "processos_detalhados": processos_detalhados,
-        "certidoes": certidoes_lista,
-    }
 
 
 @router.get("/{politician_id}", response_model=Dict[str, Any])
@@ -1125,7 +1031,9 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     emendas_parlamentares = financas_service.emendas_do_parlamentar(db, pessoas) or financas_service.vazio_emendas()
 
     # J. Raio-X Judicial e Ficha Limpa
-    ficha_limpa = _enrich_judicial_records(pol, financas_service.certidoes(db, pessoas), db)
+    ficha_limpa = enriquecer_registros_judiciais(
+        financas_service.certidoes(db, pessoas), financas_service.processos(db, pessoas)
+    )
 
     # K. Financiamento de Campanha (Doações Eleitorais TSE) — o CPF de doador pessoa física já vem mascarado do TSE
     doacoes_db = financas_service.doacoes_de_campanha(db, pessoas)
@@ -1340,7 +1248,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
             "redes_sociais": pol.social_links,
             "camara_id": pol.camara_id,
             "senado_id": pol.senado_id,
-            "possui_processos_declarados": pol.possui_processos_declarados,
+            "possui_processos_declarados": ficha_limpa["possui_processos_declarados"],
         },
         "trajetoria_mandatos": mandatos_list,
         "filiacoes_partidarias": filiacoes_list,
@@ -1417,7 +1325,10 @@ def get_politician_emendas(politician_id: str, db: Session = Depends(get_db)):
 def get_politician_certidoes(politician_id: str, db: Session = Depends(get_db)):
     """Retorna as certidões judiciais e status perante a Lei da Ficha Limpa."""
     pol = _resolve_politician(db, politician_id)
-    ficha_data = _enrich_judicial_records(pol, financas_service.certidoes(db, _pessoas_financas(db, pol)), db)
+    pessoas = _pessoas_financas(db, pol)
+    ficha_data = enriquecer_registros_judiciais(
+        financas_service.certidoes(db, pessoas), financas_service.processos(db, pessoas)
+    )
     return {"politico_id": str(pol.id), "nome": pol.electoral_name, **ficha_data}
 
 

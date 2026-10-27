@@ -158,6 +158,9 @@ TETO_DO_CSV = 300 * 1024 * 1024
 # Arquivos processados da CEAP e das emendas: a extração (`sync_ceap_emendas`) grava e a carga (`financas_loader`) lê.
 CEAP_ARQUIVO = "despesas_ceap_2019_2026.json"
 EMENDAS_ARQUIVO = "emendas_parlamentares_2019_2026.json"
+# Processos judiciais: a curadoria (entrada, versionada à mão) e o arquivo que o extrator gera a partir dela e a carga lê.
+PROCESSOS_CURADORIA_ARQUIVO = "processos_curados.json"
+PROCESSOS_ARQUIVO = "processos_judiciais.json"
 
 # As casas do Congresso (a ordem não significa nada: os mapeamentos por casa são sempre explícitos, por nome). Quem produz
 # (`financas_loader.anos_publicados_da_ceap`) e quem consome (`sync_ceap_emendas`) os "anos já publicados por casa" usa
@@ -167,4 +170,4 @@ CASAS_DO_CONGRESSO = ("camara", "senado")
 # As cargas de finanças que o timer diário atualiza (extração fresca) e as que só mudam com o commit. Ficam aqui, leves, para a
 # política de semeadura (`carga_economica`) não precisar importar o loader inteiro só para saber os nomes.
 CHAVES_DO_TIMER = ("ceap", "emendas")
-CHAVES_ESTATICAS = ("remuneracao", "patrimonio", "doacoes", "certidoes")
+CHAVES_ESTATICAS = ("remuneracao", "patrimonio", "doacoes", "certidoes", "processos")

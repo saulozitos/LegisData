@@ -641,7 +641,7 @@ class Certidao:
     """
     Linha de `fin.certidao` com os nomes que o Raio-X Judicial usa; o TSE não informa data, link nem autenticidade.
     Adaptador temporário: os nomes seguem o ORM legado (`court_agency`, `certificate_type`...) enquanto
-    `_enrich_judicial_records` vive na rota; ambos mudam juntos na limpeza do legado (Fase 9).
+    `judicial_service.enriquecer_registros_judiciais` os consome; ambos mudam juntos na limpeza do legado (Fase 9).
     """
 
     id: int
@@ -666,3 +666,55 @@ def certidoes(db: Session, pessoas: Sequence[int]) -> List[Certidao]:
         {"ids": list(pessoas)},
     ).all()
     return [Certidao(r.id, r.orgao, r.tipo, r.situacao, r.detalhes, r.numero_processo) for r in linhas]
+
+
+@dataclass(frozen=True)
+class Processo:
+    """
+    Linha de `fin.processo_judicial` já com os nomes que o Raio-X Judicial usa. Os metadados vêm do DataJud (CNJ) e o
+    vínculo com a pessoa vem do link da fonte oficial da curadoria. Nada aqui diz como o processo terminou: só o último
+    movimento que o tribunal registrou (presunção de inocência).
+    """
+
+    numero_processo: str
+    tribunal: Optional[str]
+    grau: Optional[str]
+    data_processo: Optional[str]
+    classe: str
+    assuntos: Tuple[str, ...]
+    orgao_julgador: Optional[str]
+    ultimo_movimento: Optional[str]
+    data_ultimo_movimento: Optional[str]
+    consultado_em: Optional[str]
+    link_comprovacao: str
+
+
+def processos(db: Session, pessoas: Sequence[int]) -> List[Processo]:
+    if not pessoas:
+        return []
+    linhas = db.execute(
+        text(
+            "SELECT DISTINCT ON (numero_cnj) numero_cnj, tribunal, grau, classe, assuntos, orgao_julgador, "
+            "data_ajuizamento, ultimo_movimento, data_ultimo_movimento, consultado_em, vinculo_url FROM fin.processo_judicial "
+            "WHERE pessoa_id = ANY(:ids) ORDER BY numero_cnj, data_ultimo_movimento DESC NULLS LAST, id"
+        ),
+        {"ids": list(pessoas)},
+    ).all()
+    achados = [
+        Processo(
+            numero_processo=r.numero_cnj,
+            tribunal=r.tribunal,
+            grau=r.grau,
+            data_processo=r.data_ajuizamento.isoformat() if r.data_ajuizamento else None,
+            classe=r.classe,
+            # o CHECK da 0032 já impede elemento NULL em `assuntos`; o filtro é só defesa em profundidade
+            assuntos=tuple(a for a in (r.assuntos or []) if a),
+            orgao_julgador=r.orgao_julgador,
+            ultimo_movimento=r.ultimo_movimento,
+            data_ultimo_movimento=r.data_ultimo_movimento.isoformat() if r.data_ultimo_movimento else None,
+            consultado_em=r.consultado_em.isoformat() if r.consultado_em else None,
+            link_comprovacao=r.vinculo_url,
+        )
+        for r in linhas
+    ]
+    return sorted(achados, key=lambda p: (p.data_processo or "", p.numero_processo), reverse=True)

@@ -129,7 +129,7 @@ export default function PoliticianHeaderCard({ dossier, onBack, onChangeTab, onS
                   {fichaStatus === "declared" ? (
                     <>
                       <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" aria-hidden="true" />
-                      <span>Ficha/Certidões: Possui Processos Declarados</span>
+                      <span>Ficha/Certidões: Possui processos vinculados</span>
                       {dossier.ficha_limpa?.orgaos_declarados && dossier.ficha_limpa?.orgaos_declarados.length > 0 && (
                         <span className="font-mono text-[10px] bg-rose-950/90 px-1.5 py-0.5 rounded text-rose-200 border border-rose-500/40">
                           {dossier.ficha_limpa?.orgaos_declarados.join(", ")}
@@ -356,7 +356,7 @@ export default function PoliticianHeaderCard({ dossier, onBack, onChangeTab, onS
                       {fichaStatus === "declared" ? (
                         <>
                           <ShieldAlert className="w-3 h-3 text-rose-400 shrink-0" aria-hidden="true" />
-                          <span>Processos Declarados</span>
+                          <span>Processos vinculados</span>
                         </>
                       ) : fichaStatus === "none" ? (
                         <>

@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import type { PoliticoDossier } from "@/services/api";
 import { safeExternalUrl } from "@/lib/safeUrl";
-import { getFichaStatus } from "./format";
+import { getFichaStatus, orNd } from "./format";
 
 interface JusticeTabProps {
   dossier: PoliticoDossier;
@@ -53,14 +53,14 @@ export default function JusticeTab({ dossier }: JusticeTabProps) {
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h4 className="text-base font-extrabold text-rose-300">
-                            Possui Processos Declarados na Justiça
+                            Possui processos vinculados na Justiça
                           </h4>
                           <span className="text-[11px] font-mono font-bold bg-rose-500/20 text-rose-200 border border-rose-500/30 px-2 py-0.5 rounded-lg">
                             Atenção do Eleitor
                           </span>
                         </div>
                         <p className="text-xs text-slate-300 leading-relaxed max-w-2xl">
-                          Foram identificadas certidões judiciais positivas ou procedimentos protocolados perante os órgãos informados à Justiça Eleitoral. Veja abaixo os processos com comprovação e detalhamento por tribunal.
+                          Há processo ligado à pessoa por fonte oficial ou registro declarado no TSE. A base não informa o papel da pessoa no processo nem o desfecho: leia cada registro abaixo e consulte a fonte.
                         </p>
                         {dossier.ficha_limpa?.orgaos_declarados && dossier.ficha_limpa?.orgaos_declarados.length > 0 && (
                           <div className="flex items-center gap-2 pt-1 flex-wrap">
@@ -138,58 +138,50 @@ export default function JusticeTab({ dossier }: JusticeTabProps) {
                     <div className="flex items-center gap-2">
                       <Scale className="w-5 h-5 text-rose-400" aria-hidden="true" />
                       <h4 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                        Processos com Comprovação Oficial nos Tribunais
+                        Processos e registros vinculados
                         <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                          {dossier.ficha_limpa?.processos_detalhados.length} {dossier.ficha_limpa?.processos_detalhados.length === 1 ? "registro comprovado" : "registros comprovados"}
+                          {dossier.ficha_limpa?.processos_detalhados.length} {dossier.ficha_limpa?.processos_detalhados.length === 1 ? "registro" : "registros"}
                         </span>
                       </h4>
                     </div>
                     <span className="text-xs text-slate-400">
-                      Autuações, decisões colegiadas e andamentos processuais públicos
+                      Dados públicos do DataJud (CNJ) e do TSE, sem inferência de desfecho
                     </span>
                   </div>
 
                   <div className="grid grid-cols-1 gap-4">
-                    {dossier.ficha_limpa?.processos_detalhados.map((proc) => {
-                      const isCondenacao = proc.situacao_juridica.toLowerCase().includes("inelegibilidade") || proc.status_resumo.toLowerCase().includes("procedente");
-                      const isAbsolvido = proc.situacao_juridica.toLowerCase().includes("absolvição") || proc.situacao_juridica.toLowerCase().includes("improcedente") || proc.situacao_juridica.toLowerCase().includes("anulad");
+                    {dossier.ficha_limpa?.processos_detalhados.map((proc, idx) => {
+                      // Cor única e neutra: o texto do último movimento é do tribunal, e a tela não deduz desfecho dele.
+                      const linkDoVinculo = safeExternalUrl(proc.link_comprovacao);
                       return (
                         <div
-                          key={proc.numero_processo}
+                          key={`${proc.numero_processo ?? "sem-numero"}-${idx}`}
                           className="bg-slate-950/90 border border-slate-800 hover:border-slate-700 rounded-xl p-4 sm:p-5 space-y-3.5 transition-all shadow-md"
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-xs font-mono font-black px-2.5 py-1 rounded-lg bg-slate-900 border border-purple-500/30 text-purple-300">
-                                {proc.tribunal}
+                                {orNd(proc.tribunal)}
                               </span>
                               <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-slate-200">
-                                Nº {proc.numero_processo}
+                                Nº {orNd(proc.numero_processo)}
                               </span>
                               <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1 bg-slate-900/60 px-2 py-0.5 rounded border border-slate-800">
                                 <Calendar className="w-3 h-3 text-slate-400" aria-hidden="true" />
-                                {proc.data_processo}
+                                {orNd(proc.data_processo)}
                               </span>
                             </div>
-                            <span
-                              className={`text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full border ${
-                                isCondenacao
-                                  ? "bg-rose-500/20 text-rose-300 border-rose-500/30"
-                                  : isAbsolvido
-                                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
-                                  : "bg-amber-500/20 text-amber-300 border-amber-500/30"
-                              }`}
-                            >
-                              {proc.status_resumo}
+                            <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full border bg-slate-800 text-slate-200 border-slate-600">
+                              {orNd(proc.status_resumo)}
                             </span>
                           </div>
 
                           <div className="space-y-1.5 text-xs">
                             <div className="font-semibold text-slate-200">
-                              <span className="text-slate-400">Classe / Assunto:</span> {proc.classe_assunto}
+                              <span className="text-slate-400">Classe / Assunto:</span> {orNd(proc.classe_assunto)}
                             </div>
                             <p className="text-slate-300 leading-relaxed bg-slate-900/40 p-2.5 rounded-lg border border-slate-800/80">
-                              {proc.descricao}
+                              {orNd(proc.descricao)}
                             </p>
                           </div>
 
@@ -197,27 +189,27 @@ export default function JusticeTab({ dossier }: JusticeTabProps) {
                             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
                               Situação Jurídica &amp; Efeitos
                             </span>
-                            <p className={`text-xs font-medium leading-relaxed ${
-                              isCondenacao ? "text-rose-300" : isAbsolvido ? "text-emerald-300" : "text-amber-200"
-                            }`}>
-                              {proc.situacao_juridica}
+                            <p className="text-xs font-medium leading-relaxed text-slate-200">
+                              {orNd(proc.situacao_juridica)}
                             </p>
                           </div>
 
-                          <div className="pt-1 flex items-center justify-between flex-wrap gap-2">
-                            <span className="text-[11px] font-mono text-slate-400">
-                              Fonte: Consulta Pública Oficial do {proc.tribunal.split(" ")[0]}
-                            </span>
-                            <a
-                              href={safeExternalUrl(proc.link_comprovacao)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-200 hover:text-white border border-purple-500/40 font-semibold text-xs transition-all shadow-sm"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
-                              Consultar Processo no {proc.tribunal.split(" ")[0]} ↗
-                            </a>
-                          </div>
+                          {linkDoVinculo && (
+                            <div className="pt-1 flex items-center justify-between flex-wrap gap-2">
+                              <span className="text-[11px] font-mono text-slate-400">
+                                Fonte oficial que liga o processo à pessoa
+                              </span>
+                              <a
+                                href={linkDoVinculo}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-200 hover:text-white border border-purple-500/40 font-semibold text-xs transition-all shadow-sm"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
+                                Consultar a fonte do vínculo ↗
+                              </a>
+                            </div>
+                          )}
                         </div>
                       );
                     })}

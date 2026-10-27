@@ -11,6 +11,8 @@ from app.models import (
     TipoPresencaEnum,
 )
 from app.services import financas_service
+from app.services.financas_service import Processo
+from app.services.judicial_service import classe_e_assuntos, processo_detalhado
 from sqlalchemy import text
 
 from .conftest import criar_mandato_presidencial, fonte_id, inserir_fin, pessoa_do
@@ -317,6 +319,61 @@ def test_executive_initiatives_respect_the_presidential_term_window(client, db, 
 
 def test_name_based_certidoes_hack_is_gone_real_processes_are_shown(client, db, seed):
     """Antes, qualquer nome contendo 'Lula da Fonte' tinha os processos escondidos e 'Nada Consta' forçado."""
+    inserir_fin(
+        db,
+        "processo_judicial",
+        pessoa_id=pessoa_do(db, seed.lula_fonte),
+        numero_cnj="0000001-78.2020.8.26.0100",
+        tribunal="TJSP",
+        grau="G1",
+        classe="Ação Penal",
+        assuntos="{Peculato}",
+        orgao_julgador="1ª Vara Criminal",
+        data_ajuizamento=date(2020, 5, 1),
+        ultimo_movimento="Conclusão",
+        data_ultimo_movimento=date(2024, 5, 6),
+        consultado_em=date(2026, 10, 26),
+        vinculo_url="https://exemplo.jus.br/p",
+        fonte_id=fonte_id(db, "DATAJUD"),
+    )
+    db.commit()
+    ficha = client.get(f"{BASE}/{seed.lula_fonte.id}").json()["ficha_limpa"]
+    assert ficha["possui_processos_declarados"] is True
+    assert ficha["status_geral"] == "Processos Vinculados"
+    (processo,) = ficha["processos_detalhados"]
+    assert processo == {
+        "numero_processo": "0000001-78.2020.8.26.0100",
+        "tribunal": "TJSP",
+        "data_processo": "2020-05-01",
+        "classe_assunto": "Ação Penal / Peculato",
+        "descricao": "Órgão julgador: 1ª Vara Criminal",
+        # só o que o tribunal registrou: nenhum desfecho é inferido (presunção de inocência)
+        "situacao_juridica": "Último movimento registrado no DataJud: Conclusão (2024-05-06). Consultado em 2026-10-26.",
+        "link_comprovacao": "https://exemplo.jus.br/p",
+        "status_resumo": "DataJud · G1",
+    }
+
+
+def test_processo_sem_movimento_nem_orgao_sai_com_null_e_nunca_com_desfecho_inventado(client, db, seed):
+    inserir_fin(
+        db,
+        "processo_judicial",
+        pessoa_id=pessoa_do(db, seed.lula_fonte),
+        numero_cnj="0000001-78.2020.8.26.0100",
+        classe="Ação Penal",
+        vinculo_url="https://exemplo.jus.br/p",
+        fonte_id=fonte_id(db, "DATAJUD"),
+    )
+    db.commit()
+    (processo,) = client.get(f"{BASE}/{seed.lula_fonte.id}").json()["ficha_limpa"]["processos_detalhados"]
+    # ausente é None, como na certidão do TSE: o "n/d" é da tela, não do contrato
+    assert processo["tribunal"] is None and processo["data_processo"] is None and processo["descricao"] is None
+    assert processo["situacao_juridica"] == "Sem movimentação registrada no DataJud."
+    assert processo["status_resumo"] == "DataJud"
+
+
+def test_acervo_legado_de_processos_nao_aparece_mais_no_dossie(client, db, seed):
+    """`public.processos_judiciais` (transcrição manual, D7) não é mais lido: só o `fin` alimenta o dossiê."""
     db.add(
         ProcessoJudicial(
             politician_id=seed.lula_fonte.id,
@@ -331,10 +388,126 @@ def test_name_based_certidoes_hack_is_gone_real_processes_are_shown(client, db, 
         )
     )
     db.commit()
-    ficha = client.get(f"{BASE}/{seed.lula_fonte.id}").json()["ficha_limpa"]
-    assert ficha["possui_processos_declarados"] is True
-    assert ficha["status_geral"] == "Processos Declarados"
-    assert ficha["processos_detalhados"][0]["numero_processo"] == "0001234-56.2020.1.00.0000"
+    assert client.get(f"{BASE}/{seed.lula_fonte.id}").json()["ficha_limpa"]["processos_detalhados"] == []
+
+
+def _processo_fin(db, politico, **colunas):
+    inserir_fin(
+        db,
+        "processo_judicial",
+        **{
+            "pessoa_id": pessoa_do(db, politico),
+            "numero_cnj": "0000001-78.2020.8.26.0100",
+            "classe": "Ação Penal",
+            "vinculo_url": "https://exemplo.jus.br/p",
+            "fonte_id": fonte_id(db, "DATAJUD"),
+            **colunas,
+        },
+    )
+
+
+def test_flag_legada_de_processos_nao_liga_o_selo_sem_processo_para_mostrar(client, db, seed):
+    """`politicos.possuiProcessosDeclarados` veio do acervo manual (D7): sem processo ou certidão no `fin`, não há selo."""
+    pessoa_do(db, seed.beltrano)
+    seed.beltrano.possui_processos_declarados = True
+    db.commit()
+    corpo = client.get(f"{BASE}/{seed.beltrano.id}").json()
+    assert corpo["ficha_limpa"]["possui_processos_declarados"] is False
+    assert corpo["ficha_limpa"]["status_geral"] is None and corpo["ficha_limpa"]["processos_detalhados"] == []
+    assert corpo["perfil"]["possui_processos_declarados"] is False  # o perfil acompanha a ficha, não a flag legada
+    certidoes = client.get(f"{BASE}/{seed.beltrano.id}/certidoes").json()
+    assert certidoes["possui_processos_declarados"] is False and certidoes["status_geral"] is None
+
+
+def test_perfil_e_ficha_concordam_quando_ha_processo_no_fin(client, db, seed):
+    _processo_fin(db, seed.beltrano)
+    db.commit()
+    corpo = client.get(f"{BASE}/{seed.beltrano.id}").json()
+    assert corpo["perfil"]["possui_processos_declarados"] is True
+    assert corpo["ficha_limpa"]["possui_processos_declarados"] is True
+    certidoes = client.get(f"{BASE}/{seed.beltrano.id}/certidoes").json()
+    assert [p["numero_processo"] for p in certidoes["processos_detalhados"]] == ["0000001-78.2020.8.26.0100"]
+
+
+def test_certidao_positiva_do_tse_nao_some_quando_ha_processo_do_datajud(client, db, seed):
+    _processo_fin(db, seed.beltrano)
+    inserir_fin(
+        db,
+        "certidao",
+        pessoa_id=pessoa_do(db, seed.beltrano),
+        orgao="TSE",
+        tipo="Registro 2018",
+        situacao="Declarada: registro indeferido",
+        fonte_id=fonte_id(db, "TSE"),
+    )
+    db.commit()
+    ficha = client.get(f"{BASE}/{seed.beltrano.id}").json()["ficha_limpa"]
+    assert [p["status_resumo"] for p in ficha["processos_detalhados"]] == ["DataJud", "Declarado no TSE"]
+    assert len(ficha["certidoes"]) == 1
+
+
+def test_processo_detalhado_sem_data_do_movimento_sem_assuntos_e_sem_grau():
+    base = dict(
+        numero_processo="0000001-78.2020.8.26.0100",
+        tribunal="TJSP",
+        grau=None,
+        data_processo="2020-05-01",
+        classe="Ação Penal",
+        assuntos=(),
+        orgao_julgador=None,
+        ultimo_movimento="Conclusão",
+        data_ultimo_movimento=None,
+        consultado_em=None,
+        link_comprovacao="https://exemplo.jus.br/p",
+    )
+    detalhado = processo_detalhado(Processo(**base))
+    assert detalhado["situacao_juridica"] == "Último movimento registrado no DataJud: Conclusão."  # sem "(None)"
+    assert detalhado["status_resumo"] == "DataJud" and detalhado["descricao"] is None
+    assert detalhado["classe_assunto"] == "Ação Penal"
+    com_data = processo_detalhado(
+        Processo(**{**base, "data_ultimo_movimento": "2024-05-06", "grau": "G2", "consultado_em": "2026-10-26"})
+    )
+    assert (
+        com_data["situacao_juridica"].endswith("Conclusão (2024-05-06). Consultado em 2026-10-26.")
+        and com_data["status_resumo"] == "DataJud · G2"
+    )
+    sem_movimento = processo_detalhado(Processo(**{**base, "ultimo_movimento": None, "consultado_em": "2026-10-26"}))
+    assert sem_movimento["situacao_juridica"] == "Sem movimentação registrada no DataJud. Consultado em 2026-10-26."
+
+
+@pytest.mark.parametrize(
+    "classe, assuntos, esperado",
+    [
+        ("Classe", ("A", "B"), "Classe / A, B"),
+        ("Classe", (), "Classe"),
+    ],
+)
+def test_classe_e_assuntos_do_raio_x(classe, assuntos, esperado):
+    base = dict(
+        numero_processo="1", tribunal=None, grau=None, data_processo=None, orgao_julgador=None,
+        ultimo_movimento=None, data_ultimo_movimento=None, consultado_em=None, link_comprovacao="https://x.jus.br/p",
+    )  # fmt: skip
+    assert classe_e_assuntos(Processo(classe=classe, assuntos=assuntos, **base)) == esperado
+
+
+def test_processo_e_certidao_do_tse_saem_com_as_mesmas_chaves_e_ausente_e_sempre_none(client, db, seed):
+    """Os dois tipos de item ficam em `processos_detalhados`; o front lê os dois do mesmo jeito."""
+    _processo_fin(db, seed.beltrano)
+    inserir_fin(
+        db,
+        "certidao",
+        pessoa_id=pessoa_do(db, seed.beltrano),
+        orgao="TSE",
+        tipo="Registro 2018",
+        situacao="Declarada: registro indeferido",
+        fonte_id=fonte_id(db, "TSE"),
+    )
+    db.commit()
+    datajud, tse = client.get(f"{BASE}/{seed.beltrano.id}/certidoes").json()["processos_detalhados"]
+    assert set(datajud) == set(tse)
+    assert tse["situacao_juridica"] is None and tse["data_processo"] is None and tse["link_comprovacao"] is None
+    assert datajud["tribunal"] is None and datajud["data_processo"] is None and datajud["descricao"] is None
+    assert not [v for v in (*datajud.values(), *tse.values()) if v == "n/d"]  # nenhum placeholder no contrato
 
 
 def test_certidoes_never_get_invented_numbers_dates_or_codes(client, db, seed):
@@ -353,7 +526,7 @@ def test_certidoes_never_get_invented_numbers_dates_or_codes(client, db, seed):
     assert cert["numero_processo"] is None and cert["data_emissao"] is None and cert["codigo_autenticidade"] is None
     assert cert["link_comprovacao"] is None
     # Certidão positiva registrada: nunca pode sair "Nada Consta"
-    assert data["status_geral"] == "Processos Declarados" and data["possui_processos_declarados"] is True
+    assert data["status_geral"] == "Processos Vinculados" and data["possui_processos_declarados"] is True
     assert data["orgaos_declarados"] == ["TSE"]
     assert (
         data["link_tse_divulgacand"] == "https://divulgacandcontas.tse.jus.br/divulga/#/"

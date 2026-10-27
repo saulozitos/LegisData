@@ -128,8 +128,16 @@ Cópias em markdown das especificações oficiais, para consultar campos, parâm
 ### 4.1 API Pública de Processos Judiciais
 - **Documentação Oficial**: `https://datajud-wiki.cnj.jus.br/api-publica/`
 - **Base URL**: `https://api-publica.datajud.cnj.jus.br/api_publica_{sigla_tribunal}/_search`
-- **Autenticação**: Chave de API pública oficial do CNJ:
-  `APIKey cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENxbUp1R2x6OFVacw==`
+- **Autenticação**: chave pública do CNJ, que o CNJ pode trocar a qualquer momento; a vigente fica em `docs/DataJud.md`
+  (cópia da wiki oficial). O cliente (`etl/utils/datajud_client.py`) usa a variável `DATAJUD_API_KEY` e, sem ela, a chave
+  padrão do código; se o DataJud começar a responder 401, atualize a chave a partir da wiki.
+- **O que a API não faz**: só consulta por número de processo e não expõe as partes. Ela não descobre os processos de uma
+  pessoa; esse vínculo vem da curadoria `etl/data/processed/processos_curados.json` (número CNJ + link da fonte oficial que
+  liga o processo à pessoa). `python -m etl.run_etl --processos` enriquece a curadoria e grava
+  `processos_judiciais.json`, que `--load-economia` carrega em `fin.processo_judicial`. Falha de rede (429, timeout, HTTP de
+  erro) aborta a extração sem gravar; processo sob sigilo (`nivelSigilo` diferente de zero) não entra; "não encontrado" fica
+  em cache por 7 dias e o achado por 1 dia. O DataJud não tem índice do STF (J=1): processo de lá não é extraído.
+  O link da curadoria é `https` de domínio público (`.jus.br`, `.gov.br`, `.leg.br`, `.mp.br`) e sem CPF. Os códigos de tribunal seguem a Resolução CNJ nº 65/2008 (8.25 é TJSE, 8.26 é TJSP).
 - **Formato**: Requisições HTTP POST com consultas JSON no padrão Elasticsearch.
 
 #### Padrão de Numeração e Tribunais Suportados:

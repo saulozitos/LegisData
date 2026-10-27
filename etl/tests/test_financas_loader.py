@@ -14,6 +14,7 @@ from etl.pipelines.loader_helpers import (
     documento_do_doador,
     ler_certidao,
     ler_doacoes,
+    ler_processo,
     nome_do_fornecedor,
     nome_sem_cpf,
     resumos_completos,
@@ -122,7 +123,7 @@ def _limpar(engine):
             text(
                 "TRUNCATE core.pessoa, core.mandato, fin.despesa_cota, fin.despesa_cota_fornecedor, "
                 "fin.despesa_cota_resumo, fin.emenda, fin.remuneracao, fin.declaracao_patrimonio, "
-                "fin.doacao_campanha, fin.certidao RESTART IDENTITY CASCADE"
+                "fin.doacao_campanha, fin.certidao, fin.processo_judicial RESTART IDENTITY CASCADE"
             )
         )
 
@@ -181,6 +182,36 @@ def _gravar(pasta, nome, conteudo):
 
 def _oficial(**campos):
     return {"is_synthetic": False, "fonte": "Fonte oficial", **campos}
+
+
+CNJ_A = "0000001-78.2020.8.26.0100"  # número sintético com dígitos verificadores corretos
+CNJ_B = "0000002-46.2021.4.03.6100"
+
+
+def _cnj(sequencial):
+    """Número CNJ sintético e válido para o sequencial dado (Resolução CNJ nº 65/2008, módulo 97)."""
+    base = f"{sequencial:07d}"
+    digito = 98 - int(f"{base}2020826" + "0100" + "00") % 97
+    return f"{base}-{digito:02d}.2020.8.26.0100"
+
+
+def _processo(**campos):
+    """Processo já enriquecido pelo DataJud, como o extrator o grava."""
+    base = {
+        "numero_processo": CNJ_A,
+        "tribunal": "TJSP",
+        "grau": "G1",
+        "classe_tpu_nome": "Procedimento Comum Cível",
+        "assuntos_tpu": ["Improbidade Administrativa"],
+        "orgao_julgador": "1ª Vara Cível",
+        "data_processo": "2020-03-04",
+        "total_movimentacoes": 7,
+        "ultimo_movimento": "Conclusão",
+        "data_ultimo_movimento": "2024-05-06",
+        "consultado_em": "2026-10-26",
+        "link_comprovacao": "https://exemplo.jus.br/processo/1",
+    }
+    return _oficial(**{**base, **campos})
 
 
 def _contar(engine, tabela):
@@ -504,6 +535,7 @@ def _carga_com_dado_bom(pasta):
         fin.CERTIDOES_ARQUIVO,
         [_oficial(camara_id=100, orgao="TSE", tipo_certidao="Registro", status_ficha="Deferido")],
     )
+    _gravar(pasta, fin.PROCESSOS_ARQUIVO, [_processo(camara_id=100)])
 
 
 TABELAS_POR_CARGA = {
@@ -513,6 +545,7 @@ TABELAS_POR_CARGA = {
     "patrimonio": ("declaracao_patrimonio",),
     "doacoes": ("doacao_campanha",),
     "certidoes": ("certidao",),
+    "processos": ("processo_judicial",),
 }
 ARQUIVO_DA_CARGA = {
     "ceap": fin.CEAP_ARQUIVO,
@@ -521,6 +554,7 @@ ARQUIVO_DA_CARGA = {
     "patrimonio": fin.PATRIMONIO_ARQUIVO,
     "doacoes": fin.DOACOES_ARQUIVO,
     "certidoes": fin.CERTIDOES_ARQUIVO,
+    "processos": fin.PROCESSOS_ARQUIVO,
 }
 FUNCAO_DA_CARGA = dict(fin.CARGAS)
 
@@ -550,8 +584,17 @@ def _vazio_valido(carga):
     return []
 
 
-@pytest.mark.parametrize("carga", list(TABELAS_POR_CARGA))
-@pytest.mark.parametrize("ruim", ["ausente", "vazio", "vazio_com_proveniencia", "sintetico", "tipo_errado"])
+# Em `processos` uma lista vazia e válida é a retirada deliberada de todo vínculo (a curadoria ficou vazia): ela limpa a
+# tabela, e tem testes próprios mais abaixo. Qualquer outro arquivo ruim continua sem apagar nada.
+CASOS_DE_ARQUIVO_RUIM = [
+    (carga, ruim)
+    for carga in TABELAS_POR_CARGA
+    for ruim in ("ausente", "vazio", "vazio_com_proveniencia", "sintetico", "tipo_errado")
+    if not (carga == "processos" and ruim in ("vazio", "vazio_com_proveniencia"))
+]
+
+
+@pytest.mark.parametrize("carga, ruim", CASOS_DE_ARQUIVO_RUIM)
 def test_arquivo_ruim_nunca_apaga_nenhuma_das_seis_tabelas(pg_engine, banco, tmp_path, carga, ruim):
     _carga_com_dado_bom(tmp_path)
     with pg_engine.begin() as conn:
@@ -592,7 +635,10 @@ def test_arquivo_ruim_nunca_apaga_nenhuma_das_seis_tabelas(pg_engine, banco, tmp
 
 def _gravou(resultado):
     """True se a carga relatou alguma linha gravada em alguma tabela."""
-    return any(resultado.get(chave) for chave in ("despesas", "emendas", "meses", "declaracoes", "linhas", "certidoes"))
+    return any(
+        resultado.get(chave)
+        for chave in ("despesas", "emendas", "meses", "declaracoes", "linhas", "certidoes", "processos")
+    )
 
 
 def test_doacoes_so_com_prestacoes_sem_linhas_utilizaveis_nao_apagam_o_banco(pg_engine, banco, tmp_path):
@@ -642,7 +688,7 @@ def test_doador_com_cpf_no_nome_nao_grava_o_cpf(pg_engine, banco, tmp_path):
         )
 
 
-@pytest.mark.parametrize("carga", ["remuneracao", "patrimonio", "doacoes", "certidoes"])
+@pytest.mark.parametrize("carga", ["remuneracao", "patrimonio", "doacoes", "certidoes", "processos"])
 def test_recarregar_as_cargas_do_tse_e_da_remuneracao_e_idempotente(pg_engine, banco, tmp_path, carga):
     _carga_com_dado_bom(tmp_path)
     for _ in range(2):
@@ -818,6 +864,8 @@ def _arquivo_com(carga, n):
                 doadores=[{"nome_doador": f"D{i}", "valor_doado": 1} for i in range(n)],
             )
         ]
+    if carga == "processos":
+        return [_processo(camara_id=100, numero_processo=_cnj(i)) for i in range(n)]
     return [_oficial(camara_id=100, orgao="TSE", tipo_certidao=f"T{i}", status_ficha="ok") for i in range(n)]
 
 
@@ -1127,6 +1175,7 @@ def test_cada_carga_grava_a_fonte_certa(pg_engine, banco, tmp_path):
         "declaracao_patrimonio": {"TSE"},
         "doacao_campanha": {"TSE"},
         "certidao": {"TSE"},
+        "processo_judicial": {"DATAJUD"},
     }
     with pg_engine.connect() as conn:
         for tabela, fontes in esperado.items():
@@ -2541,3 +2590,196 @@ def test_a_origem_do_hook_fica_registrada(pg_engine, sem_execucoes_de_carga):
             ).scalar()
             == "run_etl"
         )
+
+
+# ── Processos judiciais (DataJud) ─────────────────────────────────────────────────────────────────────────────────
+
+
+def test_processo_so_liga_a_pessoa_pelo_identificador_oficial_nunca_pelo_nome(pg_engine, banco, tmp_path):
+    # "Ana Souza" existe no cadastro com camara_id 100; o registro traz só o nome (ou um identificador que o cadastro
+    # não conhece): um homônimo fora do cadastro herdaria a ação, então o processo fica sem pessoa
+    sem_id = _processo(nome_civil="Ana Souza")
+    id_desconhecido = _processo(nome_civil="Ana Souza", camara_id=999999, numero_processo=CNJ_B)
+    _gravar(tmp_path, fin.PROCESSOS_ARQUIVO, [sem_id, id_desconhecido])
+    with pg_engine.begin() as conn:
+        resultado = fin.carregar_processos(conn, tmp_path)
+    assert resultado["processos"] == 0 and resultado["sem_pessoa"] == 2
+
+
+def test_processo_grava_os_metadados_do_datajud_e_o_vinculo(pg_engine, banco, tmp_path):
+    _gravar(tmp_path, fin.PROCESSOS_ARQUIVO, [_processo(camara_id=100, nome_civil="Ana Souza")])
+    with pg_engine.begin() as conn:
+        assert fin.carregar_processos(conn, tmp_path)["processos"] == 1
+    with pg_engine.connect() as conn:
+        linha = conn.execute(
+            text(
+                "SELECT pessoa_id, numero_cnj, tribunal, grau, classe, assuntos, orgao_julgador, data_ajuizamento, "
+                "ultimo_movimento, data_ultimo_movimento, total_movimentacoes, consultado_em, vinculo_url "
+                "FROM fin.processo_judicial"
+            )
+        ).one()
+    assert linha.pessoa_id == banco["ana"] and linha.numero_cnj == CNJ_A
+    assert (linha.tribunal, linha.grau, linha.classe) == ("TJSP", "G1", "Procedimento Comum Cível")
+    assert linha.assuntos == ["Improbidade Administrativa"] and linha.orgao_julgador == "1ª Vara Cível"
+    assert str(linha.data_ajuizamento) == "2020-03-04" and str(linha.data_ultimo_movimento) == "2024-05-06"
+    assert (linha.ultimo_movimento, linha.total_movimentacoes) == ("Conclusão", 7)
+    assert str(linha.consultado_em) == "2026-10-26"
+    assert linha.vinculo_url == "https://exemplo.jus.br/processo/1"
+
+
+def test_processo_sem_o_que_o_datajud_nao_devolve_fica_nulo_nunca_zero(pg_engine, banco, tmp_path):
+    item = _processo(camara_id=100)
+    for campo in (
+        "tribunal",
+        "grau",
+        "orgao_julgador",
+        "data_processo",
+        "ultimo_movimento",
+        "data_ultimo_movimento",
+        "consultado_em",
+    ):
+        item.pop(campo)
+    item.pop("total_movimentacoes")
+    item.pop("assuntos_tpu")
+    _gravar(tmp_path, fin.PROCESSOS_ARQUIVO, [item])
+    with pg_engine.begin() as conn:
+        fin.carregar_processos(conn, tmp_path)
+    with pg_engine.connect() as conn:
+        linha = conn.execute(text("SELECT * FROM fin.processo_judicial")).one()._mapping
+    for campo in (
+        "tribunal",
+        "grau",
+        "orgao_julgador",
+        "data_ajuizamento",
+        "ultimo_movimento",
+        "data_ultimo_movimento",
+        "total_movimentacoes",
+        "consultado_em",
+    ):
+        assert linha[campo] is None
+    assert linha["assuntos"] == []
+
+
+@pytest.mark.parametrize(
+    "mudanca, motivo",
+    [
+        ({"numero_processo": "0000001-79.2020.8.26.0100"}, "invalidas"),  # dígito verificador errado
+        ({"numero_processo": "00000017820208260100"}, "invalidas"),  # sem a formatação CNJ
+        ({"numero_processo": "6527"}, "invalidas"),  # número de candidatura do TSE, não é CNJ
+        ({"numero_processo": f"Proc. {CNJ_A}"}, "invalidas"),  # texto em volta
+        ({"classe_tpu_nome": " "}, "invalidas"),
+        ({"link_comprovacao": None}, "invalidas"),
+        ({"link_comprovacao": "javascript:alert(1)"}, "invalidas"),
+        ({"link_comprovacao": "ftp://exemplo.jus.br/x"}, "invalidas"),
+        ({"link_comprovacao": "https://exemplo.jus.br/a b"}, "invalidas"),  # o CHECK do banco também recusa espaço
+        ({"link_comprovacao": "https://"}, "invalidas"),
+        ({"link_comprovacao": "http://exemplo.jus.br/p"}, "invalidas"),  # sem TLS
+        ({"link_comprovacao": "https://exemplo.com/p"}, "invalidas"),  # não é de órgão público
+        ({"link_comprovacao": f"https://exemplo.jus.br/a?doc={CPF_A}"}, "invalidas"),  # CPF na consulta (D3)
+        ({"link_comprovacao": "https://exemplo.jus.br/a\u2003b"}, "invalidas"),  # espaço Unicode: o CHECK recusaria
+        (
+            {"numero_processo": CNJ_A.translate({ord(c): ord(c) + 0xFEE0 for c in "0123456789"})},
+            "invalidas",
+        ),  # dígitos de largura total
+        ({"classe_tpu_nome": None}, "invalidas"),  # sem classe oficial o processo não entra
+        ({"is_synthetic": True}, "sem_proveniencia"),
+        ({"fonte": None}, "sem_proveniencia"),
+    ],
+)
+def test_processo_que_nao_serve_e_contado_e_nao_entra(mudanca, motivo):
+    linhas, contagem = fin.linhas_dos_processos([_processo(camara_id=100, **mudanca)], _SempreAPessoa(), 1)
+    assert linhas == [] and contagem[motivo] == 1
+
+
+def test_processo_de_quem_nao_se_resolve_nao_entra_e_nao_se_atribui_por_palpite(pg_engine, banco, tmp_path):
+    _gravar(tmp_path, fin.PROCESSOS_ARQUIVO, [_processo(camara_id=999, nome_civil="Quem Não Existe")])
+    with pg_engine.begin() as conn:
+        resultado = fin.carregar_processos(conn, tmp_path)
+    assert resultado["sem_pessoa"] == 1 and resultado["processos"] == 0 and _contar(pg_engine, "processo_judicial") == 0
+
+
+def test_processo_repetido_fica_uma_vez_com_o_movimento_mais_recente_em_qualquer_ordem():
+    antigo = _processo(camara_id=1, data_ultimo_movimento="2023-01-01", ultimo_movimento="Distribuição")
+    novo = _processo(camara_id=1, data_ultimo_movimento="2024-05-06", ultimo_movimento="Conclusão")
+    outro = _processo(camara_id=1, numero_processo=CNJ_B)
+    for ordem in ([antigo, novo, outro], [novo, outro, antigo]):
+        linhas, contagem = fin.linhas_dos_processos(ordem, _SempreAPessoa(), 1)
+        assert sorted((x["numero"], x["movimento"]) for x in linhas) == [(CNJ_A, "Conclusão"), (CNJ_B, "Conclusão")]
+        assert contagem["repetidas"] == 1
+
+
+def test_lista_vazia_de_processos_limpa_a_tabela_para_retirar_um_vinculo_errado(pg_engine, banco, tmp_path):
+    _gravar(tmp_path, fin.PROCESSOS_ARQUIVO, [_processo(camara_id=100)])
+    with pg_engine.begin() as conn:
+        fin.carregar_processos(conn, tmp_path)
+    assert _contar(pg_engine, "processo_judicial") == 1
+    _gravar(tmp_path, fin.PROCESSOS_ARQUIVO, [])
+    with pg_engine.begin() as conn:
+        assert fin.carregar_processos(conn, tmp_path)["processos"] == 0
+    assert _contar(pg_engine, "processo_judicial") == 0
+
+
+@pytest.mark.parametrize(
+    "registros",
+    [
+        [_processo(camara_id=100, numero_processo="6527")],  # nenhum serve (número inválido)
+        [_processo(camara_id=999)],  # ninguém se resolve
+        [_processo(camara_id=100, is_synthetic=True)],  # sem proveniência
+    ],
+)
+def test_arquivo_de_processos_com_registros_dos_quais_nenhum_serve_nao_apaga_nada(
+    pg_engine, banco, tmp_path, registros
+):
+    _gravar(tmp_path, fin.PROCESSOS_ARQUIVO, [_processo(camara_id=100)])
+    with pg_engine.begin() as conn:
+        fin.carregar_processos(conn, tmp_path)
+    _gravar(tmp_path, fin.PROCESSOS_ARQUIVO, registros)
+    with pg_engine.begin() as conn:
+        assert fin.carregar_processos(conn, tmp_path)["processos"] == 0
+    assert _contar(pg_engine, "processo_judicial") == 1
+
+
+def test_esvaziar_dez_processos_ou_mais_exige_a_variavel_de_encolhimento(pg_engine, banco, tmp_path, monkeypatch):
+    monkeypatch.delenv(fin.VARIAVEL_ACEITAR_ENCOLHIMENTO, raising=False)
+    _gravar(tmp_path, fin.PROCESSOS_ARQUIVO, _arquivo_com("processos", 12))
+    with pg_engine.begin() as conn:
+        fin.carregar_processos(conn, tmp_path)
+    _gravar(tmp_path, fin.PROCESSOS_ARQUIVO, [])
+    with pytest.raises(RuntimeError, match=fin.VARIAVEL_ACEITAR_ENCOLHIMENTO):
+        with pg_engine.begin() as conn:
+            fin.carregar_processos(conn, tmp_path)
+    assert _contar(pg_engine, "processo_judicial") == 12
+    monkeypatch.setenv(fin.VARIAVEL_ACEITAR_ENCOLHIMENTO, "1")
+    with pg_engine.begin() as conn:
+        fin.carregar_processos(conn, tmp_path)
+    assert _contar(pg_engine, "processo_judicial") == 0
+
+
+@pytest.mark.parametrize(
+    "campos, esperado",
+    [
+        ({"total_movimentacoes": -1}, {"movimentacoes": None}),  # o CHECK do banco recusa negativo
+        ({"total_movimentacoes": 0}, {"movimentacoes": 0}),  # zero legítimo é preservado
+        ({"total_movimentacoes": True}, {"movimentacoes": None}),
+        ({"assuntos_tpu": [None, "", "  ", "A"]}, {"assuntos": ["A"]}),  # o CHECK recusa elemento nulo
+        ({"assuntos_tpu": "A"}, {"assuntos": []}),  # não é lista
+        ({"assuntos_tpu": [{"a": 1}, ["x"], "B"]}, {"assuntos": ["B"]}),
+        ({"data_processo": "2024-02-30"}, {"ajuizado": None}),  # data impossível
+        ({"data_processo": "ontem"}, {"ajuizado": None}),
+        ({"data_ultimo_movimento": "2024-13-01"}, {"data_movimento": None}),
+        ({"consultado_em": "xx"}, {"consultado": None}),
+    ],
+)
+def test_ler_processo_so_entrega_o_que_o_banco_aceita(campos, esperado):
+    lido, motivo = ler_processo(_processo(camara_id=1, **campos))
+    assert motivo is None and {k: lido[k] for k in esperado} == esperado
+
+
+def test_processo_com_cpf_no_texto_livre_perde_o_cpf_antes_de_ir_ao_banco():
+    cpf = CPF_A
+    linhas, _ = fin.linhas_dos_processos(
+        [_processo(camara_id=1, ultimo_movimento=f"Intimação de {cpf}", orgao_julgador=f"Vara {cpf}")],
+        _SempreAPessoa(),
+        1,
+    )
+    assert linhas[0]["movimento"] == "Intimação de" and linhas[0]["orgao"] == "Vara"
