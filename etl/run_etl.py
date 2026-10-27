@@ -169,12 +169,20 @@ def _ceap_emendas(ano_inicio: int, usar_cache: bool = True):
     return resumo
 
 
-def _load_db(allow_synthetic: bool, allow_unverified: bool, purge: bool):
+def _load_db(allow_synthetic: bool, allow_unverified: bool):
     from etl.pipelines.db_loader import DatabaseLoader
 
-    return DatabaseLoader(
-        allow_synthetic=allow_synthetic, allow_unverified=allow_unverified, purge_legacy_synthetic=purge
-    ).load_all()
+    resumo = DatabaseLoader(allow_synthetic=allow_synthetic, allow_unverified=allow_unverified).load_all()
+
+    from etl.utils.bootstrap import ensure_backend_on_path
+
+    ensure_backend_on_path()
+    from app.core.database import engine
+
+    from etl.utils.manutencao import analisar_banco
+
+    analisar_banco(engine)
+    return resumo
 
 
 def _processos():
@@ -273,22 +281,20 @@ def _load_economia(recarregar_ceap_e_emendas: bool = False, extracao_fresca: boo
     for chave, resultado in resultados.items():
         print(f"    {nomes[chave]}:", resultado)
 
+    from etl.utils.manutencao import analisar_banco
 
-def _load_presenca_remuneracao():
+    analisar_banco(engine)
+
+
+def _load_presenca():
     from etl.utils.bootstrap import ensure_backend_on_path
 
     ensure_backend_on_path()
-    from app.core.database import SessionLocal, engine
+    from app.core.database import engine
 
-    from etl.pipelines.load_attendance_and_remuneration import load_remunerations
     from etl.pipelines.presenca_leg_loader import carregar as carregar_presenca
 
     print("    Presença (leg.presenca):", carregar_presenca(engine))
-    db = SessionLocal()
-    try:
-        print("    Remuneração:", load_remunerations(db))
-    finally:
-        db.close()
 
 
 def montar_parser() -> argparse.ArgumentParser:
@@ -319,7 +325,7 @@ def montar_parser() -> argparse.ArgumentParser:
         ("camara-bulk", "Proposições e autores de todos os anos (CSV em lote da Câmara) direto no PostgreSQL"),
         ("camara-historico", "Histórico de mandatos dos deputados (posse, licença, suplência, partido) desde 1995"),
         ("load-db", "Carga e upsert no PostgreSQL"),
-        ("load-presenca", "Carga de presença e remuneração oficiais no PostgreSQL"),
+        ("load-presenca", "Carga de presença oficial (leg.presenca) no PostgreSQL"),
         ("load-economia", "Carga das séries econômicas, mandatos, composição, PNAD (eco/leg) e finanças (fin)"),
         (
             "processos",
@@ -360,12 +366,9 @@ def montar_parser() -> argparse.ArgumentParser:
         "--allow-synthetic", action="store_true", help="Gera/carrega dados SINTÉTICOS marcados (demonstração)"
     )
     p.add_argument(
-        "--allow-unverified", action="store_true", help="Carrega dados digitados e não verificados (eleições por UF)"
-    )
-    p.add_argument(
-        "--purge-legacy-synthetic",
+        "--allow-unverified",
         action="store_true",
-        help="DESTRUTIVO: apaga sintéticos legados do banco antes da carga",
+        help="Carrega dados sem fonte registrada (proposições e autores sem `autor_fonte`)",
     )
     return p
 
@@ -452,13 +455,13 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         Etapa(
             "load_db",
             "Carga e upsert relacional no PostgreSQL",
-            lambda: _load_db(args.allow_synthetic, args.allow_unverified, args.purge_legacy_synthetic),
+            lambda: _load_db(args.allow_synthetic, args.allow_unverified),
             depende_de_extracao=True,
         ),
         Etapa(
             "load_presenca",
-            "Carga de presença e remuneração oficiais",
-            _load_presenca_remuneracao,
+            "Carga de presença oficial (leg.presenca)",
+            _load_presenca,
             depende_de_extracao=True,
         ),
         Etapa("processos", "Processos judiciais (DataJud)", _processos),

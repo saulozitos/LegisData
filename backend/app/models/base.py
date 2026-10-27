@@ -1,15 +1,15 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, func
+from sqlalchemy import DateTime, MetaData, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
-    """Base class for all SQLAlchemy declarative models."""
+    """Tabelas de entrada do ETL (schema `stg`): o que o ETL grava e as funções `etl.merge_*` projetam em `core`/`leg`."""
 
-    pass
+    metadata = MetaData(schema="stg")
 
 
 class MigratedBase(DeclarativeBase):

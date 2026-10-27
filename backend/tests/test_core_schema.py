@@ -13,7 +13,7 @@ from app.models import (
     Politician,
     StatusMandatoEnum,
 )
-from app.services.core_sync import sync_legacy_to_core
+from app.services.staging_merge import merge_staging
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 
@@ -35,7 +35,7 @@ def cenario(db):
     pl = PoliticalParty(acronym="PL", full_name="Partido Liberal")
     db.add_all([pt, pl])
     ana = Politician(civil_name="Ana Souza", electoral_name="Ana", camara_id=1)
-    bia = Politician(civil_name="Beatriz Lima", electoral_name="Bia", camara_id=2, cpf="12345678901")
+    bia = Politician(civil_name="Beatriz Lima", electoral_name="Bia", camara_id=2)
     db.add_all([ana, bia])
     db.flush()
     common = dict(
@@ -223,7 +223,7 @@ def test_mandate_situations_cannot_overlap(db):
 
 
 def test_bridge_creates_people_names_identifiers_and_never_copies_cpf(db, cenario):
-    summary = sync_legacy_to_core(db)
+    summary = merge_staging(db)
     assert summary["pessoas"] == 2
     assert _scalar(db, "SELECT count(*) FROM core.pessoa_nome WHERE tipo = 'CIVIL'") == 2
     assert _scalar(db, "SELECT count(*) FROM core.pessoa_identificador WHERE tipo = 'CAMARA_ID'") == 2
@@ -233,7 +233,7 @@ def test_bridge_creates_people_names_identifiers_and_never_copies_cpf(db, cenari
 
 
 def test_bridge_collapses_one_legacy_mandate_per_party_into_one_mandate(db, cenario):
-    sync_legacy_to_core(db)
+    merge_staging(db)
     assert _scalar(db, "SELECT count(*) FROM core.mandato WHERE condicao <> 'NOMEADO'") == 2
     assert _scalar(db, "SELECT count(*) FROM core.mandato_legado") == 3  # todos os ids legados continuam rastreáveis
     # partido do mandato = filiação vigente na posse (PT), não o último a ser carregado
@@ -248,7 +248,7 @@ def test_bridge_collapses_one_legacy_mandate_per_party_into_one_mandate(db, cena
 
 
 def test_bridge_is_idempotent(db, cenario):
-    sync_legacy_to_core(db)
+    merge_staging(db)
     antes = _rows(db, "SELECT id, pessoa_id, cargo_id, partido_id FROM core.mandato ORDER BY id")
     contagens = _rows(
         db,
@@ -256,7 +256,7 @@ def test_bridge_is_idempotent(db, cenario):
         "(SELECT count(*) FROM core.filiacao), (SELECT count(*) FROM core.mandato_situacao), "
         "(SELECT count(*) FROM core.partido)",
     )
-    sync_legacy_to_core(db)
+    merge_staging(db)
     assert _rows(db, "SELECT id, pessoa_id, cargo_id, partido_id FROM core.mandato ORDER BY id") == antes
     assert (
         _rows(
@@ -276,7 +276,7 @@ def test_bridge_closes_open_affiliation_when_the_next_one_starts(db, cenario):
         )
     )
     db.commit()
-    sync_legacy_to_core(db)
+    merge_staging(db)
     rows = _rows(
         db,
         "SELECT pa.sigla, lower(f.periodo), upper(f.periodo), f.fim_inferido FROM core.filiacao f "
@@ -302,7 +302,7 @@ def test_bridge_rejects_same_start_conflict_keeping_the_party_of_the_mandate(db,
         )
     )
     db.commit()
-    summary = sync_legacy_to_core(db)
+    summary = merge_staging(db)
     assert summary["rejeitos"] == 1
     assert _rows(db, "SELECT motivo FROM etl.rejeito") == [("FILIACAO_MESMO_INICIO_QUE_OUTRA_DA_MESMA_PESSOA",)]
     assert (
@@ -345,7 +345,7 @@ def test_bridge_splits_mandate_when_holder_serves_as_minister(db, cenario):
         )
     )
     db.commit()
-    sync_legacy_to_core(db)
+    merge_staging(db)
     rows = _rows(
         db,
         "SELECT ms.situacao, lower(ms.periodo), upper(ms.periodo) FROM core.mandato_situacao ms "
@@ -385,7 +385,7 @@ def test_minister_without_legacy_link_is_never_merged_by_name(db, cenario):
         )
     )
     db.commit()
-    sync_legacy_to_core(db)
+    merge_staging(db)
     assert (
         _scalar(db, "SELECT count(*) FROM core.pessoa WHERE nome_exibicao ILIKE '%beatriz%lima%'") == 1
     )  # só o ministro
@@ -396,7 +396,7 @@ def test_minister_without_legacy_link_is_never_merged_by_name(db, cenario):
 
 
 def test_bancada_atual_counts_each_person_once_in_the_current_party(db, cenario):
-    sync_legacy_to_core(db)
+    merge_staging(db)
     bancada = dict(
         _rows(db, "SELECT pa.sigla, b.total FROM core.vw_bancada_atual b JOIN core.partido pa ON pa.id = b.partido_id")
     )
@@ -418,7 +418,7 @@ def test_bancada_atual_excludes_licensed_holder(db, cenario):
         )
     )
     db.commit()
-    sync_legacy_to_core(db)
+    merge_staging(db)
     assert (
         _scalar(
             db,
@@ -430,7 +430,7 @@ def test_bancada_atual_excludes_licensed_holder(db, cenario):
 
 
 def test_vw_politico_composes_name_party_and_office(db, cenario):
-    sync_legacy_to_core(db)
+    merge_staging(db)
     ana = _rows(
         db,
         "SELECT nome_exibicao, partido_atual, cargo_atual, uf, total_mandatos FROM core.vw_politico "
@@ -453,7 +453,7 @@ def test_vw_historico_mandato_marks_finished_terms(db, cenario):
         )
     )
     db.commit()
-    sync_legacy_to_core(db)
+    merge_staging(db)
     assert _scalar(db, "SELECT situacao FROM core.vw_historico_mandato WHERE data_inicio = '2015-02-01'") in (
         "EXERCICIO",
         "ENCERRADO",
@@ -467,7 +467,7 @@ def test_party_succession_and_unknown_enum_values_are_preserved(db):
     db.flush()
     antigo.successor_party_id = novo.id
     db.commit()
-    sync_legacy_to_core(db)
+    merge_staging(db)
     assert _rows(
         db,
         "SELECT o.sigla, d.sigla, s.tipo FROM core.partido_sucessao s "
@@ -478,7 +478,7 @@ def test_party_succession_and_unknown_enum_values_are_preserved(db):
 def test_party_alias_resolves_old_spellings(db):
     db.add(PoliticalParty(acronym="PODE", full_name="Podemos"))
     db.commit()
-    sync_legacy_to_core(db)
+    merge_staging(db)
     assert (
         _scalar(
             db,
@@ -492,15 +492,19 @@ def test_party_alias_resolves_old_spellings(db):
 # ── guarda contra deriva entre modelos ORM legados e o schema criado pelas migrações ─────────────
 
 
-def test_legacy_orm_models_match_the_migrated_database(pg_engine):
+def test_staging_orm_models_match_the_migrated_database(pg_engine):
     from app.models import Base
 
     inspector = inspect(pg_engine)
     faltando = []
     for table in Base.metadata.sorted_tables:
-        if table.schema:
+        if table.schema != "stg":
             continue
-        existentes = {c["name"] for c in inspector.get_columns(table.name)} if inspector.has_table(table.name) else None
+        existentes = (
+            {c["name"] for c in inspector.get_columns(table.name, schema="stg")}
+            if inspector.has_table(table.name, schema="stg")
+            else None
+        )
         if existentes is None:
             faltando.append(f"tabela {table.name}")
             continue
@@ -519,7 +523,7 @@ def test_motivo_desfiliacao_values_are_preserved(db, cenario):
         )
     )
     db.commit()
-    sync_legacy_to_core(db)
+    merge_staging(db)
     assert (
         _scalar(
             db,

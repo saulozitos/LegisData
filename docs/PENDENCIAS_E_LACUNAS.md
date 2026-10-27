@@ -107,6 +107,10 @@ A refatoração da branch `fix/analise-completa-correcoes` concluiu **100%** das
 
 Os cadastros duplicados dos políticos que existem no legado são unidos pela migração 0034 e a cada sincronização do legado (`core.unificar_duplicadas`), com o `uid` público preservado. Fica uma regra para a Fase 7: o novo ETL tem de resolver a pessoa pelo identificador oficial antes de criar uma, senão a duplicata volta. Pessoas que só existem no histórico e nunca tiveram cadastro público não têm duplicata e continuam com o `uid` do histórico.
 
+### 2.11 Novo ETL direto em `stg` [PRÓXIMA ENTREGA]
+
+O ETL ainda preenche as tabelas de `stg` por ORM (`db_loader.py`) e as funções `etl.merge_*` as projetam em `core` e `leg`. A entrega que fecha a Fase 7 troca isso por `COPY`, registro de execução, arquivo de origem e verificações por fonte, e aposenta o `db_loader`. O roteiro, os pontos de atenção e a prova de que nada se perdeu estão em [`PROXIMA_ENTREGA_NOVO_ETL.md`](PROXIMA_ENTREGA_NOVO_ETL.md).
+
 ## 3. Resolução das Dívidas Técnicas
 
 - [x] **Unificação de Fontes Presidenciais**: Centralizado em `backend/app/services/presidencia_service.py`.

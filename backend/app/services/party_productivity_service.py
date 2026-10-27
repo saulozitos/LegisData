@@ -57,9 +57,9 @@ def sync_mandate_history(db: Session) -> int:
     é derivado de core.mandato_situacao (licenças, afastamentos para ministério e suplências) pela view
     core.vw_historico_mandato. Devolve o número de situações de mandato calculadas.
     """
-    from app.services.core_sync import sync_legacy_to_core
+    from app.services.staging_merge import merge_staging
 
-    return int(sync_legacy_to_core(db)["situacoes"])
+    return int(merge_staging(db)["situacoes"])
 
 
 # Dias de mandato em exercício (ou suplência) de cada pessoa, no partido em que estava filiada em cada dia

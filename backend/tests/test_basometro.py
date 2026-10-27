@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from app.models import CasaLegislativaEnum, ParliamentaryVote, VotingSession, VotoOpcaoEnum
 from app.services.basometro import MIN_VOTACOES_AMOSTRA, calcular_basometro, classificar_governismo
-from app.services.core_sync import sync_legacy_to_core
+from app.services.staging_merge import merge_staging
 from sqlalchemy import text
 
 BASE = "/api/v1/politicians"
@@ -28,7 +28,7 @@ def _votar(db, seed, politico, orientacao, voto, indice):
 
 def _pessoa_id(db, politico):
     """Id interno em core.pessoa do político legado (a ponte carrega o legado para o schema novo)."""
-    sync_legacy_to_core(db)
+    merge_staging(db)
     return db.execute(text("SELECT id FROM core.pessoa WHERE uid = :u"), {"u": politico.id}).scalar()
 
 

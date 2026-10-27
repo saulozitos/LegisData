@@ -523,7 +523,7 @@ def test_run_votacoes_exige_alguma_casa(monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------------------------- carga
 @pytest.fixture
 def banco():
-    engine = create_engine("sqlite://")
+    engine = create_engine("sqlite://").execution_options(schema_translate_map={"stg": None, "etl": None})
     from app.models import Base
 
     Base.metadata.create_all(engine)

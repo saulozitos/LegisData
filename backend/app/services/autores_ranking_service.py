@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.errors import ErroDeDominio
 from app.core.query_utils import escape_like, is_filter_all
+from app.services.derivados_service import garantir_atualizados
 from app.services.party_catalog_service import SEM_PARTIDO_SIGLA
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
@@ -36,7 +37,7 @@ _AGREGADO_SQL = text(
            count(*) FILTER (WHERE v.status_codigo IN :leis) AS aprovadas,
            count(*) FILTER (WHERE p.reforma_estrutural OR v.tipo_proposicao IN ('PEC', 'PLP')) AS estruturantes,
            round(sum(v.pontos_ialp)::numeric, 1) AS score
-    FROM leg.vw_autoria_pontuada_unica v
+    FROM leg.mv_autoria_pontuada_unica v
     JOIN leg.proposicao p ON p.id = v.proposicao_id
     WHERE (cardinality(CAST(:setores AS text[])) = 0 OR p.area_tematica ILIKE ANY (CAST(:setores AS text[])))
       AND (CAST(:partido AS text) IS NULL OR EXISTS (
@@ -130,6 +131,7 @@ def ranking_autores(
         "setores": _termos_do_setor(setor),
         "partido": None if is_filter_all(partido) else str(partido).strip(),
     }
+    garantir_atualizados(db)
     linhas = db.execute(_AGREGADO_SQL, parametros).mappings().all()
     if not linhas:
         return []

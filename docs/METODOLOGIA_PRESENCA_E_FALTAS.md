@@ -78,7 +78,7 @@ do mesmo parlamentar. `partido_origem` registra qual regra valeu (`VOTACAO`, `MA
 `PRESENCA_PROXIMA`), e a API informa quantos dias têm partido aproximado e quantos continuam sem partido (esses dois
 totais não dependem do mínimo de dias por partido). Na aproximação, a presença mais próxima da mesma Casa vence a de
 outra Casa e o empate se resolve pela data mais recente, de modo que duas execuções dão o mesmo resultado.
-`etl.sincronizar_legado_leg()` chama o resolvedor ao terminar, porque regrava as linhas de presença do legado sem
+`etl.merge_legislativo()` chama o resolvedor ao terminar, porque regrava as linhas de presença do legado sem
 partido.
 
 O partido "atual" de um parlamentar (filtros e rótulos de partido dos rankings e do explorador) vem de uma só definição,

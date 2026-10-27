@@ -9,7 +9,7 @@ descartada por ter mandatos conhecidos só em outros anos (pessoa sem mandato ca
 O nome é comparado com título ("Padre João" e "Dr. João" são pessoas diferentes) e, só quando nada casa, sem título.
 
 Enquanto as pessoas duplicadas não são unificadas (`docs/PESSOAS_DUPLICADAS.md`), o mesmo parlamentar pode existir como
-cadastro do legado (sem identificador, mas com o `camaraId`/`senadoId` em `public.politicos`) e como cadastro novo (com
+cadastro do legado (sem identificador, mas com o `camaraId`/`senadoId` em `stg.politicos`) e como cadastro novo (com
 identificador). Os dois contam como UMA pessoa e o dado é gravado no cadastro com identificador, que é o que o dossiê
 alcança pelo `camara_id`/`senado_id`. Homônimos de verdade têm identificadores diferentes e continuam separados.
 """
@@ -52,11 +52,11 @@ class ResolvedorDePessoas:
 
         # Cadastro do legado sem identificador -> cadastro com o identificador que o legado conhece (se existir)
         self._gemeo: Dict[int, int] = {}
-        if conn.execute(text("SELECT to_regclass('public.politicos') IS NOT NULL")).scalar():
+        if conn.execute(text("SELECT to_regclass('stg.politicos') IS NOT NULL")).scalar():
             for pessoa_id, camara_id, senado_id in conn.execute(
                 text(
                     'SELECT pe.id, po."camaraId", po."senadoId" FROM core.pessoa pe '
-                    "JOIN public.politicos po ON po.id = pe.uid"
+                    "JOIN stg.politicos po ON po.id = pe.uid"
                 )
             ):
                 canonica = self.por_identificador(camara_id, senado_id)

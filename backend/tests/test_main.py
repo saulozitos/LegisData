@@ -1,6 +1,6 @@
 import importlib
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from app import main as main_module
@@ -140,41 +140,18 @@ def test_rate_limiter_sliding_window_expires(monkeypatch):
     assert limiter.allow("ip", 2)
 
 
-def _postgres_session_mock():
-    session = MagicMock()
-    session.bind.dialect.name = "postgresql"
-    factory = MagicMock()
-    factory.return_value.__enter__.return_value = session
-    return factory, session
-
-
-def test_migrations_take_advisory_lock_before_any_ddl():
-    factory, session = _postgres_session_mock()
-    with patch("app.core.database.SessionLocal", factory):
-        main_module.run_db_migrations()
-
-    statements = [str(call.args[0]) for call in session.execute.call_args_list]
-    assert "pg_advisory_xact_lock" in statements[0]
-    assert session.execute.call_args_list[0].args[1] == {"lock_id": main_module.MIGRATION_ADVISORY_LOCK_ID}
-    ddl = " ".join(statements[1:])
-    assert "ALTER TABLE certidoes_judiciais" in ddl
-    assert "CREATE TABLE IF NOT EXISTS processos_judiciais" in ddl
-    session.commit.assert_called_once()
-
-
-def test_migrations_skip_non_postgres_dialects():
-    factory, session = _postgres_session_mock()
-    session.bind.dialect.name = "sqlite"
-    with patch("app.core.database.SessionLocal", factory):
-        main_module.run_db_migrations()
-    session.execute.assert_not_called()
-    session.commit.assert_not_called()
+def test_startup_applies_only_the_alembic_migrations():
+    with patch.object(main_module, "upgrade_schema") as upgrade:
+        main_module.startup_db_migrations()
+    upgrade.assert_called_once_with()
+    assert not hasattr(main_module, "run_db_migrations")  # o DDL de partida saiu: o schema é só das migrações
 
 
 def test_startup_logs_error_but_does_not_crash_when_db_is_down(caplog):
-    factory = MagicMock()
-    factory.return_value.__enter__.side_effect = RuntimeError("db down")
-    with patch("app.core.database.SessionLocal", factory), caplog.at_level(logging.ERROR, logger="uvicorn"):
+    with (
+        patch.object(main_module, "upgrade_schema", side_effect=RuntimeError("db down")),
+        caplog.at_level(logging.ERROR, logger="uvicorn"),
+    ):
         main_module.startup_db_migrations()  # não pode levantar
     assert any(r.levelno == logging.ERROR and "auto-migration failed" in r.getMessage() for r in caplog.records)
 

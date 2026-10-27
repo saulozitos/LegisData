@@ -129,7 +129,7 @@ ORDER BY votos DESC;
 4. **Câmara e Senado**: a pessoa sobrevivente passa a ter os dois identificadores, e o cadastro do outro é removido.
 5. **Homônimos confirmados**: ficam separados e ganham a data de nascimento como diferenciador no nome de exibição das
    telas de busca.
-6. **Prevenção**: a ponte do legado (`etl.sincronizar_legado_leg`) e as cargas de presença devem procurar a pessoa por
+6. **Prevenção**: a ponte do legado (`etl.merge_legislativo`) e as cargas de presença devem procurar a pessoa por
    identificador oficial antes de criar uma nova. Hoje criam sem checar o cadastro do outro lado.
 7. **Teste de regressão**: depois da unificação, `SELECT` do levantamento acima deve devolver só os homônimos
    confirmados, e a soma de votos, presenças e autorias antes e depois da união tem que ser igual.

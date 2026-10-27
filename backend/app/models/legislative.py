@@ -68,11 +68,6 @@ class Proposition(TimeStampedModel):
     voting_sessions: Mapped[List["VotingSession"]] = relationship(
         back_populates="proposition", cascade="all, delete-orphan"
     )
-    economic_impacts: Mapped[List["PolicyEconomicImpact"]] = relationship(
-        "PolicyEconomicImpact",
-        back_populates="proposition",
-        cascade="all, delete-orphan",
-    )
     deliberacoes: Mapped[List["VotacaoProposicao"]] = relationship(
         "VotacaoProposicao",
         back_populates="proposicao",

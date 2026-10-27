@@ -27,6 +27,14 @@ def test_sintaxe_do_script_de_deploy(script):
     assert resultado.returncode == 0, resultado.stderr
 
 
+def test_verificar_backup_restaura_num_banco_descartavel_e_nunca_toca_no_de_producao():
+    texto = (RAIZ / "scripts" / "deploy" / "verificar_backup.sh").read_text(encoding="utf-8")
+    assert "createdb" in texto and "pg_restore" in texto and '-d "$BANCO"' in texto
+    assert "POSTGRES_DB" not in texto and "PG_DB" not in texto  # o nome do banco de produção nem é lido
+    assert re.search(r"dropdb[^\n]*\"\$BANCO\"", texto)  # só o descartável é apagado
+    assert re.search(r"trap limpar EXIT", texto)  # apaga o descartável mesmo se a conferência falhar
+
+
 def _posicao(texto, padrao):
     achado = re.search(padrao, texto, re.MULTILINE)
     assert achado, f"deploy.sh sem o trecho esperado: {padrao}"

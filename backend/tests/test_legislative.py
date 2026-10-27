@@ -254,7 +254,7 @@ def test_explorer_filters(client, seed):
 def test_explorer_search_is_literal_and_injection_safe(client, db, seed, term):
     response = client.get(f"{BASE}/explorer", params={"search": term})
     assert response.status_code == 200 and response.json()["total"] == 0
-    assert db.execute(text("SELECT COUNT(*) FROM proposicoes")).scalar() == 3
+    assert db.execute(text("SELECT COUNT(*) FROM stg.proposicoes")).scalar() == 3
 
 
 @pytest.mark.parametrize("params", [{"tipo": "XYZ"}, {"status": "NADA"}, {"page": 0}, {"limit": 101}])

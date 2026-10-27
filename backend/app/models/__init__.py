@@ -1,18 +1,8 @@
 from .analytics import (
     LogExecucaoCron,
-    MandateEconomicPerformance,
-    PolicyEconomicImpact,
 )
 from .base import Base, MigratedBase, TimeStampedModel
 from .core import Entidade, Mandato, Midia, Partido, Pessoa
-from .economic import (
-    AnnualMacroeconomicSummary,
-    CategoriaIndicadorEnum,
-    EconomicIndicatorSeries,
-    EconomicIndicatorValue,
-    PeriodicidadeIndicadorEnum,
-    UnidadeMedidaEnum,
-)
 from .leg import Autoria, Casa, Orientacao, Proposicao, Votacao, Voto
 from .legislative import (
     AttendanceRecord,
@@ -34,20 +24,12 @@ from .legislative import (
 from .politician import (
     CabinetMember,
     CargoPoliticoEnum,
-    CertidaoJudicial,
-    DespesaCota,
-    DoacaoCampanha,
-    EmendaParlamentar,
     EspectroPoliticoEnum,
-    HistoricoMandato,
     Mandate,
     MotivoDesfiliacaoEnum,
     PartyAffiliation,
     PoliticalParty,
     Politician,
-    PoliticianAssetDeclaration,
-    PoliticianRemuneration,
-    ProcessoJudicial,
     SituacaoMandatoEnum,
     StatusMandatoEnum,
     TipoEsferaEnum,
@@ -62,13 +44,6 @@ __all__ = [
     "PartyAffiliation",
     "Mandate",
     "CabinetMember",
-    "PoliticianRemuneration",
-    "PoliticianAssetDeclaration",
-    "DespesaCota",
-    "EmendaParlamentar",
-    "CertidaoJudicial",
-    "DoacaoCampanha",
-    "ProcessoJudicial",
     "CargoPoliticoEnum",
     "TipoEsferaEnum",
     "StatusMandatoEnum",
@@ -89,15 +64,6 @@ __all__ = [
     "CasaLegislativaEnum",
     "VotoOpcaoEnum",
     "TipoPresencaEnum",
-    "EconomicIndicatorSeries",
-    "EconomicIndicatorValue",
-    "AnnualMacroeconomicSummary",
-    "CategoriaIndicadorEnum",
-    "PeriodicidadeIndicadorEnum",
-    "UnidadeMedidaEnum",
-    "MandateEconomicPerformance",
-    "PolicyEconomicImpact",
-    "HistoricoMandato",
     "SituacaoMandatoEnum",
     "LogExecucaoCron",
 ]

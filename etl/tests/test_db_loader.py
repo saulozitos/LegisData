@@ -7,19 +7,14 @@ schema `core`), por isso exige o Postgres de teste (`make test-db-up`).
 
 import json
 import os
-from decimal import Decimal
 
 import pytest
 from app.models import (  # noqa: E402
-    CertidaoJudicial,
-    DespesaCota,
-    EmendaParlamentar,
     Mandate,
     ParliamentaryVote,
     PartyAffiliation,
     PoliticalParty,
     Politician,
-    PoliticianAssetDeclaration,
     Proposition,
     VotingSession,
 )
@@ -28,7 +23,6 @@ from sqlalchemy.orm import sessionmaker
 
 from etl.extractors.presidents_extractor import PresidentsExtractor  # noqa: E402
 from etl.pipelines import db_loader  # noqa: E402
-from etl.utils.provenance import SYNTHETIC_TAG  # noqa: E402
 
 
 def escrever(dir_, nome, dados):
@@ -45,7 +39,6 @@ def ambiente(tmp_path, monkeypatch):
         conn.execute(text("CREATE SCHEMA public"))
     monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
     Sessao = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    monkeypatch.setattr(db_loader, "engine", engine)
     monkeypatch.setattr(db_loader, "SessionLocal", Sessao)
 
     dados = tmp_path / "processed"
@@ -378,238 +371,6 @@ def test_vinculo_errado_antigo_e_corrigido_na_recarga(ambiente):
     with Sessao() as s:
         dino = s.query(Politician).filter_by(camara_id=2).one()
         assert s.query(Proposition).filter_by(external_camara_id=10).one().author_politician_id == dino.id
-
-
-def test_emendas_legadas_sem_proveniencia_sao_recusadas_e_oficiais_sao_idempotentes(ambiente):
-    dados, Sessao = ambiente
-    escrever(
-        dados,
-        "emendas_parlamentares_2019_2026.json",
-        [
-            {
-                "politician_name": "Flávio Dino",
-                "ano": 2023,
-                "codigo_emenda": "2023.2.0001",
-                "tipo_emenda": "X",
-                "valor_empenhado": 1,
-                "valor_pago": 1,
-                "localidade_destino": "Fake/MA",
-                "funcao": "f",
-            },
-        ],
-    )
-    carregar(dados)
-    with Sessao() as s:
-        assert s.query(EmendaParlamentar).count() == 0
-
-    escrever(
-        dados,
-        "emendas_parlamentares_2019_2026.json",
-        [
-            {
-                "politician_name": "Flávio Dino",
-                "ano": 2023,
-                "codigo_emenda": "202301",
-                "tipo_emenda": "Individual",
-                "valor_empenhado": 100.5,
-                "valor_pago": 50,
-                "localidade_destino": "São Luís",
-                "funcao": "Saúde",
-                "fonte": "Portal",
-                "is_synthetic": False,
-            },
-            {
-                "politician_name": "Ninguém Conhecido",
-                "ano": 2023,
-                "codigo_emenda": "202302",
-                "tipo_emenda": "I",
-                "valor_empenhado": 1,
-                "valor_pago": 1,
-                "localidade_destino": "X",
-                "fonte": "Portal",
-                "is_synthetic": False,
-            },
-        ],
-    )
-    carregar(dados)
-    carregar(dados)
-    with Sessao() as s:
-        (e,) = s.query(EmendaParlamentar).all()
-        assert e.committed_value == Decimal("100.5") and e.paid_value == Decimal("50")
-
-    # valor corrigido na origem => atualiza, não duplica
-    escrever(
-        dados,
-        "emendas_parlamentares_2019_2026.json",
-        [
-            {
-                "politician_name": "Flávio Dino",
-                "ano": 2023,
-                "codigo_emenda": "202301",
-                "tipo_emenda": "Individual",
-                "valor_empenhado": 100.5,
-                "valor_pago": 99,
-                "localidade_destino": "São Luís",
-                "funcao": "Saúde",
-                "fonte": "Portal",
-                "is_synthetic": False,
-            },
-        ],
-    )
-    carregar(dados)
-    with Sessao() as s:
-        (e,) = s.query(EmendaParlamentar).all()
-        assert e.paid_value == Decimal("99")
-
-
-def test_ceap_consolidada_por_ano_e_tipo_com_id_ou_nome_unico(ambiente):
-    dados, Sessao = ambiente
-    escrever(
-        dados,
-        "despesas_ceap_2019_2026.json",
-        {
-            "EDUARDO BOLSONARO": {
-                "nome": "EDUARDO BOLSONARO",
-                "camara_id": 1,
-                "fonte": "Câmara",
-                "is_synthetic": False,
-                "por_ano_tipo": {"2023": {"COMBUSTÍVEL": 10.5, "PASSAGEM": 20}, "2024": {"COMBUSTÍVEL": 5}},
-            },
-            "Flávio Dino": {
-                "nome": "Flávio Dino",
-                "cargo": "DEPUTADO",
-                "por_ano": {"2022": 123.45},
-            },  # legado: sem id, nome único
-            "DR. FLAVIO": {
-                "nome": "Dr. Flavio",
-                "por_ano": {"2022": 1},
-            },  # nome completo normalizado único: "Dr. Flávio"
-            "FLAVIO": {"nome": "Flavio Souza", "por_ano": {"2022": 99}},  # ninguém com esse nome: sem correspondência
-        },
-    )
-    carregar(dados)
-    carregar(dados)
-    with Sessao() as s:
-        linhas = s.query(DespesaCota).all()
-        assert len(linhas) == 5  # 3 do Eduardo + 1 do Dino + 1 do Dr. Flávio; "Flavio Souza" não casa com ninguém
-        assert all(x.supplier_name == db_loader.SUPPLIER_CONSOLIDADO and x.issue_date is None for x in linhas)
-        edu = s.query(Politician).filter_by(camara_id=1).one()
-        total_edu = sum(x.net_value for x in linhas if x.politician_id == edu.id)
-        assert total_edu == Decimal("35.5")
-        dino = s.query(Politician).filter_by(camara_id=2).one()
-        assert [x.net_value for x in linhas if x.politician_id == dino.id] == [
-            Decimal("123.45")
-        ]  # não recebe o do Dr. Flávio
-        drflavio = s.query(Politician).filter_by(camara_id=3).one()
-        assert [x.net_value for x in linhas if x.politician_id == drflavio.id] == [Decimal("1")]
-
-
-def test_patrimonio_legado_e_recusado_e_com_fonte_e_carregado(ambiente):
-    dados, Sessao = ambiente
-    escrever(
-        dados,
-        "declaracoes_patrimonio.json",
-        [
-            {
-                "nome_eleitoral": "Flávio Dino",
-                "camara_id": 2,
-                "ano_eleicao": 2022,
-                "valor_declarado_brl": 1000.0,
-                "detalhes_bens": "gerado por hash",
-            },
-        ],
-    )
-    carregar(dados)
-    with Sessao() as s:
-        assert s.query(PoliticianAssetDeclaration).count() == 0
-    escrever(
-        dados,
-        "declaracoes_patrimonio.json",
-        [
-            {
-                "nome_eleitoral": "Flávio Dino",
-                "camara_id": 2,
-                "ano_eleicao": 2022,
-                "valor_declarado_brl": 0.0,
-                "detalhes_bens": "x",
-                "fonte": "TSE",
-                "is_synthetic": False,
-            },
-        ],
-    )
-    carregar(dados)
-    carregar(dados)
-    with Sessao() as s:
-        (d,) = s.query(PoliticianAssetDeclaration).all()
-        assert d.declared_value_brl == Decimal("0")  # zero legítimo não vira "ausente"
-
-
-def test_certidoes_nao_sao_geradas_por_padrao_e_nao_apagam_dados_existentes(ambiente):
-    dados, Sessao = ambiente
-    carregar(dados)
-    with Sessao() as s:
-        pol = s.query(Politician).filter_by(camara_id=1).one()
-        s.add(
-            CertidaoJudicial(
-                politician_id=pol.id,
-                court_agency="STF",
-                certificate_type="Real",
-                status="Positiva",
-                details="dado real preexistente",
-            )
-        )
-        s.commit()
-    carregar(dados)
-    with Sessao() as s:
-        assert s.query(CertidaoJudicial).count() == 1  # antes: delete() de TODA a tabela a cada carga
-        assert all(p.possui_processos_declarados is False for p in s.query(Politician))
-
-
-def test_modo_sintetico_marca_texto_e_e_idempotente(ambiente):
-    dados, Sessao = ambiente
-    carregar(dados, allow_synthetic=True)
-    carregar(dados, allow_synthetic=True)
-    with Sessao() as s:
-        certs = s.query(CertidaoJudicial).all()
-        assert certs and all(c.details.startswith(SYNTHETIC_TAG) for c in certs)
-        n = s.query(CertidaoJudicial).count()
-    carregar(dados, allow_synthetic=True)
-    with Sessao() as s:
-        assert s.query(CertidaoJudicial).count() == n
-
-
-def test_purge_legacy_synthetic_so_com_flag(ambiente):
-    dados, Sessao = ambiente
-    carregar(dados)
-    with Sessao() as s:
-        pol = s.query(Politician).filter_by(camara_id=1).one()
-        s.add(
-            EmendaParlamentar(
-                politician_id=pol.id,
-                year=2023,
-                amendment_code="2023.1.0001",
-                amendment_type="X",
-                committed_value=1,
-                paid_value=1,
-                destination_locality="Fake",
-            )
-        )
-        s.add(
-            DespesaCota(
-                politician_id=pol.id,
-                year=2024,
-                expense_type="DEPUTADO - Prestação de Contas CEAP",
-                net_value=1,
-                supplier_name="Fornecedor",
-            )
-        )
-        s.commit()
-    carregar(dados)
-    with Sessao() as s:
-        assert s.query(EmendaParlamentar).count() == 1 and s.query(DespesaCota).count() == 1
-    carregar(dados, purge_legacy_synthetic=True)
-    with Sessao() as s:
-        assert s.query(EmendaParlamentar).count() == 0 and s.query(DespesaCota).count() == 0
 
 
 def test_mandato_presidencial_nao_usa_vice_como_coligacao(ambiente):

@@ -64,6 +64,7 @@ remove o Watchtower e liga o timer. Pode ser executado de novo.
 - Pausar: `systemctl --user stop legisdata-deploy.timer`.
 - Voltar uma versão: `IMAGE_TAG=<sha anterior> docker compose up -d --no-build backend frontend` (e restaurar o dump em
   `~/backups` se a migração mudou o schema).
+- Ensaio de restauração: `scripts/deploy/verificar_backup.sh [arquivo.dump]` restaura o backup mais recente (ou o indicado) num banco descartável dentro do contêiner do Postgres, confere a revisão do Alembic e se `core.pessoa` tem linhas, e apaga o descartável. Não toca no banco de produção. Rode uma vez por mês: um backup que nunca foi restaurado não é backup. A migração 0034 (unificação de cadastros duplicados) não tem volta pelo `downgrade`, então o backup que o deploy faz antes das migrações é o único caminho de volta.
 - Restaurar um backup: `docker exec -i politica_postgres pg_restore -U politica_user -d politica_db --clean --if-exists < ~/backups/<arquivo>.dump`.
 
 ## Atualização diária de CEAP e emendas (`legisdata-financas.timer`)
