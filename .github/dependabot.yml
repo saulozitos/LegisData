@@ -33,16 +33,9 @@ updates:
         patterns:
           - "*"
     ignore:
-      # O eslint-config-next (typescript-eslint) ainda não aceita o TypeScript 7: o lint quebra.
+      # O eslint-config-next (typescript-eslint) ainda não aceita o TypeScript 7: o lint quebra. Tirar esta regra
+      # quando o eslint-config-next passar a aceitá-lo.
       - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
-      # O vitest 5 e o coverage-v8 5 contam a cobertura de outro jeito (cai uns 4 pontos com os mesmos testes).
-      # Antes de subir, recalibrar os limites de cobertura em vitest.config.
-      - dependency-name: "vitest"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@vitest/ui"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@vitest/coverage-v8"
         update-types: ["version-update:semver-major"]
 
   # GitHub Actions
