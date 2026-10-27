@@ -1,4 +1,3 @@
-import enum
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -21,58 +20,14 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimeStampedModel
-
-
-class CargoPoliticoEnum(str, enum.Enum):
-    PRESIDENTE = "PRESIDENTE"
-    VICE_PRESIDENTE = "VICE_PRESIDENTE"
-    MINISTRO_DE_ESTADO = "MINISTRO_DE_ESTADO"
-    GOVERNADOR = "GOVERNADOR"
-    VICE_GOVERNADOR = "VICE_GOVERNADOR"
-    SENADOR = "SENADOR"
-    DEPUTADO_FEDERAL = "DEPUTADO_FEDERAL"
-    DEPUTADO_ESTADUAL = "DEPUTADO_ESTADUAL"
-
-
-class TipoEsferaEnum(str, enum.Enum):
-    FEDERAL = "FEDERAL"
-    ESTADUAL = "ESTADUAL"
-    MUNICIPAL = "MUNICIPAL"
-
-
-class StatusMandatoEnum(str, enum.Enum):
-    TITULAR_ATIVO = "TITULAR_ATIVO"
-    CONCLUIDO = "CONCLUIDO"
-    RENUNCIA = "RENUNCIA"
-    IMPEACHMENT = "IMPEACHMENT"
-    CASSADO = "CASSADO"
-    LICENCIADO = "LICENCIADO"
-    FALECIDO = "FALECIDO"
-    SUPLENTE_EM_EXERCICIO = "SUPLENTE_EM_EXERCICIO"
-
-
-class MotivoDesfiliacaoEnum(str, enum.Enum):
-    MUDANCA_VOLUNTARIA = "MUDANCA_VOLUNTARIA"
-    FUSAO_OU_INCORPORACAO = "FUSAO_OU_INCORPORACAO"
-    EXPULSAO = "EXPULSAO"
-    CRIACAO_DE_NOVA_LEGENDA = "CRIACAO_DE_NOVA_LEGENDA"
-    EXTINCAO_DO_PARTIDO = "EXTINCAO_DO_PARTIDO"
-
-
-class EspectroPoliticoEnum(str, enum.Enum):
-    ESQUERDA = "ESQUERDA"
-    CENTRO_ESQUERDA = "CENTRO_ESQUERDA"
-    CENTRO = "CENTRO"
-    CENTRO_DIREITA = "CENTRO_DIREITA"
-    DIREITA = "DIREITA"
-
-
-class SituacaoMandatoEnum(str, enum.Enum):
-    EXERCICIO = "EXERCICIO"
-    AFASTADO_MINISTERIO = "AFASTADO_MINISTERIO"
-    LICENCA_MEDICA = "LICENCA_MEDICA"
-    SUPLENCIA = "SUPLENCIA"
-    ENCERRADO = "ENCERRADO"
+from .enums import (
+    CargoPoliticoEnum,
+    EspectroPoliticoEnum,
+    MotivoDesfiliacaoEnum,
+    SituacaoMandatoEnum,
+    StatusMandatoEnum,
+    TipoEsferaEnum,
+)
 
 
 class Politician(TimeStampedModel):

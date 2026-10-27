@@ -13,7 +13,6 @@ limpeza das tabelas legadas (Fase 9 do plano de refatoração do banco); não co
 ela chegue ao dossiê. As eleições por UF seguem valendo.
 """
 
-import csv
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -28,7 +27,6 @@ from app.models import (  # noqa: E402
     CertidaoJudicial,
     DoacaoCampanha,
     Politician,
-    StatePresidentialElectionResult,
 )
 
 from etl.pipelines.loader_helpers import _dec, documento_do_doador, nome_sem_cpf, texto_sem_cpf  # noqa: E402
@@ -41,7 +39,6 @@ logger = logging.getLogger("TSELoaders")
 
 DOACOES_ARQUIVO = "tse_doacoes_campanha.json"
 CERTIDOES_ARQUIVO = "certidoes_tse.json"
-ELEICOES_ARQUIVO = "eleicoes_presidenciais_uf_tse.csv"
 
 
 class PoliticoResolver:
@@ -167,46 +164,3 @@ def carregar_certidoes_tse(session: Session, data_dir: Path) -> Dict[str, int]:
         sem_politico,
     )
     return {"inseridas": inseridas, "atualizadas": atualizadas, "sem_politico": sem_politico, "ignoradas": ignoradas}
-
-
-def carregar_eleicoes_tse(session: Session, data_dir: Path) -> int:
-    """Resultados presidenciais por UF do TSE. Devolve quantas linhas foram processadas (0 se não há arquivo)."""
-    arquivo = Path(data_dir) / ELEICOES_ARQUIVO
-    if not arquivo.exists():
-        return 0
-    existentes = {
-        (r.election_year, r.uf, r.round_number): r for r in session.query(StatePresidentialElectionResult).all()
-    }
-    processadas = 0
-    with open(arquivo, "r", encoding="utf-8", newline="") as fh:
-        for linha in csv.DictReader(fh):
-            if (
-                str(linha.get("verificado", "")).lower() != "true"
-                or str(linha.get("is_synthetic", "")).lower() == "true"
-            ):
-                continue
-            ano, uf, turno = int(linha["ano_eleicao"]), linha["uf"], int(linha["turno"])
-            valores = dict(
-                mandate_ref_id=linha["mandato_id_ref"],
-                state_name=linha["estado_nome"],
-                region=linha["regiao"],
-                winner_candidate_name=linha["candidato_vencedor_nome"],
-                winner_party_acronym=linha["partido_vencedor_sigla"],
-                winner_votes_pct=_dec(linha["votos_vencedor_pct"]),
-                runner_up_candidate_name=linha["candidato_segundo_nome"],
-                runner_up_party_acronym=linha["partido_segundo_sigla"],
-                runner_up_votes_pct=_dec(linha["votos_segundo_pct"]),
-                total_valid_votes=int(linha["total_votos_validos"]) if linha.get("total_votos_validos") else None,
-            )
-            atual = existentes.get((ano, uf, turno))
-            if atual is None:
-                novo = StatePresidentialElectionResult(election_year=ano, uf=uf, round_number=turno, **valores)
-                session.add(novo)
-                existentes[(ano, uf, turno)] = novo
-            else:
-                for atributo, valor in valores.items():
-                    setattr(atual, atributo, valor)
-            processadas += 1
-    session.flush()
-    logger.info("-> Eleições presidenciais por UF (TSE): %d resultados.", processadas)
-    return processadas

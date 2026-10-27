@@ -2,8 +2,6 @@
 
 import hashlib
 
-import pytest
-
 from etl.extractors import camara_bulk_extractor as bulk
 from etl.extractors.camara_historico_extractor import CamaraHistoricoExtractor
 from etl.utils.download import NotFoundError

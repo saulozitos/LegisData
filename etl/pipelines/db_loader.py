@@ -29,7 +29,6 @@ ensure_backend_on_path()
 from app.core.database import SessionLocal, engine  # noqa: E402
 from app.models import (  # noqa: E402
     AnnualMacroeconomicSummary,
-    AnnualSocialIndicator,
     AttendanceRecord,
     Base,
     CabinetMember,
@@ -43,7 +42,6 @@ from app.models import (  # noqa: E402
     EconomicIndicatorValue,
     EmendaParlamentar,
     EspectroPoliticoEnum,
-    FederalTransferByState,
     Mandate,
     MandateEconomicPerformance,
     MotivoDesfiliacaoEnum,
@@ -55,8 +53,6 @@ from app.models import (  # noqa: E402
     PoliticianAssetDeclaration,
     PoliticianRemuneration,
     Proposition,
-    StatePresidentialElectionResult,
-    StateSocialIndicator,
     StatusMandatoEnum,
     StatusTramitacaoEnum,
     TipoEsferaEnum,
@@ -68,11 +64,6 @@ from app.models import (  # noqa: E402
 
 from etl.config import BCB_SERIES, DATA_INICIO_PADRAO, PROCESSED_DATA_DIR, RAW_DATA_DIR  # noqa: E402
 from etl.extractors.justica_extractor import JusticaExtractor  # noqa: E402
-from etl.pipelines.tse_loaders import (  # noqa: E402
-    carregar_certidoes_tse,
-    carregar_doacoes,
-    carregar_eleicoes_tse,
-)
 from etl.pipelines.loader_helpers import (  # noqa: E402,F401
     LEGISLATURA_ATUAL,
     LEGISLATURA_ATUAL_INICIO,
@@ -87,8 +78,12 @@ from etl.pipelines.loader_helpers import (  # noqa: E402,F401
     limpar_contatos_inventados,
     resolve_party_id,
 )
-from etl.utils.datafiles import load_deputados, load_json, load_senadores  # noqa: E402
+from etl.pipelines.tse_loaders import (  # noqa: E402
+    carregar_certidoes_tse,
+    carregar_doacoes,
+)
 from etl.pipelines.votacoes_loader import carregar_parlamentares_historicos, carregar_votacoes  # noqa: E402
+from etl.utils.datafiles import load_deputados, load_json, load_senadores  # noqa: E402
 from etl.utils.names import build_unique_name_map, normalize_name_tokens  # noqa: E402
 from etl.utils.provenance import SYNTHETIC_CODE_PREFIX, SYNTHETIC_TAG, is_synthetic, is_trusted, tag_text  # noqa: E402
 
@@ -518,12 +513,6 @@ class DatabaseLoader:
 
             etapa("Performance Econômica dos Mandatos")
             self._load_mandate_economic_performances(session, mandate_map)
-
-            etapa("Repasses Federais por UF")
-            self._load_federal_transfers(session)
-
-            etapa("Indicadores Sociais e Eleições Presidenciais por UF")
-            self._load_social_and_election_data(session)
 
             session.commit()
             logger.info("Transação confirmada com sucesso no PostgreSQL!")
@@ -2002,157 +1991,6 @@ class DatabaseLoader:
 
         session.flush()
 
-    def _load_federal_transfers(self, session: Session):
-        """Repasses federais por UF: só registros oficiais (ou sintéticos autorizados). O legado era um modelo."""
-        arquivo = self.data_dir / "repasses_federais_uf.json"
-        repasses = load_json(arquivo, None)
-        if repasses is None:
-            return
-
-        usaveis = [r for r in repasses if self._usable(r)]
-        if len(usaveis) < len(repasses):
-            logger.warning(
-                f"-> {len(repasses) - len(usaveis)} repasses ignorados: sem proveniência oficial (o arquivo legado é um modelo "
-                "estatístico apresentado como SIAFI). Use --allow-synthetic só para demonstração."
-            )
-        if not usaveis:
-            return
-
-        # O arquivo é um retrato completo por mandato (totais do período coberto): substitui o retrato anterior do
-        # mesmo mandato em vez de acumular linhas (o `ano` de referência muda a cada nova extração).
-        mandatos = sorted({r["mandato_id_ref"] for r in usaveis})
-        removidos = (
-            session.query(FederalTransferByState)
-            .filter(FederalTransferByState.mandate_id_ref.in_(mandatos))
-            .delete(synchronize_session=False)
-        )
-        novos = [
-            FederalTransferByState(
-                mandate_id_ref=r["mandato_id_ref"],
-                ano=r["ano"],
-                uf=r["uf"],
-                estado_nome=r["estado_nome"],
-                regiao=r["regiao"],
-                area_tematica=r["area_tematica"],
-                valor_pago_brl=_dec(r["valor_pago_brl"]),
-                populacao_estimada=r.get("populacao_estimada"),
-                valor_per_capita_brl=_dec(r.get("valor_per_capita_brl")),
-                periodo_inicio=r.get("periodo_inicio"),
-                periodo_fim=r.get("periodo_fim"),
-                meses_cobertos=r.get("meses_cobertos"),
-                parcial=r.get("parcial"),
-            )
-            for r in usaveis
-        ]
-        session.bulk_save_objects(novos)
-        logger.info(f"-> {len(novos)} repasses por UF salvos ({removidos} do retrato anterior substituídos).")
-        session.flush()
-
-    def _load_social_and_election_data(self, session: Session):
-        """Indicadores sociais anuais/UF e eleições. Exige coluna de proveniência; legado e não verificados são recusados."""
-        # 1. Indicadores sociais anuais (precisam da coluna `fonte`, gerada pela extração atual)
-        arq = self.data_dir / "indicadores_sociais_anuais.csv"
-        if arq.exists():
-            df = pd.read_csv(arq)
-            if "fonte" not in df.columns:
-                logger.warning(
-                    "-> indicadores_sociais_anuais.csv legado (sem proveniência/quebras metodológicas): ignorado. Reexecute `--social`."
-                )
-            else:
-                for _, r in df.iterrows():
-                    ano = int(r["ano"])
-                    valores = dict(
-                        illiteracy_rate_pct=_dec(r.get("analfabetismo")),
-                        extreme_poverty_pct=_dec(r.get("extrema_pobreza_pct")),
-                        extreme_poverty_millions=_dec(r.get("extrema_pobreza_milhoes")),
-                        food_insecurity_pct=_dec(r.get("inseguranca_alimentar_pct")),
-                        food_insecurity_millions=_dec(r.get("inseguranca_alimentar_milhoes")),
-                        gini_index=_dec(r.get("gini")),
-                        poverty_pct=_dec(r.get("pobreza_pct")),
-                        food_insecurity_total_pct=_dec(r.get("inseguranca_alimentar_total_pct")),
-                        unemployment_pct=_dec(r.get("desemprego_pct")),
-                        gini_series=_texto_ou_none(r.get("serie_gini")),
-                        data_source=_texto_ou_none(r.get("fonte")) or "IBGE / SIDRA (PNAD, PNAD Contínua, ODS)",
-                    )
-                    obj = session.query(AnnualSocialIndicator).filter_by(year=ano).first()
-                    if obj is None:
-                        session.add(AnnualSocialIndicator(year=ano, **valores))
-                    else:
-                        for attr, valor in valores.items():
-                            setattr(obj, attr, valor)
-
-        # 2. Indicadores por UF — só se vierem de fonte (a versão antiga multiplicava o valor nacional por fatores inventados)
-        arq = self.data_dir / "indicadores_sociais_uf.csv"
-        if arq.exists():
-            df = pd.read_csv(arq)
-            if "is_synthetic" not in df.columns or df["is_synthetic"].astype(str).str.lower().eq("true").any():
-                if not self.allow_synthetic:
-                    logger.warning(
-                        "-> indicadores_sociais_uf.csv é estimativa/legado: ignorado (use --allow-synthetic para demonstração)."
-                    )
-                    df = df.iloc[0:0]
-            for _, r in df.iterrows():
-                ano, uf = int(r["ano"]), str(r["uf"])
-                valores = dict(
-                    illiteracy_rate_pct=_dec(r.get("taxa_analfabetismo_pct")),
-                    extreme_poverty_pct=_dec(r.get("extrema_pobreza_pct")),
-                    food_insecurity_pct=_dec(r.get("inseguranca_alimentar_pct")),
-                    gini_index=_dec(r.get("indice_gini")),
-                    poverty_pct=_dec(r.get("pobreza_pct")),
-                )
-                obj = session.query(StateSocialIndicator).filter_by(year=ano, uf=uf).first()
-                if obj is None:
-                    session.add(
-                        StateSocialIndicator(
-                            year=ano, uf=uf, state_name=str(r["estado_nome"]), region=str(r["regiao"]), **valores
-                        )
-                    )
-                else:
-                    for attr, valor in valores.items():
-                        setattr(obj, attr, valor)
-
-        # 3. Eleições presidenciais por UF — só linhas marcadas `verificado` (ou --allow-unverified)
-        arq = self.data_dir / "resultados_eleicoes_presidenciais_uf.csv"
-        # A apuração oficial do TSE substitui a série digitada à mão: o arquivo legado só vale sem ela.
-        apuracao_tse = carregar_eleicoes_tse(session, self.data_dir)
-        if not apuracao_tse and arq.exists():
-            df = pd.read_csv(arq)
-            if "verificado" not in df.columns or not df["verificado"].astype(str).str.lower().eq("true").all():
-                if not self.allow_unverified:
-                    logger.warning(
-                        "-> resultados_eleicoes_presidenciais_uf.csv não verificado contra o TSE: ignorado "
-                        "(use --allow-unverified para carregar mesmo assim)."
-                    )
-                    df = df.iloc[0:0]
-            for _, r in df.iterrows():
-                ano, uf = int(r["ano_eleicao"]), str(r["uf"])
-                turno = int(r["turno"]) if "turno" in df.columns and pd.notnull(r.get("turno")) else 2
-                valores = dict(
-                    mandate_ref_id=str(r["mandato_id_ref"]),
-                    state_name=str(r["estado_nome"]),
-                    region=str(r["regiao"]),
-                    winner_candidate_name=str(r["candidato_vencedor_nome"]),
-                    winner_party_acronym=str(r["partido_vencedor_sigla"]),
-                    winner_votes_pct=_dec(r["votos_vencedor_pct"]),
-                    runner_up_candidate_name=str(r["candidato_segundo_nome"]),
-                    runner_up_party_acronym=str(r["partido_segundo_sigla"]),
-                    runner_up_votes_pct=_dec(r["votos_segundo_pct"]),
-                )
-                obj = (
-                    session.query(StatePresidentialElectionResult)
-                    .filter_by(election_year=ano, uf=uf, round_number=turno)
-                    .first()
-                )
-                if obj is None:
-                    session.add(
-                        StatePresidentialElectionResult(election_year=ano, uf=uf, round_number=turno, **valores)
-                    )
-                else:
-                    for attr, valor in valores.items():
-                        setattr(obj, attr, valor)
-
-        session.flush()
-
     # ------------------------------------------------------------------ relatórios
     def _get_table_counts(self, session: Session) -> Dict[str, int]:
         """Consulta e retorna a quantidade de linhas em cada tabela do PostgreSQL."""
@@ -2174,10 +2012,6 @@ class DatabaseLoader:
             ("pontos_dados_indicadores", "Pontos de Dados Econômicos"),
             ("resumos_macroeconomicos_anuais", "Resumos Macroeconômicos Anuais"),
             ("mandatos_performance_economica", "Performances de Mandato"),
-            ("repasses_federais_uf", "Repasses Federais por UF (Orçamento)"),
-            ("indicadores_sociais_anuais", "Indicadores Sociais Anuais (Pobreza/Fome)"),
-            ("indicadores_sociais_uf", "Indicadores Sociais por UF (IBGE/IPEA)"),
-            ("resultados_eleicoes_presidenciais_uf", "Eleições Presidenciais por UF (TSE)"),
         ]
 
         counts = {}

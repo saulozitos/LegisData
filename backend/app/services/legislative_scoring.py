@@ -43,8 +43,8 @@ from typing import Any, Dict, Optional, cast
 
 import networkx as nx
 from app.models.core import Pessoa
+from app.models.enums import StatusTramitacaoEnum, TipoAutoriaEnum, TipoProposicaoEnum
 from app.models.leg import Autoria, Proposicao
-from app.models.legislative import StatusTramitacaoEnum, TipoAutoriaEnum, TipoProposicaoEnum
 from app.services.ialp_pesos import PesosIALP, carregar_pesos_ialp
 from networkx.algorithms.community import louvain_communities
 from sqlalchemy import text

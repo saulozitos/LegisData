@@ -56,26 +56,6 @@ def run_db_migrations() -> None:
         db.execute(text('ALTER TABLE remuneracoes_politicos ALTER COLUMN "auxilioMoradia" DROP NOT NULL;'))
         db.execute(text('ALTER TABLE remuneracoes_politicos ALTER COLUMN "outrosBeneficios" DROP NOT NULL;'))
         db.execute(text('ALTER TABLE sessoes_votacao ADD COLUMN IF NOT EXISTS "orientacaoGoverno" VARCHAR(20);'))
-        # Indicadores sociais oficiais (IBGE/SIDRA) e repasses do Portal da Transparência: colunas novas
-        for coluna, tipo in (
-            ('"populacaoPobrezaPct"', "NUMERIC(5,2)"),
-            ('"populacaoInsegurancaAlimentarTotalPct"', "NUMERIC(5,2)"),
-            ('"taxaDesempregoPct"', "NUMERIC(5,2)"),
-            ('"serieGini"', "VARCHAR(100)"),
-        ):
-            db.execute(
-                text(f"ALTER TABLE IF EXISTS indicadores_sociais_anuais ADD COLUMN IF NOT EXISTS {coluna} {tipo};")
-            )
-        db.execute(
-            text('ALTER TABLE IF EXISTS indicadores_sociais_uf ADD COLUMN IF NOT EXISTS "pobrezaPct" NUMERIC(5,2);')
-        )
-        for coluna, tipo in (
-            ('"periodoInicio"', "VARCHAR(7)"),
-            ('"periodoFim"', "VARCHAR(7)"),
-            ('"mesesCobertos"', "INTEGER"),
-            ('"coberturaParcial"', "BOOLEAN"),
-        ):
-            db.execute(text(f"ALTER TABLE IF EXISTS repasses_federais_uf ADD COLUMN IF NOT EXISTS {coluna} {tipo};"))
         db.execute(text('ALTER TABLE sessoes_votacao ADD COLUMN IF NOT EXISTS "orientacoesBancadas" TEXT;'))
         db.execute(
             text(

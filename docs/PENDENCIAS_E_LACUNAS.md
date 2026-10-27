@@ -103,6 +103,10 @@ A refatoração da branch `fix/analise-completa-correcoes` concluiu **100%** das
 
 ---
 
+### 2.10 Cadastros duplicados de uma mesma pessoa [CONCLUÍDO PARA O LEGADO]
+
+Os cadastros duplicados dos políticos que existem no legado são unidos pela migração 0034 e a cada sincronização do legado (`core.unificar_duplicadas`), com o `uid` público preservado. Fica uma regra para a Fase 7: o novo ETL tem de resolver a pessoa pelo identificador oficial antes de criar uma, senão a duplicata volta. Pessoas que só existem no histórico e nunca tiveram cadastro público não têm duplicata e continuam com o `uid` do histórico.
+
 ## 3. Resolução das Dívidas Técnicas
 
 - [x] **Unificação de Fontes Presidenciais**: Centralizado em `backend/app/services/presidencia_service.py`.

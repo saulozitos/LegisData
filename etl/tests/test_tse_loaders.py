@@ -4,11 +4,10 @@ import json
 from pathlib import Path
 
 import pytest
-from app.models import Base, CertidaoJudicial, DoacaoCampanha, Politician, StatePresidentialElectionResult
+from app.models import Base, CertidaoJudicial, DoacaoCampanha, Politician
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from etl.extractors.tse_eleicoes_extractor import CAMPOS
 from etl.pipelines import tse_loaders
 from etl.utils.provenance import mark_official, mark_synthetic
 
@@ -135,50 +134,6 @@ def test_certidoes_ignoram_registro_sem_proveniencia(session, politicos, tmp_pat
     assert session.query(CertidaoJudicial).count() == 0
 
 
-def escrever_eleicoes(pasta: Path, **sobrescrever):
-    import csv
-
-    linha = dict(
-        ano_eleicao=2022,
-        mandato_id_ref="lula-2023",
-        uf="MG",
-        estado_nome="Minas Gerais",
-        regiao="Sudeste",
-        candidato_vencedor_nome="A",
-        partido_vencedor_sigla="P1",
-        votos_vencedor_pct="50.2",
-        candidato_segundo_nome="B",
-        partido_segundo_sigla="P2",
-        votos_segundo_pct="49.8",
-        total_votos_validos=1000,
-        turno=2,
-        verificado=True,
-        is_synthetic=False,
-        fonte="TSE",
-    )
-    linha.update(sobrescrever)
-    with open(pasta / "eleicoes_presidenciais_uf_tse.csv", "w", encoding="utf-8", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=CAMPOS)
-        w.writeheader()
-        w.writerow(linha)
-
-
-def test_eleicoes_tse_idempotentes(session, tmp_path):
-    escrever_eleicoes(tmp_path)
-    assert tse_loaders.carregar_eleicoes_tse(session, tmp_path) == 1
-    escrever_eleicoes(tmp_path, votos_vencedor_pct="51.0")
-    assert tse_loaders.carregar_eleicoes_tse(session, tmp_path) == 1
-    linha = session.query(StatePresidentialElectionResult).one()
-    assert float(linha.winner_votes_pct) == 51.0 and linha.total_valid_votes == 1000 and linha.round_number == 2
-
-
-def test_eleicoes_nao_verificadas_ou_ausentes_nao_sao_carregadas(session, tmp_path):
-    assert tse_loaders.carregar_eleicoes_tse(session, tmp_path) == 0  # sem arquivo
-    escrever_eleicoes(tmp_path, verificado=False)
-    assert tse_loaders.carregar_eleicoes_tse(session, tmp_path) == 0
-    assert session.query(StatePresidentialElectionResult).count() == 0
-
-
 # ----------------------------------------------------------------------------------------------------------
 # ligação com o DatabaseLoader
 # ----------------------------------------------------------------------------------------------------------
@@ -192,20 +147,6 @@ def test_database_loader_carrega_doacoes_e_registro_do_tse_sem_flag_sintetica(se
     loader._load_doacoes_campanha(session)
     assert session.query(DoacaoCampanha).count() == 1
     assert session.query(CertidaoJudicial).one().court_agency == "TSE"
-
-
-def test_apuracao_do_tse_substitui_o_csv_digitado_a_mao(session, tmp_path):
-    from etl.pipelines.db_loader import DatabaseLoader
-
-    escrever_eleicoes(tmp_path, candidato_vencedor_nome="Oficial")
-    (tmp_path / "resultados_eleicoes_presidenciais_uf.csv").write_text(
-        "ano_eleicao,mandato_id_ref,uf,estado_nome,regiao,candidato_vencedor_nome,partido_vencedor_sigla,"
-        "votos_vencedor_pct,candidato_segundo_nome,partido_segundo_sigla,votos_segundo_pct,turno,verificado\n"
-        "2022,lula-2023,MG,Minas Gerais,Sudeste,Digitado,PT,99,X,PL,1,2,True\n",
-        encoding="utf-8",
-    )
-    DatabaseLoader(data_dir=tmp_path, allow_unverified=True)._load_social_and_election_data(session)
-    assert [r.winner_candidate_name for r in session.query(StatePresidentialElectionResult).all()] == ["Oficial"]
 
 
 def test_loader_legado_tambem_nao_grava_cpf_no_nome_do_doador_nem_nos_detalhes_da_certidao(

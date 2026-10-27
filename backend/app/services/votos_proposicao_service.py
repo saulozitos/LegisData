@@ -7,8 +7,9 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.core.errors import ErroDeDominio
 from app.core.links import url_oficial_proposicao
 from app.core.query_utils import contains, is_filter_all, to_brt
-from app.models import Casa, CasaLegislativaEnum, VotoOpcaoEnum
+from app.models import Casa
 from app.models.core import Partido, Pessoa, PessoaNome
+from app.models.enums import CasaLegislativaEnum, VotoOpcaoEnum
 from app.models.leg import Proposicao, Votacao, Voto
 from app.services.deliberacoes_service import get_proposicao_deliberacoes
 from app.services.placar import (

@@ -645,8 +645,9 @@ def test_search_politicians_uses_the_period_of_the_presidential_mandate_from_the
     criar_mandato_presidencial(db, "Presidente Antigo", date(2000, 1, 1), date(2004, 1, 1), "antigo-2000")
     criar_mandato_presidencial(db, "Presidente Atual", date(2023, 1, 1), None, "atual-2023")
     db.commit()
-    # ninguém do seed tinha mandato entre 2000 e 2004; todos os atuais tinham em 2023
-    assert client.get(BASE, params={"mandate_id": "antigo-2000"}).json()["politicos"] == []
+    # ninguém do seed tinha mandato entre 2000 e 2004, só o próprio presidente da época; todos os atuais tinham em 2023
+    antigos = client.get(BASE, params={"mandate_id": "antigo-2000"}).json()["politicos"]
+    assert [(p["nome_eleitoral"], p["cargo"]) for p in antigos] == [("Presidente Antigo", "PRESIDENTE")]
     assert str(seed.fulano.id) in [
         p["id"] for p in client.get(BASE, params={"mandate_id": "atual-2023"}).json()["politicos"]
     ]

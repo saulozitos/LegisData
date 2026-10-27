@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from app.core.names import chave_sigla
 from app.models.analytics import LogExecucaoCron
-from app.models.politician import SituacaoMandatoEnum
+from app.models.enums import SituacaoMandatoEnum
 from app.services.party_catalog_service import DEFAULT_PARTY_COLOR
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session

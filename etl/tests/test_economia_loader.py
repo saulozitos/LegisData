@@ -30,6 +30,21 @@ def test_observacoes_anuais_descarta_sinteticas_vazias_e_anos_antes_da_janela():
     assert obs == [eco.Observacao("GINI", date(1995, 1, 1), None, 0.58, False)]
 
 
+def test_a_pesquisa_do_gini_vai_para_a_nota_e_as_outras_series_nao_levam_nota():
+    linhas = [{"ano": "2015", "gini": "0.52", "extrema_pobreza_pct": "3", "serie_gini": " PNAD Contínua "}]
+    colunas = {"gini": "GINI", "extrema_pobreza_pct": "EXTREMA_POBREZA_PCT"}
+    obs = {o.serie: o for o in eco.observacoes_anuais(linhas, colunas, com_uf=False)}
+    assert obs["GINI"].nota == "PNAD Contínua" and obs["EXTREMA_POBREZA_PCT"].nota is None
+    sem_pesquisa = eco.observacoes_anuais([{"ano": "2015", "gini": "0.5", "serie_gini": " "}], {"gini": "GINI"}, False)
+    assert sem_pesquisa[0].nota is None
+
+
+def test_a_inseguranca_alimentar_total_e_carregada_do_arquivo_social_anual():
+    assert eco.SERIES_ANUAIS_BR["indicadores_sociais_anuais.csv"]["inseguranca_alimentar_total_pct"] == (
+        "INSEGURANCA_ALIMENTAR_TOTAL_PCT"
+    )
+
+
 def test_observacoes_por_uf_exigem_a_sigla():
     linhas = [{"ano": "2020", "uf": "sp", "pobreza_pct": "10"}, {"ano": "2020", "uf": "", "pobreza_pct": "11"}]
     assert eco.observacoes_anuais(linhas, {"pobreza_pct": "POBREZA_UF"}, com_uf=True) == [

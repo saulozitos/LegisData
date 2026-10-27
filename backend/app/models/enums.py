@@ -1,0 +1,123 @@
+"""Enums de domínio compartilhados por rotas, serviços e modelos.
+
+Vivem aqui, e não nos módulos dos modelos legados, para que a limpeza do legado (Fase 9) não leve junto o que o schema novo
+e a API ainda usam.
+"""
+
+import enum
+
+
+class CargoPoliticoEnum(str, enum.Enum):
+    PRESIDENTE = "PRESIDENTE"
+    VICE_PRESIDENTE = "VICE_PRESIDENTE"
+    MINISTRO_DE_ESTADO = "MINISTRO_DE_ESTADO"
+    GOVERNADOR = "GOVERNADOR"
+    VICE_GOVERNADOR = "VICE_GOVERNADOR"
+    SENADOR = "SENADOR"
+    DEPUTADO_FEDERAL = "DEPUTADO_FEDERAL"
+    DEPUTADO_ESTADUAL = "DEPUTADO_ESTADUAL"
+
+
+class TipoEsferaEnum(str, enum.Enum):
+    FEDERAL = "FEDERAL"
+    ESTADUAL = "ESTADUAL"
+    MUNICIPAL = "MUNICIPAL"
+
+
+class StatusMandatoEnum(str, enum.Enum):
+    TITULAR_ATIVO = "TITULAR_ATIVO"
+    CONCLUIDO = "CONCLUIDO"
+    RENUNCIA = "RENUNCIA"
+    IMPEACHMENT = "IMPEACHMENT"
+    CASSADO = "CASSADO"
+    LICENCIADO = "LICENCIADO"
+    FALECIDO = "FALECIDO"
+    SUPLENTE_EM_EXERCICIO = "SUPLENTE_EM_EXERCICIO"
+
+
+class MotivoDesfiliacaoEnum(str, enum.Enum):
+    MUDANCA_VOLUNTARIA = "MUDANCA_VOLUNTARIA"
+    FUSAO_OU_INCORPORACAO = "FUSAO_OU_INCORPORACAO"
+    EXPULSAO = "EXPULSAO"
+    CRIACAO_DE_NOVA_LEGENDA = "CRIACAO_DE_NOVA_LEGENDA"
+    EXTINCAO_DO_PARTIDO = "EXTINCAO_DO_PARTIDO"
+
+
+class EspectroPoliticoEnum(str, enum.Enum):
+    ESQUERDA = "ESQUERDA"
+    CENTRO_ESQUERDA = "CENTRO_ESQUERDA"
+    CENTRO = "CENTRO"
+    CENTRO_DIREITA = "CENTRO_DIREITA"
+    DIREITA = "DIREITA"
+
+
+class SituacaoMandatoEnum(str, enum.Enum):
+    EXERCICIO = "EXERCICIO"
+    AFASTADO_MINISTERIO = "AFASTADO_MINISTERIO"
+    LICENCA_MEDICA = "LICENCA_MEDICA"
+    SUPLENCIA = "SUPLENCIA"
+    ENCERRADO = "ENCERRADO"
+
+
+class TipoProposicaoEnum(str, enum.Enum):
+    PEC = "PEC"
+    PL = "PL"
+    PLP = "PLP"
+    MPV = "MPV"
+    PDL = "PDL"
+    PR = "PR"
+    PRC = "PRC"
+    PDS = "PDS"
+    REQ = "REQ"
+    INC = "INC"
+    DECRETO_PRES = "DECRETO_PRES"
+    LEI_DELEGADA = "LEI_DELEGADA"
+
+
+class TipoDeliberacaoEnum(str, enum.Enum):
+    DELIBERACAO_COMISSAO = "COMISSAO"
+    VOTACAO_SIMBOLICA = "SIMBOLICA"
+    VOTACAO_NOMINAL = "NOMINAL"
+
+
+class StatusTramitacaoEnum(str, enum.Enum):
+    APROVADA_E_SANCIONADA = "APROVADA_E_SANCIONADA"
+    APROVADA_E_PROMULGADA = "APROVADA_E_PROMULGADA"
+    APROVADO_PLENARIO = "APROVADO_PLENARIO"
+    APROVADO_COMISSAO = "APROVADO_COMISSAO"
+    VETADA_TOTAL = "VETADA_TOTAL"
+    VETADA_PARCIAL = "VETADA_PARCIAL"
+    REJEITADA = "REJEITADA"
+    EM_TRAMITACAO = "EM_TRAMITACAO"
+    ARQUIVADA = "ARQUIVADA"
+
+
+class CasaLegislativaEnum(str, enum.Enum):
+    CAMARA_DOS_DEPUTADOS = "CAMARA_DOS_DEPUTADOS"
+    SENADO_FEDERAL = "SENADO_FEDERAL"
+    CONGRESSO_NACIONAL = "CONGRESSO_NACIONAL"
+    ASSEMBLEIA_LEGISLATIVA = "ASSEMBLEIA_LEGISLATIVA"
+
+
+class VotoOpcaoEnum(str, enum.Enum):
+    SIM = "SIM"
+    NAO = "NAO"
+    ABSTENCAO = "ABSTENCAO"
+    OBSTRUCAO = "OBSTRUCAO"
+    AUSENTE = "AUSENTE"
+    ARTIGO_17 = "ARTIGO_17"
+
+
+class TipoPresencaEnum(str, enum.Enum):
+    PRESENTE = "PRESENTE"
+    AUSENCIA_JUSTIFICADA = "AUSENCIA_JUSTIFICADA"
+    AUSENCIA_NAO_JUSTIFICADA = "AUSENCIA_NAO_JUSTIFICADA"
+    LICENCA_MEDICA = "LICENCA_MEDICA"
+    MISSAO_OFICIAL = "MISSAO_OFICIAL"
+
+
+class TipoAutoriaEnum(str, enum.Enum):
+    AUTOR_PRINCIPAL = "AUTOR_PRINCIPAL"
+    RELATOR = "RELATOR"
+    COAUTOR = "COAUTOR"
+    INSTITUCIONAL = "INSTITUCIONAL"
