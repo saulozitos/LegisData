@@ -13,7 +13,7 @@ Duas regras protegem a API:
 - Só se o derivado estiver velho a atualização roda, numa conexão própria de um pool dedicado de uma conexão e espera
   curta: não confirma (nem expira os objetos de) a transação do chamador e, com várias requisições velhas ao mesmo tempo,
   só uma atualiza e as outras seguem com a visão como está. Qualquer falha vira aviso e a leitura continua com o último
-  dado confirmado.
+  refresh concluído.
 """
 
 import logging
@@ -30,6 +30,13 @@ logger = logging.getLogger(__name__)
 
 # Quanto uma leitura espera por uma conexão livre do pool dedicado antes de seguir com a visão como está
 ESPERA_POR_CONEXAO_SEGUNDOS = 1
+# Quanto o ETL espera pela vez de atualizar (a leitura da API não espera: desiste em meio segundo, dentro da função do banco)
+ESPERA_DO_ETL = "120s"
+# O que `leg.atualizar_derivados` devolve (migração 0037)
+ESTADO_REFEITO = "refeito"
+ESTADO_EM_DIA = "em_dia"
+ESTADO_OCUPADO = "ocupado"
+VISOES_MATERIALIZADAS = ("leg.mv_autoria_pontuada_unica", "leg.mv_coautoria_par")
 
 _motores: Dict[str, Engine] = {}
 _trava_dos_motores = threading.Lock()
@@ -62,6 +69,15 @@ def descartar_motores() -> None:
         _motores.clear()
 
 
+def atualizar_para_carga(engine: Engine, espera: str = ESPERA_DO_ETL) -> str:
+    """
+    A porta do ETL (`leg.atualizar_derivados(true, espera)`): espera a vez até `espera` em vez de desistir. Devolve
+    `ESTADO_REFEITO`, `ESTADO_EM_DIA` ou `ESTADO_OCUPADO`; erro de banco sobe para o chamador, que decide o que fazer.
+    """
+    with engine.begin() as conn:
+        return str(conn.execute(text("SELECT leg.atualizar_derivados(true, :espera)"), {"espera": espera}).scalar())
+
+
 def garantir_atualizados(db: Session) -> bool:
     """Refaz os derivados se estiverem velhos. Devolve True só quando refez; nunca levanta por falha de atualização."""
     try:
@@ -76,7 +92,7 @@ def garantir_atualizados(db: Session) -> bool:
     try:
         motor = _motor_da_atualizacao(db.get_bind().engine)
         with motor.begin() as conexao:
-            return conexao.execute(text("SELECT leg.atualizar_derivados_leitura()")).scalar() == "refeito"
+            return conexao.execute(text("SELECT leg.atualizar_derivados_leitura()")).scalar() == ESTADO_REFEITO
     except SQLAlchemyError as exc:
         logger.warning("Derivados do legislativo não atualizados; a leitura segue com a visão como está: %s", exc)
         return False

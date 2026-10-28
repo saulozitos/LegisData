@@ -21,11 +21,17 @@ tem de terminar com `UPDATE leg.pontuacao_controle SET sujo = true`. Se a mudan�
 (`SELECT *` é expandido uma vez) e o `CASCADE` a derruba junto; a migração deve recriá-la com o índice único `ux_mv_*`,
 o dono `legisdata_derivados`, o `COMMENT` e as concessões abaixo.
 
-A leitura não fica presa. O gatilho trava a linha de controle até o fim da transação de quem escreve (o `ON CONFLICT`
-trava mesmo quando o `WHERE` é falso), então uma carga longa em andamento seguraria todos os leitores. Por isso a função,
+O gatilho é `BEFORE` e por comando: ele trava a linha de controle (o `ON CONFLICT` trava mesmo quando o `WHERE` é falso)
+ANTES de a transação tocar na primeira linha de dado. Assim toda transação que escreve numa dependência pega a trava de
+controle primeiro e as linhas de dado depois, na mesma ordem, e duas cargas concorrentes nunca formam um ciclo de
+espera (com o gatilho `AFTER` uma pegava o controle e esperava pela linha da outra, que esperava pelo controle: deadlock).
+O custo é que as escritas nas dependências passam a ser uma por vez, e que uma escrita espera o fim de um refresh em
+curso (alguns segundos), porque o refresh segura a linha de controle. A transação que escreve segura a linha até o commit,
+então uma carga longa seguraria todos os leitores. Por isso a função,
 quando chamada por um leitor (`p_bloquear = false`, o padrão), tenta o bloqueio consultivo sem esperar e limita a espera
 por qualquer trava a meio segundo (`lock_timeout`); se não conseguir, devolve `'ocupado'` e a leitura usa a visão como
-está, que é consistente com o último dado confirmado. O refresh é `CONCURRENTLY` (os índices únicos `ux_mv_*` permitem):
+está, que reflete o último refresh concluído (as telas que leem os derivados mostram esse dado até a próxima atualização;
+as que leem a visão ao vivo já mostram o dado novo). O refresh é `CONCURRENTLY` (os índices únicos `ux_mv_*` permitem):
 ele não pede `ACCESS EXCLUSIVE`, então quem lê a visão durante o refresh não espera e o refresh não é barrado por um
 leitor longo. O ETL chama com `p_bloquear = true` e espera longa (`'120s'`): ele aguarda a vez em vez de desistir.
 A função devolve `'refeito'`, `'em_dia'` ou `'ocupado'`, para o ETL distinguir "não precisava" de "não consegui".
@@ -124,6 +130,7 @@ def upgrade() -> None:
         CREATE FUNCTION leg.marcar_derivados_sujos() RETURNS trigger
         LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
         BEGIN
+            -- BEFORE: a trava de controle sai antes de qualquer linha de dado (ordem única, sem ciclo entre escritores)
             -- upsert: se a tabela de controle for esvaziada por fora, a linha volta ligada
             INSERT INTO leg.pontuacao_controle (id, sujo) VALUES (true, true)
             ON CONFLICT (id) DO UPDATE SET sujo = true WHERE NOT leg.pontuacao_controle.sujo;
@@ -134,11 +141,11 @@ def upgrade() -> None:
     for tabela in DEPENDENCIAS:
         nome = tabela.replace(".", "_")
         op.execute(
-            f"CREATE TRIGGER trg_derivados_sujos_{nome} AFTER INSERT OR UPDATE OR DELETE ON {tabela} "
+            f"CREATE TRIGGER trg_derivados_sujos_{nome} BEFORE INSERT OR UPDATE OR DELETE ON {tabela} "
             "FOR EACH STATEMENT EXECUTE FUNCTION leg.marcar_derivados_sujos()"
         )
         op.execute(
-            f"CREATE TRIGGER trg_derivados_sujos_truncate_{nome} AFTER TRUNCATE ON {tabela} "
+            f"CREATE TRIGGER trg_derivados_sujos_truncate_{nome} BEFORE TRUNCATE ON {tabela} "
             "FOR EACH STATEMENT EXECUTE FUNCTION leg.marcar_derivados_sujos()"
         )
     op.execute(
@@ -188,6 +195,9 @@ def upgrade() -> None:
     op.execute("ALTER MATERIALIZED VIEW leg.mv_coautoria_par OWNER TO legisdata_derivados")
     op.execute("ALTER TABLE leg.pontuacao_controle OWNER TO legisdata_derivados")
     op.execute("ALTER FUNCTION leg.marcar_derivados_sujos() OWNER TO legisdata_derivados")
+    # só o gatilho a usa (o EXECUTE de uma função de gatilho é conferido no CREATE TRIGGER, não a cada disparo): sem isto,
+    # o papel de leitura poderia ligar a função a um gatilho próprio e acender o sinalizador à vontade
+    op.execute("REVOKE EXECUTE ON FUNCTION leg.marcar_derivados_sujos() FROM PUBLIC")
     op.execute("ALTER FUNCTION leg.atualizar_derivados(boolean, text) OWNER TO legisdata_derivados")
     op.execute("REVOKE EXECUTE ON FUNCTION leg.atualizar_derivados(boolean, text) FROM PUBLIC")
     # o ETL roda com o usuário que aplica as migrações: concessão explícita, para não depender de ele ser superusuário

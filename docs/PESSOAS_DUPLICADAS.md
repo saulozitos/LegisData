@@ -25,7 +25,7 @@ por isso cada grupo precisa de conferência antes de unir (ver "Regra proposta")
 
 É o caso mais comum e o que mais afeta as telas. A pessoa existe duas vezes:
 
-- Uma pessoa criada a partir de `public.politicos` pela ponte do legado (fonte 11), **sem** `CAMARA_ID`/`SENADO_ID`,
+- Uma pessoa criada a partir de `stg.politicos` pela fusão do staging (fonte 11), **sem** `CAMARA_ID`/`SENADO_ID`,
   com o mandato de 2019 em diante e todos os **votos nominais** (`leg.voto`).
 - Outra pessoa criada pelas cargas novas (arquivos da Câmara e presença, fonte 2), **com** `CAMARA_ID`, com a
   **presença** (`leg.presenca`) e a **autoria** (`leg.autoria`), mas sem voto.

@@ -5,6 +5,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+POOL_RECYCLE_SEGUNDOS = 1800
+
 
 def criar_engine(
     url: str,
@@ -22,7 +24,7 @@ def criar_engine(
         pool_size=settings.DB_POOL_SIZE if pool_size is None else pool_size,
         max_overflow=settings.DB_MAX_OVERFLOW if max_overflow is None else max_overflow,
         pool_timeout=settings.DB_POOL_TIMEOUT if pool_timeout is None else pool_timeout,
-        pool_recycle=1800,
+        pool_recycle=POOL_RECYCLE_SEGUNDOS,
         hide_parameters=True,  # um erro do banco não copia os valores do lote (nomes, textos) para o log
     )
 

@@ -324,6 +324,17 @@ def test_rollback_do_deploy_sobe_a_tag_anterior_com_o_compose_do_commit_anterior
     assert rollback.count("com o compose do commit anterior") == 1  # o comentário não pode se repetir
 
 
+def test_rollback_avisa_quando_a_imagem_antiga_sobe_sobre_um_schema_migrado():
+    """Só a imagem volta: sem este aviso o operador não saberia que o banco ficou numa revisão que ela não conhece."""
+    texto = _texto(DEPLOY_SH)
+    antes = _posicao(texto, r'^REVISAO_ANTES="\$\(consultar_revisao\)"')
+    assert antes < _posicao(texto, r"alembic upgrade head")  # a revisão é lida ANTES de migrar
+    rollback = texto[_posicao(texto, r'if \[\[ "\$estado" != "healthy" \]\]') :]
+    assert 'REVISAO_DEPOIS="$(consultar_revisao)"' in rollback
+    assert re.search(r'\[\[ -n "\$REVISAO_ANTES" && "\$REVISAO_ANTES" != "\$REVISAO_DEPOIS" \]\]', rollback)
+    assert "AVISO: este deploy migrou o banco" in rollback and "banco vazio" in rollback
+
+
 @SEM_BASH
 @SEM_FLOCK
 @pytest.mark.parametrize(

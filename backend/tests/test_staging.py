@@ -175,6 +175,7 @@ def test_migracoes_0036_e_0037_descem_e_sobem_com_dados(pg_engine, monkeypatch):
         command.downgrade(config, "0035")
         assert escalar("SELECT count(*) FROM public.politicos") == 1  # a tabela voltou com o dado
         assert escalar("SELECT count(*) FROM public.log_execucao_cron") == 3
+        assert escalar("SELECT to_regclass('stg.politicos') IS NULL")
         assert escalar("SELECT to_regclass('etl.log_execucao_cron') IS NULL")
         assert escalar("SELECT to_regprocedure('etl.sincronizar_legado()') IS NOT NULL")
         assert escalar("SELECT to_regprocedure('etl.merge_cadastro()') IS NULL")
@@ -185,6 +186,12 @@ def test_migracoes_0036_e_0037_descem_e_sobem_com_dados(pg_engine, monkeypatch):
     finally:
         command.upgrade(config, "head")  # mesmo se um assert falhar, o banco de teste volta ao head
         with pg_engine.connect() as conn:
+            voltaram = (  # subir leva as linhas de volta: a pessoa para o staging e as 3 linhas do log para o `etl`
+                conn.execute(
+                    text("SELECT count(*) FROM stg.politicos WHERE \"nomeCivil\" = 'Pessoa de Teste'")
+                ).scalar(),
+                conn.execute(text("SELECT count(*) FROM etl.log_execucao_cron")).scalar(),
+            )
             mensagens = {
                 linha[0]
                 for linha in conn.execute(
@@ -195,12 +202,17 @@ def test_migracoes_0036_e_0037_descem_e_sobem_com_dados(pg_engine, monkeypatch):
         with pg_engine.begin() as conn:
             conn.execute(text("DELETE FROM stg.politicos WHERE \"nomeCivil\" = 'Pessoa de Teste'"))
             conn.execute(text("DELETE FROM etl.log_execucao_cron"))
+    assert voltaram == (1, 3)
     # a mensagem crua da exceção (host, caminho, SQL) não volta para a tabela que o papel de leitura enxerga
     assert mensagens == {
         "Falha registrada; o detalhe está no log do servidor.",
         "votações: OperationalError; economia: TimeoutError",
     }
     assert escalar("SELECT to_regclass('public.politicos') IS NULL")
+    assert not escalar(  # nenhum CPF volta nem na descida: a coluna só existiu antes da 0036
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE column_name = 'cpf' "
+        "AND table_schema IN ('public', 'stg', 'core'))"
+    )
     assert escalar("SELECT to_regprocedure('etl.merge_cadastro()') IS NOT NULL")
     assert escalar("SELECT to_regclass('leg.mv_coautoria_par') IS NOT NULL")
     assert escalar("SELECT prosecdef FROM pg_proc WHERE oid = 'leg.atualizar_derivados(boolean, text)'::regprocedure")
@@ -220,3 +232,23 @@ def test_migracao_0035_nao_desce(pg_engine, monkeypatch):
             assert conn.execute(text("SELECT to_regclass('leg.mv_coautoria_par') IS NOT NULL")).scalar()
     finally:
         command.upgrade(config, "head")  # se um dia cada migração tiver a sua transação, o banco volta ao head
+
+
+def test_funcoes_de_fusao_nao_sao_executaveis_pelo_publico(pg_engine):
+    """Elas escrevem em `core`/`leg`; o papel de leitura tem USAGE em `etl`, então o EXECUTE do PUBLIC seria uma porta."""
+    with pg_engine.connect() as conn:
+        for assinatura in (
+            "etl.merge_cadastro()",
+            "etl.merge_legislativo()",
+            "etl.merge_camara_bulk()",
+            "etl.merge_camara_historico()",
+            "core.unificar_duplicadas()",
+        ):
+            acl = conn.execute(
+                text("SELECT proacl::text FROM pg_proc WHERE oid = CAST(:a AS regprocedure)"), {"a": assinatura}
+            ).scalar()
+            assert acl is not None and "{=X" not in acl and ",=X" not in acl, assinatura
+            assert not conn.execute(
+                text("SELECT has_function_privilege('legisdata_leitura', CAST(:a AS regprocedure), 'EXECUTE')"),
+                {"a": assinatura},
+            ).scalar()

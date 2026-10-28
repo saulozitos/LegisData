@@ -42,9 +42,15 @@ def execute_cron_pipeline() -> Dict[str, Any]:
     status = "SUCESSO"
     err_msg: Optional[str] = None
     registros_totais = 0
-    erros_etapas: list = []
-    erros_registrados: list = []  # só etapa e classe da exceção: é o que vai para a tabela pública de logs
-    err_registrado: Optional[str] = None
+    falhas_de_etapa: list = (
+        []
+    )  # (etapa, exceção): uma lista só, para o texto do log e o da tabela pública não divergirem
+    err_registrado: Optional[str] = None  # só etapa e classe da exceção: é o que vai para a tabela pública de logs
+    estado_derivados: Optional[str] = None
+
+    def registrar_falha(etapa: str, erro: Exception, descricao: str) -> None:
+        falhas_de_etapa.append((etapa, erro))
+        logger.error(f"Falha na {descricao}: {erro}", exc_info=True)
 
     try:
         logger.info("=== INICIANDO CRON JOB DE CONSOLIDAÇÃO DIÁRIA ===")
@@ -58,9 +64,7 @@ def execute_cron_pipeline() -> Dict[str, Any]:
             votacoes = atualizar_votacoes(sincronizar=False)
             logger.info(f"Etapa 1a concluída: {votacoes.get('carga')}")
         except Exception as e:
-            erros_etapas.append(f"{ETAPA_VOTACOES}: {e}")
-            erros_registrados.append(descrever_falha(ETAPA_VOTACOES, e))
-            logger.error(f"Falha na atualização de votações: {e}", exc_info=True)
+            registrar_falha(ETAPA_VOTACOES, e, "atualização de votações")
 
         # Etapa 1: Sincronização de Entidades Base e Mandatos Dinâmicos
         logger.info("Etapa 1/4: Sincronizando histórico dinâmico de mandatos...")
@@ -78,9 +82,7 @@ def execute_cron_pipeline() -> Dict[str, Any]:
             presenca = atualizar(engine)
             logger.info(f"Etapa 1b concluída: {presenca}")
         except Exception as e:
-            erros_etapas.append(f"{ETAPA_PRESENCA}: {e}")
-            erros_registrados.append(descrever_falha(ETAPA_PRESENCA, e))
-            logger.error(f"Falha na atualização de presença: {e}", exc_info=True)
+            registrar_falha(ETAPA_PRESENCA, e, "atualização de presença")
 
         # Etapa 1c: séries econômicas (BCB, IBGE, INPE, IPEA) e mandatos presidenciais; não bloqueia as demais etapas
         logger.info("Etapa 1c: atualizando séries econômicas...")
@@ -92,9 +94,7 @@ def execute_cron_pipeline() -> Dict[str, Any]:
             economia = atualizar_economia(engine_economia)
             logger.info(f"Etapa 1c concluída: {economia}")
         except Exception as e:
-            erros_etapas.append(f"{ETAPA_ECONOMIA}: {e}")
-            erros_registrados.append(descrever_falha(ETAPA_ECONOMIA, e))
-            logger.error(f"Falha na atualização das séries econômicas: {e}", exc_info=True)
+            registrar_falha(ETAPA_ECONOMIA, e, "atualização das séries econômicas")
 
         # Etapa 1d: CEAP e emendas (extração incremental por ano e recarga do `fin`); não bloqueia as demais etapas
         logger.info("Etapa 1d: atualizando CEAP e emendas parlamentares...")
@@ -106,14 +106,13 @@ def execute_cron_pipeline() -> Dict[str, Any]:
             financas = atualizar_financas(engine_financas)
             logger.info(f"Etapa 1d concluída: {financas}")
         except Exception as e:
-            erros_etapas.append(f"{ETAPA_FINANCAS}: {e}")
-            erros_registrados.append(descrever_falha(ETAPA_FINANCAS, e))
-            logger.error(f"Falha na atualização de CEAP e emendas: {e}", exc_info=True)
+            registrar_falha(ETAPA_FINANCAS, e, "atualização de CEAP e emendas")
 
         # Depois de todas as cargas: ANALYZE e derivados do legislativo, para a primeira leitura do dia não pagar o refresh
         from app.core.database import engine as engine_posprocessamento
 
-        posprocessar_carga(engine_posprocessamento)
+        estado_derivados = posprocessar_carga(engine_posprocessamento)
+        logger.info(f"Derivados do legislativo ao fim das cargas: {estado_derivados}")
 
         # Etapa 2: Ingestão de Proposições e Autores
         logger.info("Etapa 2/4: Verificando autoria e integridade de proposições...")
@@ -142,10 +141,10 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         err_registrado = descrever_falha(None, e)
         logger.error(f"Falha crítica no CRON Job diário: {e}", exc_info=True)
 
-    if erros_etapas and status == "SUCESSO":
+    if falhas_de_etapa and status == "SUCESSO":
         status = "FALHA"
-        err_msg = "; ".join(erros_etapas)
-        err_registrado = "; ".join(erros_registrados)
+        err_msg = "; ".join(f"{etapa}: {erro}" for etapa, erro in falhas_de_etapa)
+        err_registrado = "; ".join(descrever_falha(etapa, erro) for etapa, erro in falhas_de_etapa)
 
     t_end = datetime.now(timezone.utc)
     tempo_segundos = max(0, int((t_end - t_start).total_seconds()))
@@ -170,6 +169,7 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         "tempo_processamento_segundos": tempo_segundos,
         "registros_atualizados": registros_totais,
         "erro_mensagem": err_msg,
+        "derivados": estado_derivados,  # 'ocupado' ou 'falhou' não muda o status: a leitura refaz, mas o operador vê
         "data_execucao": t_start.isoformat(),
     }
     logger.info(f"=== CRON JOB FINALIZADO: {status} em {tempo_segundos}s ({registros_totais} registros) ===")

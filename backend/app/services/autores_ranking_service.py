@@ -1,4 +1,10 @@
-"""Ranking de produtividade dos autores de proposições, pontuado pelo IALP (metodologia única em `param.peso`)."""
+"""
+Ranking de produtividade dos autores de proposições, pontuado pelo IALP (metodologia única em `param.peso`).
+
+Os pontos, o status e o tipo vêm do derivado `leg.mv_autoria_pontuada_unica` (último refresh concluído); `reforma_estrutural`
+e a área temática vêm de `leg.proposicao` na hora. Entre uma carga e o refresh seguinte (que `garantir_atualizados` dispara
+antes da consulta, salvo se outra atualização estiver em curso) os dois lados podem divergir por um instante.
+"""
 
 from typing import Any, Dict, List, Optional, Tuple
 

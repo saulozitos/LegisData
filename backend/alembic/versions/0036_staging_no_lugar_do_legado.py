@@ -91,6 +91,8 @@ def upgrade() -> None:
         conn.exec_driver_sql(corpo.replace("%", "%%"))
         if novo != antigo:
             op.execute(f"DROP FUNCTION {esquema}.{antigo}()")
+        # as funções de fusão escrevem em `core`/`leg`: só o dono as executa (o papel de leitura tem USAGE em `etl`)
+        op.execute(f"REVOKE EXECUTE ON FUNCTION {esquema}.{novo}() FROM PUBLIC")
 
     # ajustes que a API aplicava ao subir (idempotentes)
     for valor in ("PR", "PRC", "PDS", "REQ", "INC"):
@@ -172,7 +174,7 @@ def downgrade() -> None:
         conn.exec_driver_sql(corpo.replace("%", "%%"))
         if novo != antigo:
             op.execute(f"DROP FUNCTION {esquema}.{novo}()")
-    op.execute("ALTER TABLE public.politicos ADD COLUMN IF NOT EXISTS cpf varchar(14)")
+    # a coluna `cpf` não volta: nenhum CPF é gravado (decisão D3) e nenhum leitor ou escritor a usa
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS public.log_execucao_cron (

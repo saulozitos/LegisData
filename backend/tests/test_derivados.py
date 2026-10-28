@@ -1,6 +1,5 @@
 """Derivados pré-calculados do legislativo: iguais ao cálculo original e nunca velhos."""
 
-import re
 import threading
 import time
 from pathlib import Path
@@ -240,6 +239,30 @@ def _atualizar(pg_engine, bloquear=False, espera="500ms", teto="20s"):
         return conn.execute(text("SELECT leg.atualizar_derivados(:b, :e)"), {"b": bloquear, "e": espera}).scalar()
 
 
+def _na_fila_do_bloqueio(conn, chave):
+    """Quantas chamadas esperam o bloqueio consultivo `chave` neste banco (o `pg_locks` vale para o cluster inteiro)."""
+    return conn.execute(
+        text(
+            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted AND objid = :k "
+            "AND database = (SELECT oid FROM pg_database WHERE datname = current_database())"
+        ),
+        {"k": chave},
+    ).scalar()
+
+
+def _esperando_trava_de_linha(conn, trecho):
+    """Quantas sessões deste banco esperam uma trava (de linha ou transação) com uma consulta que contém `trecho`."""
+    # `pg_stat_activity` fica em cache até o fim da transação: sem limpar, a segunda leitura repete a primeira
+    conn.execute(text("SELECT pg_stat_clear_snapshot()"))
+    return conn.execute(
+        text(
+            "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' "
+            "AND query LIKE :q AND pid <> pg_backend_pid()"
+        ),
+        {"q": f"%{trecho}%"},
+    ).scalar()
+
+
 def _constante_da_migracao_0037(nome):
     from alembic.config import Config
     from alembic.script import ScriptDirectory
@@ -299,9 +322,7 @@ def test_etl_espera_a_vez_em_vez_de_desistir(pg_engine):
         iniciada = True
         with pg_engine.connect() as conn:
             for _ in range(100):  # espera, sem dormir às cegas, a chamada do ETL aparecer na fila do bloqueio
-                na_fila = conn.execute(
-                    text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted")
-                ).scalar()
+                na_fila = _na_fila_do_bloqueio(conn, chave)
                 if na_fila:
                     break
                 time.sleep(0.1)
@@ -331,9 +352,10 @@ def test_etl_desiste_com_aviso_se_a_vez_nao_chega(pg_engine):
 
 def test_gravacao_durante_a_atualizacao_nao_se_perde(pg_engine):
     """
-    O sinalizador é desligado ANTES do refresh: quem escrever enquanto o refresh roda esbarra na linha de controle, que a
+    O sinalizador é desligado ANTES do refresh: quem escreve enquanto o refresh roda espera a linha de controle, que a
     atualização já travou, e religa o sinalizador depois dela. Com a ordem inversa (refresh e só então desligar) o
-    escritor confirmaria no meio e a mudança dele seria apagada: aqui ele estoura o `lock_timeout`, o que prova a ordem.
+    escritor confirmaria no meio e a atualização apagaria o aviso dele: o teste solta a atualização, deixa as duas
+    terminarem e exige o sinalizador ligado SEM nenhuma gravação posterior.
     """
     _marcar_sujo(pg_engine)
     segurando = pg_engine.connect()
@@ -343,21 +365,30 @@ def test_gravacao_durante_a_atualizacao_nao_se_perde(pg_engine):
 
     def atualizar():
         try:
-            resultado.append(_atualizar(pg_engine, bloquear=True, espera="30s"))
+            resultado.append(_atualizar(pg_engine, bloquear=True, espera="30s", teto="60s"))
+        except Exception as exc:  # noqa: BLE001 - registrado e afirmado abaixo
+            erros.append(exc)
+
+    def escrever():
+        try:
+            with pg_engine.begin() as conn:
+                conn.execute(text("SET LOCAL lock_timeout = '40s'"))
+                conn.execute(text("UPDATE leg.proposicao SET titulo = titulo  /* escritor do teste */"))
         except Exception as exc:  # noqa: BLE001 - registrado e afirmado abaixo
             erros.append(exc)
 
     atualizacao = threading.Thread(target=atualizar)
-    iniciada = False
+    escritor = threading.Thread(target=escrever)
+    iniciadas = []
     try:
         # o `REFRESH` lê `leg.autoria`: com ela travada, a atualização desliga o sinalizador e para no REFRESH
         segurando.execute(text("LOCK TABLE leg.autoria IN ACCESS EXCLUSIVE MODE"))
         atualizacao.start()
-        iniciada = True
+        iniciadas.append(atualizacao)
         with pg_engine.connect() as conn:
             for _ in range(
                 100
-            ):  # espera, sem dormir às cegas, a atualização chegar ao REFRESH e parar na trava da visão
+            ):  # espera, sem dormir às cegas, a atualização chegar ao REFRESH e parar na trava da tabela
                 esperando = conn.execute(
                     text(
                         "SELECT count(*) FROM pg_locks WHERE NOT granted AND locktype = 'relation' "
@@ -368,18 +399,80 @@ def test_gravacao_durante_a_atualizacao_nao_se_perde(pg_engine):
                     break
                 time.sleep(0.1)
             assert esperando, "a atualização não chegou ao REFRESH"
-        with pytest.raises(Exception, match="lock timeout|lock_not_available|canceling statement"):
-            with pg_engine.begin() as conn:
-                conn.execute(text("SET LOCAL lock_timeout = '1s'"))
-                conn.execute(text("UPDATE leg.proposicao SET titulo = titulo"))  # esbarra na linha de controle
+            escritor.start()
+            iniciadas.append(escritor)
+            for _ in range(100):  # o escritor tem de ficar esperando a linha de controle que a atualização segura
+                preso = _esperando_trava_de_linha(conn, "escritor do teste")
+                if preso:
+                    break
+                time.sleep(0.1)
+            if not preso:
+                atividade = conn.execute(
+                    text(
+                        "SELECT state, wait_event_type, wait_event, left(query, 70) FROM pg_stat_activity "
+                        "WHERE datname = current_database() AND pid <> pg_backend_pid()"
+                    )
+                ).all()
+            assert (
+                preso
+            ), f"o escritor não esperou a atualização: a gravação poderia ser apagada por ela: {atividade} {erros}"
     finally:
-        transacao.rollback()
+        transacao.rollback()  # solta a tabela: a atualização termina o REFRESH e só então o escritor segue
         segurando.close()
-        if iniciada:
-            atualizacao.join(timeout=60)
+        for fio in iniciadas:
+            fio.join(timeout=90)
     assert not erros and resultado == ["refeito"]
-    _marcar_sujo(pg_engine)  # com a atualização encerrada, uma gravação religa o sinalizador normalmente
-    assert _sujo_no_banco(pg_engine) is True
+    assert _sujo_no_banco(pg_engine) is True  # a gravação que terminou depois do refresh deixou o aviso ligado
+
+
+def test_cargas_concorrentes_nao_entram_em_deadlock(pg_engine, db):
+    """
+    Duas transações que escrevem nas dependências pegam a trava de controle ANTES de qualquer linha de dado (gatilho
+    `BEFORE`), então a segunda espera sem segurar a linha que a primeira vai tocar. Com o gatilho `AFTER` a segunda
+    atualizava a linha, esperava o controle, e a primeira, ao tocar a mesma linha, fechava o ciclo: deadlock.
+    """
+    proposicao, _ = _proposicao_com_autores(db, 900, 1)
+    db.commit()
+    primeira = pg_engine.connect()
+    transacao = primeira.begin()
+    erros = []
+
+    def segunda():
+        try:
+            with pg_engine.begin() as conn:
+                conn.execute(text("SET LOCAL lock_timeout = '30s'"))
+                conn.execute(
+                    text("UPDATE leg.proposicao SET titulo = 'segunda /* segunda carga */' WHERE id = :p"),
+                    {"p": proposicao},
+                )
+        except Exception as exc:  # noqa: BLE001 - registrado e afirmado abaixo
+            erros.append(exc)
+
+    fio = threading.Thread(target=segunda)
+    iniciado = False
+    try:
+        primeira.execute(text("SET LOCAL lock_timeout = '30s'"))
+        primeira.execute(text("DELETE FROM param.peso WHERE false"))  # só o gatilho: a primeira segura o controle
+        fio.start()
+        iniciado = True
+        with pg_engine.connect() as conn:
+            for _ in range(100):
+                preso = _esperando_trava_de_linha(conn, "segunda carga")
+                if preso:
+                    break
+                time.sleep(0.1)
+            assert preso, "a segunda carga não esperou a trava de controle"
+        primeira.execute(
+            text("UPDATE leg.proposicao SET titulo = 'primeira' WHERE id = :p"), {"p": proposicao}
+        )  # a mesma linha: com o AFTER isto fechava o ciclo
+        transacao.commit()
+    finally:
+        if transacao.is_active:
+            transacao.rollback()
+        primeira.close()
+        if iniciado:
+            fio.join(timeout=60)
+    assert not erros, erros
 
 
 def test_dono_dos_derivados_nao_e_superusuario_e_o_publico_nao_executa(pg_engine):
@@ -407,6 +500,14 @@ def test_dono_dos_derivados_nao_e_superusuario_e_o_publico_nao_executa(pg_engine
             text("SELECT proacl::text FROM pg_proc WHERE oid = 'leg.atualizar_derivados_leitura()'::regprocedure")
         ).scalar()
     assert "legisdata_leitura=X" in acl_leitura and "{=X" not in acl_leitura and ",=X" not in acl_leitura
+    with pg_engine.connect() as conn:
+        # o gatilho que acende o sinalizador também não é do público (senão o papel de leitura o ligaria a um gatilho seu)
+        acl_gatilho = conn.execute(
+            text("SELECT proacl::text FROM pg_proc WHERE oid = 'leg.marcar_derivados_sujos()'::regprocedure")
+        ).scalar()
+    assert (
+        acl_gatilho and "{=X" not in acl_gatilho and ",=X" not in acl_gatilho and "legisdata_leitura" not in acl_gatilho
+    )
 
 
 def test_papel_de_leitura_atualiza_os_derivados_mas_nao_escreve_direto(pg_engine):
@@ -434,8 +535,12 @@ def test_garantir_atualizados_nao_toca_na_transacao_de_quem_chama(db, pg_engine)
     assert db.execute(text("SELECT count(*) FROM core.pessoa WHERE nome_exibicao = 'Pendente'")).scalar() == 0
 
 
-def test_derivado_em_dia_nao_usa_conexao_extra_do_pool(pg_engine):
-    """O sinalizador é lido na sessão do chamador: com tudo em dia, um pool de uma conexão basta."""
+def test_derivado_em_dia_nao_usa_conexao_extra_do_pool(pg_engine, caplog):
+    """
+    O sinalizador é lido na sessão do chamador: com tudo em dia, um pool de uma conexão basta. Uma segunda conexão do
+    pool do chamador estouraria o `pool_timeout`, que `garantir_atualizados` engole como aviso e devolve False: por isso
+    o teste exige também que não haja aviso e que o pool dedicado dos derivados nem tenha sido criado.
+    """
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
 
@@ -444,8 +549,11 @@ def test_derivado_em_dia_nao_usa_conexao_extra_do_pool(pg_engine):
     try:
         with Session(pequeno) as sessao:
             sessao.execute(text("SELECT 1"))  # a sessão segura a única conexão
-            assert garantir_atualizados(sessao) is False
+            with caplog.at_level("WARNING"):
+                assert garantir_atualizados(sessao) is False
             assert pequeno.pool.checkedout() == 1
+        assert not caplog.records
+        assert derivados_service._motores == {}
     finally:
         pequeno.dispose()
 
@@ -514,9 +622,11 @@ def test_sinalizador_ilegivel_nao_deixa_a_sessao_de_quem_chama_quebrada(db, monk
 
 def test_pool_dedicado_usa_a_fabrica_do_app(pg_engine):
     """O pool dos derivados herda as opções da fábrica única (`hide_parameters`, `pool_recycle`), só com tamanho próprio."""
+    from app.core.database import POOL_RECYCLE_SEGUNDOS
+
     motor = derivados_service._motor_da_atualizacao(pg_engine)
     assert motor.pool.size() == 1 and motor.pool._max_overflow == 0
-    assert motor.pool._recycle == 1800 and motor.hide_parameters is True
+    assert motor.pool._recycle == POOL_RECYCLE_SEGUNDOS and motor.hide_parameters is True
 
 
 def test_quem_le_um_derivado_chama_garantir_atualizados():
@@ -539,15 +649,28 @@ def test_quem_le_um_derivado_chama_garantir_atualizados():
             and "leg.mv_" in (ast.get_source_segment(fonte, no) or "")
         }
         for funcao in (n for n in ast.walk(arvore) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))):
-            corpo = ast.get_source_segment(fonte, funcao) or ""
-            if "leg.mv_" in corpo or any(re.search(rf"\b{c}\b", corpo) for c in constantes):
-                # uma CHAMADA de verdade: comentário ou docstring citando o nome não conta
-                chama = any(
-                    isinstance(no, ast.Call)
-                    and (getattr(no.func, "id", None) or getattr(no.func, "attr", None)) == "garantir_atualizados"
-                    for no in ast.walk(funcao)
+            primeira = funcao.body[0] if funcao.body else None
+            docstring = (
+                primeira.value if isinstance(primeira, ast.Expr) else None
+            )  # citar o nome na docstring não é ler
+            usos = [  # onde a função nomeia o derivado: no texto do SQL ou na constante que o guarda
+                no.lineno
+                for no in ast.walk(funcao)
+                if no is not docstring
+                and (
+                    (isinstance(no, ast.Constant) and isinstance(no.value, str) and "leg.mv_" in no.value)
+                    or (isinstance(no, ast.Name) and no.id in constantes)
                 )
-                leitores.append((arquivo.name, funcao.name, chama))
+            ]
+            if usos:
+                # uma CHAMADA de verdade (comentário ou docstring citando o nome não conta) e ANTES do primeiro uso do derivado
+                chamadas = [
+                    no.lineno
+                    for no in ast.walk(funcao)
+                    if isinstance(no, ast.Call)
+                    and (getattr(no.func, "id", None) or getattr(no.func, "attr", None)) == "garantir_atualizados"
+                ]
+                leitores.append((arquivo.name, funcao.name, bool(chamadas) and min(chamadas) < min(usos)))
     assert leitores, "nenhum leitor encontrado: o teste deixou de proteger"
     assert [(a, f) for a, f, chama in leitores if not chama] == []
 
@@ -577,3 +700,51 @@ def test_dossie_do_politico_atualiza_os_derivados_antes_de_ler(client, seed, pg_
     _marcar_sujo(pg_engine)
     assert client.get(f"{BASE}/politicians/{seed.fulano.id}").status_code == 200
     assert _sujo_no_banco(pg_engine) is False
+
+
+def _dupla_de_autores_em(db, numero, tipo, pessoas=None):
+    """Uma proposição do `tipo` assinada por duas pessoas (as dadas, ou duas novas); devolve as pessoas."""
+    status = db.execute(text("SELECT codigo FROM ref.status_tramitacao ORDER BY codigo LIMIT 1")).scalar()
+    proposicao = db.execute(
+        text(
+            "INSERT INTO leg.proposicao (tipo_codigo, numero, ano, titulo, data_apresentacao, status_codigo)"
+            " VALUES (:t, :n, 2023, :ti, '2023-03-01', :s) RETURNING id"
+        ),
+        {"t": tipo, "n": numero, "ti": f"Proposição {numero}", "s": status},
+    ).scalar()
+    if pessoas is None:
+        pessoas = [
+            db.execute(
+                text("INSERT INTO core.pessoa (nome_exibicao) VALUES (:n) RETURNING id"), {"n": f"Dupla {numero}-{i}"}
+            ).scalar()
+            for i in range(2)
+        ]
+    for ordem, pessoa in enumerate(pessoas, start=1):
+        db.execute(
+            text(
+                "INSERT INTO leg.autoria (proposicao_id, pessoa_id, nome_autor, tipo_codigo, ordem)"
+                " VALUES (:p, :a, 'Autor', :t, :o)"
+            ),
+            {"p": proposicao, "a": pessoa, "t": "AUTOR_PRINCIPAL" if ordem == 1 else "COAUTOR", "o": ordem},
+        )
+    return pessoas
+
+
+def test_rede_filtra_por_tipo_de_pedido_e_soma_o_peso_dos_pares_repetidos(db):
+    """`REQ_INC` só enxerga requerimentos e indicações; o peso de uma aresta é o número de proposições do par."""
+    from app.services.legislative_scoring import build_coauthorship_network
+
+    pessoas = _dupla_de_autores_em(db, 1, "REQ")
+    _dupla_de_autores_em(db, 2, "INC", pessoas)  # o mesmo par assina uma segunda proposição
+    _dupla_de_autores_em(db, 3, "PEC")
+    db.commit()
+    garantir_atualizados(db)
+
+    def arestas(**filtros):
+        return build_coauthorship_network(db=db, limit_nodes=50, **filtros)["edges"]
+
+    pedidos = arestas(tipo_proposta="REQ_INC")
+    assert len(pedidos) == 1 and pedidos[0]["weight"] == 2  # a PEC de outro par fica de fora
+    assert arestas(tipo_proposta="REQ_INC", min_weight=2)[0]["weight"] == 2  # o peso mínimo mantém o par repetido
+    assert arestas(tipo_proposta="REQ_INC", min_weight=3) == []
+    assert len(arestas(tipo_proposta="PEC")) == 1

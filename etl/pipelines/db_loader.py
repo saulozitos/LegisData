@@ -479,14 +479,18 @@ class DatabaseLoader:
 
     @staticmethod
     def _fundir_staging(session: Session) -> None:
-        """Funde o staging em `core`/`leg`. Falha aqui não desfaz a carga (já confirmada), mas é registrada."""
+        """
+        Funde o staging em `core`/`leg`. A carga do staging já foi confirmada e fica; mas a fusão que falha é relançada,
+        para a etapa aparecer como FALHOU no resumo da esteira em vez de OK com `core` e `leg` sem a carga nova.
+        """
         from app.services.staging_merge import merge_staging
 
         try:
             merge_staging(session)
-        except Exception as exc:  # noqa: BLE001 - a carga principal já foi confirmada
+        except Exception as exc:
             session.rollback()
             logger.error("Fusão staging -> core/leg falhou: %s", exc, exc_info=True)
+            raise
 
     # ------------------------------------------------------------------ utilidades de proveniência
     def _usable(self, record: Dict[str, Any]) -> bool:

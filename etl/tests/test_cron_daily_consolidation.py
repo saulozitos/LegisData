@@ -188,3 +188,9 @@ def _executar_so_financas():
     finally:
         for p in patches:
             p.stop()
+
+
+def test_estado_dos_derivados_aparece_no_resultado_sem_mudar_o_status():
+    """Derivados 'ocupado' ou 'falhou' não derrubam o cron (a leitura os refaz), mas o operador precisa enxergá-los."""
+    resultado, _, _ = _executar(retornos={"pos": "ocupado"})
+    assert resultado["status"] == "SUCESSO" and resultado["derivados"] == "ocupado"

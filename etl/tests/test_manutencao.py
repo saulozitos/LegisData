@@ -7,6 +7,16 @@ from etl.utils import manutencao
 from etl.utils.manutencao import analisar_banco, atualizar_derivados, posprocessar_carga
 
 
+def _constante_da_migracao_0037(nome):
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+    from app.core.migrations import BACKEND_DIR
+
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+    return getattr(ScriptDirectory.from_config(config).get_revision("0037").module, nome)
+
+
 class EngineQuebrado:
     def connect(self):
         raise RuntimeError("banco fora do ar")
@@ -32,8 +42,31 @@ def test_analisar_banco_atualiza_as_estatisticas(pg_engine):
             conn.execute(text("DROP TABLE IF EXISTS public.etl_test_analyze"))
 
 
+def _contagem_de_analyze(pg_engine):
+    with pg_engine.connect() as conn:
+        return dict(
+            conn.execute(
+                text(
+                    "SELECT relname, analyze_count FROM pg_stat_user_tables "
+                    "WHERE relname IN ('mv_autoria_pontuada_unica', 'mv_coautoria_par')"
+                )
+            ).all()
+        )
+
+
 def test_analisar_so_os_derivados(pg_engine):
+    """O `ANALYZE` tem de alcançar as duas visões materializadas (um `return True` sem executar nada não passa)."""
+    import time
+
+    antes = _contagem_de_analyze(pg_engine)
+    assert set(antes) == {"mv_autoria_pontuada_unica", "mv_coautoria_par"}
     assert analisar_banco(pg_engine, apenas_derivados=True) is True
+    for _ in range(100):  # as estatísticas são gravadas de forma assíncrona: espera com limite, sem dormir às cegas
+        depois = _contagem_de_analyze(pg_engine)
+        if all(depois[nome] > antes[nome] for nome in antes):
+            break
+        time.sleep(0.1)
+    assert all(depois[nome] > antes[nome] for nome in antes), f"ANALYZE não alcançou as visões: {antes} -> {depois}"
 
 
 def test_atualizar_derivados_distingue_refeito_em_dia_e_ocupado(pg_engine):
@@ -65,7 +98,7 @@ def test_etl_espera_a_vez_de_outra_atualizacao_em_curso(pg_engine):
 
     with pg_engine.begin() as conn:
         conn.execute(text("UPDATE leg.proposicao SET titulo = titulo"))  # liga o sinalizador
-    chave = 727_420_002  # BLOQUEIO_DA_ATUALIZACAO da migração 0037
+    chave = _constante_da_migracao_0037("BLOQUEIO_DA_ATUALIZACAO")
     outra = pg_engine.connect()
     transacao = outra.begin()
     resultado = []
@@ -78,7 +111,11 @@ def test_etl_espera_a_vez_de_outra_atualizacao_em_curso(pg_engine):
         with pg_engine.connect() as conn:
             for _ in range(100):  # sem dormir às cegas: espera a chamada do ETL aparecer na fila do bloqueio
                 na_fila = conn.execute(
-                    text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted")
+                    text(
+                        "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted AND objid = :k "
+                        "AND database = (SELECT oid FROM pg_database WHERE datname = current_database())"
+                    ),
+                    {"k": chave},
                 ).scalar()
                 if na_fila:
                     break
@@ -128,7 +165,7 @@ def test_posprocessar_analisa_antes_e_depois_do_refresh(monkeypatch):
             ("analyze_derivados" if apenas_derivados else "analyze", engine)
         ),
     )
-    posprocessar_carga(motor)
+    assert posprocessar_carga(motor) == "refeito"  # o estado dos derivados volta para quem chamou registrar
     assert chamadas == [("analyze", motor), ("derivados", motor), ("analyze_derivados", motor)]  # sempre o mesmo engine
 
 
@@ -138,7 +175,7 @@ def test_posprocessar_nao_analisa_os_derivados_se_nao_refez(monkeypatch):
     monkeypatch.setattr(
         "etl.utils.manutencao.analisar_banco", lambda engine, apenas_derivados=False: chamadas.append(apenas_derivados)
     )
-    posprocessar_carga(object())
+    assert posprocessar_carga(object()) == "em_dia"
     assert chamadas == [False]
 
 

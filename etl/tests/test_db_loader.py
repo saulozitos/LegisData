@@ -456,3 +456,17 @@ def test_sessoes_legadas_do_senado_sem_ano_usam_materias_conhecidas(ambiente):
     carregar(dados)
     with Sessao() as s:
         assert s.query(VotingSession).filter_by(external_id="SEN-LEG").count() == 1
+
+
+def test_fusao_do_staging_que_falha_sobe_para_a_etapa_nao_aparecer_como_ok(monkeypatch):
+    """A carga do staging já foi confirmada, mas `core`/`leg` ficaram sem ela: a esteira tem de registrar a falha."""
+    from unittest.mock import MagicMock
+
+    def quebra(_sessao):
+        raise RuntimeError("fusão quebrou")
+
+    monkeypatch.setattr("app.services.staging_merge.merge_staging", quebra)
+    sessao = MagicMock()
+    with pytest.raises(RuntimeError, match="fusão quebrou"):
+        db_loader.DatabaseLoader._fundir_staging(sessao)
+    sessao.rollback.assert_called_once()

@@ -281,6 +281,9 @@ decidir_financas() {
 # <<< decidir_financas
 
 # 3. migrações e 4. carga das séries econômicas e da curadoria (idempotentes)
+# A revisão de antes: se a API nova não ficar saudável, o passo 6 só devolve a imagem e precisa dizer se o schema mudou.
+consultar_revisao() { docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select version_num from alembic_version" 2>/dev/null || true; }
+REVISAO_ANTES="$(consultar_revisao)"
 log "migrações"
 docker run --rm --network "$REDE" --env-file "$ENV_BANCO" -e ENVIRONMENT=production -e DB_SSLMODE=disable \
   "${CONTENCAO[@]}" "$REGISTRO/legisdata-backend:$TAG" alembic upgrade head 9>&-
@@ -361,6 +364,10 @@ for _ in $(seq 1 36); do
 done
 if [[ "$estado" != "healthy" ]]; then
   log "API não ficou saudável ($estado); voltando para $ANTERIOR (backup: $DUMP)"
+  REVISAO_DEPOIS="$(consultar_revisao)"
+  if [[ -n "$REVISAO_ANTES" && "$REVISAO_ANTES" != "$REVISAO_DEPOIS" ]]; then
+    log "AVISO: este deploy migrou o banco de $REVISAO_ANTES para $REVISAO_DEPOIS e a imagem antiga sobe sobre o schema novo, sem restaurar o backup; se uma migração irreversível (0034 ou 0035) estiver no caminho, restaure o backup em um banco vazio (docs/DEPLOY_AUTOMATICO.md, Voltar uma versão)"
+  fi
   # com o compose do commit anterior (o novo pode ter tirado volumes de que a imagem antiga precisa); se não der para
   # lê-lo, com o compose atual
   if git show "$COMMIT_ANTERIOR:docker-compose.yml" >"$ENV_BANCO.compose" 2>/dev/null; then

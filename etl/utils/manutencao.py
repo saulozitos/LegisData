@@ -2,14 +2,20 @@
 
 import logging
 
+from app.services.derivados_service import (
+    ESPERA_DO_ETL,
+    ESTADO_OCUPADO,
+    ESTADO_REFEITO,
+    VISOES_MATERIALIZADAS,
+    atualizar_para_carga,
+)
 from sqlalchemy import text
 
 logger = logging.getLogger("Manutencao")
 
-# Quanto o ETL espera pela vez de atualizar os derivados (a leitura da API não espera: desiste em meio segundo)
-ESPERA_DO_ETL = "120s"
+ESTADO_FALHOU = "falhou"
 ANALYZE_DO_BANCO = "ANALYZE"
-ANALYZE_DOS_DERIVADOS = "ANALYZE leg.mv_autoria_pontuada_unica, leg.mv_coautoria_par"
+ANALYZE_DOS_DERIVADOS = "ANALYZE " + ", ".join(VISOES_MATERIALIZADAS)
 
 
 def atualizar_derivados(engine) -> str:
@@ -19,21 +25,18 @@ def atualizar_derivados(engine) -> str:
     (não conseguiu a vez em `ESPERA_DO_ETL`; registra AVISO, a leitura refaz por conta própria) ou `'falhou'`.
     """
     try:
-        with engine.begin() as conn:
-            estado = conn.execute(
-                text("SELECT leg.atualizar_derivados(true, :espera)"), {"espera": ESPERA_DO_ETL}
-            ).scalar()
+        estado = atualizar_para_carga(engine)
     except Exception as exc:  # noqa: BLE001 - a carga já terminou; o leitor refaz se precisar
         logger.warning("Derivados do legislativo não atualizados: %s", exc)
-        return "falhou"
-    if estado == "ocupado":
+        return ESTADO_FALHOU
+    if estado == ESTADO_OCUPADO:
         logger.warning(
             "Derivados do legislativo NÃO atualizados: não consegui a vez em %s; o primeiro leitor os refaz",
             ESPERA_DO_ETL,
         )
     else:
         logger.info("Derivados do legislativo: %s.", estado)
-    return str(estado)
+    return estado
 
 
 def analisar_banco(engine, apenas_derivados: bool = False) -> bool:
@@ -54,11 +57,14 @@ def analisar_banco(engine, apenas_derivados: bool = False) -> bool:
         return False
 
 
-def posprocessar_carga(engine) -> None:
+def posprocessar_carga(engine) -> str:
     """
     O que toda carga que grava no banco faz ao terminar: `ANALYZE` das tabelas (o refresh dos derivados é planejado com
-    estatística nova), depois os derivados, depois `ANALYZE` das visões refeitas.
+    estatística nova), depois os derivados, depois `ANALYZE` das visões refeitas. Devolve o estado dos derivados
+    (`'refeito'`, `'em_dia'`, `'ocupado'` ou `'falhou'`) para quem chamou registrá-lo; nunca levanta.
     """
     analisar_banco(engine)
-    if atualizar_derivados(engine) == "refeito":
+    estado = atualizar_derivados(engine)
+    if estado == ESTADO_REFEITO:
         analisar_banco(engine, apenas_derivados=True)
+    return estado
