@@ -493,11 +493,11 @@ def test_party_alias_resolves_old_spellings(db):
 
 
 def test_staging_orm_models_match_the_migrated_database(pg_engine):
-    from app.models import Base
+    from app.models import StagingBase
 
     inspector = inspect(pg_engine)
     faltando = []
-    for table in Base.metadata.sorted_tables:
+    for table in StagingBase.metadata.sorted_tables:
         if table.schema != "stg":
             continue
         existentes = (

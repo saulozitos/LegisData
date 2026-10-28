@@ -45,7 +45,7 @@ def _tabelas(db, schema):
 
 def test_tabelas_de_entrada_vivem_em_stg_e_o_public_so_guarda_a_versao_do_alembic(db):
     assert TABELAS_DE_ENTRADA <= _tabelas(db, "stg")
-    assert _tabelas(db, "public") <= {"alembic_version", "etl_test_migracoes"}  # nenhum dado de domínio no public
+    assert _tabelas(db, "public") <= {"alembic_version"}  # nenhum dado de domínio no public
 
 
 def test_tabelas_aposentadas_nao_existem_em_lugar_nenhum(db):
@@ -132,9 +132,7 @@ def test_tabelas_novas_nascem_legiveis_pelo_papel_de_leitura(db, schema):
         db.rollback()
 
 
-def test_migracoes_0036_e_0037_descem_e_sobem_com_dados(pg_engine, monkeypatch):
-    """Descer a 0035 devolve tabelas, funções e o log do cron ao `public` com os dados; subir leva tudo de volta."""
-    from alembic import command
+def _config_do_alembic(monkeypatch):
     from alembic.config import Config
     from app.core.migrations import BACKEND_DIR
 
@@ -143,6 +141,14 @@ def test_migracoes_0036_e_0037_descem_e_sobem_com_dados(pg_engine, monkeypatch):
     config = Config(str(BACKEND_DIR / "alembic.ini"))
     config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     monkeypatch.setenv("ALEMBIC_DATABASE_URL", TEST_DATABASE_URL)
+    return config
+
+
+def test_migracoes_0036_e_0037_descem_e_sobem_com_dados(pg_engine, monkeypatch):
+    """Descer a 0035 devolve tabelas, funções e o log do cron ao `public` com os dados; subir leva tudo de volta."""
+    from alembic import command
+
+    config = _config_do_alembic(monkeypatch)
 
     def escalar(sql):
         with pg_engine.connect() as conn:
@@ -166,28 +172,31 @@ def test_migracoes_0036_e_0037_descem_e_sobem_com_dados(pg_engine, monkeypatch):
         assert escalar("SELECT to_regprocedure('etl.sincronizar_legado()') IS NOT NULL")
         assert escalar("SELECT to_regprocedure('etl.merge_cadastro()') IS NULL")
         assert escalar("SELECT to_regclass('leg.mv_coautoria_par') IS NULL")
+        # o papel de leitura perdeu o que ganhou, inclusive os privilégios padrão sobre tabelas futuras
+        assert not escalar("SELECT has_table_privilege('legisdata_leitura', 'core.pessoa', 'SELECT')")
+        assert escalar("SELECT count(*) FROM pg_default_acl WHERE defaclacl::text LIKE '%legisdata_leitura%'") == 0
     finally:
         command.upgrade(config, "head")  # mesmo se um assert falhar, o banco de teste volta ao head
-    assert escalar("SELECT count(*) FROM stg.politicos") == 1
-    assert escalar("SELECT count(*) FROM etl.log_execucao_cron") == 1
+        # e sem as linhas que este teste gravou fora do TRUNCATE da fixture `db` (senão o teste seguinte as enxerga)
+        with pg_engine.begin() as conn:
+            conn.execute(text("DELETE FROM stg.politicos WHERE \"nomeCivil\" = 'Pessoa de Teste'"))
+            conn.execute(text("DELETE FROM etl.log_execucao_cron"))
     assert escalar("SELECT to_regclass('public.politicos') IS NULL")
     assert escalar("SELECT to_regprocedure('etl.merge_cadastro()') IS NOT NULL")
     assert escalar("SELECT to_regclass('leg.mv_coautoria_par') IS NOT NULL")
-    assert escalar("SELECT prosecdef FROM pg_proc WHERE oid = 'leg.atualizar_derivados()'::regprocedure")
+    assert escalar("SELECT prosecdef FROM pg_proc WHERE oid = 'leg.atualizar_derivados(boolean, text)'::regprocedure")
+    assert escalar("SELECT has_table_privilege('legisdata_leitura', 'core.pessoa', 'SELECT')")  # e voltou ao subir
 
 
 def test_migracao_0035_nao_desce(pg_engine, monkeypatch):
     """As 17 tabelas aposentadas não voltam com o schema original: o downgrade recusa em vez de fingir."""
     from alembic import command
-    from alembic.config import Config
-    from app.core.migrations import BACKEND_DIR
 
-    from .conftest import TEST_DATABASE_URL
-
-    config = Config(str(BACKEND_DIR / "alembic.ini"))
-    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-    monkeypatch.setenv("ALEMBIC_DATABASE_URL", TEST_DATABASE_URL)
-    with pytest.raises(NotImplementedError, match="irreversível"):
-        command.downgrade(config, "0034")
-    with pg_engine.connect() as conn:  # a transação única desfez também o que a 0037 e a 0036 já tinham descido
-        assert conn.execute(text("SELECT to_regclass('leg.mv_coautoria_par') IS NOT NULL")).scalar()
+    config = _config_do_alembic(monkeypatch)
+    try:
+        with pytest.raises(NotImplementedError, match="irreversível"):
+            command.downgrade(config, "0034")
+        with pg_engine.connect() as conn:  # a transação única desfez também o que a 0037 e a 0036 já tinham descido
+            assert conn.execute(text("SELECT to_regclass('leg.mv_coautoria_par') IS NOT NULL")).scalar()
+    finally:
+        command.upgrade(config, "head")  # se um dia cada migração tiver a sua transação, o banco volta ao head

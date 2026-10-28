@@ -524,9 +524,9 @@ def test_run_votacoes_exige_alguma_casa(monkeypatch, tmp_path):
 @pytest.fixture
 def banco():
     engine = create_engine("sqlite://").execution_options(schema_translate_map={"stg": None})
-    from app.models import Base
+    from app.models import StagingBase
 
-    Base.metadata.create_all(engine)
+    StagingBase.metadata.create_all(engine)
     sessao = sessionmaker(bind=engine, expire_on_commit=False)()
     yield sessao
     sessao.close()
@@ -1009,7 +1009,7 @@ def _atualizar_com_dublês(monkeypatch, sincronizar):
     monkeypatch.setattr(va, "carregar_votacoes", lambda *args: {})
     monkeypatch.setattr(va, "SessionLocal", lambda: nullcontext(MagicMock()))
     monkeypatch.setattr(va, "merge_staging", lambda sessao: chamadas.append("merge") or {})
-    monkeypatch.setattr(va, "posprocessar_carga", lambda motor: chamadas.append("pos"))
+    monkeypatch.setattr(va, "posprocessar_carga", lambda motor: chamadas.append("pos") if motor is va.engine else None)
     va.atualizar(sincronizar=sincronizar)
     return chamadas
 

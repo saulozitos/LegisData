@@ -202,20 +202,6 @@ def test_derivado_de_coautoria_equivale_ao_calculo_direto(db):
     assert diferencas == 0 and db.execute(text("SELECT count(*) FROM leg.mv_coautoria_par")).scalar() > 0
 
 
-def test_quem_le_um_derivado_chama_garantir_atualizados():
-    """Esquecer a chamada serviria dado velho: todo arquivo de `app` que lê um derivado tem de atualizá-lo antes."""
-    leitores = []
-    for arquivo in APP.rglob("*.py"):
-        texto = arquivo.read_text(encoding="utf-8")
-        if re.search(r"FROM\s+leg\.mv_|JOIN\s+leg\.mv_", texto) and arquivo.name != "derivados_service.py":
-            leitores.append(arquivo)
-    assert leitores, "nenhum leitor encontrado: o teste deixou de proteger"
-    for arquivo in leitores:
-        assert "garantir_atualizados(" in arquivo.read_text(
-            encoding="utf-8"
-        ), f"{arquivo.name} lê um derivado sem atualizá-lo"
-
-
 def test_papel_de_leitura_enxerga_os_derivados(db):
     for visao in ("leg.mv_autoria_pontuada_unica", "leg.mv_coautoria_par"):
         assert db.execute(
@@ -233,9 +219,38 @@ def _sujo_no_banco(pg_engine):
         return conn.execute(text("SELECT sujo FROM leg.pontuacao_controle")).scalar()
 
 
-def _atualizar(pg_engine):
+def _atualizar(pg_engine, bloquear=False, espera="500ms", teto="20s"):
+    """Chama a função do banco; o `statement_timeout` faz um defeito de trava virar falha em segundos, não suíte parada."""
     with pg_engine.begin() as conn:
-        return conn.execute(text("SELECT leg.atualizar_derivados()")).scalar()
+        conn.execute(text(f"SET LOCAL statement_timeout = '{teto}'"))
+        return conn.execute(text("SELECT leg.atualizar_derivados(:b, :e)"), {"b": bloquear, "e": espera}).scalar()
+
+
+def _constante_da_migracao_0037(nome):
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+    from app.core.migrations import BACKEND_DIR
+
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+    return getattr(ScriptDirectory.from_config(config).get_revision("0037").module, nome)
+
+
+def test_estado_devolvido_distingue_refeito_em_dia_e_ocupado(pg_engine):
+    _marcar_sujo(pg_engine)
+    assert _atualizar(pg_engine) == "refeito"
+    assert _atualizar(pg_engine) == "em_dia"
+    _marcar_sujo(pg_engine)
+    outra = pg_engine.connect()
+    transacao = outra.begin()
+    try:
+        outra.execute(
+            text("SELECT pg_advisory_xact_lock(:k)"), {"k": _constante_da_migracao_0037("BLOQUEIO_DA_ATUALIZACAO")}
+        )
+        assert _atualizar(pg_engine) == "ocupado"  # a vez é de outra atualização
+    finally:
+        transacao.rollback()
+        outra.close()
 
 
 def test_leitura_nao_fica_presa_atras_de_uma_carga_em_andamento(pg_engine):
@@ -246,70 +261,241 @@ def test_leitura_nao_fica_presa_atras_de_uma_carga_em_andamento(pg_engine):
     try:
         carga.execute(text("UPDATE leg.proposicao SET titulo = titulo"))  # trava a linha de controle até o commit
         inicio = time.monotonic()
-        assert _atualizar(pg_engine) is False
+        assert _atualizar(pg_engine) == "ocupado"
         assert time.monotonic() - inicio < 5  # esperou no máximo o lock_timeout, não a carga inteira
         assert _sujo_no_banco(pg_engine) is True  # a tentativa desfeita não perde o aviso
     finally:
         transacao.rollback()
         carga.close()
-    assert _atualizar(pg_engine) is True and _sujo_no_banco(pg_engine) is False  # sem a carga, refaz
+    assert _atualizar(pg_engine) == "refeito" and _sujo_no_banco(pg_engine) is False  # sem a carga, refaz
 
 
-def test_outra_atualizacao_em_curso_faz_o_leitor_servir_a_visao_como_esta(pg_engine):
+def test_etl_espera_a_vez_em_vez_de_desistir(pg_engine):
+    """O ETL chama em modo bloqueante: se outra atualização segura a vez por um instante, ele espera e refaz."""
     _marcar_sujo(pg_engine)
+    chave = _constante_da_migracao_0037("BLOQUEIO_DA_ATUALIZACAO")
+    outra = pg_engine.connect()
+    transacao = outra.begin()
+    resultado = []
+    outra.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": chave})
+    espera = threading.Thread(target=lambda: resultado.append(_atualizar(pg_engine, bloquear=True, espera="20s")))
+    try:
+        espera.start()
+        time.sleep(1)  # bem mais que os 500 ms da leitura: quem desiste já teria devolvido 'ocupado'
+        assert espera.is_alive() and not resultado
+    finally:
+        transacao.rollback()
+        outra.close()
+        espera.join(timeout=30)
+    assert resultado == ["refeito"]
+
+
+def test_etl_desiste_com_aviso_se_a_vez_nao_chega(pg_engine):
+    _marcar_sujo(pg_engine)
+    chave = _constante_da_migracao_0037("BLOQUEIO_DA_ATUALIZACAO")
     outra = pg_engine.connect()
     transacao = outra.begin()
     try:
-        outra.execute(text("SELECT pg_advisory_xact_lock(727420002)"))
-        assert _atualizar(pg_engine) is False
+        outra.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": chave})
+        assert _atualizar(pg_engine, bloquear=True, espera="1s") == "ocupado"
         assert _sujo_no_banco(pg_engine) is True
     finally:
         transacao.rollback()
         outra.close()
-    assert _atualizar(pg_engine) is True
 
 
 def test_gravacao_durante_a_atualizacao_nao_se_perde(pg_engine):
-    """O sinalizador é desligado antes de refazer: quem escrever enquanto a atualização não confirmou o religa."""
+    """
+    O sinalizador é desligado ANTES do refresh: quem escrever enquanto o refresh roda esbarra na linha de controle, que a
+    atualização já travou, e religa o sinalizador depois dela. Com a ordem inversa (refresh e só então desligar) o
+    escritor confirmaria no meio e a mudança dele seria apagada: aqui ele estoura o `lock_timeout`, o que prova a ordem.
+    """
     _marcar_sujo(pg_engine)
-    atualizacao = pg_engine.connect()
-    transacao = atualizacao.begin()
-    escritor_terminou = threading.Event()
+    segurando = pg_engine.connect()
+    transacao = segurando.begin()
+    erros = []
+    resultado = []
 
-    def escrever():
-        with pg_engine.begin() as conn:
-            conn.execute(text("SET LOCAL lock_timeout = '10s'"))
-            conn.execute(text("UPDATE leg.proposicao SET titulo = titulo"))
-        escritor_terminou.set()
+    def atualizar():
+        try:
+            resultado.append(_atualizar(pg_engine, bloquear=True, espera="30s"))
+        except Exception as exc:  # noqa: BLE001 - registrado e afirmado abaixo
+            erros.append(exc)
 
+    atualizacao = threading.Thread(target=atualizar)
+    iniciada = False
     try:
-        assert atualizacao.execute(text("SELECT leg.atualizar_derivados()")).scalar() is True
-        escritor = threading.Thread(target=escrever)
-        escritor.start()
-        time.sleep(0.5)
-        assert not escritor_terminou.is_set()  # o escritor espera a linha de controle da atualização
+        # o `REFRESH` lê `leg.autoria`: com ela travada, a atualização desliga o sinalizador e para no REFRESH
+        segurando.execute(text("LOCK TABLE leg.autoria IN ACCESS EXCLUSIVE MODE"))
+        atualizacao.start()
+        iniciada = True
+        with pg_engine.connect() as conn:
+            for _ in range(
+                100
+            ):  # espera, sem dormir às cegas, a atualização chegar ao REFRESH e parar na trava da visão
+                esperando = conn.execute(
+                    text(
+                        "SELECT count(*) FROM pg_locks WHERE NOT granted AND locktype = 'relation' "
+                        "AND relation = 'leg.autoria'::regclass"
+                    )
+                ).scalar()
+                if esperando:
+                    break
+                time.sleep(0.1)
+            assert esperando, "a atualização não chegou ao REFRESH"
+        with pytest.raises(Exception, match="lock timeout|lock_not_available|canceling statement"):
+            with pg_engine.begin() as conn:
+                conn.execute(text("SET LOCAL lock_timeout = '1s'"))
+                conn.execute(text("UPDATE leg.proposicao SET titulo = titulo"))  # esbarra na linha de controle
     finally:
-        transacao.commit()
-        atualizacao.close()
-    escritor.join(timeout=15)
-    assert escritor_terminou.is_set()
-    assert _sujo_no_banco(pg_engine) is True  # a gravação posterior religou o sinalizador
-    assert _atualizar(pg_engine) is True
+        transacao.rollback()
+        segurando.close()
+        if iniciada:
+            atualizacao.join(timeout=60)
+    assert not erros and resultado == ["refeito"]
+    _marcar_sujo(pg_engine)  # com a atualização encerrada, uma gravação religa o sinalizador normalmente
+    assert _sujo_no_banco(pg_engine) is True
 
 
-def test_papel_de_leitura_atualiza_os_derivados_mas_o_publico_nao_executa(pg_engine):
+def test_dono_dos_derivados_nao_e_superusuario_e_o_publico_nao_executa(pg_engine):
+    with pg_engine.connect() as conn:
+        definidor, dono_super, acl = conn.execute(
+            text(
+                "SELECT p.prosecdef, r.rolsuper, p.proacl::text FROM pg_proc p JOIN pg_roles r ON r.oid = p.proowner "
+                "WHERE p.oid = 'leg.atualizar_derivados(boolean, text)'::regprocedure"
+            )
+        ).one()
+        donos = {
+            linha[0]
+            for linha in conn.execute(
+                text(
+                    "SELECT r.rolname FROM pg_class c JOIN pg_roles r ON r.oid = c.relowner "
+                    "WHERE c.oid IN ('leg.mv_autoria_pontuada_unica'::regclass, 'leg.mv_coautoria_par'::regclass, "
+                    "'leg.pontuacao_controle'::regclass)"
+                )
+            )
+        }
+    assert definidor is True and dono_super is False and donos == {"legisdata_derivados"}
+    assert "legisdata_leitura=X" in acl and "{=X" not in acl and ",=X" not in acl  # nada de EXECUTE para PUBLIC
+
+
+def test_papel_de_leitura_atualiza_os_derivados_mas_nao_escreve_direto(pg_engine):
     _marcar_sujo(pg_engine)
     with pg_engine.begin() as conn:
         conn.execute(text("SET LOCAL ROLE legisdata_leitura"))
-        assert conn.execute(text("SELECT leg.atualizar_derivados()")).scalar() is True
-    with pg_engine.connect() as conn:
-        definidor, acl = conn.execute(
-            text("SELECT prosecdef, proacl::text FROM pg_proc WHERE oid = 'leg.atualizar_derivados()'::regprocedure")
-        ).one()
-    assert definidor is True
-    assert "legisdata_leitura=X" in acl and "{=X" not in acl and ",=X" not in acl  # nada de EXECUTE para PUBLIC
-    # o papel de leitura continua sem poder escrever direto nas tabelas
+        assert conn.execute(text("SELECT sujo FROM leg.pontuacao_controle")).scalar() is True  # a API lê o sinalizador
+        assert conn.execute(text("SELECT leg.atualizar_derivados()")).scalar() == "refeito"
     with pg_engine.connect() as conn:
         conn.execute(text("SET ROLE legisdata_leitura"))
         with pytest.raises(Exception, match="permission denied"):
             conn.execute(text("UPDATE leg.pontuacao_controle SET sujo = false"))
+
+
+def test_garantir_atualizados_nao_toca_na_transacao_de_quem_chama(db, pg_engine):
+    """A atualização roda em conexão própria: nada pendente na sessão do chamador é confirmado."""
+    _marcar_sujo(pg_engine)
+    db.execute(text("INSERT INTO core.pessoa (nome_exibicao) VALUES ('Pendente')"))  # sem commit
+    assert garantir_atualizados(db) is True
+    db.rollback()
+    assert db.execute(text("SELECT count(*) FROM core.pessoa WHERE nome_exibicao = 'Pendente'")).scalar() == 0
+
+
+def test_derivado_em_dia_nao_usa_conexao_extra_do_pool(pg_engine):
+    """O sinalizador é lido na sessão do chamador: com tudo em dia, um pool de uma conexão basta."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    _atualizar(pg_engine)  # garante em dia
+    pequeno = create_engine(pg_engine.url, pool_size=1, max_overflow=0, pool_timeout=1)
+    try:
+        with Session(pequeno) as sessao:
+            sessao.execute(text("SELECT 1"))  # a sessão segura a única conexão
+            assert garantir_atualizados(sessao) is False
+            assert pequeno.pool.checkedout() == 1
+    finally:
+        pequeno.dispose()
+
+
+def test_derivado_velho_atualiza_em_pool_proprio_sem_esgotar_o_da_requisicao(pg_engine):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    _marcar_sujo(pg_engine)
+    pequeno = create_engine(pg_engine.url, pool_size=1, max_overflow=0, pool_timeout=1)
+    try:
+        with Session(pequeno) as sessao:
+            sessao.execute(text("SELECT 1"))
+            assert garantir_atualizados(sessao) is True  # com o pool da requisição todo ocupado, não trava nem falha
+            assert pequeno.pool.checkedout() == 1
+    finally:
+        pequeno.dispose()
+
+
+def test_falha_na_atualizacao_vira_aviso_e_a_leitura_segue(db, pg_engine, monkeypatch, caplog):
+    from app.services import derivados_service
+    from sqlalchemy.exc import OperationalError
+
+    _marcar_sujo(pg_engine)
+
+    class Quebrado:
+        def begin(self):
+            raise OperationalError("SELECT", {}, Exception("sem conexão"))
+
+    monkeypatch.setattr(derivados_service, "_motor_da_atualizacao", lambda motor: Quebrado())
+    with caplog.at_level("WARNING"):
+        assert garantir_atualizados(db) is False
+    assert any("não atualizados" in r.getMessage() for r in caplog.records)
+
+
+def test_quem_le_um_derivado_chama_garantir_atualizados():
+    """Esquecer a chamada serviria dado velho: toda FUNÇÃO de `app` que lê um derivado tem de atualizá-lo antes."""
+    import ast
+
+    leitores = []
+    for arquivo in APP.rglob("*.py"):
+        if arquivo.name == "derivados_service.py":
+            continue
+        fonte = arquivo.read_text(encoding="utf-8")
+        if "leg.mv_" not in fonte:
+            continue
+        arvore = ast.parse(fonte)
+        constantes = {  # SQL guardado em constante de módulo conta para a função que a usa
+            no.targets[0].id
+            for no in arvore.body
+            if isinstance(no, ast.Assign)
+            and isinstance(no.targets[0], ast.Name)
+            and "leg.mv_" in (ast.get_source_segment(fonte, no) or "")
+        }
+        for funcao in (n for n in ast.walk(arvore) if isinstance(n, ast.FunctionDef)):
+            corpo = ast.get_source_segment(fonte, funcao) or ""
+            if "leg.mv_" in corpo or any(re.search(rf"\b{c}\b", corpo) for c in constantes):
+                leitores.append((arquivo.name, funcao.name, "garantir_atualizados(" in corpo))
+    assert leitores, "nenhum leitor encontrado: o teste deixou de proteger"
+    assert [(a, f) for a, f, chama in leitores if not chama] == []
+
+
+def _sujo_depois(client, pg_engine, caminho, **params):
+    _marcar_sujo(pg_engine)
+    assert _sujo_no_banco(pg_engine) is True
+    assert client.get(caminho, params=params).status_code == 200
+    return _sujo_no_banco(pg_engine)
+
+
+@pytest.mark.parametrize(
+    "caminho",
+    [
+        f"{BASE}/legislative/ranking/authors",
+        f"{BASE}/attendance/ranking/politicians",
+        f"{BASE}/legislative/network",
+    ],
+)
+def test_cada_tela_que_le_derivado_o_atualiza_antes(client, seed, pg_engine, caminho):
+    client.get(f"{BASE}/politicians")
+    assert _sujo_depois(client, pg_engine, caminho) is False
+
+
+def test_dossie_do_politico_atualiza_os_derivados_antes_de_ler(client, seed, pg_engine):
+    client.get(f"{BASE}/politicians")
+    _marcar_sujo(pg_engine)
+    assert client.get(f"{BASE}/politicians/{seed.fulano.id}").status_code == 200
+    assert _sujo_no_banco(pg_engine) is False

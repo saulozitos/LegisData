@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 from app.core.names import chave_sigla
 from app.models.analytics import LogExecucaoCron
 from app.models.enums import SituacaoMandatoEnum
+from app.services.cron_log_service import descrever_falha
 from app.services.party_catalog_service import DEFAULT_PARTY_COLOR
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
@@ -559,6 +560,7 @@ def run_daily_cron_job(db: Session) -> Dict[str, Any]:
     t_start = datetime.now(timezone.utc)
     status = "SUCESSO"
     err_msg: Optional[str] = None
+    err_registrado: Optional[str] = None
     registros_atualizados = 0
 
     try:
@@ -573,6 +575,7 @@ def run_daily_cron_job(db: Session) -> Dict[str, Any]:
     except Exception as e:
         status = "FALHA"
         err_msg = str(e)
+        err_registrado = descrever_falha(None, e)
         logger.error("Erro no processamento do CRON Diário: %s", e, exc_info=True)
 
     t_end = datetime.now(timezone.utc)
@@ -582,7 +585,7 @@ def run_daily_cron_job(db: Session) -> Dict[str, Any]:
         status_execucao=status,
         registros_atualizados=registros_atualizados,
         tempo_processamento_segundos=tempo_segundos,
-        erro_mensagem=err_msg,
+        erro_mensagem=err_registrado,
         etapa="CONSOLIDACAO_DIARIA_COMPLETA",
     )
     db.add(log_entry)

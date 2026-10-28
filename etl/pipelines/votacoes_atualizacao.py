@@ -44,7 +44,7 @@ def atualizar(ano_inicio: Optional[int] = None, force: bool = False, sincronizar
         sessao.commit()
         ponte = merge_staging(sessao) if sincronizar else None
     if sincronizar:
-        posprocessar_carga(engine)  # derivados e ANALYZE; sem fusão, quem chamou os roda depois
+        posprocessar_carga(engine)  # sem fusão, quem chamou (o cron diário) roda `posprocessar_carga` depois
     resumo = {"anos": anos, "extracao": {k: v for k, v in extracao.items() if k != "parlamentares_historicos"}}
     resumo["carga"] = contadores
     resumo["ponte"] = ponte

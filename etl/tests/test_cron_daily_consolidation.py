@@ -4,7 +4,8 @@ from unittest.mock import MagicMock, patch
 
 from etl.pipelines.cron_daily_consolidation import execute_cron_pipeline
 
-ETAPAS_EXTERNAS = ("votacoes", "ponte", "presenca", "economia", "financas", "ranking", "grafo")
+ETAPAS_EXTERNAS = ("votacoes", "ponte", "presenca", "economia", "financas", "pos", "ranking", "grafo")
+ORDEM = ["votacoes", "ponte", "presenca", "economia", "financas", "pos", "ranking", "grafo"]
 
 
 def _executar(efeitos=None, retornos=None, autorias=5):
@@ -20,6 +21,7 @@ def _executar(efeitos=None, retornos=None, autorias=5):
         "presenca": {},
         "economia": {"series": 28},
         "financas": {"carga": {}},
+        "pos": None,
         "ranking": {"ranking": [1]},
         "grafo": {"nodes": [], "edges": []},
     }
@@ -29,6 +31,7 @@ def _executar(efeitos=None, retornos=None, autorias=5):
         "presenca": "etl.pipelines.presenca_atualizacao.atualizar",
         "economia": "etl.pipelines.economia_atualizacao.atualizar",
         "financas": "etl.pipelines.financas_atualizacao.atualizar",
+        "pos": "etl.pipelines.cron_daily_consolidation.posprocessar_carga",  # nunca o ANALYZE e o refresh de verdade
         "ranking": "etl.pipelines.cron_daily_consolidation.calculate_party_ippm_ranking",
         "grafo": "etl.pipelines.cron_daily_consolidation.build_coauthorship_network",
     }
@@ -68,11 +71,26 @@ def test_execute_cron_pipeline():
     assert mock_db.add.called and mock_db.commit.called and mock_db.close.called
 
 
+def test_posprocessamento_roda_uma_vez_depois_de_todas_as_cargas_e_antes_do_ranking():
+    _, ordem, _ = _executar()
+
+    nomes = [nome for nome, _ in ordem]
+    assert nomes.count("pos") == 1
+    assert nomes.index("pos") > nomes.index("financas") and nomes.index("pos") < nomes.index("ranking")
+
+
+def test_falha_do_posprocessamento_vira_falha_critica_registrada_sem_texto_da_excecao():
+    resultado, _, mock_db = _executar(efeitos={"pos": RuntimeError("host 10.0.0.5 recusou")})
+
+    assert resultado["status"] == "FALHA" and "10.0.0.5" in resultado["erro_mensagem"]  # o detalhe vai a quem roda
+    assert mock_db.add.call_args.args[0].erro_mensagem == "RuntimeError"  # e não à tabela pública
+
+
 def test_votacoes_carregam_antes_da_ponte_sem_sincronizar_e_as_financas_vem_antes_das_etapas_2_a_4():
     resultado, ordem, _ = _executar()
 
     # a ponte roda uma única vez (as votações não sincronizam), a presença vem depois dela e as finanças (1d) antes do IPPM
-    assert [nome for nome, _ in ordem] == ["votacoes", "ponte", "presenca", "economia", "financas", "ranking", "grafo"]
+    assert [nome for nome, _ in ordem] == ORDEM
     assert ordem[0][1] == {"sincronizar": False}
     assert resultado["status"] == "SUCESSO"
 
@@ -82,7 +100,7 @@ def test_falha_na_presenca_marca_falha_mas_roda_as_demais_etapas():
 
     assert resultado["status"] == "FALHA"
     assert "presença: portal fora do ar" in resultado["erro_mensagem"]
-    assert [nome for nome, _ in ordem] == ["votacoes", "ponte", "presenca", "economia", "financas", "ranking", "grafo"]
+    assert [nome for nome, _ in ordem] == ORDEM
     assert resultado["registros_atualizados"] == 10 + 5 + 1  # as demais etapas rodaram
 
 
@@ -91,18 +109,23 @@ def test_falha_na_etapa_de_votacoes_marca_falha_mas_as_demais_rodam():
 
     assert resultado["status"] == "FALHA"
     assert "votações: senado fora do ar" in resultado["erro_mensagem"]
-    assert [nome for nome, _ in ordem] == ["votacoes", "ponte", "presenca", "economia", "financas", "ranking", "grafo"]
+    assert [nome for nome, _ in ordem] == ORDEM
     assert resultado["registros_atualizados"] == 10 + 5 + 1  # mandatos + autorias + partidos (+0 arestas)
     registrado = mock_db.add.call_args.args[0]
     assert registrado.status_execucao == "FALHA"
-    assert "votações: senado fora do ar" in registrado.erro_mensagem
+    assert registrado.erro_mensagem == "votações: RuntimeError"  # só etapa e classe: o texto da exceção fica no log
+    assert "senado" not in registrado.erro_mensagem
 
 
 def test_falhas_de_votacoes_e_presenca_ficam_ambas_registradas():
     resultado, _, mock_db = _executar(efeitos={"votacoes": RuntimeError("a"), "presenca": RuntimeError("b")})
 
     assert resultado["erro_mensagem"] == "votações: a; presença: b"
-    assert mock_db.add.call_args.args[0].status_execucao == "FALHA"
+    registrado = mock_db.add.call_args.args[0]
+    assert (
+        registrado.status_execucao == "FALHA"
+        and registrado.erro_mensagem == "votações: RuntimeError; presença: RuntimeError"
+    )
 
 
 def test_falha_na_economia_marca_falha_mas_as_etapas_seguintes_rodam():
@@ -110,7 +133,12 @@ def test_falha_na_economia_marca_falha_mas_as_etapas_seguintes_rodam():
 
     assert resultado["status"] == "FALHA" and resultado["erro_mensagem"] == "economia: BCB fora do ar"
     assert resultado["registros_atualizados"] == 10 + 0 + 1 + 0  # mandatos + autorias + partidos + arestas
-    assert [nome for nome, _ in ordem][-3:] == ["financas", "ranking", "grafo"]  # as seguintes à economia rodaram
+    assert [nome for nome, _ in ordem][-4:] == [
+        "financas",
+        "pos",
+        "ranking",
+        "grafo",
+    ]  # as seguintes à economia rodaram
 
 
 def test_falha_na_atualizacao_de_financas_marca_falha_mas_as_demais_etapas_rodam():

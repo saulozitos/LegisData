@@ -133,3 +133,16 @@ O ETL ainda preenche as tabelas de `stg` por ORM (`db_loader.py`) e as funções
 5. [`docs/SERIES_CURADAS_E_FONTES.md`](SERIES_CURADAS_E_FONTES.md): Fontes oficiais e justificativas para séries históricas e dados institucionais.
 6. [`docs/EMENDAS_AMBIGUAS.md`](EMENDAS_AMBIGUAS.md): Catálogo detalhado das 570 emendas de autores homônimos.
 7. [`docs/EMENDAS_AUTORES_NAO_ENCONTRADOS.md`](EMENDAS_AUTORES_NAO_ENCONTRADOS.md): Catálogo detalhado das 1.077 emendas de autores de legislaturas anteriores.
+
+## Premissa da legenda MISSÃO (migração 0036)
+
+A API apagava, a cada subida, mandatos de legendas sem registro no TSE e tratava a MISSÃO assim. A 0036 tirou essa
+limpeza: o Partido Missão tem registro no TSE, o banco de desenvolvimento não tem mandato nem filiação dessa sigla e o ETL
+a carrega como qualquer outra legenda. A premissa vale para o banco de hoje. Se uma fonte voltar a atribuir a sigla por
+engano, o mandato entra em `stg.mandatos` e segue para `core.mandato`; confira `core.mandato` por partido depois da
+primeira carga completa e, se aparecer, a regra volta como validação do ETL (não como limpeza na subida da API).
+
+## Funções `SECURITY DEFINER` dos derivados
+
+O dono é o papel `legisdata_derivados` (sem superusuário), não o dono da migração. O banco de produção usa o
+`POSTGRES_USER` da imagem oficial, que é superusuário, como dono das demais tabelas; isso não muda aqui.

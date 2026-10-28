@@ -19,7 +19,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base, TimeStampedModel
+from .base import StagingBase, TimeStampedModel
 from .enums import (
     CargoPoliticoEnum,
     EspectroPoliticoEnum,
@@ -103,7 +103,7 @@ class PoliticalParty(TimeStampedModel):
     )
 
 
-class PartyAffiliation(Base):
+class PartyAffiliation(StagingBase):
     __tablename__ = "filiacoes_partidarias"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -198,7 +198,7 @@ class Mandate(TimeStampedModel):
     )
 
 
-class CabinetMember(Base):
+class CabinetMember(StagingBase):
     __tablename__ = "membros_gabinete"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

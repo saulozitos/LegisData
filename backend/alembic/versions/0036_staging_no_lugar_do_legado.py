@@ -191,3 +191,6 @@ def downgrade() -> None:
         """
     )
     op.execute("DROP TABLE etl.log_execucao_cron")
+    # o papel de leitura fica (pode ter privilégios em outros bancos do cluster), mas perde o que ganhou aqui, inclusive
+    # os privilégios padrão sobre tabelas futuras
+    op.execute("DROP OWNED BY legisdata_leitura")

@@ -8,6 +8,7 @@ from app.schemas.parties import (
     IPPMRankingResponse,
     PartyMandateTimelineResponse,
 )
+from app.services.cron_log_service import mensagem_publica
 from app.services.party_catalog_service import list_party_catalog
 from app.services.party_evolution_service import calculate_party_ippm_evolution
 from app.services.party_productivity_service import (
@@ -68,20 +69,6 @@ def get_party_timeline(sigla: str, db: Session = Depends(get_db)):
     isolando licenças médicas, afastamentos para ministérios e suplências ativas.
     """
     return get_party_mandate_timeline(partido_sigla=sigla, db=db)
-
-
-MAX_MENSAGEM_PUBLICA = 160
-
-
-def mensagem_publica(mensagem: Optional[str]) -> Optional[str]:
-    """
-    A mensagem de erro do cron para quem consulta a rota pública: só a primeira linha, sem o trecho `[SQL: ...]` que o
-    SQLAlchemy anexa (texto da consulta e do esquema) e com tamanho limitado. O detalhe completo fica no log do servidor.
-    """
-    if not mensagem or not mensagem.strip():
-        return None
-    primeira = mensagem.strip().splitlines()[0].split("[SQL:")[0].strip()
-    return (primeira[: MAX_MENSAGEM_PUBLICA - 1] + "…") if len(primeira) > MAX_MENSAGEM_PUBLICA else primeira or None
 
 
 @router.get("/cron/logs", response_model=List[CronLogItem])

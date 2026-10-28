@@ -234,7 +234,8 @@ def test_migracao_0031_desce_e_sobe_de_novo(pg_engine):
     """O downgrade apaga o schema `fin` e a função de busca na ordem certa, e o upgrade recria tudo idêntico.
 
     As revisões 0034 e 0035 não têm volta, então o `alembic downgrade 0030` não chega aqui: roda-se o `downgrade` e o
-    `upgrade` das revisões 0033 a 0031 dentro de uma transação que é desfeita no fim (o banco de teste não muda).
+    `upgrade` das revisões 0033 a 0031 dentro de uma transação que é desfeita no fim (o banco de teste não muda). Ele roda
+    sobre o schema do head, já com 0034 a 0037: prova que o par é simétrico, não o encadeamento do Alembic.
     """
     from alembic.config import Config
     from alembic.migration import MigrationContext

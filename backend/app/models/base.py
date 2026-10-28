@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
-class Base(DeclarativeBase):
+class StagingBase(DeclarativeBase):
     """Tabelas de entrada do ETL (schema `stg`): o que o ETL grava e as funções `etl.merge_*` projetam em `core`/`leg`."""
 
     metadata = MetaData(schema="stg")
@@ -18,7 +18,7 @@ class MigratedBase(DeclarativeBase):
     pass
 
 
-class TimeStampedModel(Base):
+class TimeStampedModel(StagingBase):
     """Abstract model adding created_at and updated_at timestamps."""
 
     __abstract__ = True

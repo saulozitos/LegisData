@@ -125,3 +125,9 @@ Siga o roteiro que funcionou nas entregas 4a e 4b:
 - Novas fontes de dados.
 - Regras de negócio novas (pesos do IALP, classificação de proposições).
 - Trocar o `DataJudClient` para o `HttpClient`: entra no pacote B só se o conector do DataJud for criado, e deve seguir a regra registrada em `.claude/rules/etl.md`.
+
+## Modelos do staging dentro do pacote da API
+
+`StagingBase` (`backend/app/models/base.py`) e os modelos `stg` (`politician.py`, `legislative.py`) só servem ao ETL e aos
+testes, mas moram em `app.models` e são exportados por ele, embora a API nunca leia o `stg`. Quando o `db_loader` sair, os
+modelos `stg` saem junto; até lá, não importe `StagingBase` nem esses modelos em código da API.

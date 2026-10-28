@@ -477,15 +477,18 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
 
 
 def _posprocessar() -> None:
-    """Uma vez, no fim da esteira, se alguma etapa gravou: refaz os derivados do legislativo e roda o ANALYZE."""
-    from etl.utils.bootstrap import ensure_backend_on_path
+    """Uma vez, no fim da esteira, se alguma etapa gravou: o ANALYZE e os derivados do legislativo. Nunca derruba a esteira."""
+    try:
+        from etl.utils.bootstrap import ensure_backend_on_path
 
-    ensure_backend_on_path()
-    from app.core.database import engine
+        ensure_backend_on_path()
+        from app.core.database import engine
 
-    from etl.utils.manutencao import posprocessar_carga
+        from etl.utils.manutencao import posprocessar_carga
 
-    posprocessar_carga(engine)
+        posprocessar_carga(engine)
+    except Exception as exc:  # noqa: BLE001 - as etapas já terminaram; o leitor refaz o que faltar
+        logger.warning("Pós-processamento da carga não executado: %s", exc)
 
 
 def executar(etapas: List[Etapa], modo_completo: bool) -> Dict[str, str]:
@@ -502,10 +505,10 @@ def executar(etapas: List[Etapa], modo_completo: bool) -> Dict[str, str]:
             continue
 
         inicio = time.time()
+        gravou = gravou or etapa.grava_banco  # uma etapa que confirma lotes e falha depois também deixou o banco mudado
         try:
             etapa.executar()
             resultados[etapa.chave] = f"OK ({time.time() - inicio:.1f}s)"
-            gravou = gravou or etapa.grava_banco
         except Exception as exc:  # noqa: BLE001 — a etapa é isolada de propósito; o erro é registrado e relatado
             logger.error("Etapa '%s' falhou: %s", etapa.chave, exc, exc_info=True)
             resultados[etapa.chave] = f"FALHOU: {exc}"

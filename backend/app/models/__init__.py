@@ -1,7 +1,7 @@
 from .analytics import (
     LogExecucaoCron,
 )
-from .base import Base, MigratedBase, TimeStampedModel
+from .base import MigratedBase, StagingBase, TimeStampedModel
 from .core import Entidade, Mandato, Midia, Partido, Pessoa
 from .leg import Autoria, Casa, Orientacao, Proposicao, Votacao, Voto
 from .legislative import (
@@ -36,7 +36,7 @@ from .politician import (
 )
 
 __all__ = [
-    "Base",
+    "StagingBase",
     "MigratedBase",
     "TimeStampedModel",
     "Politician",

@@ -15,7 +15,6 @@ from app.core.config import settings  # noqa: E402
 from app.core.database import get_db  # noqa: E402
 from app.core.migrations import upgrade_schema  # noqa: E402
 from app.models import (  # noqa: E402
-    Base,
     CargoPoliticoEnum,
     CasaLegislativaEnum,
     Mandate,
@@ -24,6 +23,7 @@ from app.models import (  # noqa: E402
     PoliticalParty,
     Politician,
     Proposition,
+    StagingBase,
     StatusMandatoEnum,
     TipoProposicaoEnum,
     VotingSession,
@@ -111,7 +111,7 @@ def _truncate_sql(pg_engine):
                 )
             )
         ]
-    legacy = [f'stg."{t.name}"' for t in Base.metadata.sorted_tables if t.schema == "stg"]
+    legacy = [f'stg."{t.name}"' for t in StagingBase.metadata.sorted_tables if t.schema == "stg"]
     return "TRUNCATE " + ", ".join(legacy + core + list(_ETL_DATA_TABLES)) + " RESTART IDENTITY CASCADE"
 
 

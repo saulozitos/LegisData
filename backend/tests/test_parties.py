@@ -208,18 +208,32 @@ def test_cron_consolidation_and_logs(client, db, seed):
     assert logs_data[0]["status_execucao"] == "SUCESSO"
 
 
-def test_mensagem_de_erro_do_cron_nao_expoe_sql_nem_detalhe_interno():
-    from app.api.v1.parties import MAX_MENSAGEM_PUBLICA, mensagem_publica
+def test_cron_logs_so_repete_etapa_e_classe_da_excecao(client, db):
+    from app.models.analytics import LogExecucaoCron
 
-    bruto = (
-        '(psycopg2.errors.UndefinedTable) relation "leg.segredo" does not exist\n'
-        "LINE 1: SELECT * FROM leg.segredo\n[SQL: SELECT * FROM leg.segredo WHERE x = %(x)s]\n[parameters: {'x': 1}]"
+    db.add_all(
+        [
+            LogExecucaoCron(
+                status_execucao="FALHA",
+                erro_mensagem='connection to server at "10.0.0.5", port 5432 failed: FATAL: password for user "app"',
+                etapa="CONSOLIDACAO_DIARIA_COMPLETA",
+            ),
+            LogExecucaoCron(
+                status_execucao="FALHA",
+                erro_mensagem="votações: OperationalError; presença: HTTPError",
+                etapa="CONSOLIDACAO_DIARIA_COMPLETA",
+            ),
+        ]
     )
-    publica = mensagem_publica(bruto)
-    assert "[SQL" not in publica and "parameters" not in publica and "\n" not in publica
-    assert publica.startswith("(psycopg2.errors.UndefinedTable)")
-    assert mensagem_publica(None) is None and mensagem_publica("   ") is None
-    assert len(mensagem_publica("x" * 1000)) == MAX_MENSAGEM_PUBLICA
+    db.commit()
+    corpo = client.get("/api/v1/parties/cron/logs")
+    mensagens = {item["erro_mensagem"] for item in corpo.json()}
+    assert mensagens == {
+        "votações: OperationalError; presença: HTTPError",
+        "Falha registrada; o detalhe está no log do servidor.",
+    }
+    for vazamento in ("10.0.0.5", "5432", "password", '"app"'):
+        assert vazamento not in corpo.text
 
 
 def test_service_sync_mandate_history_and_active_seats(db, seed):

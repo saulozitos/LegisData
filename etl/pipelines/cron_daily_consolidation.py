@@ -16,12 +16,15 @@ from typing import Any, Dict, Optional
 
 from app.core.database import SessionLocal
 from app.models.analytics import LogExecucaoCron
+from app.services.cron_log_service import descrever_falha
 from app.services.legislative_scoring import build_coauthorship_network
 from app.services.party_productivity_service import (
     calculate_party_ippm_ranking,
     sync_mandate_history,
 )
 from sqlalchemy import text
+
+from etl.utils.manutencao import posprocessar_carga
 
 logger = logging.getLogger("cron_daily_consolidation")
 
@@ -34,6 +37,8 @@ def execute_cron_pipeline() -> Dict[str, Any]:
     err_msg: Optional[str] = None
     registros_totais = 0
     erros_etapas: list = []
+    erros_registrados: list = []  # só etapa e classe da exceção: é o que vai para a tabela pública de logs
+    err_registrado: Optional[str] = None
 
     try:
         logger.info("=== INICIANDO CRON JOB DE CONSOLIDAÇÃO DIÁRIA ===")
@@ -48,6 +53,7 @@ def execute_cron_pipeline() -> Dict[str, Any]:
             logger.info(f"Etapa 1a concluída: {votacoes.get('carga')}")
         except Exception as e:
             erros_etapas.append(f"votações: {e}")
+            erros_registrados.append(descrever_falha("votações", e))
             logger.error(f"Falha na atualização de votações: {e}", exc_info=True)
 
         # Etapa 1: Sincronização de Entidades Base e Mandatos Dinâmicos
@@ -67,6 +73,7 @@ def execute_cron_pipeline() -> Dict[str, Any]:
             logger.info(f"Etapa 1b concluída: {presenca}")
         except Exception as e:
             erros_etapas.append(f"presença: {e}")
+            erros_registrados.append(descrever_falha("presença", e))
             logger.error(f"Falha na atualização de presença: {e}", exc_info=True)
 
         # Etapa 1c: séries econômicas (BCB, IBGE, INPE, IPEA) e mandatos presidenciais; não bloqueia as demais etapas
@@ -80,6 +87,7 @@ def execute_cron_pipeline() -> Dict[str, Any]:
             logger.info(f"Etapa 1c concluída: {economia}")
         except Exception as e:
             erros_etapas.append(f"economia: {e}")
+            erros_registrados.append(descrever_falha("economia", e))
             logger.error(f"Falha na atualização das séries econômicas: {e}", exc_info=True)
 
         # Etapa 1d: CEAP e emendas (extração incremental por ano e recarga do `fin`); não bloqueia as demais etapas
@@ -93,7 +101,13 @@ def execute_cron_pipeline() -> Dict[str, Any]:
             logger.info(f"Etapa 1d concluída: {financas}")
         except Exception as e:
             erros_etapas.append(f"finanças: {e}")
+            erros_registrados.append(descrever_falha("finanças", e))
             logger.error(f"Falha na atualização de CEAP e emendas: {e}", exc_info=True)
+
+        # Depois de todas as cargas: ANALYZE e derivados do legislativo, para a primeira leitura do dia não pagar o refresh
+        from app.core.database import engine as engine_posprocessamento
+
+        posprocessar_carga(engine_posprocessamento)
 
         # Etapa 2: Ingestão de Proposições e Autores
         logger.info("Etapa 2/4: Verificando autoria e integridade de proposições...")
@@ -119,11 +133,13 @@ def execute_cron_pipeline() -> Dict[str, Any]:
     except Exception as e:
         status = "FALHA"
         err_msg = str(e)
+        err_registrado = descrever_falha(None, e)
         logger.error(f"Falha crítica no CRON Job diário: {e}", exc_info=True)
 
     if erros_etapas and status == "SUCESSO":
         status = "FALHA"
         err_msg = "; ".join(erros_etapas)
+        err_registrado = "; ".join(erros_registrados)
 
     t_end = datetime.now(timezone.utc)
     tempo_segundos = max(0, int((t_end - t_start).total_seconds()))
@@ -133,7 +149,7 @@ def execute_cron_pipeline() -> Dict[str, Any]:
             status_execucao=status,
             registros_atualizados=registros_totais,
             tempo_processamento_segundos=tempo_segundos,
-            erro_mensagem=err_msg,
+            erro_mensagem=err_registrado,
             etapa="CONSOLIDACAO_DIARIA_COMPLETA",
         )
         db.add(log_entry)

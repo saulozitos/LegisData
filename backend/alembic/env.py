@@ -4,11 +4,11 @@ import os
 
 from alembic import context
 from app.core.config import settings
-from app.models import Base
+from app.models import StagingBase
 from sqlalchemy import create_engine, pool, text
 
 config = context.config
-target_metadata = Base.metadata
+target_metadata = StagingBase.metadata
 
 # Mesmo identificador usado pela migração legada, para que workers concorrentes esperem uns pelos outros
 ALEMBIC_ADVISORY_LOCK_ID = 7_450_001
