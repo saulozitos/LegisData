@@ -20,7 +20,8 @@ import logging
 import threading
 from typing import Dict
 
-from sqlalchemy import create_engine, text
+from app.core.database import criar_engine
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -39,12 +40,11 @@ def _motor_da_atualizacao(motor_principal: Engine) -> Engine:
     chave = motor_principal.url.render_as_string(hide_password=False)
     with _trava_dos_motores:
         if chave not in _motores:
-            _motores[chave] = create_engine(
-                motor_principal.url,
+            _motores[chave] = criar_engine(
+                motor_principal.url.render_as_string(hide_password=False),
                 pool_size=1,
                 max_overflow=0,
                 pool_timeout=ESPERA_POR_CONEXAO_SEGUNDOS,
-                pool_pre_ping=True,
             )
         return _motores[chave]
 
@@ -54,14 +54,29 @@ def derivados_velhos(db: Session) -> bool:
     return bool(db.execute(text("SELECT coalesce((SELECT sujo FROM leg.pontuacao_controle), true)")).scalar())
 
 
+def descartar_motores() -> None:
+    """Fecha os pools dedicados (os testes o chamam para não carregar conexões de um teste para o outro)."""
+    with _trava_dos_motores:
+        for motor in _motores.values():
+            motor.dispose()
+        _motores.clear()
+
+
 def garantir_atualizados(db: Session) -> bool:
     """Refaz os derivados se estiverem velhos. Devolve True só quando refez; nunca levanta por falha de atualização."""
     try:
         if not derivados_velhos(db):
             return False
+    except SQLAlchemyError as exc:
+        # a leitura do sinalizador falhou na sessão do chamador: sem desfazer, a próxima consulta dele levantaria
+        # PendingRollbackError
+        db.rollback()
+        logger.warning("Sinalizador dos derivados ilegível; a leitura segue com a visão como está: %s", exc)
+        return False
+    try:
         motor = _motor_da_atualizacao(db.get_bind().engine)
         with motor.begin() as conexao:
-            return conexao.execute(text("SELECT leg.atualizar_derivados()")).scalar() == "refeito"
+            return conexao.execute(text("SELECT leg.atualizar_derivados_leitura()")).scalar() == "refeito"
     except SQLAlchemyError as exc:
         logger.warning("Derivados do legislativo não atualizados; a leitura segue com a visão como está: %s", exc)
         return False

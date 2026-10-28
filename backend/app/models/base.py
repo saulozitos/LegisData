@@ -18,8 +18,8 @@ class MigratedBase(DeclarativeBase):
     pass
 
 
-class TimeStampedModel(StagingBase):
-    """Abstract model adding created_at and updated_at timestamps."""
+class StagingTimeStampedModel(StagingBase):
+    """Abstract staging model (schema `stg`) adding created_at and updated_at timestamps."""
 
     __abstract__ = True
 

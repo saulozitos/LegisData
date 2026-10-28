@@ -17,7 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import StagingBase, TimeStampedModel
+from .base import StagingBase, StagingTimeStampedModel
 from .enums import (
     CasaLegislativaEnum,
     StatusTramitacaoEnum,
@@ -29,7 +29,7 @@ from .enums import (
 )
 
 
-class Proposition(TimeStampedModel):
+class Proposition(StagingTimeStampedModel):
     __tablename__ = "proposicoes"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

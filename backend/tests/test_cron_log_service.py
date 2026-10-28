@@ -1,7 +1,7 @@
 """Mensagens de falha do cron: o que se registra e o que a rota pública repete."""
 
 import pytest
-from app.services.cron_log_service import MENSAGEM_GENERICA, descrever_falha, mensagem_publica
+from app.services.cron_log_service import ETAPAS_CONHECIDAS, MENSAGEM_GENERICA, descrever_falha, mensagem_publica
 
 
 class ErroDeTeste(Exception):
@@ -31,7 +31,7 @@ def test_formato_do_registro_passa_inalterado(registrada):
     "crua",
     [
         'connection to server at "10.0.0.5", port 5432 failed',
-        "/srv/legisdata/etl/data/arquivo.json não encontrado",
+        "/caminho/qualquer/arquivo.json não encontrado",
         '(psycopg2.errors.UndefinedTable) relation "leg.segredo" does not exist\n[SQL: SELECT 1]',
         "votações: senado fora do ar",
         "etapa desconhecida: OperationalError",
@@ -45,3 +45,14 @@ def test_qualquer_outro_texto_vira_a_mensagem_generica(crua):
 
 def test_vazio_e_nulo_nao_viram_mensagem():
     assert mensagem_publica(None) is None and mensagem_publica("") is None and mensagem_publica("  \n ") is None
+
+
+def test_etapa_fora_do_catalogo_nao_pode_ser_registrada():
+    with pytest.raises(ValueError):
+        descrever_falha("processos", ErroDeTeste("x"))
+
+
+def test_toda_etapa_do_catalogo_passa_na_rota_publica():
+    for etapa in ETAPAS_CONHECIDAS:
+        registrada = descrever_falha(etapa, ErroDeTeste("x"))
+        assert mensagem_publica(registrada) == registrada

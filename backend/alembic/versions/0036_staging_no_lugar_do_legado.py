@@ -125,8 +125,14 @@ def upgrade() -> None:
                 INSERT INTO etl.log_execucao_cron
                     (id, "dataExecucao", "statusExecucao", "registrosAtualizados", "tempoProcessamentoSegundos",
                      "erroMensagem", etapa)
+                -- o texto cru da exceção (host, caminho, SQL) não entra na tabela que o papel de leitura enxerga: só
+                -- sobrevive o formato `etapa: Classe` que o cron passou a registrar
                 SELECT id, "dataExecucao", "statusExecucao", "registrosAtualizados", "tempoProcessamentoSegundos",
-                       "erroMensagem", etapa
+                       CASE WHEN "erroMensagem" IS NULL THEN NULL
+                            WHEN "erroMensagem" ~ '^([a-zçãõáéíóúê]+: )?[A-Z][A-Za-z0-9_]*(; ([a-zçãõáéíóúê]+: )?[A-Z][A-Za-z0-9_]*)*$'
+                                THEN "erroMensagem"
+                            ELSE 'Falha registrada; o detalhe está no log do servidor.' END,
+                       etapa
                 FROM public.log_execucao_cron ON CONFLICT (id) DO NOTHING;
                 DROP TABLE public.log_execucao_cron;
             END IF;

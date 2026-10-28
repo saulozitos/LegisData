@@ -44,6 +44,67 @@ def test_verificar_backup_restaura_num_banco_descartavel_e_nunca_toca_no_de_prod
     assert _posicao(texto, r"REVOKE CONNECT ON DATABASE") < _posicao(texto, r"pg_restore ")
 
 
+def _rodar_verificar_backup(tmp_path, dump, pessoas="3", revisao="0037"):
+    """Roda o script com um `docker` falso que registra as chamadas e responde às duas consultas da conferência."""
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    chamadas = tmp_path / "chamadas.log"
+    falso = bin_ / "docker"
+    falso.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "$*" >>"$CHAMADAS"\n'
+        'case "$*" in\n'
+        '  *alembic_version*) echo "$REVISAO" ;;\n'
+        '  *core.pessoa*) echo "$PESSOAS" ;;\n'
+        "esac\n",
+        encoding="utf-8",
+    )
+    falso.chmod(0o755)
+    raiz = tmp_path / "projeto"
+    raiz.mkdir()
+    (raiz / ".env").write_text("POSTGRES_USER=usuario_de_teste\n", encoding="utf-8")
+    ambiente = {
+        "PATH": f"{bin_}:{os.environ['PATH']}",
+        "HOME": str(tmp_path),
+        "LEGISDATA_DIR": str(raiz),
+        "BACKUP_DIR": str(tmp_path / "sem_backups"),
+        "CHAMADAS": str(chamadas),
+        "PESSOAS": pessoas,
+        "REVISAO": revisao,
+    }
+    argumentos = ["bash", str(RAIZ / "scripts" / "deploy" / "verificar_backup.sh")] + ([str(dump)] if dump else [])
+    resultado = subprocess.run(argumentos, capture_output=True, text=True, env=ambiente, check=False)
+    return resultado, chamadas.read_text(encoding="utf-8") if chamadas.exists() else ""
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash indisponível")
+def test_verificar_backup_sem_dump_sai_com_erro_sem_criar_banco(tmp_path):
+    resultado, chamadas = _rodar_verificar_backup(tmp_path, None)
+    assert resultado.returncode == 1 and "nenhum backup encontrado" in resultado.stdout
+    assert "createdb" not in chamadas
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash indisponível")
+def test_verificar_backup_ok_restaura_e_apaga_o_banco_descartavel(tmp_path):
+    dump = tmp_path / "legisdata_x.dump"
+    dump.write_bytes(b"dump")
+    resultado, chamadas = _rodar_verificar_backup(tmp_path, dump)
+    assert resultado.returncode == 0 and "OK: revisão 0037, 3 pessoas" in resultado.stdout
+    linhas = chamadas.splitlines()
+    assert any("createdb" in linha for linha in linhas) and any("pg_restore" in linha for linha in linhas)
+    assert "dropdb" in linhas[-1]  # o descartável sai do ar no fim
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash indisponível")
+@pytest.mark.parametrize("pessoas, revisao", [("0", "0037"), ("3", "")])
+def test_verificar_backup_sem_pessoas_ou_sem_revisao_falha_e_ainda_apaga_o_banco(tmp_path, pessoas, revisao):
+    dump = tmp_path / "legisdata_x.dump"
+    dump.write_bytes(b"dump")
+    resultado, chamadas = _rodar_verificar_backup(tmp_path, dump, pessoas=pessoas, revisao=revisao)
+    assert resultado.returncode == 1 and "FALHOU" in resultado.stdout
+    assert "dropdb" in chamadas.splitlines()[-1]
+
+
 def test_deploy_se_atualiza_antes_de_tocar_no_banco():
     texto = (RAIZ / "scripts" / "deploy" / "deploy.sh").read_text(encoding="utf-8")
     reexecucao = _posicao(texto, r"^\s*_LEGISDATA_DEPLOY_REEXEC=1 _LEGISDATA_DEPLOY_ALVO=\"\$ALVO\" .*exec ")
@@ -222,6 +283,8 @@ def test_o_programa_da_carga_compila_e_roda_com_o_gancho_do_git_e_o_modo_do_ambi
         return {"financas": {"erro": "x"}, "pnad": 1}
 
     monkeypatch.setattr(carga_economica, "carregar_tudo", falso)
+    posprocessados = []
+    monkeypatch.setattr("etl.utils.manutencao.posprocessar_carga", lambda engine: posprocessados.append(engine))
     monkeypatch.setenv("LEGISDATA_FIN_MODO", "sem_ceap")
     monkeypatch.setenv("LEGISDATA_FIN_TEM_ALGUM_DADO", "t")
     exec(compile(codigo, "deploy.sh:carga", "exec"), {})
@@ -232,6 +295,8 @@ def test_o_programa_da_carga_compila_e_roda_com_o_gancho_do_git_e_o_modo_do_ambi
     assert opcoes["chaves"] == carga_economica.FINANCAS_POR_MODO["sem_ceap"]
     assert opcoes["ao_confirmar"] is financas_loader.registrar_carga_do_git
     assert "FALHA_TOLERADA financas" in saida
+    # a carga religa os derivados (presidência atualiza core.mandato): o deploy os refaz, o primeiro leitor não paga
+    assert posprocessados == [motor]
 
     monkeypatch.delenv("LEGISDATA_FIN_MODO")
     monkeypatch.delenv("LEGISDATA_FIN_TEM_ALGUM_DADO")

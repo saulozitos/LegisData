@@ -16,7 +16,10 @@ de segurança. O sinalizador é desligado ANTES de refazer, na mesma transação
 atualização ligue-o de novo (nenhuma mudança se perde). Quem escrever em `leg.autoria`, `leg.proposicao`, `param.peso`,
 `param.metodologia`, `ref.tipo_proposicao`, `core.filiacao` ou `core.mandato` não precisa lembrar de nada. Uma MIGRAÇÃO
 que mudar a definição de `leg.vw_autoria_pontuada(_unica)` ou de `param.vw_peso_vigente` não dispara gatilho de DML: ela
-tem de terminar com `UPDATE leg.pontuacao_controle SET sujo = true`.
+tem de terminar com `UPDATE leg.pontuacao_controle SET sujo = true`. Se a mudança alterar as COLUNAS da visão (ou exigir
+`DROP VIEW ... CASCADE`), marcar `sujo` não basta: `leg.mv_autoria_pontuada_unica` guarda a lista de colunas da criação
+(`SELECT *` é expandido uma vez) e o `CASCADE` a derruba junto; a migração deve recriá-la com o índice único `ux_mv_*`,
+o dono `legisdata_derivados`, o `COMMENT` e as concessões abaixo.
 
 A leitura não fica presa. O gatilho trava a linha de controle até o fim da transação de quem escreve (o `ON CONFLICT`
 trava mesmo quando o `WHERE` é falso), então uma carga longa em andamento seguraria todos os leitores. Por isso a função,
@@ -28,9 +31,14 @@ leitor longo. O ETL chama com `p_bloquear = true` e espera longa (`'120s'`): ele
 A função devolve `'refeito'`, `'em_dia'` ou `'ocupado'`, para o ETL distinguir "não precisava" de "não consegui".
 
 Quem executa é um papel sem login e sem superusuário, `legisdata_derivados`, dono das duas visões, da tabela de controle e
-das duas funções (`SECURITY DEFINER`, `search_path` fixo, `EXECUTE` só para ele, para o dono da migração e para
-`legisdata_leitura`). Assim a API pode usar `legisdata_leitura` e um defeito futuro no corpo da função não herda
-superusuário. O papel só lê `leg.vw_autoria_pontuada_unica`, `leg.autoria` e `leg.proposicao`.
+das funções (`SECURITY DEFINER`, `search_path` fixo). Assim a API pode usar `legisdata_leitura` e um defeito futuro no
+corpo de uma função não herda superusuário. O papel só lê `leg.vw_autoria_pontuada_unica`, `leg.autoria` e
+`leg.proposicao`.
+
+Há duas portas de entrada. `leg.atualizar_derivados(p_bloquear, p_espera)` aceita a espera como parâmetro e é do ETL:
+`EXECUTE` só para o dono da migração (que o ETL usa), nunca para `legisdata_leitura`, que com `p_espera = '0'` esperaria
+sem limite. A API chama `leg.atualizar_derivados_leitura()`, sem argumentos, que fixa `(false, '500ms')`; só ela recebe
+`EXECUTE` para `legisdata_leitura`.
 
 Revision ID: 0037
 Revises: 0036
@@ -182,7 +190,20 @@ def upgrade() -> None:
     op.execute("ALTER FUNCTION leg.marcar_derivados_sujos() OWNER TO legisdata_derivados")
     op.execute("ALTER FUNCTION leg.atualizar_derivados(boolean, text) OWNER TO legisdata_derivados")
     op.execute("REVOKE EXECUTE ON FUNCTION leg.atualizar_derivados(boolean, text) FROM PUBLIC")
-    op.execute("GRANT EXECUTE ON FUNCTION leg.atualizar_derivados(boolean, text) TO legisdata_leitura")
+    # o ETL roda com o usuário que aplica as migrações: concessão explícita, para não depender de ele ser superusuário
+    op.execute("GRANT EXECUTE ON FUNCTION leg.atualizar_derivados(boolean, text) TO CURRENT_USER")
+    # a API só tem a porta sem argumentos (espera fixa, nunca bloqueante)
+    op.execute(
+        f"""
+        CREATE FUNCTION leg.atualizar_derivados_leitura() RETURNS text
+        LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+            SELECT leg.atualizar_derivados(false, '{ESPERA_DA_LEITURA}')
+        $$
+        """
+    )
+    op.execute("ALTER FUNCTION leg.atualizar_derivados_leitura() OWNER TO legisdata_derivados")
+    op.execute("REVOKE EXECUTE ON FUNCTION leg.atualizar_derivados_leitura() FROM PUBLIC")
+    op.execute("GRANT EXECUTE ON FUNCTION leg.atualizar_derivados_leitura() TO legisdata_leitura")
     op.execute(
         "GRANT SELECT ON leg.mv_autoria_pontuada_unica, leg.mv_coautoria_par, leg.pontuacao_controle "
         "TO legisdata_leitura"
@@ -194,6 +215,7 @@ def downgrade() -> None:
         nome = tabela.replace(".", "_")
         op.execute(f"DROP TRIGGER IF EXISTS trg_derivados_sujos_{nome} ON {tabela}")
         op.execute(f"DROP TRIGGER IF EXISTS trg_derivados_sujos_truncate_{nome} ON {tabela}")
+    op.execute("DROP FUNCTION leg.atualizar_derivados_leitura()")
     op.execute("DROP FUNCTION leg.atualizar_derivados(boolean, text)")
     op.execute("DROP FUNCTION leg.marcar_derivados_sujos()")
     op.execute("DROP TABLE leg.pontuacao_controle")

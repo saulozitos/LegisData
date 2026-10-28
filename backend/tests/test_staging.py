@@ -164,10 +164,17 @@ def test_migracoes_0036_e_0037_descem_e_sobem_com_dados(pg_engine, monkeypatch):
         conn.execute(
             text("INSERT INTO etl.log_execucao_cron (id, \"statusExecucao\") VALUES (gen_random_uuid(), 'SUCESSO')")
         )
+        conn.execute(
+            text(
+                'INSERT INTO etl.log_execucao_cron (id, "statusExecucao", "erroMensagem") VALUES '
+                "(gen_random_uuid(), 'FALHA', 'connection to server at \"10.0.0.5\" failed'), "
+                "(gen_random_uuid(), 'FALHA', 'votações: OperationalError; economia: TimeoutError')"
+            )
+        )
     try:
         command.downgrade(config, "0035")
         assert escalar("SELECT count(*) FROM public.politicos") == 1  # a tabela voltou com o dado
-        assert escalar("SELECT count(*) FROM public.log_execucao_cron") == 1
+        assert escalar("SELECT count(*) FROM public.log_execucao_cron") == 3
         assert escalar("SELECT to_regclass('etl.log_execucao_cron') IS NULL")
         assert escalar("SELECT to_regprocedure('etl.sincronizar_legado()') IS NOT NULL")
         assert escalar("SELECT to_regprocedure('etl.merge_cadastro()') IS NULL")
@@ -177,14 +184,27 @@ def test_migracoes_0036_e_0037_descem_e_sobem_com_dados(pg_engine, monkeypatch):
         assert escalar("SELECT count(*) FROM pg_default_acl WHERE defaclacl::text LIKE '%legisdata_leitura%'") == 0
     finally:
         command.upgrade(config, "head")  # mesmo se um assert falhar, o banco de teste volta ao head
+        with pg_engine.connect() as conn:
+            mensagens = {
+                linha[0]
+                for linha in conn.execute(
+                    text('SELECT "erroMensagem" FROM etl.log_execucao_cron WHERE "erroMensagem" IS NOT NULL')
+                )
+            }
         # e sem as linhas que este teste gravou fora do TRUNCATE da fixture `db` (senão o teste seguinte as enxerga)
         with pg_engine.begin() as conn:
             conn.execute(text("DELETE FROM stg.politicos WHERE \"nomeCivil\" = 'Pessoa de Teste'"))
             conn.execute(text("DELETE FROM etl.log_execucao_cron"))
+    # a mensagem crua da exceção (host, caminho, SQL) não volta para a tabela que o papel de leitura enxerga
+    assert mensagens == {
+        "Falha registrada; o detalhe está no log do servidor.",
+        "votações: OperationalError; economia: TimeoutError",
+    }
     assert escalar("SELECT to_regclass('public.politicos') IS NULL")
     assert escalar("SELECT to_regprocedure('etl.merge_cadastro()') IS NOT NULL")
     assert escalar("SELECT to_regclass('leg.mv_coautoria_par') IS NOT NULL")
     assert escalar("SELECT prosecdef FROM pg_proc WHERE oid = 'leg.atualizar_derivados(boolean, text)'::regprocedure")
+    assert escalar("SELECT prosecdef FROM pg_proc WHERE oid = 'leg.atualizar_derivados_leitura()'::regprocedure")
     assert escalar("SELECT has_table_privilege('legisdata_leitura', 'core.pessoa', 'SELECT')")  # e voltou ao subir
 
 

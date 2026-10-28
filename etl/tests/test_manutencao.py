@@ -3,6 +3,7 @@
 from sqlalchemy import text
 
 from etl import run_etl
+from etl.utils import manutencao
 from etl.utils.manutencao import analisar_banco, atualizar_derivados, posprocessar_carga
 
 
@@ -40,6 +41,56 @@ def test_atualizar_derivados_distingue_refeito_em_dia_e_ocupado(pg_engine):
         conn.execute(text("UPDATE leg.proposicao SET titulo = titulo"))  # liga o sinalizador
     assert atualizar_derivados(pg_engine) == "refeito"
     assert atualizar_derivados(pg_engine) == "em_dia"  # nada mudou depois
+
+
+def test_etl_chama_a_porta_bloqueante_com_a_espera_longa():
+    """O ETL espera a vez em vez de desistir em meio segundo como a leitura: modo bloqueante e `ESPERA_DO_ETL`."""
+    from contextlib import nullcontext
+    from unittest.mock import MagicMock
+
+    conexao = MagicMock()
+    conexao.execute.return_value.scalar.return_value = "em_dia"
+    motor = MagicMock()
+    motor.begin.return_value = nullcontext(conexao)
+    atualizar_derivados(motor)
+    comando, parametros = conexao.execute.call_args.args
+    assert "leg.atualizar_derivados(true," in str(comando) and parametros == {"espera": manutencao.ESPERA_DO_ETL}
+    assert manutencao.ESPERA_DO_ETL not in ("0", "500ms")  # espera de verdade, bem mais que a da leitura
+
+
+def test_etl_espera_a_vez_de_outra_atualizacao_em_curso(pg_engine):
+    """Com o bloqueio na mão de outra transação por um instante, o ETL aguarda e refaz (a leitura teria desistido)."""
+    import threading
+    import time
+
+    with pg_engine.begin() as conn:
+        conn.execute(text("UPDATE leg.proposicao SET titulo = titulo"))  # liga o sinalizador
+    chave = 727_420_002  # BLOQUEIO_DA_ATUALIZACAO da migração 0037
+    outra = pg_engine.connect()
+    transacao = outra.begin()
+    resultado = []
+    espera = threading.Thread(target=lambda: resultado.append(atualizar_derivados(pg_engine)))
+    iniciada = False
+    try:
+        outra.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": chave})
+        espera.start()
+        iniciada = True
+        with pg_engine.connect() as conn:
+            for _ in range(100):  # sem dormir às cegas: espera a chamada do ETL aparecer na fila do bloqueio
+                na_fila = conn.execute(
+                    text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted")
+                ).scalar()
+                if na_fila:
+                    break
+                time.sleep(0.1)
+            assert na_fila, "o ETL não ficou esperando o bloqueio"
+        assert not resultado
+    finally:
+        transacao.rollback()
+        outra.close()
+        if iniciada:
+            espera.join(timeout=60)
+    assert resultado == ["refeito"]
 
 
 def test_atualizar_derivados_avisa_quando_nao_conseguiu_a_vez(caplog):
@@ -154,9 +205,12 @@ def test_todas_as_etapas_que_gravam_no_banco_estao_marcadas():
     catálogo real é montado com todas as etapas ligadas e a regra é exaustiva: carga no Postgres = marcada, o resto não.
     """
     parser = run_etl.montar_parser()
-    args = parser.parse_args(["--processos"])
+    args = parser.parse_args(
+        []
+    )  # sem flag de etapa = modo completo, com todo o catálogo (menos o DataJud, só sob pedido)
     etapas = {e.chave: e for e in run_etl.construir_etapas(args)}
-    assert etapas
     grava = {chave for chave, e in etapas.items() if e.grava_banco}
     cargas = {chave for chave in etapas if chave.startswith("load_") or chave in ("camara_bulk", "camara_historico")}
+    # o piso impede o teste de passar vazio, que foi o defeito de montar o catálogo com uma flag só
+    assert {"load_db", "load_presenca", "load_economia", "camara_bulk", "camara_historico"} <= cargas
     assert grava == cargas, f"marcadas {sorted(grava)} != cargas no banco {sorted(cargas)}"

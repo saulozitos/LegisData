@@ -56,7 +56,7 @@ A refatoração da branch `fix/analise-completa-correcoes` concluiu **100%** das
 - **Status**: a tabela `fin.processo_judicial`, o extrator (`etl/extractors/processos_extractor.py`), a carga `processos` do `fin` e a leitura do dossiê estão prontos. O acervo digitado à mão (não verificado contra os tribunais) foi removido (D7) e **nenhum processo está carregado**: `processos_curados.json` está vazio.
 - **Por que vazio**: o DataJud só consulta por número de processo e não expõe as partes, então ele não descobre os processos de um parlamentar. Falta uma fonte oficial que ligue processo e pessoa; as certidões do TSE hoje no `fin` são só de registro de candidatura, e o número de processo delas não tem o formato CNJ.
 - **Conformidade Legal**: Observância à Portaria CNJ nº 160/2020, Resolução CNJ nº 332/2020 e LGPD, com resguardo à presunção de inocência (Art. 5º, LVII da CF/88): o dossiê mostra só o último movimento que o tribunal registrou, nunca um desfecho inferido.
-- **Limites conhecidos**: processo do STF (foro privilegiado) não tem índice no DataJud e precisa de outra fonte; o acervo manual antigo ainda está em `public.processos_judiciais` e a flag `possuiProcessosDeclarados` em produção, sem nenhum código que os leia, até a limpeza da Fase 9.
+- **Limites conhecidos**: processo do STF (foro privilegiado) não tem índice no DataJud e precisa de outra fonte; a tabela do acervo manual antigo (`public.processos_judiciais`) saiu na migração 0035; as linhas só existem no backup feito antes dela.
 - **Metadados**: classe e assuntos (TPU), órgão julgador, datas de ajuizamento e do último movimento, vindos do DataJud.
 
 ### 2.4 Votações Secretas no Senado [CONCLUÍDO 100%]
@@ -146,3 +146,19 @@ primeira carga completa e, se aparecer, a regra volta como validação do ETL (n
 
 O dono é o papel `legisdata_derivados` (sem superusuário), não o dono da migração. O banco de produção usa o
 `POSTGRES_USER` da imagem oficial, que é superusuário, como dono das demais tabelas; isso não muda aqui.
+
+As migrações 0036 e 0037 criam papéis (`CREATE ROLE`) e passam a posse de objetos a eles (`ALTER ... OWNER TO`), o que
+exige superusuário (ou `CREATEROLE` com permissão de `SET ROLE`, no PostgreSQL 16 ou mais novo). A produção e o CI usam o
+usuário da imagem oficial, que é superusuário; num Postgres gerenciado sem superusuário, o deploy pararia na 0037 e o
+papel teria de ser criado antes por um administrador.
+
+Duas portas de entrada: `leg.atualizar_derivados(p_bloquear, p_espera)` é do ETL (`EXECUTE` só para o dono da migração) e
+`leg.atualizar_derivados_leitura()` é a que `legisdata_leitura` executa (espera fixa de 500 ms, nunca bloqueante).
+
+## Rankings de partido ainda leem a visão ao vivo
+
+Os pontos por autor (ranking de autores, ausências e dossiê) vêm de `leg.mv_autoria_pontuada_unica`; os rankings de partido
+(`party_productivity_service`, `party_evolution_service`) ainda somam `leg.vw_autoria_pontuada` na hora. Se o refresh
+estiver pendente (`'ocupado'` ou `'falhou'` no fim da carga), a soma por partido e a soma por autor podem divergir até o
+próximo leitor de um derivado. O cron refaz os derivados antes de calcular o ranking de partidos; migrar esses serviços
+para o derivado fecha a divergência e fica para a entrega do novo ETL.

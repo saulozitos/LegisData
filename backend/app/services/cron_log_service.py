@@ -10,14 +10,24 @@ rota só repete mensagens nesse formato.
 import re
 from typing import Optional
 
-ETAPAS_CONHECIDAS = ("votações", "presença", "economia", "finanças")
+ETAPA_VOTACOES = "votações"
+ETAPA_PRESENCA = "presença"
+ETAPA_ECONOMIA = "economia"
+ETAPA_FINANCAS = "finanças"
+# Fonte única dos rótulos: o cron os usa para registrar e a rota pública só repete mensagens que citem um deles
+ETAPAS_CONHECIDAS = (ETAPA_VOTACOES, ETAPA_PRESENCA, ETAPA_ECONOMIA, ETAPA_FINANCAS)
 MENSAGEM_GENERICA = "Falha registrada; o detalhe está no log do servidor."
 
 _ITEM = re.compile(r"^(?:(?:%s): )?[A-Z][A-Za-z0-9_]*$" % "|".join(ETAPAS_CONHECIDAS))
 
 
 def descrever_falha(etapa: Optional[str], erro: BaseException) -> str:
-    """O que se registra de uma falha: `etapa: NomeDaClasse` (ou só a classe), sem o texto da exceção."""
+    """
+    O que se registra de uma falha: `etapa: NomeDaClasse` (ou só a classe), sem o texto da exceção. Uma etapa fora de
+    `ETAPAS_CONHECIDAS` levanta `ValueError`: a rota pública a trocaria pela mensagem genérica sem aviso.
+    """
+    if etapa is not None and etapa not in ETAPAS_CONHECIDAS:
+        raise ValueError(f"etapa do cron desconhecida: {etapa!r}; inclua-a em ETAPAS_CONHECIDAS")
     classe = type(erro).__name__
     return f"{etapa}: {classe}" if etapa else classe
 

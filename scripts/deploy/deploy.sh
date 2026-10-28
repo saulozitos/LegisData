@@ -322,6 +322,7 @@ import os
 from app.core.database import engine
 from etl.pipelines.carga_economica import TOLERADAS_NO_DEPLOY, carregar_tudo, falhas_toleradas, plano_do_modo
 from etl.pipelines.financas_loader import registrar_carga_do_git
+from etl.utils.manutencao import posprocessar_carga
 toleradas = TOLERADAS_NO_DEPLOY if os.environ.get('LEGISDATA_FIN_TEM_ALGUM_DADO') == 't' else ()
 plano = plano_do_modo(os.environ.get('LEGISDATA_FIN_MODO', 'nenhuma'), ao_confirmar=registrar_carga_do_git)
 resultados = carregar_tudo(engine, toleradas=toleradas, **plano)
@@ -329,6 +330,9 @@ for chave, resultado in resultados.items():
     print(chave, resultado)
 for chave in falhas_toleradas(resultados):
     print('FALHA_TOLERADA', chave)
+# a carga religa os derivados do legislativo (o passo de presidência atualiza core.mandato): refaz-los aqui evita que a
+# primeira requisição depois do deploy pague o refresh
+posprocessar_carga(engine)
 ")"
   printf '%s\n' "$SAIDA_CARGA"
   # >>> apos_carga

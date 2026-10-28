@@ -57,6 +57,14 @@ bash "$f" origin/main; rm -f "$f"
 O instalador grava o ambiente, instala o script e as units, marca o commit atual como já implantado, roda um dry-run,
 remove o Watchtower e liga o timer. Pode ser executado de novo.
 
+## Premissa do banco
+
+O usuário do Postgres do deploy (`POSTGRES_USER`) precisa poder criar papéis e passar a posse de objetos a eles: as
+migrações 0036 e 0037 criam `legisdata_leitura` e `legisdata_derivados`. Com a imagem oficial do Postgres esse usuário é
+superusuário e nada precisa ser feito; num Postgres gerenciado sem superusuário, um administrador cria os dois papéis
+(`NOLOGIN`) antes do deploy. Depois de cada carga o deploy também refaz os derivados do legislativo
+(`etl.utils.manutencao.posprocessar_carga`), para a primeira requisição não pagar o refresh.
+
 ## Operação
 
 - Ver o último ciclo: `journalctl --user -u legisdata-deploy.service -n 50`.

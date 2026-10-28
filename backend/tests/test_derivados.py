@@ -6,7 +6,8 @@ import time
 from pathlib import Path
 
 import pytest
-from app.services.derivados_service import garantir_atualizados
+from app.services import derivados_service
+from app.services.derivados_service import descartar_motores, garantir_atualizados
 from app.services.legislative_scoring import MAX_AUTORES_POR_PROPOSICAO
 from sqlalchemy import text
 
@@ -21,6 +22,17 @@ DEPENDENCIAS = [
     "core.filiacao",
     "core.mandato",
 ]
+
+
+@pytest.fixture(autouse=True)
+def _sem_estado_entre_testes(pg_engine):
+    """Cada teste começa com os derivados em dia e sem pool dedicado herdado do anterior."""
+    descartar_motores()
+    yield
+    descartar_motores()
+    with pg_engine.begin() as conn:
+        conn.execute(text("SET LOCAL statement_timeout = '20s'"))
+        conn.execute(text("SELECT leg.atualizar_derivados(true, '20s')"))
 
 
 def _sujo(db):
@@ -74,9 +86,11 @@ def test_esvaziar_a_tabela_tambem_liga_o_sinalizador(client, db, seed, tabela):
     client.get(f"{BASE}/politicians")
     garantir_atualizados(db)
     assert _sujo(db) is False
-    db.execute(text(f"TRUNCATE {tabela} CASCADE"))
-    assert _sujo(db) is True
-    db.rollback()  # nada de TRUNCATE de verdade neste teste
+    try:
+        db.execute(text(f"TRUNCATE {tabela} CASCADE"))
+        assert _sujo(db) is True
+    finally:
+        db.rollback()  # nada de TRUNCATE de verdade neste teste, nem se o assert falhar
 
 
 def test_controle_esvaziado_conta_como_sujo_e_volta_a_existir(client, db, seed):
@@ -277,16 +291,27 @@ def test_etl_espera_a_vez_em_vez_de_desistir(pg_engine):
     outra = pg_engine.connect()
     transacao = outra.begin()
     resultado = []
-    outra.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": chave})
     espera = threading.Thread(target=lambda: resultado.append(_atualizar(pg_engine, bloquear=True, espera="20s")))
+    iniciada = False
     try:
+        outra.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": chave})
         espera.start()
-        time.sleep(1)  # bem mais que os 500 ms da leitura: quem desiste já teria devolvido 'ocupado'
-        assert espera.is_alive() and not resultado
+        iniciada = True
+        with pg_engine.connect() as conn:
+            for _ in range(100):  # espera, sem dormir às cegas, a chamada do ETL aparecer na fila do bloqueio
+                na_fila = conn.execute(
+                    text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted")
+                ).scalar()
+                if na_fila:
+                    break
+                time.sleep(0.1)
+            assert na_fila, "a chamada do ETL não ficou esperando o bloqueio"
+        assert not resultado  # esperando de verdade: quem desiste já teria devolvido 'ocupado'
     finally:
         transacao.rollback()
         outra.close()
-        espera.join(timeout=30)
+        if iniciada:
+            espera.join(timeout=30)
     assert resultado == ["refeito"]
 
 
@@ -376,7 +401,12 @@ def test_dono_dos_derivados_nao_e_superusuario_e_o_publico_nao_executa(pg_engine
             )
         }
     assert definidor is True and dono_super is False and donos == {"legisdata_derivados"}
-    assert "legisdata_leitura=X" in acl and "{=X" not in acl and ",=X" not in acl  # nada de EXECUTE para PUBLIC
+    assert "legisdata_leitura" not in acl and "{=X" not in acl and ",=X" not in acl  # nem leitura nem PUBLIC executam
+    with pg_engine.connect() as conn:
+        acl_leitura = conn.execute(
+            text("SELECT proacl::text FROM pg_proc WHERE oid = 'leg.atualizar_derivados_leitura()'::regprocedure")
+        ).scalar()
+    assert "legisdata_leitura=X" in acl_leitura and "{=X" not in acl_leitura and ",=X" not in acl_leitura
 
 
 def test_papel_de_leitura_atualiza_os_derivados_mas_nao_escreve_direto(pg_engine):
@@ -384,11 +414,15 @@ def test_papel_de_leitura_atualiza_os_derivados_mas_nao_escreve_direto(pg_engine
     with pg_engine.begin() as conn:
         conn.execute(text("SET LOCAL ROLE legisdata_leitura"))
         assert conn.execute(text("SELECT sujo FROM leg.pontuacao_controle")).scalar() is True  # a API lê o sinalizador
-        assert conn.execute(text("SELECT leg.atualizar_derivados()")).scalar() == "refeito"
+        assert conn.execute(text("SELECT leg.atualizar_derivados_leitura()")).scalar() == "refeito"
     with pg_engine.connect() as conn:
         conn.execute(text("SET ROLE legisdata_leitura"))
         with pytest.raises(Exception, match="permission denied"):
             conn.execute(text("UPDATE leg.pontuacao_controle SET sujo = false"))
+    with pg_engine.connect() as conn:  # a porta com espera livre é do ETL: o papel de leitura não a executa
+        conn.execute(text("SET ROLE legisdata_leitura"))
+        with pytest.raises(Exception, match="permission denied"):
+            conn.execute(text("SELECT leg.atualizar_derivados(true, '0')"))
 
 
 def test_garantir_atualizados_nao_toca_na_transacao_de_quem_chama(db, pg_engine):
@@ -447,6 +481,44 @@ def test_falha_na_atualizacao_vira_aviso_e_a_leitura_segue(db, pg_engine, monkey
     assert any("não atualizados" in r.getMessage() for r in caplog.records)
 
 
+def test_garantir_atualizados_com_a_vez_ocupada_segue_sem_refazer(db, pg_engine, caplog):
+    """A função do banco devolve 'ocupado': o serviço não refaz, não avisa e deixa o sinalizador ligado."""
+    _marcar_sujo(pg_engine)
+    outra = pg_engine.connect()
+    transacao = outra.begin()
+    try:
+        outra.execute(
+            text("SELECT pg_advisory_xact_lock(:k)"), {"k": _constante_da_migracao_0037("BLOQUEIO_DA_ATUALIZACAO")}
+        )
+        with caplog.at_level("WARNING"):
+            assert garantir_atualizados(db) is False
+    finally:
+        transacao.rollback()
+        outra.close()
+    assert _sujo_no_banco(pg_engine) is True
+    assert not caplog.records
+
+
+def test_sinalizador_ilegivel_nao_deixa_a_sessao_de_quem_chama_quebrada(db, monkeypatch, caplog):
+    """Se o SELECT do sinalizador falhar na sessão do chamador, ela é desfeita: a consulta seguinte dele funciona."""
+
+    def quebrado(sessao):
+        sessao.execute(text("SELECT * FROM leg.tabela_que_nao_existe"))
+
+    monkeypatch.setattr(derivados_service, "derivados_velhos", quebrado)
+    with caplog.at_level("WARNING"):
+        assert garantir_atualizados(db) is False
+    assert db.execute(text("SELECT 1")).scalar() == 1  # sem o rollback: InFailedSqlTransaction
+    assert any("ilegível" in r.getMessage() for r in caplog.records)
+
+
+def test_pool_dedicado_usa_a_fabrica_do_app(pg_engine):
+    """O pool dos derivados herda as opções da fábrica única (`hide_parameters`, `pool_recycle`), só com tamanho próprio."""
+    motor = derivados_service._motor_da_atualizacao(pg_engine)
+    assert motor.pool.size() == 1 and motor.pool._max_overflow == 0
+    assert motor.pool._recycle == 1800 and motor.hide_parameters is True
+
+
 def test_quem_le_um_derivado_chama_garantir_atualizados():
     """Esquecer a chamada serviria dado velho: toda FUNÇÃO de `app` que lê um derivado tem de atualizá-lo antes."""
     import ast
@@ -466,10 +538,16 @@ def test_quem_le_um_derivado_chama_garantir_atualizados():
             and isinstance(no.targets[0], ast.Name)
             and "leg.mv_" in (ast.get_source_segment(fonte, no) or "")
         }
-        for funcao in (n for n in ast.walk(arvore) if isinstance(n, ast.FunctionDef)):
+        for funcao in (n for n in ast.walk(arvore) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))):
             corpo = ast.get_source_segment(fonte, funcao) or ""
             if "leg.mv_" in corpo or any(re.search(rf"\b{c}\b", corpo) for c in constantes):
-                leitores.append((arquivo.name, funcao.name, "garantir_atualizados(" in corpo))
+                # uma CHAMADA de verdade: comentário ou docstring citando o nome não conta
+                chama = any(
+                    isinstance(no, ast.Call)
+                    and (getattr(no.func, "id", None) or getattr(no.func, "attr", None)) == "garantir_atualizados"
+                    for no in ast.walk(funcao)
+                )
+                leitores.append((arquivo.name, funcao.name, chama))
     assert leitores, "nenhum leitor encontrado: o teste deixou de proteger"
     assert [(a, f) for a, f, chama in leitores if not chama] == []
 
