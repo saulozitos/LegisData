@@ -1,16 +1,17 @@
 import uuid
 from datetime import datetime
-from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy import DateTime, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TimeStampedModel
+from .base import MigratedBase
 
 
-class LogExecucaoCron(Base):
+class LogExecucaoCron(MigratedBase):
+    """Registro das execuções do cron diário (`etl.log_execucao_cron`, criada pela migração 0036)."""
+
     __tablename__ = "log_execucao_cron"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

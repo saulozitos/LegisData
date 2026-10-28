@@ -5,8 +5,8 @@ Os dados delas já vivem em `fin` (remuneração, patrimônio, CEAP, emendas, ce
 as alimentava saiu. A ponte do legado para `core` e `leg` só lê `politicos`, `partidos_politicos`, `filiacoes_partidarias`,
 `mandatos`, `membros_gabinete`, `proposicoes` e as tabelas de votação e presença, que ficam até o novo ETL assumir.
 
-Os dados são regeneráveis a partir das fontes: o `downgrade` recria apenas a estrutura mínima (tabelas vazias) para
-permitir voltar a revisão, não os dados.
+Os dados são regeneráveis a partir das fontes, mas a estrutura não volta por esta revisão: o `downgrade` levanta erro,
+como o da 0034. Para voltar além daqui, restaure o backup que o deploy faz antes das migrações (`docs/DEPLOY_AUTOMATICO.md`).
 
 Revision ID: 0035
 Revises: 0034
@@ -49,6 +49,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Só a estrutura vazia mínima: os dados voltam pela carga do ETL.
-    for tabela in TABELAS:
-        op.execute(f"CREATE TABLE IF NOT EXISTS public.{tabela} (id uuid PRIMARY KEY)")
+    raise NotImplementedError(
+        "Migração 0035 irreversível: as 17 tabelas aposentadas não voltam com o schema original. "
+        "Restaure o backup feito pelo deploy antes das migrações."
+    )

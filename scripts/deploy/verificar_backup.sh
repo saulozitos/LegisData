@@ -34,6 +34,8 @@ limpar() { docker exec "$CONTEINER" dropdb -U "$PG_USER" --if-exists "$BANCO" >/
 trap limpar EXIT
 
 docker exec "$CONTEINER" createdb -U "$PG_USER" "$BANCO"
+# o descartável é uma cópia completa da produção: enquanto o ensaio roda, só o dono conecta
+docker exec "$CONTEINER" psql -U "$PG_USER" -d postgres -qc "REVOKE CONNECT ON DATABASE \"$BANCO\" FROM PUBLIC"
 # --no-owner: o banco descartável pertence a quem o criou; o conteúdo é o que importa
 docker exec -i "$CONTEINER" pg_restore -U "$PG_USER" -d "$BANCO" --no-owner <"$DUMP"
 

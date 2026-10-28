@@ -448,7 +448,7 @@ class DatabaseLoader:
 
             etapa("Mandatos e Gabinete Presidencial")
             self._load_mandates(session, president_map, deputy_map, senator_map, party_map)
-            # Ex-parlamentares (legislaturas anteriores) entram antes de CEAP/emendas: sem eles esses registros ficavam sem vínculo.
+            # Ex-parlamentares (legislaturas anteriores) entram antes das proposições e votações: sem eles essas linhas ficavam sem vínculo.
             carregar_parlamentares_historicos(
                 session, self.data_dir, deputy_map, senator_map, party_map, self._ensure_party
             )
@@ -463,8 +463,8 @@ class DatabaseLoader:
             session.commit()
             logger.info("Transação confirmada com sucesso no PostgreSQL!")
 
-            # Ponte transitória: projeta o schema legado no schema core (pessoa, partido, filiação, mandato)
-            self._sincronizar_core(session)
+            # Funde o staging no schema final (pessoa, partido, filiação, mandato, proposição, votação)
+            self._fundir_staging(session)
 
             counts = self._get_table_counts(session)
             self._print_summary_report(counts)
@@ -478,15 +478,15 @@ class DatabaseLoader:
             session.close()
 
     @staticmethod
-    def _sincronizar_core(session: Session) -> None:
-        """Projeta o legado no schema core. Falha aqui não desfaz a carga (já confirmada), mas é registrada."""
+    def _fundir_staging(session: Session) -> None:
+        """Funde o staging em `core`/`leg`. Falha aqui não desfaz a carga (já confirmada), mas é registrada."""
         from app.services.staging_merge import merge_staging
 
         try:
             merge_staging(session)
         except Exception as exc:  # noqa: BLE001 - a carga principal já foi confirmada
             session.rollback()
-            logger.error("Sincronização legado -> core falhou: %s", exc, exc_info=True)
+            logger.error("Fusão staging -> core/leg falhou: %s", exc, exc_info=True)
 
     # ------------------------------------------------------------------ utilidades de proveniência
     def _usable(self, record: Dict[str, Any]) -> bool:

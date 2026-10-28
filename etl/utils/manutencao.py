@@ -7,6 +7,22 @@ from sqlalchemy import text
 logger = logging.getLogger("Manutencao")
 
 
+def atualizar_derivados(engine) -> bool:
+    """
+    Refaz as visões materializadas do legislativo se alguma tabela de que dependem mudou (`leg.atualizar_derivados()`),
+    para o primeiro leitor depois da carga não pagar o refresh. Devolve False, sem erro, se nada precisava, se não deu
+    para esperar uma trava ou se o banco falhou: a leitura ainda garante a atualização por conta própria.
+    """
+    try:
+        with engine.begin() as conn:
+            refeito = bool(conn.execute(text("SELECT leg.atualizar_derivados()")).scalar())
+        logger.info("Derivados do legislativo %s.", "refeitos" if refeito else "sem mudança (ou carga em andamento)")
+        return refeito
+    except Exception as exc:  # noqa: BLE001 - a carga já terminou; o leitor refaz se precisar
+        logger.warning("Derivados do legislativo não atualizados: %s", exc)
+        return False
+
+
 def analisar_banco(engine) -> bool:
     """
     `ANALYZE` no banco inteiro, para o planejador conhecer as tabelas que a carga acabou de encher (sem isso, a primeira
@@ -21,3 +37,9 @@ def analisar_banco(engine) -> bool:
     except Exception as exc:  # noqa: BLE001 - a carga já terminou; a manutenção é um extra
         logger.warning("ANALYZE não executado: %s", exc)
         return False
+
+
+def posprocessar_carga(engine) -> None:
+    """O que toda carga que grava no banco faz ao terminar: derivados primeiro, depois `ANALYZE` (que já os enxerga)."""
+    atualizar_derivados(engine)
+    analisar_banco(engine)

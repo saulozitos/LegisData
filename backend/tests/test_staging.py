@@ -65,7 +65,13 @@ def test_funcoes_de_fusao_tem_o_nome_novo_e_leem_stg(db):
     )
     assert {"merge_cadastro", "merge_legislativo", "merge_camara_bulk", "merge_camara_historico"} <= nomes
     assert not {"sincronizar_legado", "sincronizar_legado_leg"} & nomes
-    for funcao in ("etl.merge_cadastro", "etl.merge_legislativo", "etl.merge_camara_bulk", "core.unificar_duplicadas"):
+    for funcao in (
+        "etl.merge_cadastro",
+        "etl.merge_legislativo",
+        "etl.merge_camara_bulk",
+        "etl.merge_camara_historico",
+        "core.unificar_duplicadas",
+    ):
         fonte = db.execute(text("SELECT pg_get_functiondef(CAST(:f AS regproc))"), {"f": funcao}).scalar()
         assert "public." not in fonte.replace("public.alembic", "")  # nenhuma leitura do public
 
@@ -97,12 +103,17 @@ def test_papel_de_leitura_so_le(db):
         "eco.observacao",
         "fin.despesa_cota",
         "ref.uf",
-        "param.peso_ialp" if False else "core.partido",
+        "core.partido",
+        "param.peso",
+        "param.metodologia",
+        "etl.fonte",
+        "etl.log_execucao_cron",
     ):
         assert pode(tabela, "SELECT") is True
         for escrita in ("INSERT", "UPDATE", "DELETE"):
             assert pode(tabela, escrita) is False
     assert pode("stg.politicos", "SELECT") is False  # a API nunca lê o staging
+    assert pode("etl.rejeito", "SELECT") is False  # nem o que o ETL rejeitou (pode trazer dado bruto da fonte)
 
 
 @pytest.mark.parametrize("schema", ["core", "leg", "eco", "fin", "ref"])
@@ -119,3 +130,64 @@ def test_tabelas_novas_nascem_legiveis_pelo_papel_de_leitura(db, schema):
         )
     finally:
         db.rollback()
+
+
+def test_migracoes_0036_e_0037_descem_e_sobem_com_dados(pg_engine, monkeypatch):
+    """Descer a 0035 devolve tabelas, funções e o log do cron ao `public` com os dados; subir leva tudo de volta."""
+    from alembic import command
+    from alembic.config import Config
+    from app.core.migrations import BACKEND_DIR
+
+    from .conftest import TEST_DATABASE_URL
+
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+    monkeypatch.setenv("ALEMBIC_DATABASE_URL", TEST_DATABASE_URL)
+
+    def escalar(sql):
+        with pg_engine.connect() as conn:
+            return conn.execute(text(sql)).scalar()
+
+    with pg_engine.begin() as conn:
+        conn.execute(
+            text(
+                'INSERT INTO stg.politicos (id, "nomeCivil", "nomeEleitoral") '
+                "VALUES (gen_random_uuid(), 'Pessoa de Teste', 'Teste')"
+            )
+        )
+        conn.execute(
+            text("INSERT INTO etl.log_execucao_cron (id, \"statusExecucao\") VALUES (gen_random_uuid(), 'SUCESSO')")
+        )
+    try:
+        command.downgrade(config, "0035")
+        assert escalar("SELECT count(*) FROM public.politicos") == 1  # a tabela voltou com o dado
+        assert escalar("SELECT count(*) FROM public.log_execucao_cron") == 1
+        assert escalar("SELECT to_regclass('etl.log_execucao_cron') IS NULL")
+        assert escalar("SELECT to_regprocedure('etl.sincronizar_legado()') IS NOT NULL")
+        assert escalar("SELECT to_regprocedure('etl.merge_cadastro()') IS NULL")
+        assert escalar("SELECT to_regclass('leg.mv_coautoria_par') IS NULL")
+    finally:
+        command.upgrade(config, "head")  # mesmo se um assert falhar, o banco de teste volta ao head
+    assert escalar("SELECT count(*) FROM stg.politicos") == 1
+    assert escalar("SELECT count(*) FROM etl.log_execucao_cron") == 1
+    assert escalar("SELECT to_regclass('public.politicos') IS NULL")
+    assert escalar("SELECT to_regprocedure('etl.merge_cadastro()') IS NOT NULL")
+    assert escalar("SELECT to_regclass('leg.mv_coautoria_par') IS NOT NULL")
+    assert escalar("SELECT prosecdef FROM pg_proc WHERE oid = 'leg.atualizar_derivados()'::regprocedure")
+
+
+def test_migracao_0035_nao_desce(pg_engine, monkeypatch):
+    """As 17 tabelas aposentadas não voltam com o schema original: o downgrade recusa em vez de fingir."""
+    from alembic import command
+    from alembic.config import Config
+    from app.core.migrations import BACKEND_DIR
+
+    from .conftest import TEST_DATABASE_URL
+
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+    monkeypatch.setenv("ALEMBIC_DATABASE_URL", TEST_DATABASE_URL)
+    with pytest.raises(NotImplementedError, match="irreversível"):
+        command.downgrade(config, "0034")
+    with pg_engine.connect() as conn:  # a transação única desfez também o que a 0037 e a 0036 já tinham descido
+        assert conn.execute(text("SELECT to_regclass('leg.mv_coautoria_par') IS NOT NULL")).scalar()

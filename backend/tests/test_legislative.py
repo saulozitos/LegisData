@@ -494,6 +494,24 @@ def test_coauthorship_network_endpoint_and_louvain_metrics(client, seed, db):
     assert "communities" in data
     assert "stats" in data
 
+    # a coautoria do seed é uma aresta só, de peso 1, entre os dois parlamentares
+    uids = {str(seed.fulano.id), str(seed.lula_fonte.id)}
+    assert {n["id"] for n in data["nodes"]} == uids
+    assert len(data["edges"]) == 1
+    assert {data["edges"][0]["source"], data["edges"][0]["target"]} == uids and data["edges"][0]["weight"] == 1
+
+    # os filtros usam os campos da visão pré-calculada; o de ano só existe no serviço, não na rota
+    from app.services.legislative_scoring import build_coauthorship_network
+
+    def arestas(**filtros):
+        return build_coauthorship_network(db=db, limit_nodes=20, **filtros)["edges"]
+
+    assert len(arestas(ano_inicio=2023, ano_fim=2023)) == 1  # a proposição é de 2023
+    assert arestas(ano_fim=2022) == [] and arestas(ano_inicio=2024) == []
+    assert len(arestas(casa="CAMARA")) == 1 and arestas(casa="SENADO") == []  # tem id da Câmara, não do Senado
+    assert len(arestas(tipo_proposta="PL_PLP")) == 1 and arestas(tipo_proposta="PEC") == []
+    assert arestas(min_weight=2) == []
+
     stats = data["stats"]
     assert "total_nodes" in stats
     assert "total_edges" in stats

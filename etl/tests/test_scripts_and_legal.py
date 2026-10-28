@@ -17,7 +17,7 @@ from etl.scripts.fix_author_associations import sanitize_all_proposition_authors
 
 @pytest.fixture
 def sessao():
-    engine = create_engine("sqlite://").execution_options(schema_translate_map={"stg": None, "etl": None})
+    engine = create_engine("sqlite://").execution_options(schema_translate_map={"stg": None})
     Base.metadata.create_all(engine)
     with sessionmaker(bind=engine, autoflush=False)() as s:
         yield s

@@ -230,33 +230,39 @@ _CATALOGO_DO_FIN = """
 """
 
 
-def test_migracao_0031_desce_e_sobe_de_novo(pg_engine, monkeypatch):
-    """O downgrade apaga o schema `fin` e a função de busca na ordem certa, e o upgrade recria tudo idêntico."""
-    from alembic import command
-    from alembic.config import Config
-    from app.core.migrations import BACKEND_DIR
+def test_migracao_0031_desce_e_sobe_de_novo(pg_engine):
+    """O downgrade apaga o schema `fin` e a função de busca na ordem certa, e o upgrade recria tudo idêntico.
 
-    from .conftest import TEST_DATABASE_URL
+    As revisões 0034 e 0035 não têm volta, então o `alembic downgrade 0030` não chega aqui: roda-se o `downgrade` e o
+    `upgrade` das revisões 0033 a 0031 dentro de uma transação que é desfeita no fim (o banco de teste não muda).
+    """
+    from alembic.config import Config
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from alembic.script import ScriptDirectory
+    from app.core.migrations import BACKEND_DIR
 
     config = Config(str(BACKEND_DIR / "alembic.ini"))
     config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-    # `setenv` do monkeypatch só desfaz no fim do TESTE: o upgrade do `finally` ainda enxerga o banco de teste
-    monkeypatch.setenv("ALEMBIC_DATABASE_URL", TEST_DATABASE_URL)
+    scripts = ScriptDirectory.from_config(config)
+    # as revisões 0032 e 0033 usam `fin`/`ref.contem_texto`: descem antes da 0031 e sobem depois dela
+    migracoes = [scripts.get_revision(r).module for r in ("0031", "0032", "0033")]
 
-    def existe(sql):
-        with pg_engine.connect() as conn:
-            return bool(conn.execute(text(sql)).scalar())
+    def existe(conn, sql):
+        return bool(conn.execute(text(sql)).scalar())
 
-    def catalogo():
-        with pg_engine.connect() as conn:
-            return [tuple(linha) for linha in conn.execute(text(_CATALOGO_DO_FIN))]
-
-    antes = catalogo()
-    assert antes  # há o que comparar
-    try:
-        command.downgrade(config, "0030")
-        assert not existe("SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'fin')")
-        assert not existe("SELECT to_regprocedure('ref.contem_texto(text, text)') IS NOT NULL")
-    finally:
-        command.upgrade(config, "head")  # mesmo se um assert falhar, o banco de teste volta a ter o `fin`
-    assert catalogo() == antes  # colunas, restrições, índices e a função, um a um
+    with pg_engine.connect() as conn:
+        transacao = conn.begin()
+        try:
+            antes = [tuple(linha) for linha in conn.execute(text(_CATALOGO_DO_FIN))]
+            assert antes  # há o que comparar
+            with Operations.context(MigrationContext.configure(conn)):
+                for migracao in reversed(migracoes):
+                    migracao.downgrade()
+                assert not existe(conn, "SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'fin')")
+                assert not existe(conn, "SELECT to_regprocedure('ref.contem_texto(text, text)') IS NOT NULL")
+                for migracao in migracoes:
+                    migracao.upgrade()
+            assert [tuple(linha) for linha in conn.execute(text(_CATALOGO_DO_FIN))] == antes  # tudo, um a um
+        finally:
+            transacao.rollback()

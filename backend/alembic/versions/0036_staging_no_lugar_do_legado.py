@@ -10,8 +10,9 @@ domínio. A API nunca lê o `stg`.
   `etl.sincronizar_legado` vira `etl.merge_cadastro` e `etl.sincronizar_legado_leg` vira `etl.merge_legislativo`.
   O texto atual de cada função é lido do catálogo, não copiado de revisões antigas, então a lógica não muda.
 - `public.log_execucao_cron`, criada antes só pelo DDL de partida da API, vira `etl.log_execucao_cron` (migração de verdade).
-- Os ajustes de partida da API (valores de enumeração, colunas de orientação, saneamento de legendas) entram aqui de forma
-  idempotente e o DDL de partida sai do código.
+- Os ajustes de partida da API (valores de enumeração e colunas de orientação) entram aqui de forma idempotente e o DDL de
+  partida sai do código. O saneamento da legenda MISSÃO que a API aplicava a cada subida não vem junto: o Partido Missão
+  tem registro no TSE, a base não tem mandato nem filiação dessa sigla e o ETL a trata como qualquer outra legenda.
 - A coluna `cpf` de `stg.politicos` sai: nenhum CPF é gravado (decisão D3) e ela nunca foi preenchida.
 - Papel de leitura `legisdata_leitura` (sem login): só `SELECT` nos schemas que a API lê. A API pode usar um usuário
   com esse papel; o ETL e as migrações seguem com o dono.
@@ -132,13 +133,6 @@ def upgrade() -> None:
         END $$
         """
     )
-    # legendas sem registro oficial no TSE nunca valeram como partido
-    op.execute(
-        """
-        DELETE FROM stg.mandatos WHERE "partidoId" IN (SELECT id FROM stg.partidos_politicos WHERE UPPER(sigla) = 'MISSÃO')
-        """
-    )
-
     op.execute(
         """
         DO $$
@@ -173,3 +167,27 @@ def downgrade() -> None:
         if novo != antigo:
             op.execute(f"DROP FUNCTION {esquema}.{novo}()")
     op.execute("ALTER TABLE public.politicos ADD COLUMN IF NOT EXISTS cpf varchar(14)")
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS public.log_execucao_cron (
+            id uuid PRIMARY KEY,
+            "dataExecucao" timestamptz DEFAULT CURRENT_TIMESTAMP,
+            "statusExecucao" varchar(20) NOT NULL,
+            "registrosAtualizados" integer NOT NULL DEFAULT 0,
+            "tempoProcessamentoSegundos" integer NOT NULL DEFAULT 0,
+            "erroMensagem" text,
+            etapa varchar(50)
+        )
+        """
+    )
+    op.execute(
+        """
+        INSERT INTO public.log_execucao_cron
+            (id, "dataExecucao", "statusExecucao", "registrosAtualizados", "tempoProcessamentoSegundos",
+             "erroMensagem", etapa)
+        SELECT id, "dataExecucao", "statusExecucao", "registrosAtualizados", "tempoProcessamentoSegundos",
+               "erroMensagem", etapa
+        FROM etl.log_execucao_cron ON CONFLICT (id) DO NOTHING
+        """
+    )
+    op.execute("DROP TABLE etl.log_execucao_cron")

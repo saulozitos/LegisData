@@ -14,10 +14,11 @@ from etl.extractors.votacoes_extractor import run_votacoes
 from etl.pipelines.db_loader import DatabaseLoader
 from etl.pipelines.votacoes_loader import carregar_votacoes
 from etl.utils.bootstrap import ensure_backend_on_path
+from etl.utils.manutencao import posprocessar_carga
 
 ensure_backend_on_path()
 
-from app.core.database import SessionLocal  # noqa: E402
+from app.core.database import SessionLocal, engine  # noqa: E402
 from app.services.staging_merge import merge_staging  # noqa: E402
 
 logger = logging.getLogger("VotacoesAtualizacao")
@@ -42,6 +43,8 @@ def atualizar(ano_inicio: Optional[int] = None, force: bool = False, sincronizar
         )
         sessao.commit()
         ponte = merge_staging(sessao) if sincronizar else None
+    if sincronizar:
+        posprocessar_carga(engine)  # derivados e ANALYZE; sem fusão, quem chamou os roda depois
     resumo = {"anos": anos, "extracao": {k: v for k, v in extracao.items() if k != "parlamentares_historicos"}}
     resumo["carga"] = contadores
     resumo["ponte"] = ponte

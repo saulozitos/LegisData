@@ -523,7 +523,7 @@ def test_run_votacoes_exige_alguma_casa(monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------------------------- carga
 @pytest.fixture
 def banco():
-    engine = create_engine("sqlite://").execution_options(schema_translate_map={"stg": None, "etl": None})
+    engine = create_engine("sqlite://").execution_options(schema_translate_map={"stg": None})
     from app.models import Base
 
     Base.metadata.create_all(engine)
@@ -993,3 +993,30 @@ def test_cache_do_ano_anterior_expirado_e_refeito_antes_de_marco(tmp_path):
     ext_depois = ve.VotacoesSenadoExtractor(raw_dir=tmp_path, http=Http(), hoje=date(2026, 4, 1))
     os.utime(arquivo, (velho, velho))
     assert ext_depois._json_com_cache("u", "votacao", 2025, False) == [{"x": 2}]  # depois de março, cache eterno
+
+
+def _atualizar_com_dublês(monkeypatch, sincronizar):
+    from contextlib import nullcontext
+    from unittest.mock import MagicMock
+
+    from etl.pipelines import votacoes_atualizacao as va
+
+    chamadas = []
+    monkeypatch.setattr(va, "run_votacoes", lambda anos, force: {})
+    carregador = MagicMock()
+    carregador._load_politicians.return_value = (0, {}, {})
+    monkeypatch.setattr(va, "DatabaseLoader", lambda data_dir: carregador)
+    monkeypatch.setattr(va, "carregar_votacoes", lambda *args: {})
+    monkeypatch.setattr(va, "SessionLocal", lambda: nullcontext(MagicMock()))
+    monkeypatch.setattr(va, "merge_staging", lambda sessao: chamadas.append("merge") or {})
+    monkeypatch.setattr(va, "posprocessar_carga", lambda motor: chamadas.append("pos"))
+    va.atualizar(sincronizar=sincronizar)
+    return chamadas
+
+
+def test_atualizacao_de_votacoes_funde_e_depois_posprocessa(monkeypatch):
+    assert _atualizar_com_dublês(monkeypatch, sincronizar=True) == ["merge", "pos"]
+
+
+def test_atualizacao_sem_fusao_deixa_o_posprocessamento_a_quem_chamou(monkeypatch):
+    assert _atualizar_com_dublês(monkeypatch, sincronizar=False) == []

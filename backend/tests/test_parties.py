@@ -208,6 +208,20 @@ def test_cron_consolidation_and_logs(client, db, seed):
     assert logs_data[0]["status_execucao"] == "SUCESSO"
 
 
+def test_mensagem_de_erro_do_cron_nao_expoe_sql_nem_detalhe_interno():
+    from app.api.v1.parties import MAX_MENSAGEM_PUBLICA, mensagem_publica
+
+    bruto = (
+        '(psycopg2.errors.UndefinedTable) relation "leg.segredo" does not exist\n'
+        "LINE 1: SELECT * FROM leg.segredo\n[SQL: SELECT * FROM leg.segredo WHERE x = %(x)s]\n[parameters: {'x': 1}]"
+    )
+    publica = mensagem_publica(bruto)
+    assert "[SQL" not in publica and "parameters" not in publica and "\n" not in publica
+    assert publica.startswith("(psycopg2.errors.UndefinedTable)")
+    assert mensagem_publica(None) is None and mensagem_publica("   ") is None
+    assert len(mensagem_publica("x" * 1000)) == MAX_MENSAGEM_PUBLICA
+
+
 def test_service_sync_mandate_history_and_active_seats(db, seed):
     from datetime import date
 

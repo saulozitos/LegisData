@@ -39,6 +39,9 @@ class Etapa:
     titulo: str
     executar: Callable[[], object]
     depende_de_extracao: bool = False  # True para etapas de carga
+    grava_banco: bool = (
+        False  # True para etapas que gravam no Postgres: ao fim da esteira rodam os derivados e o ANALYZE
+    )
 
 
 def _economic(use_cache: bool):
@@ -172,17 +175,7 @@ def _ceap_emendas(ano_inicio: int, usar_cache: bool = True):
 def _load_db(allow_synthetic: bool, allow_unverified: bool):
     from etl.pipelines.db_loader import DatabaseLoader
 
-    resumo = DatabaseLoader(allow_synthetic=allow_synthetic, allow_unverified=allow_unverified).load_all()
-
-    from etl.utils.bootstrap import ensure_backend_on_path
-
-    ensure_backend_on_path()
-    from app.core.database import engine
-
-    from etl.utils.manutencao import analisar_banco
-
-    analisar_banco(engine)
-    return resumo
+    return DatabaseLoader(allow_synthetic=allow_synthetic, allow_unverified=allow_unverified).load_all()
 
 
 def _processos():
@@ -280,10 +273,6 @@ def _load_economia(recarregar_ceap_e_emendas: bool = False, extracao_fresca: boo
     nomes = {chave: nome for chave, nome, _, _ in CARGAS}
     for chave, resultado in resultados.items():
         print(f"    {nomes[chave]}:", resultado)
-
-    from etl.utils.manutencao import analisar_banco
-
-    analisar_banco(engine)
 
 
 def _load_presenca():
@@ -446,23 +435,27 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
             "camara_bulk",
             "Proposições e autores de todos os anos (CSV em lote da Câmara)",
             lambda: _camara_bulk(args.no_cache, args.bulk_ano_inicio),
+            grava_banco=True,
         ),
         Etapa(
             "camara_historico",
             "Histórico de mandatos dos deputados (Câmara)",
             lambda: _camara_historico(args.no_cache),
+            grava_banco=True,
         ),
         Etapa(
             "load_db",
             "Carga e upsert relacional no PostgreSQL",
             lambda: _load_db(args.allow_synthetic, args.allow_unverified),
             depende_de_extracao=True,
+            grava_banco=True,
         ),
         Etapa(
             "load_presenca",
             "Carga de presença oficial (leg.presenca)",
             _load_presenca,
             depende_de_extracao=True,
+            grava_banco=True,
         ),
         Etapa("processos", "Processos judiciais (DataJud)", _processos),
         Etapa(
@@ -476,15 +469,29 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
                 extracao_fresca=ceap_gravada["ok"] or args.arquivos_frescos,
             ),
             depende_de_extracao=True,
+            grava_banco=True,
         ),
     ]
     etapas = [e for e in catalogo if quer(e.chave)]
     return etapas
 
 
+def _posprocessar() -> None:
+    """Uma vez, no fim da esteira, se alguma etapa gravou: refaz os derivados do legislativo e roda o ANALYZE."""
+    from etl.utils.bootstrap import ensure_backend_on_path
+
+    ensure_backend_on_path()
+    from app.core.database import engine
+
+    from etl.utils.manutencao import posprocessar_carga
+
+    posprocessar_carga(engine)
+
+
 def executar(etapas: List[Etapa], modo_completo: bool) -> Dict[str, str]:
     resultados: Dict[str, str] = {}
     total = len(etapas)
+    gravou = False
     for i, etapa in enumerate(etapas, start=1):
         print(f"\n>>> [ETAPA {i}/{total}] {etapa.titulo.upper()} <<<")
 
@@ -498,9 +505,12 @@ def executar(etapas: List[Etapa], modo_completo: bool) -> Dict[str, str]:
         try:
             etapa.executar()
             resultados[etapa.chave] = f"OK ({time.time() - inicio:.1f}s)"
+            gravou = gravou or etapa.grava_banco
         except Exception as exc:  # noqa: BLE001 — a etapa é isolada de propósito; o erro é registrado e relatado
             logger.error("Etapa '%s' falhou: %s", etapa.chave, exc, exc_info=True)
             resultados[etapa.chave] = f"FALHOU: {exc}"
+    if gravou:
+        _posprocessar()
     return resultados
 
 

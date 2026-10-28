@@ -70,6 +70,20 @@ def get_party_timeline(sigla: str, db: Session = Depends(get_db)):
     return get_party_mandate_timeline(partido_sigla=sigla, db=db)
 
 
+MAX_MENSAGEM_PUBLICA = 160
+
+
+def mensagem_publica(mensagem: Optional[str]) -> Optional[str]:
+    """
+    A mensagem de erro do cron para quem consulta a rota pública: só a primeira linha, sem o trecho `[SQL: ...]` que o
+    SQLAlchemy anexa (texto da consulta e do esquema) e com tamanho limitado. O detalhe completo fica no log do servidor.
+    """
+    if not mensagem or not mensagem.strip():
+        return None
+    primeira = mensagem.strip().splitlines()[0].split("[SQL:")[0].strip()
+    return (primeira[: MAX_MENSAGEM_PUBLICA - 1] + "…") if len(primeira) > MAX_MENSAGEM_PUBLICA else primeira or None
+
+
 @router.get("/cron/logs", response_model=List[CronLogItem])
 def get_cron_logs(db: Session = Depends(get_db)):
     """
@@ -83,7 +97,7 @@ def get_cron_logs(db: Session = Depends(get_db)):
             status_execucao=log.status_execucao,
             registros_atualizados=log.registros_atualizados,
             tempo_processamento_segundos=log.tempo_processamento_segundos,
-            erro_mensagem=log.erro_mensagem,
+            erro_mensagem=mensagem_publica(log.erro_mensagem),
             etapa=log.etapa,
         )
         for log in logs
