@@ -284,7 +284,9 @@ def test_o_programa_da_carga_compila_e_roda_com_o_gancho_do_git_e_o_modo_do_ambi
 
     monkeypatch.setattr(carga_economica, "carregar_tudo", falso)
     posprocessados = []
-    monkeypatch.setattr("etl.utils.manutencao.posprocessar_carga", lambda engine: posprocessados.append(engine))
+    monkeypatch.setattr(
+        "etl.utils.manutencao.posprocessar_carga", lambda engine: posprocessados.append(engine) or "refeito"
+    )
     monkeypatch.setenv("LEGISDATA_FIN_MODO", "sem_ceap")
     monkeypatch.setenv("LEGISDATA_FIN_TEM_ALGUM_DADO", "t")
     exec(compile(codigo, "deploy.sh:carga", "exec"), {})
@@ -297,6 +299,7 @@ def test_o_programa_da_carga_compila_e_roda_com_o_gancho_do_git_e_o_modo_do_ambi
     assert "FALHA_TOLERADA financas" in saida
     # a carga religa os derivados (presidência atualiza core.mandato): o deploy os refaz, o primeiro leitor não paga
     assert posprocessados == [motor]
+    assert "derivados refeito" in saida  # o estado dos derivados fica no log do deploy, como o das cargas
 
     monkeypatch.delenv("LEGISDATA_FIN_MODO")
     monkeypatch.delenv("LEGISDATA_FIN_TEM_ALGUM_DADO")
@@ -324,15 +327,42 @@ def test_rollback_do_deploy_sobe_a_tag_anterior_com_o_compose_do_commit_anterior
     assert rollback.count("com o compose do commit anterior") == 1  # o comentário não pode se repetir
 
 
-def test_rollback_avisa_quando_a_imagem_antiga_sobe_sobre_um_schema_migrado():
-    """Só a imagem volta: sem este aviso o operador não saberia que o banco ficou numa revisão que ela não conhece."""
+def test_rollback_chama_o_aviso_de_schema_migrado_e_a_revisao_e_lida_antes_de_migrar():
+    """Só a imagem volta: o rollback precisa avisar se o banco ficou numa revisão que ela não conhece."""
     texto = _texto(DEPLOY_SH)
     antes = _posicao(texto, r'^REVISAO_ANTES="\$\(consultar_revisao\)"')
     assert antes < _posicao(texto, r"alembic upgrade head")  # a revisão é lida ANTES de migrar
     rollback = texto[_posicao(texto, r'if \[\[ "\$estado" != "healthy" \]\]') :]
-    assert 'REVISAO_DEPOIS="$(consultar_revisao)"' in rollback
-    assert re.search(r'\[\[ -n "\$REVISAO_ANTES" && "\$REVISAO_ANTES" != "\$REVISAO_DEPOIS" \]\]', rollback)
-    assert "AVISO: este deploy migrou o banco" in rollback and "banco vazio" in rollback
+    assert "avisar_rollback_se_o_schema_mudou" in rollback.split("exit 1")[0]
+
+
+@SEM_BASH
+@pytest.mark.parametrize(
+    "antes, depois, esperado",
+    [
+        ("0036", "0037", "migrou o banco de 0036 para 0037"),
+        ("0037", "0037", None),  # nada migrou: sem aviso
+        ("", "0037", None),  # instalação nova: não havia revisão antes
+        ("0036", "", "não consegui ler a revisão atual"),  # banco fora do ar no rollback: aviso honesto, não "para "
+    ],
+)
+def test_aviso_do_rollback_conforme_a_revisao_antes_e_depois(antes, depois, esperado):
+    texto = _texto(DEPLOY_SH)
+    inicio = _posicao(texto, r"^avisar_rollback_se_o_schema_mudou\(\) \{")
+    funcao = texto[inicio:].split("\n}\n")[0] + "\n}\n"
+    programa = (
+        'log() { echo "$*"; }\n'
+        'consultar_revisao() { echo "$REVISAO_DEPOIS_FALSA"; }\n'
+        f'REVISAO_ANTES="{antes}"\n{funcao}avisar_rollback_se_o_schema_mudou\n'
+    )
+    saida = subprocess.run(
+        ["bash", "-c", programa], env={**os.environ, "REVISAO_DEPOIS_FALSA": depois}, capture_output=True, text=True
+    )
+    assert saida.returncode == 0, saida.stderr
+    if esperado is None:
+        assert saida.stdout.strip() == ""
+    else:
+        assert "AVISO" in saida.stdout and esperado in saida.stdout
 
 
 @SEM_BASH

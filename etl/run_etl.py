@@ -39,9 +39,8 @@ class Etapa:
     titulo: str
     executar: Callable[[], object]
     depende_de_extracao: bool = False  # True para etapas de carga
-    grava_banco: bool = (
-        False  # True para etapas que gravam no Postgres: ao fim da esteira rodam os derivados e o ANALYZE
-    )
+    # True para etapas que gravam no Postgres: ao fim da esteira rodam os derivados e o ANALYZE
+    grava_banco: bool = False
 
 
 def _economic(use_cache: bool):
@@ -476,8 +475,11 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
     return etapas
 
 
-def _posprocessar() -> None:
-    """Uma vez, no fim da esteira, se alguma etapa gravou: o ANALYZE e os derivados do legislativo. Nunca derruba a esteira."""
+def _posprocessar() -> str:
+    """
+    Uma vez, no fim da esteira, se alguma etapa gravou: o ANALYZE e os derivados do legislativo. Nunca derruba a esteira;
+    devolve o estado dos derivados (`'refeito'`, `'em_dia'`, `'ocupado'` ou `'falhou'`).
+    """
     try:
         from etl.utils.bootstrap import ensure_backend_on_path
 
@@ -486,9 +488,10 @@ def _posprocessar() -> None:
 
         from etl.utils.manutencao import posprocessar_carga
 
-        posprocessar_carga(engine)
+        return posprocessar_carga(engine)
     except Exception as exc:  # noqa: BLE001 - as etapas já terminaram; o leitor refaz o que faltar
         logger.warning("Pós-processamento da carga não executado: %s", exc)
+        return "falhou"
 
 
 def executar(etapas: List[Etapa], modo_completo: bool) -> Dict[str, str]:
@@ -513,7 +516,7 @@ def executar(etapas: List[Etapa], modo_completo: bool) -> Dict[str, str]:
             logger.error("Etapa '%s' falhou: %s", etapa.chave, exc, exc_info=True)
             resultados[etapa.chave] = f"FALHOU: {exc}"
     if gravou:
-        _posprocessar()
+        logger.info("Derivados do legislativo ao fim da esteira: %s", _posprocessar())
     return resultados
 
 

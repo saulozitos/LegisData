@@ -10,17 +10,16 @@ Implementa integralmente a Especificação do Módulo 4 e Módulo 8:
    C) Volume de Relatorias Relevantes
 3. Histórico Dinâmico de Mandatos (Cadeiras-Dia com rastreamento temporal de licenças e suplências)
 4. Gráfico de Quadrantes de Eficiência (Volume vs. Aprovação)
-5. Rotina de Ingestão e Processamento em Lote (CRON Diário)
+5. Rotina de Ingestão e Processamento em Lote: vive em `etl/pipelines/cron_daily_consolidation.py` (este módulo fornece
+   `sync_mandate_history` e `calculate_party_ippm_ranking` a ela)
 """
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 from app.core.names import chave_sigla
-from app.models.analytics import LogExecucaoCron
 from app.models.enums import SituacaoMandatoEnum
-from app.services.cron_log_service import descrever_falha
 from app.services.party_catalog_service import DEFAULT_PARTY_COLOR
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
@@ -545,56 +544,4 @@ def get_party_mandate_timeline(partido_sigla: str, db: Session) -> Dict[str, Any
         "titulares_exercicio": exercicio,
         "ministros_licenciados": afastados,
         "suplentes_ativos": suplencias,
-    }
-
-
-def run_daily_cron_job(db: Session) -> Dict[str, Any]:
-    """
-    Executa o fluxo completo do CRON Job diário:
-    - Etapa 1: Sincronização de Mandatos e Histórico Dinâmico
-    - Etapa 2: Ingestão de Proposições e Deliberações
-    - Etapa 3: Recálculo dos Indicadores e IPPM
-    - Etapa 4: Consolidação dos Grafos
-    Registra a auditoria na tabela log_execucao_cron.
-    """
-    t_start = datetime.now(timezone.utc)
-    status = "SUCESSO"
-    err_msg: Optional[str] = None
-    err_registrado: Optional[str] = None
-    registros_atualizados = 0
-
-    try:
-        # Etapa 1: Sincronização de Entidades Base
-        reg1 = sync_mandate_history(db)
-        registros_atualizados += reg1
-
-        # Etapa 2 & 3: Recálculo dos Indicadores IPPM
-        ranking_data = calculate_party_ippm_ranking(db)
-        registros_atualizados += len(ranking_data.get("ranking", []))
-
-    except Exception as e:
-        status = "FALHA"
-        err_msg = str(e)
-        err_registrado = descrever_falha(None, e)
-        logger.error("Erro no processamento do CRON Diário: %s", e, exc_info=True)
-
-    t_end = datetime.now(timezone.utc)
-    tempo_segundos = max(0, int((t_end - t_start).total_seconds()))
-
-    log_entry = LogExecucaoCron(
-        status_execucao=status,
-        registros_atualizados=registros_atualizados,
-        tempo_processamento_segundos=tempo_segundos,
-        erro_mensagem=err_registrado,
-        etapa="CONSOLIDACAO_DIARIA_COMPLETA",
-    )
-    db.add(log_entry)
-    db.commit()
-
-    return {
-        "status": status,
-        "tempo_processamento_segundos": tempo_segundos,
-        "registros_atualizados": registros_atualizados,
-        "erro_mensagem": err_msg,
-        "timestamp": t_start.isoformat(),
     }

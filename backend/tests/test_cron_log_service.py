@@ -36,6 +36,8 @@ def test_formato_do_registro_passa_inalterado(registrada):
         "votações: senado fora do ar",
         "etapa desconhecida: OperationalError",
         "OperationalError\n[SQL: SELECT 1]",
+        "OperationalError\n; TimeoutError",  # o `$` do Python casaria antes da quebra no meio da lista; `fullmatch` não
+        "votações: OperationalError\n; economia: TimeoutError",
         "x" * 1000,
     ],
 )

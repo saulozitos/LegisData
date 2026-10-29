@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 
 from etl.pipelines.cron_daily_consolidation import execute_cron_pipeline
 
-ETAPAS_EXTERNAS = ("votacoes", "ponte", "presenca", "economia", "financas", "pos", "ranking", "grafo")
-ORDEM = ["votacoes", "ponte", "presenca", "economia", "financas", "pos", "ranking", "grafo"]
+ETAPAS_EXTERNAS = ("votacoes", "ponte", "derivados", "presenca", "economia", "financas", "pos", "ranking", "grafo")
+ORDEM = ["votacoes", "ponte", "derivados", "presenca", "economia", "financas", "pos", "ranking", "grafo"]
 
 
 def _executar(efeitos=None, retornos=None, autorias=5):
@@ -18,6 +18,7 @@ def _executar(efeitos=None, retornos=None, autorias=5):
     padrao = {
         "votacoes": {"carga": {}},
         "ponte": 10,
+        "derivados": "refeito",
         "presenca": {},
         "economia": {"series": 28},
         "financas": {"carga": {}},
@@ -28,6 +29,7 @@ def _executar(efeitos=None, retornos=None, autorias=5):
     alvos = {
         "votacoes": "etl.pipelines.votacoes_atualizacao.atualizar",
         "ponte": "etl.pipelines.cron_daily_consolidation.sync_mandate_history",
+        "derivados": "etl.pipelines.cron_daily_consolidation.refazer_derivados_apos_carga",  # nunca o refresh de verdade
         "presenca": "etl.pipelines.presenca_atualizacao.atualizar",
         "economia": "etl.pipelines.economia_atualizacao.atualizar",
         "financas": "etl.pipelines.financas_atualizacao.atualizar",

@@ -18,7 +18,8 @@ ETAPA_FINANCAS = "finanças"
 ETAPAS_CONHECIDAS = (ETAPA_VOTACOES, ETAPA_PRESENCA, ETAPA_ECONOMIA, ETAPA_FINANCAS)
 MENSAGEM_GENERICA = "Falha registrada; o detalhe está no log do servidor."
 
-_ITEM = re.compile(r"^(?:(?:%s): )?[A-Z][A-Za-z0-9_]*$" % "|".join(ETAPAS_CONHECIDAS))
+# `fullmatch`: o `$` do Python também casa antes de uma quebra de linha final
+_ITEM = re.compile(r"(?:(?:%s): )?[A-Z][A-Za-z0-9_]*" % "|".join(ETAPAS_CONHECIDAS))
 
 
 def descrever_falha(etapa: Optional[str], erro: BaseException) -> str:
@@ -40,4 +41,4 @@ def mensagem_publica(mensagem: Optional[str]) -> Optional[str]:
     if not mensagem or not mensagem.strip():
         return None
     itens = mensagem.strip().split("; ")
-    return mensagem.strip() if all(_ITEM.match(item) for item in itens) else MENSAGEM_GENERICA
+    return mensagem.strip() if all(_ITEM.fullmatch(item) for item in itens) else MENSAGEM_GENERICA

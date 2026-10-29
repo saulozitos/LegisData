@@ -193,12 +193,18 @@ def test_party_timeline_endpoint(client, seed):
 
 
 def test_cron_consolidation_and_logs(client, db, seed):
-    from app.services.party_productivity_service import run_daily_cron_job
+    from app.models.analytics import LogExecucaoCron
 
-    # Run cron service directly (as the API is strictly read-only GET)
-    run_data = run_daily_cron_job(db)
-    assert run_data["status"] == "SUCESSO"
-    assert run_data["tempo_processamento_segundos"] >= 0
+    # O cron real vive em `etl.pipelines.cron_daily_consolidation` (testado no ETL); aqui a rota de logs lê o que ele grava
+    db.add(
+        LogExecucaoCron(
+            status_execucao="SUCESSO",
+            registros_atualizados=3,
+            tempo_processamento_segundos=1,
+            etapa="CONSOLIDACAO_DIARIA_COMPLETA",
+        )
+    )
+    db.commit()
 
     # Get cron logs via API GET endpoint
     logs_resp = client.get("/api/v1/parties/cron/logs")

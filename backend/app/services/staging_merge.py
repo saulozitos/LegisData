@@ -3,6 +3,7 @@
 import logging
 from typing import Any, Dict
 
+from app.services.derivados_service import reservar_derivados
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 def merge_staging(db: Session) -> Dict[str, Any]:
     """Executa as funções `etl.merge_*` e a unificação de cadastros duplicados e devolve o resumo da execução."""
+    reservar_derivados(db)  # a fusão escreve em `core.pessoa` antes das dependências: pega a trava de controle primeiro
     core = db.execute(text("SELECT etl.merge_cadastro()")).scalar_one()
     leg = db.execute(text("SELECT etl.merge_legislativo()")).scalar_one()
     db.execute(text("SELECT etl.aplicar_linhagens()"))

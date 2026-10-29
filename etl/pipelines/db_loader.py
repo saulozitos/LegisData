@@ -489,7 +489,7 @@ class DatabaseLoader:
             merge_staging(session)
         except Exception as exc:
             session.rollback()
-            logger.error("Fusão staging -> core/leg falhou: %s", exc, exc_info=True)
+            logger.error("Fusão staging -> core/leg falhou: %s", exc)  # o trace sai uma vez só, em `load_all`
             raise
 
     # ------------------------------------------------------------------ utilidades de proveniência

@@ -30,7 +30,7 @@ from app.services.party_productivity_service import (
 )
 from sqlalchemy import text
 
-from etl.utils.manutencao import posprocessar_carga
+from etl.utils.manutencao import posprocessar_carga, refazer_derivados_apos_carga
 
 logger = logging.getLogger("cron_daily_consolidation")
 
@@ -42,10 +42,10 @@ def execute_cron_pipeline() -> Dict[str, Any]:
     status = "SUCESSO"
     err_msg: Optional[str] = None
     registros_totais = 0
-    falhas_de_etapa: list = (
-        []
-    )  # (etapa, exceção): uma lista só, para o texto do log e o da tabela pública não divergirem
-    err_registrado: Optional[str] = None  # só etapa e classe da exceção: é o que vai para a tabela pública de logs
+    # (etapa, exceção): uma lista só, para o texto do log e o da tabela pública não divergirem
+    falhas_de_etapa: list = []
+    # só etapa e classe da exceção: é o que vai para a tabela pública de logs
+    err_registrado: Optional[str] = None
     estado_derivados: Optional[str] = None
 
     def registrar_falha(etapa: str, erro: Exception, descricao: str) -> None:
@@ -66,11 +66,16 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         except Exception as e:
             registrar_falha(ETAPA_VOTACOES, e, "atualização de votações")
 
+        from app.core.database import engine as engine_derivados
+
         # Etapa 1: Sincronização de Entidades Base e Mandatos Dinâmicos
         logger.info("Etapa 1/4: Sincronizando histórico dinâmico de mandatos...")
         synced_mandates = sync_mandate_history(db)
         registros_totais += synced_mandates
         logger.info(f"Etapa 1 concluída: {synced_mandates} registros de mandatos sincronizados.")
+        # a fusão sujou os derivados: refaz já, para a primeira leitura do dia não pagar o refresh enquanto as cargas
+        # seguintes (que podem levar minutos) rodam; o pós-processamento final só refaz de novo se algo mudou
+        logger.info(f"Derivados do legislativo depois da fusão: {refazer_derivados_apos_carga(engine_derivados)}")
 
         # Etapa 1b: presença e faltas, depois da ponte (falha aqui não impede as demais etapas, mas marca FALHA)
         logger.info("Etapa 1b: atualizando presença e faltas do Congresso...")

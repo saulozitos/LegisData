@@ -18,11 +18,11 @@ Duas regras protegem a API:
 
 import logging
 import threading
-from typing import Dict
+from typing import Dict, Union
 
 from app.core.database import criar_engine
 from sqlalchemy import text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import URL, Connection, Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -36,23 +36,19 @@ ESPERA_DO_ETL = "120s"
 ESTADO_REFEITO = "refeito"
 ESTADO_EM_DIA = "em_dia"
 ESTADO_OCUPADO = "ocupado"
+ESTADO_FALHOU = "falhou"  # não vem do banco: o ETL o usa quando a chamada à função falhou
 VISOES_MATERIALIZADAS = ("leg.mv_autoria_pontuada_unica", "leg.mv_coautoria_par")
 
-_motores: Dict[str, Engine] = {}
+_motores: Dict[URL, Engine] = {}
 _trava_dos_motores = threading.Lock()
 
 
 def _motor_da_atualizacao(motor_principal: Engine) -> Engine:
     """Um pool de uma conexão, por banco, só para atualizar os derivados (nunca disputa o pool das requisições)."""
-    chave = motor_principal.url.render_as_string(hide_password=False)
+    chave = motor_principal.url  # o objeto URL, não o texto com a senha: nenhuma cópia dela em string global
     with _trava_dos_motores:
         if chave not in _motores:
-            _motores[chave] = criar_engine(
-                motor_principal.url.render_as_string(hide_password=False),
-                pool_size=1,
-                max_overflow=0,
-                pool_timeout=ESPERA_POR_CONEXAO_SEGUNDOS,
-            )
+            _motores[chave] = criar_engine(chave, pool_size=1, max_overflow=0, pool_timeout=ESPERA_POR_CONEXAO_SEGUNDOS)
         return _motores[chave]
 
 
@@ -67,6 +63,15 @@ def descartar_motores() -> None:
         for motor in _motores.values():
             motor.dispose()
         _motores.clear()
+
+
+def reservar_derivados(executor: Union[Session, Connection]) -> None:
+    """
+    Primeiro comando de toda transação de carga que escreve nas dependências dos derivados: pega a trava de controle
+    (sem mudar o sinalizador) antes de qualquer linha de dado, para duas cargas concorrentes não formarem ciclo de espera
+    (ver a docstring da migração 0037). Vale até o fim da transação.
+    """
+    executor.execute(text("SELECT leg.reservar_derivados()"))
 
 
 def atualizar_para_carga(engine: Engine, espera: str = ESPERA_DO_ETL) -> str:

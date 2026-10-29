@@ -4,7 +4,7 @@ from sqlalchemy import text
 
 from etl import run_etl
 from etl.utils import manutencao
-from etl.utils.manutencao import analisar_banco, atualizar_derivados, posprocessar_carga
+from etl.utils.manutencao import analisar_banco, posprocessar_carga, refazer_derivados_apos_carga
 
 
 def _constante_da_migracao_0037(nome):
@@ -48,7 +48,7 @@ def _contagem_de_analyze(pg_engine):
             conn.execute(
                 text(
                     "SELECT relname, analyze_count FROM pg_stat_user_tables "
-                    "WHERE relname IN ('mv_autoria_pontuada_unica', 'mv_coautoria_par')"
+                    "WHERE relname IN ('mv_autoria_pontuada_unica', 'mv_coautoria_par', 'autoria')"
                 )
             ).all()
         )
@@ -59,21 +59,23 @@ def test_analisar_so_os_derivados(pg_engine):
     import time
 
     antes = _contagem_de_analyze(pg_engine)
-    assert set(antes) == {"mv_autoria_pontuada_unica", "mv_coautoria_par"}
+    visoes = ("mv_autoria_pontuada_unica", "mv_coautoria_par")
+    assert set(antes) >= set(visoes) and "autoria" in antes
     assert analisar_banco(pg_engine, apenas_derivados=True) is True
     for _ in range(100):  # as estatísticas são gravadas de forma assíncrona: espera com limite, sem dormir às cegas
         depois = _contagem_de_analyze(pg_engine)
-        if all(depois[nome] > antes[nome] for nome in antes):
+        if all(depois[nome] > antes[nome] for nome in visoes):
             break
         time.sleep(0.1)
-    assert all(depois[nome] > antes[nome] for nome in antes), f"ANALYZE não alcançou as visões: {antes} -> {depois}"
+    assert all(depois[nome] > antes[nome] for nome in visoes), f"ANALYZE não alcançou as visões: {antes} -> {depois}"
+    assert depois["autoria"] == antes["autoria"]  # só os derivados: o ANALYZE do banco inteiro é o outro modo
 
 
 def test_atualizar_derivados_distingue_refeito_em_dia_e_ocupado(pg_engine):
     with pg_engine.begin() as conn:
         conn.execute(text("UPDATE leg.proposicao SET titulo = titulo"))  # liga o sinalizador
-    assert atualizar_derivados(pg_engine) == "refeito"
-    assert atualizar_derivados(pg_engine) == "em_dia"  # nada mudou depois
+    assert refazer_derivados_apos_carga(pg_engine) == "refeito"
+    assert refazer_derivados_apos_carga(pg_engine) == "em_dia"  # nada mudou depois
 
 
 def test_etl_chama_a_porta_bloqueante_com_a_espera_longa():
@@ -85,7 +87,7 @@ def test_etl_chama_a_porta_bloqueante_com_a_espera_longa():
     conexao.execute.return_value.scalar.return_value = "em_dia"
     motor = MagicMock()
     motor.begin.return_value = nullcontext(conexao)
-    atualizar_derivados(motor)
+    refazer_derivados_apos_carga(motor)
     comando, parametros = conexao.execute.call_args.args
     assert "leg.atualizar_derivados(true," in str(comando) and parametros == {"espera": manutencao.ESPERA_DO_ETL}
     assert manutencao.ESPERA_DO_ETL not in ("0", "500ms")  # espera de verdade, bem mais que a da leitura
@@ -102,7 +104,7 @@ def test_etl_espera_a_vez_de_outra_atualizacao_em_curso(pg_engine):
     outra = pg_engine.connect()
     transacao = outra.begin()
     resultado = []
-    espera = threading.Thread(target=lambda: resultado.append(atualizar_derivados(pg_engine)))
+    espera = threading.Thread(target=lambda: resultado.append(refazer_derivados_apos_carga(pg_engine)))
     iniciada = False
     try:
         outra.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": chave})
@@ -141,14 +143,14 @@ def test_atualizar_derivados_avisa_quando_nao_conseguiu_a_vez(caplog):
             return nullcontext(conexao)
 
     with caplog.at_level("WARNING", logger="Manutencao"):
-        assert atualizar_derivados(Ocupado()) == "ocupado"
+        assert refazer_derivados_apos_carga(Ocupado()) == "ocupado"
     assert any("NÃO atualizados" in r.getMessage() for r in caplog.records)  # nível AVISO, não "sem mudança"
 
 
 def test_falha_do_banco_vira_aviso_e_nao_excecao(caplog):
     with caplog.at_level("WARNING", logger="Manutencao"):
         assert analisar_banco(EngineQuebrado()) is False
-        assert atualizar_derivados(EngineQuebrado()) == "falhou"
+        assert refazer_derivados_apos_carga(EngineQuebrado()) == "falhou"
     mensagens = " ".join(r.getMessage() for r in caplog.records)
     assert "ANALYZE não executado" in mensagens and "Derivados do legislativo não atualizados" in mensagens
 
@@ -157,7 +159,8 @@ def test_posprocessar_analisa_antes_e_depois_do_refresh(monkeypatch):
     chamadas = []
     motor = object()
     monkeypatch.setattr(
-        "etl.utils.manutencao.atualizar_derivados", lambda engine: chamadas.append(("derivados", engine)) or "refeito"
+        "etl.utils.manutencao.refazer_derivados_apos_carga",
+        lambda engine: chamadas.append(("derivados", engine)) or "refeito",
     )
     monkeypatch.setattr(
         "etl.utils.manutencao.analisar_banco",
@@ -171,7 +174,7 @@ def test_posprocessar_analisa_antes_e_depois_do_refresh(monkeypatch):
 
 def test_posprocessar_nao_analisa_os_derivados_se_nao_refez(monkeypatch):
     chamadas = []
-    monkeypatch.setattr("etl.utils.manutencao.atualizar_derivados", lambda engine: "em_dia")
+    monkeypatch.setattr("etl.utils.manutencao.refazer_derivados_apos_carga", lambda engine: "em_dia")
     monkeypatch.setattr(
         "etl.utils.manutencao.analisar_banco", lambda engine, apenas_derivados=False: chamadas.append(apenas_derivados)
     )
@@ -228,12 +231,59 @@ def test_etapa_pulada_por_falha_de_extracao_nao_posprocessa(monkeypatch):
 
 
 def test_falha_do_posprocessamento_nao_derruba_a_esteira(monkeypatch):
-    def quebra(_motor):
+    """A esteira chama `posprocessar_carga(engine)` e, se ele levantar, a etapa continua OK (nenhum teste do tipo passa com `pass`)."""
+    from app.core import database
+
+    chamadas = []
+
+    def quebra(motor):
+        chamadas.append(motor)
         raise RuntimeError("sem banco")
 
     monkeypatch.setattr("etl.utils.manutencao.posprocessar_carga", quebra)
     resultados = run_etl.executar([run_etl.Etapa("a", "A", lambda: None, grava_banco=True)], modo_completo=False)
     assert resultados["a"].startswith("OK")
+    assert chamadas == [database.engine]  # a chamada aconteceu, com o motor do app
+
+
+def test_posprocessamento_da_esteira_devolve_o_estado_dos_derivados(monkeypatch):
+    monkeypatch.setattr("etl.utils.manutencao.posprocessar_carga", lambda motor: "ocupado")
+    assert run_etl._posprocessar() == "ocupado"
+
+    def quebra(motor):
+        raise RuntimeError("sem banco")
+
+    monkeypatch.setattr("etl.utils.manutencao.posprocessar_carga", quebra)
+    assert run_etl._posprocessar() == "falhou"
+
+
+def test_toda_carga_que_escreve_nas_dependencias_reserva_a_trava_antes_de_qualquer_escrita():
+    """
+    A trava de controle dos derivados tem de ser a primeira coisa da transação (ver a docstring da migração 0037): senão a
+    carga pode segurar uma linha de `core.pessoa` e só depois pedir o controle, e formar um ciclo de espera com a fusão.
+    """
+    import ast
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[2]
+    pontos = (
+        ("backend/app/services/staging_merge.py", "merge_staging"),
+        ("etl/pipelines/camara_bulk_loader.py", "mesclar"),
+        ("etl/pipelines/camara_historico_loader.py", "carregar"),
+        ("etl/pipelines/presidencia_loader.py", "carregar"),
+    )
+    for arquivo, nome in pontos:
+        arvore = ast.parse((raiz / arquivo).read_text(encoding="utf-8"))
+        funcao = next(n for n in ast.walk(arvore) if isinstance(n, ast.FunctionDef) and n.name == nome)
+        chamadas = sorted(
+            (no.lineno, getattr(no.func, "id", None) or getattr(no.func, "attr", None))
+            for no in ast.walk(funcao)
+            if isinstance(no, ast.Call)
+        )
+        reservas = [linha for linha, chamada in chamadas if chamada == "reservar_derivados"]
+        execucoes = [linha for linha, chamada in chamadas if chamada == "execute"]
+        assert reservas, f"{arquivo}::{nome} não reserva a trava de controle dos derivados"
+        assert min(reservas) < min(execucoes), f"{arquivo}::{nome} escreve antes de reservar"
 
 
 def test_todas_as_etapas_que_gravam_no_banco_estao_marcadas():

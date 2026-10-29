@@ -22,11 +22,17 @@ tem de terminar com `UPDATE leg.pontuacao_controle SET sujo = true`. Se a mudan�
 o dono `legisdata_derivados`, o `COMMENT` e as concessões abaixo.
 
 O gatilho é `BEFORE` e por comando: ele trava a linha de controle (o `ON CONFLICT` trava mesmo quando o `WHERE` é falso)
-ANTES de a transação tocar na primeira linha de dado. Assim toda transação que escreve numa dependência pega a trava de
-controle primeiro e as linhas de dado depois, na mesma ordem, e duas cargas concorrentes nunca formam um ciclo de
-espera (com o gatilho `AFTER` uma pegava o controle e esperava pela linha da outra, que esperava pelo controle: deadlock).
-O custo é que as escritas nas dependências passam a ser uma por vez, e que uma escrita espera o fim de um refresh em
-curso (alguns segundos), porque o refresh segura a linha de controle. A transação que escreve segura a linha até o commit,
+ANTES de o comando tocar na primeira linha de dado. Se a PRIMEIRA escrita de cada transação for numa dependência, toda
+transação pega a trava de controle primeiro e as linhas de dado depois, na mesma ordem, e duas cargas concorrentes não
+formam ciclo de espera (com o gatilho `AFTER` uma pegava o controle e esperava pela linha da outra, que esperava pelo
+controle: deadlock). A garantia NÃO vale para uma transação que escreve outra coisa antes (por exemplo `core.pessoa` no
+início de uma fusão) e só depois uma dependência: aí ela segura linhas de dado antes de pedir o controle. Por isso toda
+carga que escreve nas dependências começa a transação com `SELECT leg.reservar_derivados()`, que pega a trava de controle
+sem mudar o sinalizador (`derivados_service.reservar_derivados`; um teste confere que cada ponto de entrada da carga a
+chama). Também fica fora da garantia o `TRUNCATE` de uma dependência: o gatilho `BEFORE TRUNCATE` roda com o
+`ACCESS EXCLUSIVE` da tabela já tomado (o ETL só faz `TRUNCATE` em `stg.*`). O custo é que as escritas nas dependências
+passam a ser uma transação por vez, e que uma escrita espera o fim de um refresh em curso (alguns segundos), porque o
+refresh segura a linha de controle. A transação que escreve segura a linha até o commit,
 então uma carga longa seguraria todos os leitores. Por isso a função,
 quando chamada por um leitor (`p_bloquear = false`, o padrão), tenta o bloqueio consultivo sem esperar e limita a espera
 por qualquer trava a meio segundo (`lock_timeout`); se não conseguir, devolve `'ocupado'` e a leitura usa a visão como
@@ -39,7 +45,9 @@ A função devolve `'refeito'`, `'em_dia'` ou `'ocupado'`, para o ETL distinguir
 Quem executa é um papel sem login e sem superusuário, `legisdata_derivados`, dono das duas visões, da tabela de controle e
 das funções (`SECURITY DEFINER`, `search_path` fixo). Assim a API pode usar `legisdata_leitura` e um defeito futuro no
 corpo de uma função não herda superusuário. O papel só lê `leg.vw_autoria_pontuada_unica`, `leg.autoria` e
-`leg.proposicao`.
+`leg.proposicao`. O dono das migrações (que é o usuário do ETL) recebe `EXECUTE` nas funções internas e `SELECT`/`UPDATE` na
+tabela de controle de forma explícita, para uma migração futura poder marcar o sinalizador; `ALTER ... OWNER TO` exige
+superusuário ou ser membro do papel (premissa registrada em `docs/DEPLOY_AUTOMATICO.md`).
 
 Há duas portas de entrada. `leg.atualizar_derivados(p_bloquear, p_espera)` aceita a espera como parâmetro e é do ETL:
 `EXECUTE` só para o dono da migração (que o ETL usa), nunca para `legisdata_leitura`, que com `p_espera = '0'` esperaria
@@ -138,6 +146,16 @@ def upgrade() -> None:
         END $$
         """
     )
+    op.execute(
+        """
+        CREATE FUNCTION leg.reservar_derivados() RETURNS void
+        LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+            -- trava a linha de controle até o fim da transação sem mudar o sinalizador (cria a linha ligada se faltar)
+            INSERT INTO leg.pontuacao_controle (id, sujo) VALUES (true, true)
+            ON CONFLICT (id) DO UPDATE SET sujo = leg.pontuacao_controle.sujo
+        $$
+        """
+    )
     for tabela in DEPENDENCIAS:
         nome = tabela.replace(".", "_")
         op.execute(
@@ -155,6 +173,7 @@ def upgrade() -> None:
         LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
         DECLARE
             v_antes text := current_setting('lock_timeout');
+            v_estado text := 'refeito';
         BEGIN
             IF NOT coalesce((SELECT sujo FROM leg.pontuacao_controle), true) THEN
                 RETURN 'em_dia';
@@ -164,26 +183,27 @@ def upgrade() -> None:
                 IF p_bloquear THEN
                     PERFORM pg_advisory_xact_lock({BLOQUEIO_DA_ATUALIZACAO});  -- espera até `p_espera`
                 ELSIF NOT pg_try_advisory_xact_lock({BLOQUEIO_DA_ATUALIZACAO}) THEN
-                    PERFORM set_config('lock_timeout', v_antes, true);
-                    RETURN 'ocupado';  -- outra atualização em curso: serve a visão como está
+                    v_estado := 'ocupado';  -- outra atualização em curso: serve a visão como está
                 END IF;
-                -- desliga antes de refazer: uma gravação que terminar durante a atualização liga o sinalizador de novo
-                UPDATE leg.pontuacao_controle SET sujo = false WHERE sujo;
-                IF NOT FOUND AND EXISTS (SELECT 1 FROM leg.pontuacao_controle) THEN
-                    PERFORM set_config('lock_timeout', v_antes, true);
-                    RETURN 'em_dia';  -- outra atualização acabou de refazer
+                IF v_estado = 'refeito' THEN
+                    -- desliga antes de refazer: uma gravação que terminar durante a atualização liga o sinalizador de novo
+                    UPDATE leg.pontuacao_controle SET sujo = false WHERE sujo;
+                    IF NOT FOUND AND EXISTS (SELECT 1 FROM leg.pontuacao_controle) THEN
+                        v_estado := 'em_dia';  -- outra atualização acabou de refazer
+                    ELSE
+                        INSERT INTO leg.pontuacao_controle (id, sujo) VALUES (true, false) ON CONFLICT (id) DO NOTHING;
+                        REFRESH MATERIALIZED VIEW CONCURRENTLY leg.mv_autoria_pontuada_unica;
+                        REFRESH MATERIALIZED VIEW CONCURRENTLY leg.mv_coautoria_par;
+                    END IF;
                 END IF;
-                INSERT INTO leg.pontuacao_controle (id, sujo) VALUES (true, false) ON CONFLICT (id) DO NOTHING;
-                REFRESH MATERIALIZED VIEW CONCURRENTLY leg.mv_autoria_pontuada_unica;
-                REFRESH MATERIALIZED VIEW CONCURRENTLY leg.mv_coautoria_par;
             EXCEPTION WHEN lock_not_available THEN
                 -- uma carga segura a linha de controle (ou outra atualização, o bloqueio): o bloco inteiro é desfeito
                 -- (o sinalizador continua ligado) e a leitura usa a visão como está
-                PERFORM set_config('lock_timeout', v_antes, true);
-                RETURN 'ocupado';
+                v_estado := 'ocupado';
             END;
+            -- a restauração do lock_timeout tem um ponto de saída só: um estado novo não a esquece
             PERFORM set_config('lock_timeout', v_antes, true);
-            RETURN 'refeito';
+            RETURN v_estado;
         END $$
         """
     )
@@ -198,6 +218,12 @@ def upgrade() -> None:
     # só o gatilho a usa (o EXECUTE de uma função de gatilho é conferido no CREATE TRIGGER, não a cada disparo): sem isto,
     # o papel de leitura poderia ligar a função a um gatilho próprio e acender o sinalizador à vontade
     op.execute("REVOKE EXECUTE ON FUNCTION leg.marcar_derivados_sujos() FROM PUBLIC")
+    op.execute("GRANT EXECUTE ON FUNCTION leg.marcar_derivados_sujos() TO CURRENT_USER")
+    # o dono das migrações marca o sinalizador à mão (UPDATE) quando uma migração muda a definição das visões
+    op.execute("GRANT SELECT, UPDATE ON leg.pontuacao_controle TO CURRENT_USER")
+    op.execute("ALTER FUNCTION leg.reservar_derivados() OWNER TO legisdata_derivados")
+    op.execute("REVOKE EXECUTE ON FUNCTION leg.reservar_derivados() FROM PUBLIC")
+    op.execute("GRANT EXECUTE ON FUNCTION leg.reservar_derivados() TO CURRENT_USER")
     op.execute("ALTER FUNCTION leg.atualizar_derivados(boolean, text) OWNER TO legisdata_derivados")
     op.execute("REVOKE EXECUTE ON FUNCTION leg.atualizar_derivados(boolean, text) FROM PUBLIC")
     # o ETL roda com o usuário que aplica as migrações: concessão explícita, para não depender de ele ser superusuário
@@ -227,6 +253,7 @@ def downgrade() -> None:
         op.execute(f"DROP TRIGGER IF EXISTS trg_derivados_sujos_truncate_{nome} ON {tabela}")
     op.execute("DROP FUNCTION leg.atualizar_derivados_leitura()")
     op.execute("DROP FUNCTION leg.atualizar_derivados(boolean, text)")
+    op.execute("DROP FUNCTION leg.reservar_derivados()")
     op.execute("DROP FUNCTION leg.marcar_derivados_sujos()")
     op.execute("DROP TABLE leg.pontuacao_controle")
     op.execute("DROP MATERIALIZED VIEW leg.mv_coautoria_par")

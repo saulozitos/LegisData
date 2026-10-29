@@ -2,23 +2,27 @@
 
 import logging
 
-from app.services.derivados_service import (
+from etl.utils.bootstrap import ensure_backend_on_path
+
+ensure_backend_on_path()
+
+from app.services.derivados_service import (  # noqa: E402
     ESPERA_DO_ETL,
+    ESTADO_FALHOU,
     ESTADO_OCUPADO,
     ESTADO_REFEITO,
     VISOES_MATERIALIZADAS,
     atualizar_para_carga,
 )
-from sqlalchemy import text
+from sqlalchemy import text  # noqa: E402
 
 logger = logging.getLogger("Manutencao")
 
-ESTADO_FALHOU = "falhou"
 ANALYZE_DO_BANCO = "ANALYZE"
 ANALYZE_DOS_DERIVADOS = "ANALYZE " + ", ".join(VISOES_MATERIALIZADAS)
 
 
-def atualizar_derivados(engine) -> str:
+def refazer_derivados_apos_carga(engine) -> str:
     """
     Refaz as visões materializadas do legislativo se alguma tabela de que dependem mudou (`leg.atualizar_derivados`),
     para o primeiro leitor depois da carga não pagar o refresh. Devolve `'refeito'`, `'em_dia'` (nada mudou), `'ocupado'`
@@ -64,7 +68,7 @@ def posprocessar_carga(engine) -> str:
     (`'refeito'`, `'em_dia'`, `'ocupado'` ou `'falhou'`) para quem chamou registrá-lo; nunca levanta.
     """
     analisar_banco(engine)
-    estado = atualizar_derivados(engine)
+    estado = refazer_derivados_apos_carga(engine)
     if estado == ESTADO_REFEITO:
         analisar_banco(engine, apenas_derivados=True)
     return estado

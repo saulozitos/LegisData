@@ -12,15 +12,19 @@ from sqlalchemy import text
 
 BASE = "/api/v1"
 APP = Path(__file__).resolve().parents[1] / "app"
-DEPENDENCIAS = [
-    "leg.autoria",
-    "leg.proposicao",
-    "param.peso",
-    "param.metodologia",
-    "ref.tipo_proposicao",
-    "core.filiacao",
-    "core.mandato",
-]
+
+
+def _constante_da_migracao_0037(nome):
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+    from app.core.migrations import BACKEND_DIR
+
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+    return getattr(ScriptDirectory.from_config(config).get_revision("0037").module, nome)
+
+
+DEPENDENCIAS = list(_constante_da_migracao_0037("DEPENDENCIAS"))  # a mesma lista que a migração usa para os gatilhos
 
 
 @pytest.fixture(autouse=True)
@@ -263,16 +267,6 @@ def _esperando_trava_de_linha(conn, trecho):
     ).scalar()
 
 
-def _constante_da_migracao_0037(nome):
-    from alembic.config import Config
-    from alembic.script import ScriptDirectory
-    from app.core.migrations import BACKEND_DIR
-
-    config = Config(str(BACKEND_DIR / "alembic.ini"))
-    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-    return getattr(ScriptDirectory.from_config(config).get_revision("0037").module, nome)
-
-
 def test_estado_devolvido_distingue_refeito_em_dia_e_ocupado(pg_engine):
     _marcar_sujo(pg_engine)
     assert _atualizar(pg_engine) == "refeito"
@@ -392,7 +386,8 @@ def test_gravacao_durante_a_atualizacao_nao_se_perde(pg_engine):
                 esperando = conn.execute(
                     text(
                         "SELECT count(*) FROM pg_locks WHERE NOT granted AND locktype = 'relation' "
-                        "AND relation = 'leg.autoria'::regclass"
+                        "AND relation = 'leg.autoria'::regclass "
+                        "AND database = (SELECT oid FROM pg_database WHERE datname = current_database())"
                     )
                 ).scalar()
                 if esperando:
@@ -473,6 +468,10 @@ def test_cargas_concorrentes_nao_entram_em_deadlock(pg_engine, db):
         if iniciado:
             fio.join(timeout=60)
     assert not erros, erros
+    assert not fio.is_alive()  # a segunda carga terminou, não ficou presa além do join
+    with pg_engine.connect() as conn:
+        titulo = conn.execute(text("SELECT titulo FROM leg.proposicao WHERE id = :p"), {"p": proposicao}).scalar()
+    assert titulo.startswith("segunda")  # e confirmou depois da primeira
 
 
 def test_dono_dos_derivados_nao_e_superusuario_e_o_publico_nao_executa(pg_engine):
@@ -620,13 +619,30 @@ def test_sinalizador_ilegivel_nao_deixa_a_sessao_de_quem_chama_quebrada(db, monk
     assert any("ilegível" in r.getMessage() for r in caplog.records)
 
 
-def test_pool_dedicado_usa_a_fabrica_do_app(pg_engine):
-    """O pool dos derivados herda as opções da fábrica única (`hide_parameters`, `pool_recycle`), só com tamanho próprio."""
-    from app.core.database import POOL_RECYCLE_SEGUNDOS
+def test_pool_dedicado_usa_a_fabrica_do_app(pg_engine, monkeypatch):
+    """O pool dos derivados nasce da fábrica única (`hide_parameters`, `pool_recycle`...), só com tamanho próprio."""
+    from app.core.database import criar_engine
 
+    chamadas = []
+
+    def espia(url, **opcoes):
+        chamadas.append((url, opcoes))
+        return criar_engine(url, **opcoes)
+
+    monkeypatch.setattr(derivados_service, "criar_engine", espia)
     motor = derivados_service._motor_da_atualizacao(pg_engine)
-    assert motor.pool.size() == 1 and motor.pool._max_overflow == 0
-    assert motor.pool._recycle == POOL_RECYCLE_SEGUNDOS and motor.hide_parameters is True
+    assert chamadas == [
+        (
+            pg_engine.url,
+            {
+                "pool_size": 1,
+                "max_overflow": 0,
+                "pool_timeout": derivados_service.ESPERA_POR_CONEXAO_SEGUNDOS,
+            },
+        )
+    ]
+    assert motor.pool.size() == 1 and motor.hide_parameters is True
+    assert derivados_service._motor_da_atualizacao(pg_engine) is motor  # um pool por banco, reaproveitado
 
 
 def test_quem_le_um_derivado_chama_garantir_atualizados():
@@ -748,3 +764,109 @@ def test_rede_filtra_por_tipo_de_pedido_e_soma_o_peso_dos_pares_repetidos(db):
     assert arestas(tipo_proposta="REQ_INC", min_weight=2)[0]["weight"] == 2  # o peso mínimo mantém o par repetido
     assert arestas(tipo_proposta="REQ_INC", min_weight=3) == []
     assert len(arestas(tipo_proposta="PEC")) == 1
+
+
+def test_gatilhos_cobrem_todas_as_tabelas_de_que_os_derivados_dependem(pg_engine):
+    """
+    A lista `DEPENDENCIAS` da migração tem de ser exatamente o conjunto de tabelas-base (descendo pelas visões) das duas
+    visões materializadas: uma migração que passe a juntar outra tabela à pontuação sem criar o gatilho deixaria os
+    derivados velhos sem aviso.
+    """
+    with pg_engine.connect() as conn:
+        base = {
+            linha[0]
+            for linha in conn.execute(
+                text(
+                    """
+                    WITH RECURSIVE dep(oid) AS (
+                        SELECT 'leg.mv_autoria_pontuada_unica'::regclass::oid
+                        UNION SELECT 'leg.mv_coautoria_par'::regclass::oid
+                        UNION
+                        SELECT d.refobjid FROM dep
+                        JOIN pg_rewrite rw ON rw.ev_class = dep.oid
+                        JOIN pg_depend d ON d.objid = rw.oid AND d.classid = 'pg_rewrite'::regclass
+                                        AND d.refclassid = 'pg_class'::regclass AND d.refobjid <> dep.oid
+                    )
+                    SELECT n.nspname || '.' || c.relname FROM dep
+                    JOIN pg_class c ON c.oid = dep.oid JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE c.relkind IN ('r', 'p')
+                    """
+                )
+            )
+        }
+        com_gatilho = {
+            linha[0]
+            for linha in conn.execute(
+                text(
+                    "SELECT n.nspname || '.' || c.relname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE t.tgname LIKE 'trg_derivados_sujos_%' AND NOT t.tgisinternal"
+                )
+            )
+        }
+    assert base and base == com_gatilho == set(DEPENDENCIAS), (base, com_gatilho)
+
+
+def test_reservar_derivados_trava_o_controle_sem_mudar_o_sinalizador(pg_engine):
+    _atualizar(pg_engine)
+    assert _sujo_no_banco(pg_engine) is False
+    with pg_engine.begin() as conn:
+        conn.execute(text("SELECT leg.reservar_derivados()"))
+    assert _sujo_no_banco(pg_engine) is False  # só travou a linha: a reserva sozinha não pede refresh
+
+
+def test_reservar_derivados_recria_o_controle_ligado_se_ele_sumiu(pg_engine):
+    with pg_engine.begin() as conn:
+        conn.execute(text("DELETE FROM leg.pontuacao_controle"))
+    with pg_engine.begin() as conn:
+        conn.execute(text("SELECT leg.reservar_derivados()"))
+    assert _sujo_no_banco(pg_engine) is True  # sem a linha, os derivados contam como velhos
+
+
+def test_carga_que_reserva_primeiro_nao_entra_em_deadlock_com_outra_que_escreve_outra_coisa_antes(pg_engine, db):
+    """
+    O ciclo que o gatilho sozinho não evita: a primeira carga toca uma tabela que não é dependência (`core.pessoa`) antes
+    da dependência. Reservando no começo, a segunda espera a trava de controle sem segurar a linha de pessoa que a
+    primeira vai tocar.
+    """
+    proposicao, pessoas = _proposicao_com_autores(db, 901, 1)
+    db.commit()
+    primeira = pg_engine.connect()
+    transacao = primeira.begin()
+    erros = []
+
+    def segunda():
+        try:
+            with pg_engine.begin() as conn:
+                conn.execute(text("SET LOCAL lock_timeout = '30s'"))
+                conn.execute(text("SELECT leg.reservar_derivados() /* segunda reserva */"))
+                conn.execute(text("UPDATE core.pessoa SET nome_exibicao = 'segunda' WHERE id = :p"), {"p": pessoas[0]})
+                conn.execute(text("DELETE FROM param.peso WHERE false"))
+        except Exception as exc:  # noqa: BLE001 - registrado e afirmado abaixo
+            erros.append(exc)
+
+    fio = threading.Thread(target=segunda)
+    iniciado = False
+    try:
+        primeira.execute(text("SET LOCAL lock_timeout = '30s'"))
+        primeira.execute(text("SELECT leg.reservar_derivados()"))
+        fio.start()
+        iniciado = True
+        with pg_engine.connect() as conn:
+            for _ in range(100):
+                preso = _esperando_trava_de_linha(conn, "segunda reserva")
+                if preso:
+                    break
+                time.sleep(0.1)
+            assert preso, "a segunda carga não esperou a reserva da primeira"
+        primeira.execute(text("UPDATE core.pessoa SET nome_exibicao = 'primeira' WHERE id = :p"), {"p": pessoas[0]})
+        primeira.execute(text("DELETE FROM param.peso WHERE false"))  # a dependência, depois da pessoa
+        transacao.commit()
+    finally:
+        if transacao.is_active:
+            transacao.rollback()
+        primeira.close()
+        if iniciado:
+            fio.join(timeout=60)
+    assert not erros, erros
+    assert not fio.is_alive()

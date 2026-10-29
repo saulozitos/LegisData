@@ -1,15 +1,15 @@
-from typing import Generator, Optional
+from typing import Generator, Optional, Union
 
 from app.core.config import settings
 from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import URL, Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 POOL_RECYCLE_SEGUNDOS = 1800
 
 
 def criar_engine(
-    url: str,
+    url: Union[str, URL],
     pool_size: Optional[int] = None,
     max_overflow: Optional[int] = None,
     pool_timeout: Optional[float] = None,
