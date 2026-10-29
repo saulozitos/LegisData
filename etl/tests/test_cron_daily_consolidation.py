@@ -8,6 +8,9 @@ ETAPAS_EXTERNAS = ("votacoes", "ponte", "derivados", "presenca", "economia", "fi
 ORDEM = ["votacoes", "ponte", "derivados", "presenca", "economia", "financas", "pos", "ranking", "grafo"]
 
 
+ARGUMENTOS: dict = {}  # etapa -> argumentos posicionais da última chamada (zerado a cada `_executar`)
+
+
 def _executar(efeitos=None, retornos=None, autorias=5):
     """
     Roda o cron com todas as etapas simuladas num só lugar. `efeitos` mapeia etapa -> exceção a levantar e `retornos`
@@ -15,6 +18,7 @@ def _executar(efeitos=None, retornos=None, autorias=5):
     etapa 1d (finanças) vem antes das etapas 2 a 4.
     """
     efeitos, retornos, ordem = efeitos or {}, retornos or {}, []
+    ARGUMENTOS.clear()
     padrao = {
         "votacoes": {"carga": {}},
         "ponte": 10,
@@ -41,6 +45,7 @@ def _executar(efeitos=None, retornos=None, autorias=5):
     def etapa(nome):
         def chamada(*args, **kwargs):
             ordem.append((nome, kwargs))
+            ARGUMENTOS[nome] = args
             if nome in efeitos:
                 raise efeitos[nome]
             return retornos.get(nome, padrao[nome])
@@ -196,3 +201,22 @@ def test_estado_dos_derivados_aparece_no_resultado_sem_mudar_o_status():
     """Derivados 'ocupado' ou 'falhou' não derrubam o cron (a leitura os refaz), mas o operador precisa enxergá-los."""
     resultado, _, _ = _executar(retornos={"pos": "ocupado"})
     assert resultado["status"] == "SUCESSO" and resultado["derivados"] == "ocupado"
+
+
+def test_derivados_e_pos_processamento_recebem_o_engine_do_app():
+    """Se o cron passasse a sessão em vez do engine, as duas chamadas cairiam no `except` e o cron seguiria SUCESSO."""
+    from app.core.database import engine
+
+    resultado, _, _ = _executar()
+    assert resultado["status"] == "SUCESSO"
+    assert ARGUMENTOS["derivados"] == (engine,) and ARGUMENTOS["pos"] == (engine,)
+
+
+def test_fusao_que_falha_desfaz_a_sessao_e_ainda_registra_a_execucao():
+    """Sem o rollback, o commit do log levantaria PendingRollbackError e a FALHA ficaria sem registro na tabela pública."""
+    resultado, ordem, mock_db = _executar(efeitos={"ponte": RuntimeError("fusão quebrou")})
+    assert resultado["status"] == "FALHA" and "fusão quebrou" in resultado["erro_mensagem"]
+    chamadas = [chamada[0] for chamada in mock_db.mock_calls]
+    assert chamadas.index("rollback") < chamadas.index("add") < chamadas.index("commit")
+    assert mock_db.add.call_args.args[0].erro_mensagem == "RuntimeError"  # só a classe, nunca o texto
+    assert [nome for nome, _ in ordem] == ["votacoes", "ponte"]  # a falha da fusão interrompe as etapas seguintes

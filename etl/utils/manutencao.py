@@ -7,8 +7,6 @@ from etl.utils.bootstrap import ensure_backend_on_path
 ensure_backend_on_path()
 
 from app.services.derivados_service import (  # noqa: E402
-    ESPERA_DO_ETL,
-    ESTADO_FALHOU,
     ESTADO_OCUPADO,
     ESTADO_REFEITO,
     VISOES_MATERIALIZADAS,
@@ -17,6 +15,10 @@ from app.services.derivados_service import (  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
 logger = logging.getLogger("Manutencao")
+
+# Quanto o ETL espera pela vez de atualizar (a leitura da API não espera: desiste em meio segundo, dentro da função do banco)
+ESPERA_DO_ETL = "120s"
+ESTADO_FALHOU = "falhou"  # não vem do banco: é o que `refazer_derivados_apos_carga` devolve quando a chamada falhou
 
 ANALYZE_DO_BANCO = "ANALYZE"
 ANALYZE_DOS_DERIVADOS = "ANALYZE " + ", ".join(VISOES_MATERIALIZADAS)
@@ -29,7 +31,7 @@ def refazer_derivados_apos_carga(engine) -> str:
     (não conseguiu a vez em `ESPERA_DO_ETL`; registra AVISO, a leitura refaz por conta própria) ou `'falhou'`.
     """
     try:
-        estado = atualizar_para_carga(engine)
+        estado = atualizar_para_carga(engine, ESPERA_DO_ETL)
     except Exception as exc:  # noqa: BLE001 - a carga já terminou; o leitor refaz se precisar
         logger.warning("Derivados do legislativo não atualizados: %s", exc)
         return ESTADO_FALHOU

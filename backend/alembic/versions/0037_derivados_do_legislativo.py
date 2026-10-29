@@ -39,7 +39,12 @@ por qualquer trava a meio segundo (`lock_timeout`); se não conseguir, devolve `
 está, que reflete o último refresh concluído (as telas que leem os derivados mostram esse dado até a próxima atualização;
 as que leem a visão ao vivo já mostram o dado novo). O refresh é `CONCURRENTLY` (os índices únicos `ux_mv_*` permitem):
 ele não pede `ACCESS EXCLUSIVE`, então quem lê a visão durante o refresh não espera e o refresh não é barrado por um
-leitor longo. O ETL chama com `p_bloquear = true` e espera longa (`'120s'`): ele aguarda a vez em vez de desistir.
+leitor longo. O ETL chama com `p_bloquear = true` e espera longa (`'120s'`): ele aguarda a vez em vez de desistir. O `lock_timeout` vale para
+cada trava, então a espera máxima do ETL é o dobro de `p_espera` (o bloqueio consultivo e depois a linha de controle presa por
+uma carga); o resultado continua correto (`'ocupado'`). Enquanto uma fusão longa segura a linha de controle com o sinalizador
+confirmado ligado, cada leitura que precisa do derivado paga até meio segundo antes de desistir, e as leituras simultâneas
+esperam até 1 s pela conexão única do pool dedicado. Qualquer papel com `CONNECT` pode segurar o bloqueio consultivo (o
+Postgres não permite restringi-lo): o efeito é só `'ocupado'`, que o ETL registra como AVISO.
 A função devolve `'refeito'`, `'em_dia'` ou `'ocupado'`, para o ETL distinguir "não precisava" de "não consegui".
 
 Quem executa é um papel sem login e sem superusuário, `legisdata_derivados`, dono das duas visões, da tabela de controle e

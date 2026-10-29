@@ -30,13 +30,10 @@ logger = logging.getLogger(__name__)
 
 # Quanto uma leitura espera por uma conexão livre do pool dedicado antes de seguir com a visão como está
 ESPERA_POR_CONEXAO_SEGUNDOS = 1
-# Quanto o ETL espera pela vez de atualizar (a leitura da API não espera: desiste em meio segundo, dentro da função do banco)
-ESPERA_DO_ETL = "120s"
 # O que `leg.atualizar_derivados` devolve (migração 0037)
 ESTADO_REFEITO = "refeito"
 ESTADO_EM_DIA = "em_dia"
 ESTADO_OCUPADO = "ocupado"
-ESTADO_FALHOU = "falhou"  # não vem do banco: o ETL o usa quando a chamada à função falhou
 VISOES_MATERIALIZADAS = ("leg.mv_autoria_pontuada_unica", "leg.mv_coautoria_par")
 
 _motores: Dict[URL, Engine] = {}
@@ -74,7 +71,7 @@ def reservar_derivados(executor: Union[Session, Connection]) -> None:
     executor.execute(text("SELECT leg.reservar_derivados()"))
 
 
-def atualizar_para_carga(engine: Engine, espera: str = ESPERA_DO_ETL) -> str:
+def atualizar_para_carga(engine: Engine, espera: str) -> str:
     """
     A porta do ETL (`leg.atualizar_derivados(true, espera)`): espera a vez até `espera` em vez de desistir. Devolve
     `ESTADO_REFEITO`, `ESTADO_EM_DIA` ou `ESTADO_OCUPADO`; erro de banco sobe para o chamador, que decide o que fazer.

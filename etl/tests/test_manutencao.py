@@ -257,33 +257,80 @@ def test_posprocessamento_da_esteira_devolve_o_estado_dos_derivados(monkeypatch)
     assert run_etl._posprocessar() == "falhou"
 
 
-def test_toda_carga_que_escreve_nas_dependencias_reserva_a_trava_antes_de_qualquer_escrita():
+def _pontos_de_entrada_das_cargas():
     """
-    A trava de controle dos derivados tem de ser a primeira coisa da transação (ver a docstring da migração 0037): senão a
-    carga pode segurar uma linha de `core.pessoa` e só depois pedir o controle, e formar um ciclo de espera com a fusão.
+    Descobre, no código, as funções que abrem uma transação de carga que escreve nas dependências dos derivados: as que
+    contêm SQL de escrita numa tabela de `DEPENDENCIAS` ou uma chamada a `etl.merge_*` (ou que chamam um auxiliar do
+    mesmo arquivo que o faz) e abrem a transação (`with ....begin()`) ou recebem uma `Session`. Devolve
+    `{"arquivo::função": [blocos de instruções que abrem a transação]}`.
     """
     import ast
+    import re
     from pathlib import Path
 
     raiz = Path(__file__).resolve().parents[2]
-    pontos = (
-        ("backend/app/services/staging_merge.py", "merge_staging"),
-        ("etl/pipelines/camara_bulk_loader.py", "mesclar"),
-        ("etl/pipelines/camara_historico_loader.py", "carregar"),
-        ("etl/pipelines/presidencia_loader.py", "carregar"),
-    )
-    for arquivo, nome in pontos:
-        arvore = ast.parse((raiz / arquivo).read_text(encoding="utf-8"))
-        funcao = next(n for n in ast.walk(arvore) if isinstance(n, ast.FunctionDef) and n.name == nome)
-        chamadas = sorted(
-            (no.lineno, getattr(no.func, "id", None) or getattr(no.func, "attr", None))
-            for no in ast.walk(funcao)
-            if isinstance(no, ast.Call)
-        )
-        reservas = [linha for linha, chamada in chamadas if chamada == "reservar_derivados"]
-        execucoes = [linha for linha, chamada in chamadas if chamada == "execute"]
-        assert reservas, f"{arquivo}::{nome} não reserva a trava de controle dos derivados"
-        assert min(reservas) < min(execucoes), f"{arquivo}::{nome} escreve antes de reservar"
+    tabelas = "|".join(re.escape(t) for t in _constante_da_migracao_0037("DEPENDENCIAS"))
+    escreve = re.compile(rf"(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:{tabelas})\b|\betl\.merge_\w+\(", re.I)
+    pontos = {}
+    for arquivo in [*(raiz / "etl/pipelines").glob("*.py"), *(raiz / "backend/app/services").glob("*.py")]:
+        fonte = arquivo.read_text(encoding="utf-8")
+        arvore = ast.parse(fonte)
+        funcoes = [n for n in ast.walk(arvore) if isinstance(n, ast.FunctionDef)]
+        escritoras = {f.name for f in funcoes if escreve.search(ast.get_source_segment(fonte, f) or "")}
+        for funcao in funcoes:
+            chamadas = {
+                getattr(no.func, "id", None) or getattr(no.func, "attr", None)
+                for no in ast.walk(funcao)
+                if isinstance(no, ast.Call)
+            }
+            if funcao.name not in escritoras and not (chamadas & escritoras):
+                continue
+            transacoes = [
+                no.body
+                for no in ast.walk(funcao)
+                if isinstance(no, ast.With)
+                and any(
+                    isinstance(item.context_expr, ast.Call) and getattr(item.context_expr.func, "attr", "") == "begin"
+                    for item in no.items
+                )
+            ]
+            recebe_sessao = any(
+                isinstance(arg.annotation, ast.Name) and arg.annotation.id == "Session" for arg in funcao.args.args
+            )
+            if transacoes:
+                pontos[f"{arquivo.relative_to(raiz)}::{funcao.name}"] = transacoes
+            elif recebe_sessao and funcao.name in escritoras:
+                corpo = list(funcao.body)
+                if corpo and isinstance(corpo[0], ast.Expr) and isinstance(corpo[0].value, ast.Constant):
+                    corpo = corpo[1:]  # docstring
+                pontos[f"{arquivo.relative_to(raiz)}::{funcao.name}"] = [corpo]
+    return pontos
+
+
+def test_toda_carga_que_escreve_nas_dependencias_reserva_a_trava_no_inicio_da_transacao():
+    """
+    A trava de controle dos derivados tem de ser a PRIMEIRA instrução de cada transação de carga (ver a docstring da
+    migração 0037): senão a carga pode segurar uma linha de `core.pessoa` e só depois pedir o controle, e formar um ciclo
+    de espera com a fusão. Os pontos de entrada são descobertos no código (não há lista fixa para esquecer de atualizar).
+    """
+    import ast
+
+    pontos = _pontos_de_entrada_das_cargas()
+    conhecidos = {
+        "backend/app/services/staging_merge.py::merge_staging",
+        "etl/pipelines/camara_bulk_loader.py::mesclar",
+        "etl/pipelines/camara_historico_loader.py::carregar",
+        "etl/pipelines/presidencia_loader.py::carregar",
+    }
+    assert conhecidos <= set(pontos), f"a descoberta deixou de achar {conhecidos - set(pontos)}"
+    for ponto, blocos in pontos.items():
+        for bloco in blocos:
+            primeira = bloco[0] if bloco else None
+            chamada = primeira.value if isinstance(primeira, ast.Expr) else None
+            nome = getattr(getattr(chamada, "func", None), "id", None) or getattr(
+                getattr(chamada, "func", None), "attr", None
+            )
+            assert nome == "reservar_derivados", f"{ponto}: a transação não começa com reservar_derivados"
 
 
 def test_todas_as_etapas_que_gravam_no_banco_estao_marcadas():

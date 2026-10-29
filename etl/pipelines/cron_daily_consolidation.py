@@ -14,7 +14,7 @@ import sys
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from app.core.database import SessionLocal
+from app.core.database import SessionLocal, engine
 from app.models.analytics import LogExecucaoCron
 from app.services.cron_log_service import (
     ETAPA_ECONOMIA,
@@ -66,22 +66,21 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         except Exception as e:
             registrar_falha(ETAPA_VOTACOES, e, "atualização de votações")
 
-        from app.core.database import engine as engine_derivados
-
-        # Etapa 1: Sincronização de Entidades Base e Mandatos Dinâmicos
-        logger.info("Etapa 1/4: Sincronizando histórico dinâmico de mandatos...")
+        # Etapa 1: Sincronização de Entidades Base e Mandatos Dinâmicos. `sync_mandate_history` roda a fusão inteira do
+        # staging (`staging_merge.merge_staging`: cadastro, legislativo, linhagens e unificação) e devolve as situações de
+        # mandato fundidas
+        logger.info("Etapa 1/4: Fundindo o staging em core/leg e sincronizando o histórico de mandatos...")
         synced_mandates = sync_mandate_history(db)
         registros_totais += synced_mandates
-        logger.info(f"Etapa 1 concluída: {synced_mandates} registros de mandatos sincronizados.")
+        logger.info(f"Etapa 1 concluída: fusão do staging feita ({synced_mandates} situações de mandato).")
         # a fusão sujou os derivados: refaz já, para a primeira leitura do dia não pagar o refresh enquanto as cargas
-        # seguintes (que podem levar minutos) rodam; o pós-processamento final só refaz de novo se algo mudou
-        logger.info(f"Derivados do legislativo depois da fusão: {refazer_derivados_apos_carga(engine_derivados)}")
+        # seguintes (que podem levar minutos) rodam; o pós-processamento final refaz de novo se algum comando tocou uma
+        # dependência (a presidência da etapa 1c sempre toca `core.mandato`, então na prática são dois refreshes por dia)
+        logger.info(f"Derivados do legislativo depois da fusão: {refazer_derivados_apos_carga(engine)}")
 
         # Etapa 1b: presença e faltas, depois da ponte (falha aqui não impede as demais etapas, mas marca FALHA)
         logger.info("Etapa 1b: atualizando presença e faltas do Congresso...")
         try:
-            from app.core.database import engine
-
             from etl.pipelines.presenca_atualizacao import atualizar
 
             presenca = atualizar(engine)
@@ -92,11 +91,9 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         # Etapa 1c: séries econômicas (BCB, IBGE, INPE, IPEA) e mandatos presidenciais; não bloqueia as demais etapas
         logger.info("Etapa 1c: atualizando séries econômicas...")
         try:
-            from app.core.database import engine as engine_economia
-
             from etl.pipelines.economia_atualizacao import atualizar as atualizar_economia
 
-            economia = atualizar_economia(engine_economia)
+            economia = atualizar_economia(engine)
             logger.info(f"Etapa 1c concluída: {economia}")
         except Exception as e:
             registrar_falha(ETAPA_ECONOMIA, e, "atualização das séries econômicas")
@@ -104,19 +101,15 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         # Etapa 1d: CEAP e emendas (extração incremental por ano e recarga do `fin`); não bloqueia as demais etapas
         logger.info("Etapa 1d: atualizando CEAP e emendas parlamentares...")
         try:
-            from app.core.database import engine as engine_financas
-
             from etl.pipelines.financas_atualizacao import atualizar as atualizar_financas
 
-            financas = atualizar_financas(engine_financas)
+            financas = atualizar_financas(engine)
             logger.info(f"Etapa 1d concluída: {financas}")
         except Exception as e:
             registrar_falha(ETAPA_FINANCAS, e, "atualização de CEAP e emendas")
 
         # Depois de todas as cargas: ANALYZE e derivados do legislativo, para a primeira leitura do dia não pagar o refresh
-        from app.core.database import engine as engine_posprocessamento
-
-        estado_derivados = posprocessar_carga(engine_posprocessamento)
+        estado_derivados = posprocessar_carga(engine)
         logger.info(f"Derivados do legislativo ao fim das cargas: {estado_derivados}")
 
         # Etapa 2: Ingestão de Proposições e Autores
@@ -141,6 +134,9 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         logger.info(f"Etapa 4 concluída: Grafo consolidado com {nodes_count} nós e {edges_count} arestas.")
 
     except Exception as e:
+        # a sessão `db` pode estar com a transação abortada (a fusão falhou no meio): sem desfazer, o commit do log abaixo
+        # levantaria PendingRollbackError e a execução com FALHA ficaria sem registro (e a trava reservada, presa)
+        db.rollback()
         status = "FALHA"
         err_msg = str(e)
         err_registrado = descrever_falha(None, e)

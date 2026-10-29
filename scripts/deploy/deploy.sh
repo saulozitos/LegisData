@@ -291,7 +291,7 @@ avisar_rollback_se_o_schema_mudou() { # a imagem antiga sobe sobre o schema que 
   if [[ -z "$depois" ]]; then
     log "AVISO: não consegui ler a revisão atual do banco (antes do deploy: $REVISAO_ANTES); confira alembic_version antes de decidir se restaura o backup"
   elif [[ "$REVISAO_ANTES" != "$depois" ]]; then
-    log "AVISO: este deploy migrou o banco de $REVISAO_ANTES para $depois e a imagem antiga sobe sobre o schema novo, sem restaurar o backup; se uma migração irreversível (0034 ou 0035) estiver no caminho, restaure o backup em um banco vazio (docs/DEPLOY_AUTOMATICO.md, Voltar uma versão)"
+    log "AVISO: este deploy migrou o banco de $REVISAO_ANTES para $depois e a imagem antiga sobe sobre o schema novo, sem restaurar o backup; a imagem antiga pode não entender o schema novo e migrações irreversíveis não voltam pelo downgrade; a lista e o procedimento (restaurar o backup em um banco vazio) estão em docs/DEPLOY_AUTOMATICO.md, Voltar uma versão"
   fi
 }
 log "migrações"

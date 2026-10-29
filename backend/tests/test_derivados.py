@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from app.services import derivados_service
-from app.services.derivados_service import descartar_motores, garantir_atualizados
+from app.services.derivados_service import descartar_motores, garantir_atualizados, reservar_derivados
 from app.services.legislative_scoring import MAX_AUTORES_POR_PROPOSICAO
 from sqlalchemy import text
 
@@ -807,12 +807,50 @@ def test_gatilhos_cobrem_todas_as_tabelas_de_que_os_derivados_dependem(pg_engine
     assert base and base == com_gatilho == set(DEPENDENCIAS), (base, com_gatilho)
 
 
+def _controle_travado(pg_engine):
+    """
+    A linha de controle está presa por outra transação? `NOWAIT` responde na hora (sem sondar `pg_stat_activity` e sem
+    dormir): levanta se a linha estiver travada.
+    """
+    from sqlalchemy.exc import OperationalError
+
+    with pg_engine.connect() as outra:
+        try:
+            outra.execute(text("SELECT 1 FROM leg.pontuacao_controle FOR UPDATE NOWAIT"))
+            return False
+        except OperationalError:
+            return True
+
+
 def test_reservar_derivados_trava_o_controle_sem_mudar_o_sinalizador(pg_engine):
     _atualizar(pg_engine)
-    assert _sujo_no_banco(pg_engine) is False
+    assert _sujo_no_banco(pg_engine) is False and _controle_travado(pg_engine) is False
     with pg_engine.begin() as conn:
         conn.execute(text("SELECT leg.reservar_derivados()"))
+        assert _controle_travado(pg_engine) is True  # a função trava a linha até o fim da transação
+    assert _controle_travado(pg_engine) is False
     assert _sujo_no_banco(pg_engine) is False  # só travou a linha: a reserva sozinha não pede refresh
+
+
+def test_wrapper_reservar_derivados_trava_o_controle_numa_conexao(pg_engine):
+    """O wrapper Python é o que as cargas chamam: se ele deixar de executar a função, nenhuma delas fica protegida."""
+    _atualizar(pg_engine)
+    with pg_engine.begin() as conn:
+        reservar_derivados(conn)
+        assert _controle_travado(pg_engine) is True
+    assert _controle_travado(pg_engine) is False
+
+
+def test_wrapper_reservar_derivados_trava_o_controle_numa_sessao(pg_engine):
+    """`merge_staging` chama o wrapper com uma `Session`, não com uma conexão."""
+    from sqlalchemy.orm import Session
+
+    _atualizar(pg_engine)
+    with Session(pg_engine) as sessao:
+        reservar_derivados(sessao)
+        assert _controle_travado(pg_engine) is True
+        sessao.rollback()
+        assert _controle_travado(pg_engine) is False
 
 
 def test_reservar_derivados_recria_o_controle_ligado_se_ele_sumiu(pg_engine):
@@ -870,3 +908,6 @@ def test_carga_que_reserva_primeiro_nao_entra_em_deadlock_com_outra_que_escreve_
             fio.join(timeout=60)
     assert not erros, erros
     assert not fio.is_alive()
+    with pg_engine.connect() as conn:
+        nome = conn.execute(text("SELECT nome_exibicao FROM core.pessoa WHERE id = :p"), {"p": pessoas[0]}).scalar()
+    assert nome == "segunda"  # a segunda carga confirmou depois da primeira
