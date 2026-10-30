@@ -71,11 +71,48 @@ def test_analisar_so_os_derivados(pg_engine):
     assert depois["autoria"] == antes["autoria"]  # só os derivados: o ANALYZE do banco inteiro é o outro modo
 
 
-def test_atualizar_derivados_distingue_refeito_em_dia_e_ocupado(pg_engine):
+def test_atualizar_derivados_distingue_refeito_e_em_dia(pg_engine):
     with pg_engine.begin() as conn:
         conn.execute(text("UPDATE leg.proposicao SET titulo = titulo"))  # liga o sinalizador
     assert refazer_derivados_apos_carga(pg_engine) == "refeito"
     assert refazer_derivados_apos_carga(pg_engine) == "em_dia"  # nada mudou depois
+
+
+def test_atualizar_derivados_devolve_ocupado_quando_outra_conexao_segura_a_vez(pg_engine, monkeypatch):
+    """Com o bloqueio na mão de outra conexão e a espera do ETL curta, o banco real devolve `ocupado`, não `refeito`."""
+    with pg_engine.begin() as conn:
+        conn.execute(text("UPDATE leg.proposicao SET titulo = titulo"))  # liga o sinalizador
+    monkeypatch.setattr(manutencao, "ESPERA_DO_ETL", "300ms")
+    outra = pg_engine.connect()
+    transacao = outra.begin()
+    try:
+        outra.execute(
+            text("SELECT pg_advisory_xact_lock(:k)"), {"k": _constante_da_migracao_0037("BLOQUEIO_DA_ATUALIZACAO")}
+        )
+        assert refazer_derivados_apos_carga(pg_engine) == "ocupado"
+    finally:
+        transacao.rollback()
+        outra.close()
+    assert refazer_derivados_apos_carga(pg_engine) == "refeito"  # solta a vez, a próxima chamada refaz o que ficou
+
+
+def test_espera_nula_nao_vira_espera_sem_limite(pg_engine):
+    """`set_config('lock_timeout', NULL)` voltaria ao padrão do servidor (sem limite): NULL cai na espera curta da leitura."""
+    with pg_engine.begin() as conn:
+        conn.execute(text("UPDATE leg.proposicao SET titulo = titulo"))  # liga o sinalizador
+    outra = pg_engine.connect()
+    transacao = outra.begin()
+    try:
+        outra.execute(
+            text("SELECT pg_advisory_xact_lock(:k)"), {"k": _constante_da_migracao_0037("BLOQUEIO_DA_ATUALIZACAO")}
+        )
+        with pg_engine.begin() as conn:
+            conn.execute(text("SET LOCAL statement_timeout = '10s'"))  # sem o coalesce, isto estoura em vez de desistir
+            assert conn.execute(text("SELECT leg.atualizar_derivados(true, NULL)")).scalar() == "ocupado"
+    finally:
+        transacao.rollback()
+        outra.close()
+    assert refazer_derivados_apos_carga(pg_engine) == "refeito"
 
 
 def test_etl_chama_a_porta_bloqueante_com_a_espera_longa():
@@ -254,7 +291,18 @@ def test_posprocessamento_da_esteira_devolve_o_estado_dos_derivados(monkeypatch)
         raise RuntimeError("sem banco")
 
     monkeypatch.setattr("etl.utils.manutencao.posprocessar_carga", quebra)
-    assert run_etl._posprocessar() == "falhou"
+    assert run_etl._posprocessar() == "falhou" == manutencao.ESTADO_FALHOU
+
+
+def test_ponto_de_entrada_proprio_do_db_loader_posprocessa_depois_da_carga(monkeypatch):
+    """`python -m etl.pipelines.db_loader` não passa pela esteira nem pelo cron: ele mesmo roda o pós-processamento."""
+    from etl.pipelines import db_loader
+
+    ordem = []
+    monkeypatch.setattr(db_loader.DatabaseLoader, "load_all", lambda self: ordem.append("carga") or {"x": 1})
+    monkeypatch.setattr(db_loader, "posprocessar_carga", lambda motor: ordem.append(("pos", motor)))
+    assert db_loader.main([]) == {"x": 1}
+    assert ordem == ["carga", ("pos", db_loader.engine)]
 
 
 def _pontos_de_entrada_das_cargas():
@@ -272,11 +320,24 @@ def _pontos_de_entrada_das_cargas():
     tabelas = "|".join(re.escape(t) for t in _constante_da_migracao_0037("DEPENDENCIAS"))
     escreve = re.compile(rf"(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:{tabelas})\b|\betl\.merge_\w+\(", re.I)
     pontos = {}
-    for arquivo in [*(raiz / "etl/pipelines").glob("*.py"), *(raiz / "backend/app/services").glob("*.py")]:
+    for arquivo in [*(raiz / "etl/pipelines").rglob("*.py"), *(raiz / "backend/app/services").rglob("*.py")]:
         fonte = arquivo.read_text(encoding="utf-8")
         arvore = ast.parse(fonte)
-        funcoes = [n for n in ast.walk(arvore) if isinstance(n, ast.FunctionDef)]
-        escritoras = {f.name for f in funcoes if escreve.search(ast.get_source_segment(fonte, f) or "")}
+        funcoes = [n for n in ast.walk(arvore) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        # SQL de escrita guardado numa constante de módulo: quem usa a constante também escreve
+        constantes = {
+            alvo.id
+            for no in arvore.body
+            if isinstance(no, ast.Assign) and escreve.search(ast.get_source_segment(fonte, no.value) or "")
+            for alvo in no.targets
+            if isinstance(alvo, ast.Name)
+        }
+        escritoras = {
+            f.name
+            for f in funcoes
+            if escreve.search(ast.get_source_segment(fonte, f) or "")
+            or constantes & {n.id for n in ast.walk(f) if isinstance(n, ast.Name)}
+        }
         for funcao in funcoes:
             chamadas = {
                 getattr(no.func, "id", None) or getattr(no.func, "attr", None)

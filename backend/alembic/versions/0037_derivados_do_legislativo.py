@@ -183,7 +183,7 @@ def upgrade() -> None:
             IF NOT coalesce((SELECT sujo FROM leg.pontuacao_controle), true) THEN
                 RETURN 'em_dia';
             END IF;
-            PERFORM set_config('lock_timeout', p_espera, true);
+            PERFORM set_config('lock_timeout', coalesce(p_espera, '{ESPERA_DA_LEITURA}'), true);  -- NULL não vira espera sem limite
             BEGIN
                 IF p_bloquear THEN
                     PERFORM pg_advisory_xact_lock({BLOQUEIO_DA_ATUALIZACAO});  -- espera até `p_espera`

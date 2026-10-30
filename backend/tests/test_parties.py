@@ -242,15 +242,13 @@ def test_cron_logs_so_repete_etapa_e_classe_da_excecao(client, db):
         assert vazamento not in corpo.text
 
 
-def test_service_sync_mandate_history_and_active_seats(db, seed):
+def test_service_merge_staging_and_active_seats(db, seed):
     from datetime import date
 
-    from app.services.party_productivity_service import (
-        calculate_party_active_seats,
-        sync_mandate_history,
-    )
+    from app.services.party_productivity_service import calculate_party_active_seats
+    from app.services.staging_merge import merge_staging
 
-    synced = sync_mandate_history(db)
+    synced = int(merge_staging(db)["situacoes"])
     assert synced >= 0
 
     seats_pt = calculate_party_active_seats(

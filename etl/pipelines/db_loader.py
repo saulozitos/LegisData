@@ -25,7 +25,7 @@ from etl.utils.bootstrap import ensure_backend_on_path
 
 ensure_backend_on_path()
 
-from app.core.database import SessionLocal  # noqa: E402
+from app.core.database import SessionLocal, engine  # noqa: E402
 from app.models import (  # noqa: E402
     CabinetMember,
     CargoPoliticoEnum,
@@ -63,6 +63,7 @@ from etl.pipelines.loader_helpers import (  # noqa: E402,F401
 )
 from etl.pipelines.votacoes_loader import carregar_parlamentares_historicos, carregar_votacoes  # noqa: E402
 from etl.utils.datafiles import load_deputados, load_json, load_senadores  # noqa: E402
+from etl.utils.manutencao import posprocessar_carga  # noqa: E402
 from etl.utils.names import build_unique_name_map, normalize_name_tokens  # noqa: E402
 from etl.utils.provenance import is_synthetic, is_trusted  # noqa: E402
 
@@ -1441,10 +1442,12 @@ def main(argv: Optional[List[str]] = None) -> Dict[str, int]:
         help="Carrega dados digitados e não verificados (ex.: eleições por UF).",
     )
     args = parser.parse_args(argv)
-    return DatabaseLoader(
+    contagens = DatabaseLoader(
         allow_synthetic=args.allow_synthetic,
         allow_unverified=args.allow_unverified,
     ).load_all()
+    posprocessar_carga(engine)  # ponto de entrada próprio: ninguém mais roda o ANALYZE e os derivados depois dele
+    return contagens
 
 
 if __name__ == "__main__":

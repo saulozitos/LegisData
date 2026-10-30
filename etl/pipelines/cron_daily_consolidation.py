@@ -24,10 +24,8 @@ from app.services.cron_log_service import (
     descrever_falha,
 )
 from app.services.legislative_scoring import build_coauthorship_network
-from app.services.party_productivity_service import (
-    calculate_party_ippm_ranking,
-    sync_mandate_history,
-)
+from app.services.party_productivity_service import calculate_party_ippm_ranking
+from app.services.staging_merge import merge_staging
 from sqlalchemy import text
 
 from etl.utils.manutencao import posprocessar_carga, refazer_derivados_apos_carga
@@ -42,7 +40,8 @@ def execute_cron_pipeline() -> Dict[str, Any]:
     status = "SUCESSO"
     err_msg: Optional[str] = None
     registros_totais = 0
-    # (etapa, exceção): uma lista só, para o texto do log e o da tabela pública não divergirem
+    # (etapa, exceção): uma lista só, para o texto do log e o da tabela pública não divergirem; a falha crítica entra
+    # sem etapa (None)
     falhas_de_etapa: list = []
     # só etapa e classe da exceção: é o que vai para a tabela pública de logs
     err_registrado: Optional[str] = None
@@ -66,11 +65,10 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         except Exception as e:
             registrar_falha(ETAPA_VOTACOES, e, "atualização de votações")
 
-        # Etapa 1: Sincronização de Entidades Base e Mandatos Dinâmicos. `sync_mandate_history` roda a fusão inteira do
-        # staging (`staging_merge.merge_staging`: cadastro, legislativo, linhagens e unificação) e devolve as situações de
-        # mandato fundidas
+        # Etapa 1: Sincronização de Entidades Base e Mandatos Dinâmicos. `merge_staging` roda a fusão inteira do staging
+        # (cadastro, legislativo, linhagens e unificação) e devolve as situações de mandato fundidas
         logger.info("Etapa 1/4: Fundindo o staging em core/leg e sincronizando o histórico de mandatos...")
-        synced_mandates = sync_mandate_history(db)
+        synced_mandates = int(merge_staging(db)["situacoes"])
         registros_totais += synced_mandates
         logger.info(f"Etapa 1 concluída: fusão do staging feita ({synced_mandates} situações de mandato).")
         # a fusão sujou os derivados: refaz já, para a primeira leitura do dia não pagar o refresh enquanto as cargas
@@ -138,13 +136,13 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         # levantaria PendingRollbackError e a execução com FALHA ficaria sem registro (e a trava reservada, presa)
         db.rollback()
         status = "FALHA"
-        err_msg = str(e)
-        err_registrado = descrever_falha(None, e)
+        # as etapas isoladas que já tinham falhado antes da falha crítica continuam registradas, na ordem em que ocorreram
+        falhas_de_etapa.append((None, e))
         logger.error(f"Falha crítica no CRON Job diário: {e}", exc_info=True)
 
-    if falhas_de_etapa and status == "SUCESSO":
+    if falhas_de_etapa:
         status = "FALHA"
-        err_msg = "; ".join(f"{etapa}: {erro}" for etapa, erro in falhas_de_etapa)
+        err_msg = "; ".join(f"{etapa}: {erro}" if etapa else str(erro) for etapa, erro in falhas_de_etapa)
         err_registrado = "; ".join(descrever_falha(etapa, erro) for etapa, erro in falhas_de_etapa)
 
     t_end = datetime.now(timezone.utc)

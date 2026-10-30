@@ -491,6 +491,8 @@ def _posprocessar() -> str:
         return posprocessar_carga(engine)
     except Exception as exc:  # noqa: BLE001 - as etapas já terminaram; o leitor refaz o que faltar
         logger.warning("Pós-processamento da carga não executado: %s", exc)
+        # literal de propósito: `etl.utils.manutencao.ESTADO_FALHOU` mora num módulo cujo import pode ser o que falhou aqui
+        # (um teste confere que os dois valores são o mesmo)
         return "falhou"
 
 

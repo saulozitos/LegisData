@@ -162,3 +162,12 @@ Os pontos por autor (ranking de autores, ausências e dossiê) vêm de `leg.mv_a
 estiver pendente (`'ocupado'` ou `'falhou'` no fim da carga), a soma por partido e a soma por autor podem divergir até o
 próximo leitor de um derivado. O cron refaz os derivados antes de calcular o ranking de partidos; migrar esses serviços
 para o derivado fecha a divergência e fica para a entrega do novo ETL.
+
+## Gatilhos dos derivados disparam por comando, não por linha alterada
+
+Os gatilhos `BEFORE ... FOR EACH STATEMENT` da migração 0037 ligam o sinalizador `sujo` em todo `INSERT`, `UPDATE` ou `DELETE`
+nas dependências, mesmo que o comando não altere linha nenhuma. Como toda fusão `etl.merge_*` executa esses comandos, o estado
+`'em_dia'` quase nunca aparece logo depois de uma carga e o cron paga dois refreshes por dia (cerca de 10 s cada). O resultado
+é correto; só há trabalho a mais. Um gatilho com tabela de transição (`REFERENCING NEW TABLE`) marcaria só quando houvesse
+linhas, mas teria de ser `AFTER` e mudaria a ordem das travas que evita o deadlock entre cargas (ver a docstring da 0037), então
+fica para a entrega do novo ETL, se o custo incomodar.

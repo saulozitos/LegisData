@@ -11,7 +11,7 @@ Implementa integralmente a Especificação do Módulo 4 e Módulo 8:
 3. Histórico Dinâmico de Mandatos (Cadeiras-Dia com rastreamento temporal de licenças e suplências)
 4. Gráfico de Quadrantes de Eficiência (Volume vs. Aprovação)
 5. Rotina de Ingestão e Processamento em Lote: vive em `etl/pipelines/cron_daily_consolidation.py` (este módulo fornece
-   `sync_mandate_history` e `calculate_party_ippm_ranking` a ela)
+   `calculate_party_ippm_ranking` a ela; a fusão do staging é de `app.services.staging_merge`)
 """
 
 import logging
@@ -49,17 +49,6 @@ _BLOCOS_SQL = text(
 def get_party_bloc_alignments(db: Session) -> Dict[str, str]:
     """Bloco de governo de cada partido (chave `chave_sigla`) na Câmara durante o mandato presidencial mais recente com classificação."""
     return {chave_sigla(sigla): alinhamento.upper() for sigla, alinhamento in db.execute(_BLOCOS_SQL)}
-
-
-def sync_mandate_history(db: Session) -> int:
-    """
-    Sincroniza o schema core a partir do legado. O histórico de mandatos deixou de ser uma tabela mantida em Python:
-    é derivado de core.mandato_situacao (licenças, afastamentos para ministério e suplências) pela view
-    core.vw_historico_mandato. Devolve o número de situações de mandato calculadas.
-    """
-    from app.services.staging_merge import merge_staging
-
-    return int(merge_staging(db)["situacoes"])
 
 
 # Dias de mandato em exercício (ou suplência) de cada pessoa, no partido em que estava filiada em cada dia
