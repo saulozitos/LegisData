@@ -19,6 +19,7 @@ from etl.utils.bootstrap import ensure_backend_on_path
 
 ensure_backend_on_path()
 
+from app.services.derivados_service import reservar_derivados  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 from sqlalchemy.engine import Engine  # noqa: E402
 
@@ -87,6 +88,7 @@ def carregar_staging(engine: Engine, arquivos: Iterable[ArquivoBaixado]) -> Dict
 def mesclar(engine: Engine) -> Dict[str, Any]:
     """Executa o merge em SQL sobre o que está no staging."""
     with engine.begin() as conexao:
+        reservar_derivados(conexao)  # trava de controle dos derivados antes de qualquer linha de dado
         resumo = conexao.execute(text("SELECT etl.merge_camara_bulk()")).scalar_one()
         conexao.execute(text("SELECT etl.aplicar_linhagens()"))
     logger.info("Merge Câmara (lote): %s", resumo)

@@ -13,8 +13,7 @@ Princípios (ver revisão do ETL):
 
 import argparse
 import logging
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -28,42 +27,26 @@ ensure_backend_on_path()
 
 from app.core.database import SessionLocal, engine  # noqa: E402
 from app.models import (  # noqa: E402
-    AnnualMacroeconomicSummary,
-    AttendanceRecord,
-    Base,
     CabinetMember,
     CargoPoliticoEnum,
     CasaLegislativaEnum,
-    CategoriaIndicadorEnum,
-    CertidaoJudicial,
-    DespesaCota,
-    DoacaoCampanha,
-    EconomicIndicatorSeries,
-    EconomicIndicatorValue,
-    EmendaParlamentar,
     EspectroPoliticoEnum,
     Mandate,
-    MandateEconomicPerformance,
     MotivoDesfiliacaoEnum,
     ParliamentaryVote,
     PartyAffiliation,
-    PeriodicidadeIndicadorEnum,
     PoliticalParty,
     Politician,
-    PoliticianAssetDeclaration,
-    PoliticianRemuneration,
     Proposition,
     StatusMandatoEnum,
     StatusTramitacaoEnum,
     TipoEsferaEnum,
     TipoProposicaoEnum,
-    UnidadeMedidaEnum,
     VotingSession,
     VotoOpcaoEnum,
 )
 
-from etl.config import BCB_SERIES, DATA_INICIO_PADRAO, PROCESSED_DATA_DIR, RAW_DATA_DIR  # noqa: E402
-from etl.extractors.justica_extractor import JusticaExtractor  # noqa: E402
+from etl.config import PROCESSED_DATA_DIR  # noqa: E402
 from etl.pipelines.loader_helpers import (  # noqa: E402,F401
     LEGISLATURA_ATUAL,
     LEGISLATURA_ATUAL_INICIO,
@@ -78,14 +61,11 @@ from etl.pipelines.loader_helpers import (  # noqa: E402,F401
     limpar_contatos_inventados,
     resolve_party_id,
 )
-from etl.pipelines.tse_loaders import (  # noqa: E402
-    carregar_certidoes_tse,
-    carregar_doacoes,
-)
 from etl.pipelines.votacoes_loader import carregar_parlamentares_historicos, carregar_votacoes  # noqa: E402
 from etl.utils.datafiles import load_deputados, load_json, load_senadores  # noqa: E402
+from etl.utils.manutencao import posprocessar_carga  # noqa: E402
 from etl.utils.names import build_unique_name_map, normalize_name_tokens  # noqa: E402
-from etl.utils.provenance import SYNTHETIC_CODE_PREFIX, SYNTHETIC_TAG, is_synthetic, is_trusted, tag_text  # noqa: E402
+from etl.utils.provenance import is_synthetic, is_trusted  # noqa: E402
 
 logger = logging.getLogger("DBLoader")
 
@@ -424,17 +404,14 @@ class DatabaseLoader:
         data_dir: Path = PROCESSED_DATA_DIR,
         allow_synthetic: bool = False,
         allow_unverified: bool = False,
-        purge_legacy_synthetic: bool = False,
     ):
         self.data_dir = Path(data_dir)
         self.allow_synthetic = allow_synthetic
         self.allow_unverified = allow_unverified
-        self.purge_legacy_synthetic = purge_legacy_synthetic
 
     def ensure_tables(self):
-        """Cria as tabelas caso ainda não existam."""
-        logger.info("Verificando e criando tabelas no PostgreSQL via SQLAlchemy...")
-        Base.metadata.create_all(bind=engine)
+        """Aplica as migrações Alembic, únicas donas do schema (as tabelas de `stg` nascem delas)."""
+        logger.info("Aplicando as migrações do schema no PostgreSQL...")
         from app.core.migrations import upgrade_schema
 
         upgrade_schema()
@@ -453,10 +430,7 @@ class DatabaseLoader:
             logger.info("INICIANDO CARGA DE DADOS NO POSTGRESQL")
             logger.info("=" * 70)
 
-            if self.purge_legacy_synthetic:
-                self._purge_legacy_synthetic(session)
-
-            etapas = 17
+            etapas = 6
             n = 0
 
             def etapa(descricao: str) -> None:
@@ -474,26 +448,11 @@ class DatabaseLoader:
             self._load_party_affiliations(session, deputy_map, senator_map, party_map)
 
             etapa("Mandatos e Gabinete Presidencial")
-            mandate_map = self._load_mandates(session, president_map, deputy_map, senator_map, party_map)
-            # Ex-parlamentares (legislaturas anteriores) entram antes de CEAP/emendas: sem eles esses registros ficavam sem vínculo.
+            self._load_mandates(session, president_map, deputy_map, senator_map, party_map)
+            # Ex-parlamentares (legislaturas anteriores) entram antes das proposições e votações: sem eles essas linhas ficavam sem vínculo.
             carregar_parlamentares_historicos(
                 session, self.data_dir, deputy_map, senator_map, party_map, self._ensure_party
             )
-
-            etapa("Declarações de Patrimônio Eleitoral")
-            self._load_politician_assets(session, president_map, deputy_map, senator_map)
-
-            etapa("Despesas da Cota Parlamentar (CEAP)")
-            self._load_ceap_expenses(session, deputy_map, senator_map)
-
-            etapa("Emendas Parlamentares")
-            self._load_emendas_parlamentares(session)
-
-            etapa("Certidões Judiciais e Ficha Limpa")
-            self._load_certidoes_judiciais(session)
-
-            etapa("Financiamento de Campanha (Doações TSE)")
-            self._load_doacoes_campanha(session)
 
             etapa("Proposições Legislativas")
             prop_map = self._load_propositions(session, deputy_map, senator_map)
@@ -502,23 +461,11 @@ class DatabaseLoader:
             self._load_voting_sessions_and_votes(session, prop_map, deputy_map, senator_map, party_map)
             carregar_votacoes(session, self.data_dir, deputy_map, senator_map, party_map, self._ensure_party)
 
-            etapa("Séries Econômicas")
-            series_map = self._load_economic_series(session)
-
-            etapa("Pontos de Dados Econômicos")
-            self._load_economic_data_points(session, series_map)
-
-            etapa("Resumos Macroeconômicos Anuais")
-            self._load_annual_macro_summaries(session)
-
-            etapa("Performance Econômica dos Mandatos")
-            self._load_mandate_economic_performances(session, mandate_map)
-
             session.commit()
             logger.info("Transação confirmada com sucesso no PostgreSQL!")
 
-            # Ponte transitória: projeta o schema legado no schema core (pessoa, partido, filiação, mandato)
-            self._sincronizar_core(session)
+            # Funde o staging no schema final (pessoa, partido, filiação, mandato, proposição, votação)
+            self._fundir_staging(session)
 
             counts = self._get_table_counts(session)
             self._print_summary_report(counts)
@@ -532,15 +479,19 @@ class DatabaseLoader:
             session.close()
 
     @staticmethod
-    def _sincronizar_core(session: Session) -> None:
-        """Projeta o legado no schema core. Falha aqui não desfaz a carga (já confirmada), mas é registrada."""
-        from app.services.core_sync import sync_legacy_to_core
+    def _fundir_staging(session: Session) -> None:
+        """
+        Funde o staging em `core`/`leg`. A carga do staging já foi confirmada e fica; mas a fusão que falha é relançada,
+        para a etapa aparecer como FALHOU no resumo da esteira em vez de OK com `core` e `leg` sem a carga nova.
+        """
+        from app.services.staging_merge import merge_staging
 
         try:
-            sync_legacy_to_core(session)
-        except Exception as exc:  # noqa: BLE001 - a carga principal já foi confirmada
+            merge_staging(session)
+        except Exception as exc:
             session.rollback()
-            logger.error("Sincronização legado -> core falhou: %s", exc, exc_info=True)
+            logger.error("Fusão staging -> core/leg falhou: %s", exc)  # o trace sai uma vez só, em `load_all`
+            raise
 
     # ------------------------------------------------------------------ utilidades de proveniência
     def _usable(self, record: Dict[str, Any]) -> bool:
@@ -548,33 +499,6 @@ class DatabaseLoader:
         if is_trusted(record):
             return True
         return self.allow_synthetic and is_synthetic(record)
-
-    def _purge_legacy_synthetic(self, session: Session) -> None:
-        """
-        Remove do banco linhas que versões anteriores do ETL fabricavam e que não têm como ser distinguidas
-        depois (as tabelas não têm coluna de proveniência). Ação DESTRUTIVA: só roda com --purge-legacy-synthetic.
-        """
-        logger.warning("Removendo dados sintéticos legados (--purge-legacy-synthetic)...")
-        alvos = [
-            ("emendas_parlamentares", session.query(EmendaParlamentar)),
-            ("certidoes_judiciais", session.query(CertidaoJudicial)),
-            ("doacoes_campanha", session.query(DoacaoCampanha)),
-            ("declaracoes_patrimonio", session.query(PoliticianAssetDeclaration)),
-            ("registros_presenca", session.query(AttendanceRecord)),
-            (
-                "remuneracoes_politicos (fonte 'Portal da Transparência' gerada)",
-                session.query(PoliticianRemuneration).filter(
-                    PoliticianRemuneration.data_source.like("Portal da Transparência%")
-                ),
-            ),
-            (
-                "despesas_cota_parlamentar (formato antigo top-10 fornecedores)",
-                session.query(DespesaCota).filter(DespesaCota.expense_type.like("% - Prestação de Contas CEAP")),
-            ),
-        ]
-        for nome, consulta in alvos:
-            removidos = consulta.delete(synchronize_session=False)
-            logger.warning("   %s: %d linha(s) removida(s).", nome, removidos)
 
     # ------------------------------------------------------------------ partidos
     def _load_political_parties(self, session: Session) -> Dict[str, Any]:
@@ -1092,297 +1016,9 @@ class DatabaseLoader:
         return inicio, fim, inicio.year - 1
 
     # ------------------------------------------------------------------ patrimônio
-    def _load_politician_assets(
-        self,
-        session: Session,
-        president_map: Dict[str, Any],
-        deputy_map: Dict[int, Any],
-        senator_map: Dict[int, Any],
-    ):
-        """Declarações de patrimônio ao TSE. Só entram registros com proveniência (ou sintéticos autorizados)."""
-        declaracoes = load_json(self.data_dir / "declaracoes_patrimonio.json", None)
-        if declaracoes is None:
-            logger.warning("declaracoes_patrimonio.json não encontrado. Pulando carga de patrimônio.")
-            return
-
-        politicos_db = session.query(Politician).all()
-        nomes = build_unique_name_map(
-            [(p.id, p.electoral_name) for p in politicos_db if p.electoral_name]
-            + [(p.id, p.civil_name) for p in politicos_db if p.civil_name]
-        )
-
-        existing_assets = {
-            (d.politician_id, d.election_year): d for d in session.query(PoliticianAssetDeclaration).all()
-        }
-        seen_keys = set()
-        inseridos = ignorados_prov = sem_pol = 0
-
-        for item in declaracoes:
-            if not self._usable(item):
-                ignorados_prov += 1
-                continue
-
-            pol_id = None
-            cid, sid = item.get("camara_id"), item.get("senado_id")
-            if cid and cid in deputy_map:
-                pol_id = deputy_map[cid]
-            elif sid and sid in senator_map:
-                pol_id = senator_map[sid]
-            if not pol_id:
-                pol_id = nomes.get(normalize_name_tokens(item.get("nome_civil"))) or nomes.get(
-                    normalize_name_tokens(item.get("nome_eleitoral"))
-                )
-            if not pol_id:
-                sem_pol += 1
-                continue
-
-            ano = int(item["ano_eleicao"])
-            chave = (pol_id, ano)
-            if chave in seen_keys:
-                continue
-            seen_keys.add(chave)
-
-            valor = _dec(item.get("valor_declarado_brl"))
-            if valor is None:
-                continue
-            detalhes = item.get("detalhes_bens")
-            if is_synthetic(item):
-                detalhes = tag_text(detalhes)
-
-            if chave in existing_assets:
-                existing_assets[chave].declared_value_brl = valor
-                existing_assets[chave].asset_details = detalhes
-            else:
-                decl = PoliticianAssetDeclaration(
-                    politician_id=pol_id, election_year=ano, declared_value_brl=valor, asset_details=detalhes
-                )
-                session.add(decl)
-                existing_assets[chave] = decl
-                inseridos += 1
-
-        session.flush()
-        if ignorados_prov:
-            logger.warning(
-                f"-> {ignorados_prov} registros de patrimônio ignorados por falta de proveniência "
-                "(arquivo legado/sintético). Reexecute a extração para gerar dados rastreáveis."
-            )
-        logger.info(
-            f"-> {inseridos} declarações de patrimônio inseridas ({len(seen_keys)} processadas; {sem_pol} sem político identificável)."
-        )
-
     # ------------------------------------------------------------------ CEAP
-    def _load_ceap_expenses(self, session: Session, deputy_map: Dict[int, Any], senator_map: Dict[int, Any]):
-        """
-        CEAP consolidada por (político, ano, tipo de despesa). Um registro por chave natural: reexecutar atualiza.
-
-        O formato antigo gravava só os 10 maiores fornecedores com `ano=2024` e `valor = total de 2008-2026`
-        — não eram notas fiscais nem eram de 2024. Aqui cada linha representa o total REAL de um tipo de despesa
-        em um ano; o detalhamento por fornecedor permanece nos JSONs (que o backend consome).
-        """
-        arquivo = self.data_dir / "despesas_ceap_2019_2026.json"
-        ceap = load_json(arquivo, None)
-        if ceap is None:
-            logger.warning("despesas_ceap_2019_2026.json não encontrado. Pulando carga de CEAP.")
-            return
-
-        legados = (
-            session.query(DespesaCota).filter(DespesaCota.expense_type.like("% - Prestação de Contas CEAP")).count()
-        )
-        if legados:
-            logger.warning(
-                f"-> {legados} linhas de CEAP no formato antigo (top-10 fornecedores com ano fixo) continuam no banco. "
-                "Use --purge-legacy-synthetic para removê-las."
-            )
-
-        politicos = session.query(Politician).all()
-        nomes = build_unique_name_map(
-            [(p.id, p.electoral_name) for p in politicos if p.electoral_name]
-            + [(p.id, p.civil_name) for p in politicos if p.civil_name]
-        )
-        existentes = {
-            (r.politician_id, r.year, r.expense_type, r.supplier_name): r
-            for r in session.query(DespesaCota).filter(DespesaCota.supplier_name == SUPPLIER_CONSOLIDADO).all()
-        }
-
-        inseridos = atualizados = sem_pol = 0
-        for nome_chave, dados in ceap.items():
-            if is_synthetic(dados) and not self.allow_synthetic:
-                continue
-            pol_id = None
-            if dados.get("camara_id") in deputy_map:
-                pol_id = deputy_map[dados["camara_id"]]
-            elif dados.get("senado_id") in senator_map:
-                pol_id = senator_map[dados["senado_id"]]
-            else:
-                # Arquivo legado (sem ids): só nome COMPLETO normalizado e inequívoco; nada de substring.
-                pol_id = nomes.get(normalize_name_tokens(dados.get("nome") or nome_chave))
-            if not pol_id:
-                sem_pol += 1
-                continue
-
-            linhas: List[Tuple[int, str, Any]] = []
-            if dados.get("por_ano_tipo"):
-                for ano, tipos in dados["por_ano_tipo"].items():
-                    for tipo, valor in tipos.items():
-                        linhas.append((int(ano), str(tipo)[:255], valor))
-            else:
-                for ano, valor in (dados.get("por_ano") or {}).items():
-                    linhas.append((int(ano), "TOTAL CEAP (consolidado anual)", valor))
-
-            for ano, tipo, valor in linhas:
-                valor_dec = _dec(valor)
-                if valor_dec is None:
-                    continue
-                chave = (pol_id, ano, tipo, SUPPLIER_CONSOLIDADO)
-                if chave in existentes:
-                    if existentes[chave].net_value != valor_dec:
-                        existentes[chave].net_value = valor_dec
-                        atualizados += 1
-                else:
-                    reg = DespesaCota(
-                        politician_id=pol_id,
-                        year=ano,
-                        month=None,
-                        expense_type=tipo,
-                        net_value=valor_dec,
-                        supplier_name=SUPPLIER_CONSOLIDADO,
-                        supplier_cnpj_cpf=None,
-                        issue_date=None,
-                        document_url=None,
-                    )
-                    session.add(reg)
-                    existentes[chave] = reg
-                    inseridos += 1
-
-        session.flush()
-        logger.info(
-            f"-> CEAP: {inseridos} linhas inseridas, {atualizados} atualizadas, {sem_pol} parlamentares sem correspondência única."
-        )
-
     # ------------------------------------------------------------------ emendas
-    def _load_emendas_parlamentares(self, session: Session):
-        """Emendas do Portal da Transparência. Arquivos legados (valores fabricados) são recusados."""
-        arquivo = self.data_dir / "emendas_parlamentares_2019_2026.json"
-        emendas = load_json(arquivo, None)
-        if emendas is None:
-            logger.warning("emendas_parlamentares_2019_2026.json não encontrado. Pulando carga de emendas.")
-            return
-
-        usaveis = [e for e in emendas if self._usable(e)]
-        if len(usaveis) < len(emendas):
-            logger.warning(
-                f"-> {len(emendas) - len(usaveis)} de {len(emendas)} emendas ignoradas: sem proveniência oficial "
-                "(arquivo legado gerado com tetos/cidades inventados). Execute `python -m etl.pipelines.sync_ceap_emendas`."
-            )
-        if not usaveis:
-            return
-
-        politicos = session.query(Politician).all()
-        nomes = build_unique_name_map(
-            [(p.id, p.electoral_name) for p in politicos if p.electoral_name]
-            + [(p.id, p.civil_name) for p in politicos if p.civil_name]
-        )
-
-        def chave_natural(pol_id, ano, codigo, tipo, local, funcao):
-            # Uma emenda pode ter várias linhas (localidade/função); o extractor já soma duplicatas dessa chave.
-            return (pol_id, ano, codigo, tipo, local, funcao)
-
-        existentes = {
-            chave_natural(
-                r.politician_id,
-                r.year,
-                r.amendment_code,
-                r.amendment_type,
-                r.destination_locality,
-                r.function_area,
-            ): r
-            for r in session.query(EmendaParlamentar).all()
-        }
-
-        inseridos = atualizados = sem_pol = 0
-        for em in usaveis:
-            pol_id = nomes.get(normalize_name_tokens(em.get("politician_name")))
-            if not pol_id:
-                sem_pol += 1
-                continue
-            sintetica = is_synthetic(em)
-            codigo = em.get("codigo_emenda")
-            if sintetica and codigo:
-                codigo = f"{SYNTHETIC_CODE_PREFIX}{codigo}"[:50]
-            empenhado, pago = _dec(em.get("valor_empenhado")), _dec(em.get("valor_pago")) or Decimal("0")
-            if empenhado is None:
-                continue
-            funcao = tag_text(em.get("funcao"))[:100] if sintetica else em.get("funcao")
-
-            chave = chave_natural(pol_id, int(em["ano"]), codigo, em["tipo_emenda"], em["localidade_destino"], funcao)
-            if chave in existentes:
-                alvo = existentes[chave]
-                if alvo.committed_value != empenhado or alvo.paid_value != pago:
-                    alvo.committed_value, alvo.paid_value = empenhado, pago
-                    atualizados += 1
-                continue
-            reg = EmendaParlamentar(
-                politician_id=pol_id,
-                year=int(em["ano"]),
-                amendment_code=codigo,
-                amendment_type=em["tipo_emenda"],
-                committed_value=empenhado,
-                paid_value=pago,
-                destination_locality=em["localidade_destino"],
-                function_area=funcao,
-            )
-            session.add(reg)
-            existentes[chave] = reg
-            inseridos += 1
-            if inseridos % 5000 == 0:
-                session.flush()
-
-        session.flush()
-        logger.info(
-            f"-> Emendas: {inseridos} inseridas, {atualizados} atualizadas, {sem_pol} sem parlamentar de nome único."
-        )
-
     # ------------------------------------------------------------------ certidões / doações
-    def _load_certidoes_judiciais(self, session: Session):
-        """
-        Não há fonte oficial implementada para certidões: por padrão NADA é gravado e `possui_processos_declarados`
-        não é alterado (antes: delete de toda a tabela + "Nada Consta" para todos, com códigos inventados).
-        Única fonte oficial carregada: ocorrências adversas de registro de candidatura publicadas pelo TSE.
-        """
-        carregar_certidoes_tse(session, self.data_dir)
-        if not self.allow_synthetic:
-            logger.warning(
-                "-> Certidões judiciais ignoradas: sem fonte oficial (use --allow-synthetic só para demonstração)."
-            )
-            return
-
-        justica = JusticaExtractor()
-        total = 0
-        for pol in session.query(Politician).all():
-            _, certs = justica.get_certidoes_for_politician(
-                pol.electoral_name, pol.birthplace_state or "DF", allow_synthetic=True
-            )
-            session.query(CertidaoJudicial).filter(
-                CertidaoJudicial.politician_id == pol.id, CertidaoJudicial.details.like(f"{SYNTHETIC_TAG}%")
-            ).delete(synchronize_session=False)
-            for c in certs:
-                session.add(
-                    CertidaoJudicial(
-                        politician_id=pol.id,
-                        court_agency=c["orgao"],
-                        certificate_type=c["tipo_certidao"],
-                        status=c["status_ficha"],
-                        details=tag_text(c.get("detalhes")),
-                    )
-                )
-                total += 1
-        session.flush()
-        logger.info(f"-> {total} certidões SINTÉTICAS cadastradas (marcadas no texto).")
-
-    def _load_doacoes_campanha(self, session: Session):
-        """Receitas de campanha da prestação de contas oficial do TSE (nenhum doador é inventado)."""
-        carregar_doacoes(session, self.data_dir)
-
     # ------------------------------------------------------------------ proposições
     @staticmethod
     def _tipo_proposicao(tipo_str: Optional[str]) -> TipoProposicaoEnum:
@@ -1758,239 +1394,6 @@ class DatabaseLoader:
             f"({descartadas} sessões descartadas, {votos_invalidos} votos com opção desconhecida)."
         )
 
-    # ------------------------------------------------------------------ economia
-    def _load_economic_series(self, session: Session) -> Dict[str, Any]:
-        """Carrega o catálogo de séries econômicas do Banco Central."""
-        series_map: Dict[str, Any] = {}
-        for key, conf in BCB_SERIES.items():
-            serie_code = f"BCB_{conf['codigo']}"
-            serie = session.query(EconomicIndicatorSeries).filter_by(series_code=serie_code).first()
-
-            cat_enum = CategoriaIndicadorEnum[conf.get("categoria", "INFLACAO")]
-            freq = conf.get("frequencia", "")
-            freq_enum = (
-                PeriodicidadeIndicadorEnum.MENSAL
-                if "MENSAL" in freq
-                else PeriodicidadeIndicadorEnum.DIARIA if "DIARIA" in freq else PeriodicidadeIndicadorEnum.ANUAL
-            )
-            unit_str = conf.get("unidade", "")
-            if "%" in unit_str:
-                unit_enum = UnidadeMedidaEnum.PERCENTUAL
-            elif "Pontos" in unit_str:
-                unit_enum = UnidadeMedidaEnum.PONTOS_INDICE
-            elif "USD" in unit_str:
-                unit_enum = UnidadeMedidaEnum.USD
-            else:
-                unit_enum = UnidadeMedidaEnum.BRL
-
-            if not serie:
-                serie = EconomicIndicatorSeries(
-                    series_code=serie_code,
-                    name=conf["nome"],
-                    category=cat_enum,
-                    frequency=freq_enum,
-                    unit=unit_enum,
-                    source_agency="Banco Central do Brasil (SGS)",
-                    description=f"Série oficial {conf['codigo']} do SGS/BCB",
-                )
-                session.add(serie)
-                session.flush()
-            series_map[key] = serie.id
-        return series_map
-
-    def _load_economic_data_points(self, session: Session, series_map: Dict[str, Any]):
-        """
-        Pontos mensais: IPCA (CSV processado) e as demais séries do BCB que estiverem no cache bruto
-        (antes só o IPCA era carregado, embora todas as séries fossem cadastradas).
-        """
-        total = 0
-        total += self._inserir_pontos_csv(
-            session, series_map.get("ipca_mensal"), self.data_dir / "ipca_mensal_historico.csv"
-        )
-
-        from etl.extractors.bcb_extractor import (
-            BCBExtractor,  # import tardio: evita ciclo e dependência na carga simples
-        )
-
-        extrator = BCBExtractor(RAW_DATA_DIR)
-        for chave, serie_id in series_map.items():
-            if chave in ("ipca_mensal", "ibovespa_fechamento"):
-                continue
-            codigo = BCB_SERIES[chave]["codigo"]
-            cache = extrator._cache_path(codigo, DATA_INICIO_PADRAO)
-            bruto = load_json(cache, None)
-            if not bruto:
-                continue
-            moeda_brl = BCB_SERIES[chave].get("unidade", "").startswith(("BRL", "R$"))
-            pontos = []
-            for item in bruto:
-                try:
-                    dt = datetime.strptime(item["data"], "%d/%m/%Y").date()
-                    val = _dec(str(item["valor"]).replace(",", "."))
-                except (KeyError, ValueError):
-                    continue
-                if val is not None:
-                    pontos.append((dt, val))
-            total += self._inserir_pontos(session, serie_id, pontos, moeda_brl)
-        session.flush()
-        logger.info(f"-> {total} pontos de séries econômicas novos.")
-
-    def _inserir_pontos_csv(self, session: Session, serie_id: Any, arquivo: Path) -> int:
-        if serie_id is None or not arquivo.exists():
-            return 0
-        df = pd.read_csv(arquivo)
-        pontos = []
-        for _, row in df.iterrows():
-            dt = _to_date(row["data"])
-            val = _dec(row["valor"])
-            if dt is not None and val is not None:
-                pontos.append((dt, val))
-        return self._inserir_pontos(session, serie_id, pontos, moeda_brl=True)
-
-    @staticmethod
-    def _inserir_pontos(session: Session, serie_id: Any, pontos: List[Tuple[date, Decimal]], moeda_brl: bool) -> int:
-        """Insere só datas ainda inexistentes (uma consulta por série, não uma por ponto)."""
-        existentes = {
-            d for (d,) in session.query(EconomicIndicatorValue.reference_date).filter_by(series_id=serie_id).all()
-        }
-        novos = []
-        for dt, val in pontos:
-            if dt in existentes:
-                continue
-            existentes.add(dt)
-            novos.append(
-                EconomicIndicatorValue(
-                    series_id=serie_id,
-                    reference_date=dt,
-                    reference_year=dt.year,
-                    reference_month=dt.month,
-                    raw_value=val,
-                    original_currency=("BRL" if dt >= date(1994, 7, 1) else "CR$") if moeda_brl else "N/A",
-                )
-            )
-        session.bulk_save_objects(novos)
-        return len(novos)
-
-    def _load_annual_macro_summaries(self, session: Session):
-        """Carrega o resumo macroeconômico anual consolidado."""
-        resumo_file = self.data_dir / "resumo_macroeconomico_anual.csv"
-        if not resumo_file.exists():
-            return
-
-        df_resumo = pd.read_csv(resumo_file)
-        logger.info(f"Inserindo {len(df_resumo)} resumos macroeconômicos anuais...")
-        for _, row in df_resumo.iterrows():
-            ano = int(row["ano"])
-            resumo = session.query(AnnualMacroeconomicSummary).filter_by(year=ano).first()
-
-            ipca_val = _dec(row.get("ipca_acumulado_ano_pct"))
-            pib_val = _dec(row.get("pib_crescimento_real_pct"))
-            cambio_val = _dec(row.get("cambio_dolar_medio"))
-            divida_val = _dec(row.get("divida_liquida_pct_pib"))
-            sal_val = _dec(row.get("salario_minimo_nominal_brl"))
-
-            ibov_val = _dec(row.get("ibovespa_fechamento"))
-            desemp_val = _dec(row.get("taxa_desemprego_anual"))
-            desmat_val = _dec(row.get("taxa_desmatamento_amazonia"))
-            fome_val = _dec(row.get("inseguranca_alimentar_pct"))
-            infl_mandato_val = _dec(row.get("inflacao_acumulada_mandato"))
-
-            cotacao_dolar_val = _dec(row.get("cotacao_dolar_fechamento"))
-            sal_min_val = _dec(row.get("salario_minimo")) if pd.notnull(row.get("salario_minimo")) else sal_val
-            homic_val = _dec(row.get("taxa_homicidios"))
-            fem_val = _dec(row.get("taxa_feminicidios"))
-
-            if not resumo:
-                resumo = AnnualMacroeconomicSummary(
-                    year=ano,
-                    dominant_president_name=(
-                        str(row["presidente_dominante"]) if pd.notnull(row.get("presidente_dominante")) else None
-                    ),
-                    ipca_accumulated_year=ipca_val,
-                    gdp_real_growth=pib_val,
-                    usd_brl_average=cambio_val,
-                    net_debt_pct_gdp=divida_val,
-                    minimum_wage_nominal_brl=sal_val,
-                    ibovespa_close=ibov_val,
-                    unemployment_avg=desemp_val,
-                    crescimento_pib_percentual=pib_val,
-                    inflacao_anual_ipca=ipca_val,
-                    inflacao_acumulada_mandato=infl_mandato_val,
-                    taxa_desemprego_anual=desemp_val,
-                    taxa_desmatamento_amazonia=desmat_val,
-                    inseguranca_alimentar_pct=fome_val,
-                    cotacao_dolar_fechamento=cotacao_dolar_val,
-                    salario_minimo=sal_min_val,
-                    taxa_homicidios=homic_val,
-                    taxa_feminicidios=fem_val,
-                )
-                session.add(resumo)
-            else:
-                # O CSV é a fonte da verdade: atualiza também para None (valor removido na origem não fica
-                # preso no banco, ex.: insegurança alimentar antes de 2004 ou fechamento de dólar indisponível).
-                resumo.ibovespa_close = ibov_val
-                resumo.crescimento_pib_percentual = pib_val
-                resumo.inflacao_anual_ipca = ipca_val
-                resumo.inflacao_acumulada_mandato = infl_mandato_val
-                resumo.taxa_desemprego_anual = desemp_val
-                resumo.unemployment_avg = desemp_val
-                resumo.taxa_desmatamento_amazonia = desmat_val
-                resumo.inseguranca_alimentar_pct = fome_val
-                resumo.cotacao_dolar_fechamento = cotacao_dolar_val
-                resumo.salario_minimo = sal_min_val
-                resumo.taxa_homicidios = homic_val
-                resumo.taxa_feminicidios = fem_val
-
-        session.flush()
-
-    def _load_mandate_economic_performances(self, session: Session, mandate_map: Dict[str, Any]):
-        """Matriz de desempenho dos mandatos. Mandato sem dado essencial é pulado — nunca gravado com zeros."""
-        mandates = load_json(self.data_dir / "indicadores_por_mandato.json", None)
-        if mandates is None:
-            return
-
-        for m in mandates:
-            mandato_id = mandate_map.get(m["id_mandato"])
-            if not mandato_id:
-                continue
-
-            ipca = _dec(
-                m.get("ipca_pos_real_pct") if m.get("ipca_pos_real_pct") is not None else m.get("ipca_acumulado_pct")
-            )
-            pib_acum = _dec(m.get("pib_crescimento_acumulado_pct"))
-            pib_med = _dec(m.get("pib_medio_anual_pct"))
-            if ipca is None or pib_acum is None or pib_med is None:
-                logger.warning(
-                    "Mandato %s sem IPCA/PIB na fonte — performance não gravada (zeros seriam dado falso).",
-                    m["id_mandato"],
-                )
-                continue
-
-            campos = dict(
-                ipca_accumulated=ipca,
-                gdp_accumulated_growth=pib_acum,
-                gdp_annual_avg_growth=pib_med,
-                initial_debt_pct=_dec(m.get("divida_liquida_inicial_pct_pib")),
-                final_debt_pct=_dec(m.get("divida_liquida_final_pct_pib")),
-                debt_delta_pct=_dec(m.get("divida_liquida_delta_pct")),
-                initial_usd_brl=_dec(m.get("cambio_inicial_usd_brl")),
-                final_usd_brl=_dec(m.get("cambio_final_usd_brl")),
-                initial_min_wage_brl=_dec(m.get("salario_minimo_inicial_brl")),
-                final_min_wage_brl=_dec(m.get("salario_minimo_final_brl")),
-                initial_min_wage_usd=_dec(m.get("salario_minimo_inicial_usd")),
-                final_min_wage_usd=_dec(m.get("salario_minimo_final_usd")),
-                analytical_summary=f"Mandato {m['presidente']}. Principais marcos: {', '.join(m.get('marcos_economicos_principais', []))}.",
-            )
-            perf = session.query(MandateEconomicPerformance).filter_by(mandate_id=mandato_id).first()
-            if perf is None:
-                session.add(MandateEconomicPerformance(mandate_id=mandato_id, **campos))
-            else:
-                # A carga é idempotente de verdade: atualiza TODOS os campos (antes só os de salário mínimo).
-                for attr, valor in campos.items():
-                    setattr(perf, attr, valor)
-
-        session.flush()
-
     # ------------------------------------------------------------------ relatórios
     def _get_table_counts(self, session: Session) -> Dict[str, int]:
         """Consulta e retorna a quantidade de linhas em cada tabela do PostgreSQL."""
@@ -1998,26 +1401,17 @@ class DatabaseLoader:
             ("partidos_politicos", "Partidos Políticos"),
             ("politicos", "Políticos (Presidentes + Deputados)"),
             ("filiacoes_partidarias", "Filiações Partidárias (TSE)"),
-            ("declaracoes_patrimonio", "Declarações de Patrimônio (TSE)"),
-            ("despesas_cota_parlamentar", "Despesas da Cota Parlamentar (CEAP)"),
-            ("emendas_parlamentares", "Emendas Parlamentares (Trilha do Dinheiro)"),
-            ("certidoes_judiciais", "Certidões Judiciais e Ficha Limpa"),
-            ("doacoes_campanha", "Financiamento de Campanha (Doações TSE)"),
             ("mandatos", "Mandatos Eletivos"),
             ("membros_gabinete", "Membros de Gabinete (Fazenda/Planejamento)"),
             ("proposicoes", "Proposições Legislativas"),
             ("sessoes_votacao", "Sessões de Votação em Plenário"),
             ("votos_parlamentares", "Votos Parlamentares Nominais"),
-            ("series_indicadores", "Séries de Indicadores"),
-            ("pontos_dados_indicadores", "Pontos de Dados Econômicos"),
-            ("resumos_macroeconomicos_anuais", "Resumos Macroeconômicos Anuais"),
-            ("mandatos_performance_economica", "Performances de Mandato"),
         ]
 
         counts = {}
         for tbl_name, label in tables:
             # Nomes de tabela são constantes desta lista (não vêm de entrada externa).
-            result = session.execute(text(f"SELECT COUNT(*) FROM {tbl_name};")).scalar()  # nosec B608
+            result = session.execute(text(f"SELECT COUNT(*) FROM stg.{tbl_name};")).scalar()  # nosec B608
             counts[label] = result or 0
         return counts
 
@@ -2047,17 +1441,13 @@ def main(argv: Optional[List[str]] = None) -> Dict[str, int]:
         action="store_true",
         help="Carrega dados digitados e não verificados (ex.: eleições por UF).",
     )
-    parser.add_argument(
-        "--purge-legacy-synthetic",
-        action="store_true",
-        help="DESTRUTIVO: apaga linhas sintéticas gravadas por versões antigas (emendas, certidões, doações, patrimônio, presença...).",
-    )
     args = parser.parse_args(argv)
-    return DatabaseLoader(
+    contagens = DatabaseLoader(
         allow_synthetic=args.allow_synthetic,
         allow_unverified=args.allow_unverified,
-        purge_legacy_synthetic=args.purge_legacy_synthetic,
     ).load_all()
+    posprocessar_carga(engine)  # ponto de entrada próprio: ninguém mais roda o ANALYZE e os derivados depois dele
+    return contagens
 
 
 if __name__ == "__main__":

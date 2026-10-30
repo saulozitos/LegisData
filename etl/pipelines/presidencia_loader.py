@@ -21,6 +21,7 @@ from etl.utils.datafiles import load_json
 
 ensure_backend_on_path()
 
+from app.services.derivados_service import reservar_derivados  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 from sqlalchemy.engine import Engine  # noqa: E402
 
@@ -78,6 +79,9 @@ def carregar(engine: Engine, processed_dir: Optional[Path] = None) -> Dict[str, 
     atualizados = 0
     ausentes: List[str] = []
     with engine.begin() as conn:
+        # `_foto` escreve em `core.pessoa` antes de o `_papeis` chegar a `core.mandato`: a trava de controle dos derivados
+        # vem primeiro, senão esta transação pode formar um ciclo de espera com a fusão do staging
+        reservar_derivados(conn)
         for entrada in catalogo:
             slug = texto(entrada.get("id_referencia"))
             mandato_id = conn.execute(

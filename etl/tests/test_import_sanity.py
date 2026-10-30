@@ -33,8 +33,6 @@ def test_db_loader_importa_e_expoe_api_publica():
         "_load_mandates",
         "_load_propositions",
         "_load_voting_sessions_and_votes",
-        "_load_ceap_expenses",
-        "_load_emendas_parlamentares",
     ):
         assert callable(getattr(db_loader.DatabaseLoader, metodo))
 

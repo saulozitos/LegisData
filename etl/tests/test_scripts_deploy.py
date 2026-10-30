@@ -33,6 +33,78 @@ def _posicao(texto, padrao):
     return achado.start()
 
 
+def test_verificar_backup_restaura_num_banco_descartavel_e_nunca_toca_no_de_producao():
+    texto = (RAIZ / "scripts" / "deploy" / "verificar_backup.sh").read_text(encoding="utf-8")
+    assert "createdb" in texto and "pg_restore" in texto and '-d "$BANCO"' in texto
+    assert "POSTGRES_DB" not in texto and "PG_DB" not in texto  # o nome do banco de produção nem é lido
+    assert re.search(r"dropdb[^\n]*\"\$BANCO\"", texto)  # só o descartável é apagado
+    assert re.search(r"trap limpar EXIT", texto)  # apaga o descartável mesmo se a conferência falhar
+    # o descartável é cópia da produção: fecha a conexão a outros papéis logo após criá-lo, antes de restaurar
+    assert _posicao(texto, r"REVOKE CONNECT ON DATABASE") > _posicao(texto, r"createdb ")
+    assert _posicao(texto, r"REVOKE CONNECT ON DATABASE") < _posicao(texto, r"pg_restore ")
+
+
+def _rodar_verificar_backup(tmp_path, dump, pessoas="3", revisao="0037"):
+    """Roda o script com um `docker` falso que registra as chamadas e responde às duas consultas da conferência."""
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    chamadas = tmp_path / "chamadas.log"
+    falso = bin_ / "docker"
+    falso.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "$*" >>"$CHAMADAS"\n'
+        'case "$*" in\n'
+        '  *alembic_version*) echo "$REVISAO" ;;\n'
+        '  *core.pessoa*) echo "$PESSOAS" ;;\n'
+        "esac\n",
+        encoding="utf-8",
+    )
+    falso.chmod(0o755)
+    raiz = tmp_path / "projeto"
+    raiz.mkdir()
+    (raiz / ".env").write_text("POSTGRES_USER=usuario_de_teste\n", encoding="utf-8")
+    ambiente = {
+        "PATH": f"{bin_}:{os.environ['PATH']}",
+        "HOME": str(tmp_path),
+        "LEGISDATA_DIR": str(raiz),
+        "BACKUP_DIR": str(tmp_path / "sem_backups"),
+        "CHAMADAS": str(chamadas),
+        "PESSOAS": pessoas,
+        "REVISAO": revisao,
+    }
+    argumentos = ["bash", str(RAIZ / "scripts" / "deploy" / "verificar_backup.sh")] + ([str(dump)] if dump else [])
+    resultado = subprocess.run(argumentos, capture_output=True, text=True, env=ambiente, check=False)
+    return resultado, chamadas.read_text(encoding="utf-8") if chamadas.exists() else ""
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash indisponível")
+def test_verificar_backup_sem_dump_sai_com_erro_sem_criar_banco(tmp_path):
+    resultado, chamadas = _rodar_verificar_backup(tmp_path, None)
+    assert resultado.returncode == 1 and "nenhum backup encontrado" in resultado.stdout
+    assert "createdb" not in chamadas
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash indisponível")
+def test_verificar_backup_ok_restaura_e_apaga_o_banco_descartavel(tmp_path):
+    dump = tmp_path / "legisdata_x.dump"
+    dump.write_bytes(b"dump")
+    resultado, chamadas = _rodar_verificar_backup(tmp_path, dump)
+    assert resultado.returncode == 0 and "OK: revisão 0037, 3 pessoas" in resultado.stdout
+    linhas = chamadas.splitlines()
+    assert any("createdb" in linha for linha in linhas) and any("pg_restore" in linha for linha in linhas)
+    assert "dropdb" in linhas[-1]  # o descartável sai do ar no fim
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash indisponível")
+@pytest.mark.parametrize("pessoas, revisao", [("0", "0037"), ("3", "")])
+def test_verificar_backup_sem_pessoas_ou_sem_revisao_falha_e_ainda_apaga_o_banco(tmp_path, pessoas, revisao):
+    dump = tmp_path / "legisdata_x.dump"
+    dump.write_bytes(b"dump")
+    resultado, chamadas = _rodar_verificar_backup(tmp_path, dump, pessoas=pessoas, revisao=revisao)
+    assert resultado.returncode == 1 and "FALHOU" in resultado.stdout
+    assert "dropdb" in chamadas.splitlines()[-1]
+
+
 def test_deploy_se_atualiza_antes_de_tocar_no_banco():
     texto = (RAIZ / "scripts" / "deploy" / "deploy.sh").read_text(encoding="utf-8")
     reexecucao = _posicao(texto, r"^\s*_LEGISDATA_DEPLOY_REEXEC=1 _LEGISDATA_DEPLOY_ALVO=\"\$ALVO\" .*exec ")
@@ -211,6 +283,10 @@ def test_o_programa_da_carga_compila_e_roda_com_o_gancho_do_git_e_o_modo_do_ambi
         return {"financas": {"erro": "x"}, "pnad": 1}
 
     monkeypatch.setattr(carga_economica, "carregar_tudo", falso)
+    posprocessados = []
+    monkeypatch.setattr(
+        "etl.utils.manutencao.posprocessar_carga", lambda engine: posprocessados.append(engine) or "refeito"
+    )
     monkeypatch.setenv("LEGISDATA_FIN_MODO", "sem_ceap")
     monkeypatch.setenv("LEGISDATA_FIN_TEM_ALGUM_DADO", "t")
     exec(compile(codigo, "deploy.sh:carga", "exec"), {})
@@ -221,6 +297,9 @@ def test_o_programa_da_carga_compila_e_roda_com_o_gancho_do_git_e_o_modo_do_ambi
     assert opcoes["chaves"] == carga_economica.FINANCAS_POR_MODO["sem_ceap"]
     assert opcoes["ao_confirmar"] is financas_loader.registrar_carga_do_git
     assert "FALHA_TOLERADA financas" in saida
+    # a carga religa os derivados (presidência atualiza core.mandato): o deploy os refaz, o primeiro leitor não paga
+    assert posprocessados == [motor]
+    assert "derivados refeito" in saida  # o estado dos derivados fica no log do deploy, como o das cargas
 
     monkeypatch.delenv("LEGISDATA_FIN_MODO")
     monkeypatch.delenv("LEGISDATA_FIN_TEM_ALGUM_DADO")
@@ -246,6 +325,44 @@ def test_rollback_do_deploy_sobe_a_tag_anterior_com_o_compose_do_commit_anterior
     assert re.search(r'git show "\$COMMIT_ANTERIOR:docker-compose\.yml"', rollback)
     assert re.search(r'IMAGE_TAG="\$ANTERIOR" docker compose --project-directory "\$RAIZ" -f ', rollback)
     assert rollback.count("com o compose do commit anterior") == 1  # o comentário não pode se repetir
+
+
+def test_rollback_chama_o_aviso_de_schema_migrado_e_a_revisao_e_lida_antes_de_migrar():
+    """Só a imagem volta: o rollback precisa avisar se o banco ficou numa revisão que ela não conhece."""
+    texto = _texto(DEPLOY_SH)
+    antes = _posicao(texto, r'^REVISAO_ANTES="\$\(consultar_revisao\)"')
+    assert antes < _posicao(texto, r"alembic upgrade head")  # a revisão é lida ANTES de migrar
+    rollback = texto[_posicao(texto, r'if \[\[ "\$estado" != "healthy" \]\]') :]
+    assert "avisar_rollback_se_o_schema_mudou" in rollback.split("exit 1")[0]
+
+
+@SEM_BASH
+@pytest.mark.parametrize(
+    "antes, depois, esperado",
+    [
+        ("0036", "0037", "migrou o banco de 0036 para 0037"),
+        ("0037", "0037", None),  # nada migrou: sem aviso
+        ("", "0037", None),  # instalação nova: não havia revisão antes
+        ("0036", "", "não consegui ler a revisão atual"),  # banco fora do ar no rollback: aviso honesto, não "para "
+    ],
+)
+def test_aviso_do_rollback_conforme_a_revisao_antes_e_depois(antes, depois, esperado):
+    texto = _texto(DEPLOY_SH)
+    inicio = _posicao(texto, r"^avisar_rollback_se_o_schema_mudou\(\) \{")
+    funcao = texto[inicio:].split("\n}\n")[0] + "\n}\n"
+    programa = (
+        'log() { echo "$*"; }\n'
+        'consultar_revisao() { echo "$REVISAO_DEPOIS_FALSA"; }\n'
+        f'REVISAO_ANTES="{antes}"\n{funcao}avisar_rollback_se_o_schema_mudou\n'
+    )
+    saida = subprocess.run(
+        ["bash", "-c", programa], env={**os.environ, "REVISAO_DEPOIS_FALSA": depois}, capture_output=True, text=True
+    )
+    assert saida.returncode == 0, saida.stderr
+    if esperado is None:
+        assert saida.stdout.strip() == ""
+    else:
+        assert "AVISO" in saida.stdout and esperado in saida.stdout
 
 
 @SEM_BASH

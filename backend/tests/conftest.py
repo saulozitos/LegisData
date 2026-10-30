@@ -15,7 +15,6 @@ from app.core.config import settings  # noqa: E402
 from app.core.database import get_db  # noqa: E402
 from app.core.migrations import upgrade_schema  # noqa: E402
 from app.models import (  # noqa: E402
-    Base,
     CargoPoliticoEnum,
     CasaLegislativaEnum,
     Mandate,
@@ -24,13 +23,14 @@ from app.models import (  # noqa: E402
     PoliticalParty,
     Politician,
     Proposition,
+    StagingBase,
     StatusMandatoEnum,
     TipoProposicaoEnum,
     VotingSession,
     VotoOpcaoEnum,
 )
 from app.services import cidadania_service  # noqa: E402
-from app.services.core_sync import sync_legacy_to_core  # noqa: E402
+from app.services.staging_merge import merge_staging  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.exc import OperationalError  # noqa: E402
@@ -61,6 +61,7 @@ _ETL_DATA_TABLES = (
     "etl.arquivo_bruto",
     "etl.rejeito",
     "etl.verificacao",
+    "etl.log_execucao_cron",
     "eco.observacao",
     "eco.repasse_federal",
     "eco.resultado_eleitoral_uf",
@@ -110,7 +111,7 @@ def _truncate_sql(pg_engine):
                 )
             )
         ]
-    legacy = [f'"{t.name}"' for t in Base.metadata.sorted_tables if not t.schema]
+    legacy = [f'stg."{t.name}"' for t in StagingBase.metadata.sorted_tables if t.schema == "stg"]
     return "TRUNCATE " + ", ".join(legacy + core + list(_ETL_DATA_TABLES)) + " RESTART IDENTITY CASCADE"
 
 
@@ -140,9 +141,9 @@ def client(session_factory):
             # Os testes semeiam o schema legado; os endpoints leem o schema novo. A ponte projeta o legado antes de
             # cada requisição (só quando há dados legados, para não apagar dados escritos direto nos schemas novos).
             if session.execute(
-                text("SELECT EXISTS (SELECT 1 FROM politicos) OR EXISTS (SELECT 1 FROM proposicoes)")
+                text("SELECT EXISTS (SELECT 1 FROM stg.politicos) OR EXISTS (SELECT 1 FROM stg.proposicoes)")
             ).scalar():
-                sync_legacy_to_core(session)
+                merge_staging(session)
             yield session
         finally:
             session.close()
@@ -251,7 +252,7 @@ def pessoa(db):
 
 def pessoa_do(db, politico):
     """`core.pessoa` do político do legado (a ponte cria o cadastro com o mesmo `uid`)."""
-    sync_legacy_to_core(db)
+    merge_staging(db)
     return db.execute(text("SELECT id FROM core.pessoa WHERE uid = :uid"), {"uid": politico.id}).scalar_one()
 
 
@@ -335,7 +336,7 @@ def seed(db):
     db.add_all([pt, ptb, sem_partido])
     db.flush()
 
-    fulano = Politician(civil_name="Fulano de Tal", electoral_name="Fulano", camara_id=111, cpf="12345678901")
+    fulano = Politician(civil_name="Fulano de Tal", electoral_name="Fulano", camara_id=111)
     lula_fonte = Politician(civil_name="Lula da Fonte", electoral_name="Lula da Fonte", camara_id=222)
     beltrano = Politician(civil_name="Beltrano", electoral_name="Beltrano", camara_id=333)
     maria_a = Politician(civil_name="Maria Silva", electoral_name="Maria Silva", camara_id=444)

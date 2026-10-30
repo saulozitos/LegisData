@@ -10,15 +10,15 @@ Implementa integralmente a Especificação do Módulo 4 e Módulo 8:
    C) Volume de Relatorias Relevantes
 3. Histórico Dinâmico de Mandatos (Cadeiras-Dia com rastreamento temporal de licenças e suplências)
 4. Gráfico de Quadrantes de Eficiência (Volume vs. Aprovação)
-5. Rotina de Ingestão e Processamento em Lote (CRON Diário)
+5. Rotina de Ingestão e Processamento em Lote: vive em `etl/pipelines/cron_daily_consolidation.py` (este módulo fornece
+   `calculate_party_ippm_ranking` a ela; a fusão do staging é de `app.services.staging_merge`)
 """
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 from app.core.names import chave_sigla
-from app.models.analytics import LogExecucaoCron
 from app.models.enums import SituacaoMandatoEnum
 from app.services.party_catalog_service import DEFAULT_PARTY_COLOR
 from sqlalchemy import bindparam, text
@@ -49,17 +49,6 @@ _BLOCOS_SQL = text(
 def get_party_bloc_alignments(db: Session) -> Dict[str, str]:
     """Bloco de governo de cada partido (chave `chave_sigla`) na Câmara durante o mandato presidencial mais recente com classificação."""
     return {chave_sigla(sigla): alinhamento.upper() for sigla, alinhamento in db.execute(_BLOCOS_SQL)}
-
-
-def sync_mandate_history(db: Session) -> int:
-    """
-    Sincroniza o schema core a partir do legado. O histórico de mandatos deixou de ser uma tabela mantida em Python:
-    é derivado de core.mandato_situacao (licenças, afastamentos para ministério e suplências) pela view
-    core.vw_historico_mandato. Devolve o número de situações de mandato calculadas.
-    """
-    from app.services.core_sync import sync_legacy_to_core
-
-    return int(sync_legacy_to_core(db)["situacoes"])
 
 
 # Dias de mandato em exercício (ou suplência) de cada pessoa, no partido em que estava filiada em cada dia
@@ -544,54 +533,4 @@ def get_party_mandate_timeline(partido_sigla: str, db: Session) -> Dict[str, Any
         "titulares_exercicio": exercicio,
         "ministros_licenciados": afastados,
         "suplentes_ativos": suplencias,
-    }
-
-
-def run_daily_cron_job(db: Session) -> Dict[str, Any]:
-    """
-    Executa o fluxo completo do CRON Job diário:
-    - Etapa 1: Sincronização de Mandatos e Histórico Dinâmico
-    - Etapa 2: Ingestão de Proposições e Deliberações
-    - Etapa 3: Recálculo dos Indicadores e IPPM
-    - Etapa 4: Consolidação dos Grafos
-    Registra a auditoria na tabela log_execucao_cron.
-    """
-    t_start = datetime.now(timezone.utc)
-    status = "SUCESSO"
-    err_msg: Optional[str] = None
-    registros_atualizados = 0
-
-    try:
-        # Etapa 1: Sincronização de Entidades Base
-        reg1 = sync_mandate_history(db)
-        registros_atualizados += reg1
-
-        # Etapa 2 & 3: Recálculo dos Indicadores IPPM
-        ranking_data = calculate_party_ippm_ranking(db)
-        registros_atualizados += len(ranking_data.get("ranking", []))
-
-    except Exception as e:
-        status = "FALHA"
-        err_msg = str(e)
-        logger.error("Erro no processamento do CRON Diário: %s", e, exc_info=True)
-
-    t_end = datetime.now(timezone.utc)
-    tempo_segundos = max(0, int((t_end - t_start).total_seconds()))
-
-    log_entry = LogExecucaoCron(
-        status_execucao=status,
-        registros_atualizados=registros_atualizados,
-        tempo_processamento_segundos=tempo_segundos,
-        erro_mensagem=err_msg,
-        etapa="CONSOLIDACAO_DIARIA_COMPLETA",
-    )
-    db.add(log_entry)
-    db.commit()
-
-    return {
-        "status": status,
-        "tempo_processamento_segundos": tempo_segundos,
-        "registros_atualizados": registros_atualizados,
-        "erro_mensagem": err_msg,
-        "timestamp": t_start.isoformat(),
     }

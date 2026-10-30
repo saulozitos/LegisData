@@ -4,9 +4,9 @@ from datetime import date
 
 import pytest
 from app.models import (
-    Base,
     Politician,
     Proposition,
+    StagingBase,
 )
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -17,8 +17,8 @@ from etl.scripts.fix_author_associations import sanitize_all_proposition_authors
 
 @pytest.fixture
 def sessao():
-    engine = create_engine("sqlite://")
-    Base.metadata.create_all(engine)
+    engine = create_engine("sqlite://").execution_options(schema_translate_map={"stg": None})
+    StagingBase.metadata.create_all(engine)
     with sessionmaker(bind=engine, autoflush=False)() as s:
         yield s
 

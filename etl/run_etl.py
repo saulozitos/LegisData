@@ -39,6 +39,8 @@ class Etapa:
     titulo: str
     executar: Callable[[], object]
     depende_de_extracao: bool = False  # True para etapas de carga
+    # True para etapas que gravam no Postgres: ao fim da esteira rodam os derivados e o ANALYZE
+    grava_banco: bool = False
 
 
 def _economic(use_cache: bool):
@@ -169,12 +171,10 @@ def _ceap_emendas(ano_inicio: int, usar_cache: bool = True):
     return resumo
 
 
-def _load_db(allow_synthetic: bool, allow_unverified: bool, purge: bool):
+def _load_db(allow_synthetic: bool, allow_unverified: bool):
     from etl.pipelines.db_loader import DatabaseLoader
 
-    return DatabaseLoader(
-        allow_synthetic=allow_synthetic, allow_unverified=allow_unverified, purge_legacy_synthetic=purge
-    ).load_all()
+    return DatabaseLoader(allow_synthetic=allow_synthetic, allow_unverified=allow_unverified).load_all()
 
 
 def _processos():
@@ -274,21 +274,15 @@ def _load_economia(recarregar_ceap_e_emendas: bool = False, extracao_fresca: boo
         print(f"    {nomes[chave]}:", resultado)
 
 
-def _load_presenca_remuneracao():
+def _load_presenca():
     from etl.utils.bootstrap import ensure_backend_on_path
 
     ensure_backend_on_path()
-    from app.core.database import SessionLocal, engine
+    from app.core.database import engine
 
-    from etl.pipelines.load_attendance_and_remuneration import load_remunerations
     from etl.pipelines.presenca_leg_loader import carregar as carregar_presenca
 
     print("    Presença (leg.presenca):", carregar_presenca(engine))
-    db = SessionLocal()
-    try:
-        print("    Remuneração:", load_remunerations(db))
-    finally:
-        db.close()
 
 
 def montar_parser() -> argparse.ArgumentParser:
@@ -319,7 +313,7 @@ def montar_parser() -> argparse.ArgumentParser:
         ("camara-bulk", "Proposições e autores de todos os anos (CSV em lote da Câmara) direto no PostgreSQL"),
         ("camara-historico", "Histórico de mandatos dos deputados (posse, licença, suplência, partido) desde 1995"),
         ("load-db", "Carga e upsert no PostgreSQL"),
-        ("load-presenca", "Carga de presença e remuneração oficiais no PostgreSQL"),
+        ("load-presenca", "Carga de presença oficial (leg.presenca) no PostgreSQL"),
         ("load-economia", "Carga das séries econômicas, mandatos, composição, PNAD (eco/leg) e finanças (fin)"),
         (
             "processos",
@@ -360,12 +354,9 @@ def montar_parser() -> argparse.ArgumentParser:
         "--allow-synthetic", action="store_true", help="Gera/carrega dados SINTÉTICOS marcados (demonstração)"
     )
     p.add_argument(
-        "--allow-unverified", action="store_true", help="Carrega dados digitados e não verificados (eleições por UF)"
-    )
-    p.add_argument(
-        "--purge-legacy-synthetic",
+        "--allow-unverified",
         action="store_true",
-        help="DESTRUTIVO: apaga sintéticos legados do banco antes da carga",
+        help="Carrega dados sem fonte registrada (proposições e autores sem `autor_fonte`)",
     )
     return p
 
@@ -443,23 +434,27 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
             "camara_bulk",
             "Proposições e autores de todos os anos (CSV em lote da Câmara)",
             lambda: _camara_bulk(args.no_cache, args.bulk_ano_inicio),
+            grava_banco=True,
         ),
         Etapa(
             "camara_historico",
             "Histórico de mandatos dos deputados (Câmara)",
             lambda: _camara_historico(args.no_cache),
+            grava_banco=True,
         ),
         Etapa(
             "load_db",
             "Carga e upsert relacional no PostgreSQL",
-            lambda: _load_db(args.allow_synthetic, args.allow_unverified, args.purge_legacy_synthetic),
+            lambda: _load_db(args.allow_synthetic, args.allow_unverified),
             depende_de_extracao=True,
+            grava_banco=True,
         ),
         Etapa(
             "load_presenca",
-            "Carga de presença e remuneração oficiais",
-            _load_presenca_remuneracao,
+            "Carga de presença oficial (leg.presenca)",
+            _load_presenca,
             depende_de_extracao=True,
+            grava_banco=True,
         ),
         Etapa("processos", "Processos judiciais (DataJud)", _processos),
         Etapa(
@@ -473,15 +468,38 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
                 extracao_fresca=ceap_gravada["ok"] or args.arquivos_frescos,
             ),
             depende_de_extracao=True,
+            grava_banco=True,
         ),
     ]
     etapas = [e for e in catalogo if quer(e.chave)]
     return etapas
 
 
+def _posprocessar() -> str:
+    """
+    Uma vez, no fim da esteira, se alguma etapa gravou: o ANALYZE e os derivados do legislativo. Nunca derruba a esteira;
+    devolve o estado dos derivados (`'refeito'`, `'em_dia'`, `'ocupado'` ou `'falhou'`).
+    """
+    try:
+        from etl.utils.bootstrap import ensure_backend_on_path
+
+        ensure_backend_on_path()
+        from app.core.database import engine
+
+        from etl.utils.manutencao import posprocessar_carga
+
+        return posprocessar_carga(engine)
+    except Exception as exc:  # noqa: BLE001 - as etapas já terminaram; o leitor refaz o que faltar
+        logger.warning("Pós-processamento da carga não executado: %s", exc)
+        # literal de propósito: `etl.utils.manutencao.ESTADO_FALHOU` mora num módulo cujo import pode ser o que falhou aqui
+        # (um teste confere que os dois valores são o mesmo)
+        return "falhou"
+
+
 def executar(etapas: List[Etapa], modo_completo: bool) -> Dict[str, str]:
     resultados: Dict[str, str] = {}
     total = len(etapas)
+    gravou = False
     for i, etapa in enumerate(etapas, start=1):
         print(f"\n>>> [ETAPA {i}/{total}] {etapa.titulo.upper()} <<<")
 
@@ -492,12 +510,15 @@ def executar(etapas: List[Etapa], modo_completo: bool) -> Dict[str, str]:
             continue
 
         inicio = time.time()
+        gravou = gravou or etapa.grava_banco  # uma etapa que confirma lotes e falha depois também deixou o banco mudado
         try:
             etapa.executar()
             resultados[etapa.chave] = f"OK ({time.time() - inicio:.1f}s)"
         except Exception as exc:  # noqa: BLE001 — a etapa é isolada de propósito; o erro é registrado e relatado
             logger.error("Etapa '%s' falhou: %s", etapa.chave, exc, exc_info=True)
             resultados[etapa.chave] = f"FALHOU: {exc}"
+    if gravou:
+        logger.info("Derivados do legislativo ao fim da esteira: %s", _posprocessar())
     return resultados
 
 

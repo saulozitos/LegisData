@@ -4,11 +4,11 @@ import os
 
 from alembic import context
 from app.core.config import settings
-from app.models import Base
+from app.models import StagingBase
 from sqlalchemy import create_engine, pool, text
 
 config = context.config
-target_metadata = Base.metadata
+target_metadata = StagingBase.metadata
 
 # Mesmo identificador usado pela migração legada, para que workers concorrentes esperem uns pelos outros
 ALEMBIC_ADVISORY_LOCK_ID = 7_450_001
@@ -19,8 +19,13 @@ def _url() -> str:
 
 
 def include_object(obj, name, type_, reflected, compare_to):
-    # Tabelas legadas continuam a cargo do baseline/ORM até a Fase 9; autogenerate só olha o que for migrado
-    return True
+    """
+    O alvo (`target_metadata`) só conhece o schema `stg`; ref/core/leg/eco/fin/param/etl nascem em migrações escritas à mão.
+    Sem este filtro, `alembic revision --autogenerate` proporia apagar todas as tabelas dos outros schemas.
+    """
+    if type_ == "table":
+        return getattr(obj, "schema", None) == "stg"
+    return True  # colunas e índices seguem a tabela que já passou pelo filtro
 
 
 def run_migrations_offline() -> None:

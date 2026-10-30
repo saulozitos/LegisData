@@ -23,7 +23,7 @@ from app.models import (
     VotoNominal,
     VotoOpcaoEnum,
 )
-from app.services.core_sync import sync_legacy_to_core
+from app.services.staging_merge import merge_staging
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
@@ -175,7 +175,7 @@ def test_data_window_starts_in_1995_enforced_by_the_database(db):
 
 
 def test_bridge_copies_proposition_with_author_and_authorships(db, cenario):
-    sync_legacy_to_core(db)
+    merge_staging(db)
     assert _rows(
         db,
         "SELECT p.tipo_codigo, p.numero, pe.nome_exibicao FROM leg.proposicao p "
@@ -189,7 +189,7 @@ def test_bridge_copies_proposition_with_author_and_authorships(db, cenario):
 def test_bridge_rejects_propositions_before_the_1995_window(db, cenario):
     db.add(_prop(number=2, year=1990, presentation_date=date(1990, 5, 1), title="PL 2/1990"))
     db.commit()
-    summary = sync_legacy_to_core(db)
+    summary = merge_staging(db)
     assert _scalar(db, "SELECT count(*) FROM leg.proposicao") == 1
     assert _rows(db, "SELECT motivo FROM etl.rejeito WHERE recurso = 'proposicao'") == [("FORA_DA_JANELA_1995",)]
     assert summary["legislativo"]["rejeitos"] == 1
@@ -197,7 +197,7 @@ def test_bridge_rejects_propositions_before_the_1995_window(db, cenario):
 
 def test_both_legacy_vote_representations_become_one_votacao(db, cenario):
     _votacao_completa(db, cenario)
-    sync_legacy_to_core(db)
+    merge_staging(db)
     assert _scalar(db, "SELECT count(*) FROM leg.votacao") == 1
     assert _scalar(db, "SELECT count(*) FROM leg.votacao_legado") == 2  # os dois ids legados continuam rastreáveis
     row = _rows(
@@ -210,7 +210,7 @@ def test_both_legacy_vote_representations_become_one_votacao(db, cenario):
 
 def test_votes_are_deduplicated_and_nominal_source_wins(db, cenario):
     _votacao_completa(db, cenario)
-    sync_legacy_to_core(db)
+    merge_staging(db)
     votos = dict(
         _rows(db, "SELECT pe.nome_exibicao, v.opcao_codigo FROM leg.voto v JOIN core.pessoa pe ON pe.id = v.pessoa_id")
     )
@@ -227,7 +227,7 @@ def test_votes_are_deduplicated_and_nominal_source_wins(db, cenario):
 
 def test_party_orientation_resolves_party_but_keeps_blocs(db, cenario):
     _votacao_completa(db, cenario)
-    sync_legacy_to_core(db)
+    merge_staging(db)
     rows = dict(
         _rows(db, "SELECT o.bancada, pa.sigla FROM leg.orientacao o LEFT JOIN core.partido pa ON pa.id = o.partido_id")
     )
@@ -248,7 +248,7 @@ def test_session_without_counterpart_keeps_source_totals(db, cenario):
     )
     db.add(secreta)
     db.commit()
-    sync_legacy_to_core(db)
+    merge_staging(db)
     assert _rows(db, "SELECT tipo_deliberacao, secreta, total_sim_fonte, total_nao_fonte FROM leg.votacao") == [
         ("SECRETA", True, 40, 20)
     ]
@@ -256,14 +256,14 @@ def test_session_without_counterpart_keeps_source_totals(db, cenario):
 
 def test_bridge_is_idempotent_for_the_legislative_schema(db, cenario):
     _votacao_completa(db, cenario)
-    sync_legacy_to_core(db)
+    merge_staging(db)
     sql = (
         "SELECT (SELECT count(*) FROM leg.proposicao), (SELECT count(*) FROM leg.autoria), "
         "(SELECT count(*) FROM leg.votacao), (SELECT count(*) FROM leg.voto), (SELECT count(*) FROM leg.orientacao), "
         "(SELECT min(id) FROM leg.votacao), (SELECT min(id) FROM leg.proposicao)"
     )
     antes = _rows(db, sql)
-    sync_legacy_to_core(db)
+    merge_staging(db)
     assert _rows(db, sql) == antes
 
 
@@ -279,7 +279,7 @@ def test_attendance_is_deduplicated_and_routed_to_the_year_partition(db, cenario
             )
         )
     db.commit()
-    sync_legacy_to_core(db)
+    merge_staging(db)
     assert _rows(db, "SELECT tableoid::regclass::text, tipo_codigo, mandato_id IS NOT NULL FROM leg.presenca") == [
         ("leg.presenca_2024", "PRESENTE", True)
     ]
@@ -296,13 +296,13 @@ def test_attendance_before_1995_is_rejected_with_reason(db, cenario):
         )
     )
     db.commit()
-    sync_legacy_to_core(db)
+    merge_staging(db)
     assert _scalar(db, "SELECT count(*) FROM leg.presenca") == 0
     assert _rows(db, "SELECT motivo FROM etl.rejeito WHERE recurso = 'presenca'") == [("FORA_DA_JANELA_1995",)]
 
 
 def test_full_text_search_on_summary(db, cenario):
-    sync_legacy_to_core(db)
+    merge_staging(db)
     assert (
         _scalar(db, "SELECT count(*) FROM leg.proposicao WHERE ementa_tsv @@ plainto_tsquery('portuguese', 'ementas')")
         == 1
@@ -388,7 +388,7 @@ def test_author_is_scored_in_the_party_he_belonged_to_when_the_bill_was_filed(db
         )
     )
     db.commit()
-    sync_legacy_to_core(db)
+    merge_staging(db)
     rows = _rows(
         db,
         "SELECT p.numero, pa.sigla, v.pontos_ialp FROM leg.vw_autoria_pontuada v "
@@ -400,7 +400,7 @@ def test_author_is_scored_in_the_party_he_belonged_to_when_the_bill_was_filed(db
 
 
 def test_institutional_authorship_does_not_score(db, cenario):
-    sync_legacy_to_core(db)
+    merge_staging(db)
     assert _scalar(db, "SELECT count(*) FROM leg.vw_autoria_pontuada WHERE tipo_autoria = 'INSTITUCIONAL'") == 0
 
 
@@ -419,7 +419,7 @@ def test_placar_counts_nominal_votes_and_falls_back_to_source_totals(db, cenario
         )
     )
     db.commit()
-    sync_legacy_to_core(db)
+    merge_staging(db)
     placares = _rows(
         db,
         "SELECT v.tipo_deliberacao, p.tem_voto_nominal, p.sim, p.nao, p.abstencao "
@@ -444,7 +444,7 @@ def test_party_seat_days_follow_affiliation_changes_inside_the_period(db, cenari
         ]
     )
     db.commit()
-    sync_legacy_to_core(db)
+    merge_staging(db)
     inicio, fim = date(2024, 1, 1), date(2024, 12, 31)  # 2024 é bissexto: 366 dias
     pt = calculate_party_active_seats("PT", "CAMARA", inicio, fim, db)
     pl = calculate_party_active_seats("PL", "CAMARA", inicio, fim, db)
@@ -488,7 +488,7 @@ def test_seat_days_exclude_the_period_holder_serves_as_minister(db, cenario):
         ]
     )
     db.commit()
-    sync_legacy_to_core(db)
+    merge_staging(db)
     seats = calculate_party_active_seats("PT", "CAMARA", date(2025, 1, 1), date(2025, 12, 31), db)
     assert seats["cadeiras_dia_equivalentes"] == pytest.approx(181 / 365, abs=0.01)  # 1º jan a 30 jun
 
@@ -509,7 +509,7 @@ def test_government_orientation_applies_to_the_party_of_the_sitting_president(cl
         )
     )
     _votacao_completa(db, cenario)
-    sync_legacy_to_core(db)
+    merge_staging(db)
     # A orientação "Governo" (SIM) vale para o partido do presidente em exercício (PL, aqui), não para o PT
     ranking = {r["sigla"]: r for r in client.get("/api/v1/parties/ippm-ranking?ano=2023").json()["ranking"]}
     assert ranking["PL"]["pilares"]["fidelidade_partidaria_pct"] == 0.0  # Bia (PL) se absteve contra SIM do Governo

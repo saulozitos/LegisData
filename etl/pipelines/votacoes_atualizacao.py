@@ -14,11 +14,12 @@ from etl.extractors.votacoes_extractor import run_votacoes
 from etl.pipelines.db_loader import DatabaseLoader
 from etl.pipelines.votacoes_loader import carregar_votacoes
 from etl.utils.bootstrap import ensure_backend_on_path
+from etl.utils.manutencao import posprocessar_carga
 
 ensure_backend_on_path()
 
-from app.core.database import SessionLocal  # noqa: E402
-from app.services.core_sync import sync_legacy_to_core  # noqa: E402
+from app.core.database import SessionLocal, engine  # noqa: E402
+from app.services.staging_merge import merge_staging  # noqa: E402
 
 logger = logging.getLogger("VotacoesAtualizacao")
 
@@ -41,7 +42,9 @@ def atualizar(ano_inicio: Optional[int] = None, force: bool = False, sincronizar
             sessao, PROCESSED_DATA_DIR, mapa_deputados, mapa_senadores, mapa_partidos, carregador._ensure_party
         )
         sessao.commit()
-        ponte = sync_legacy_to_core(sessao) if sincronizar else None
+        ponte = merge_staging(sessao) if sincronizar else None
+    if sincronizar:
+        posprocessar_carga(engine)  # sem fusão, quem chamou (o cron diário) roda `posprocessar_carga` depois
     resumo = {"anos": anos, "extracao": {k: v for k, v in extracao.items() if k != "parlamentares_historicos"}}
     resumo["carga"] = contadores
     resumo["ponte"] = ponte
