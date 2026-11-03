@@ -7,5 +7,5 @@ numpy>=2.5.4,<3.0
 sqlalchemy>=2.1.6,<3.0
 psycopg2-binary>=2.9.13,<3.0
 # pydantic-settings é exigido por backend/app/core/config.py, importado pela carga no banco
-pydantic>=2.14.1,<3.0
-pydantic-settings>=2.16.1,<3.0
+pydantic>=2.14.2,<3.0
+pydantic-settings>=2.16.2,<3.0
