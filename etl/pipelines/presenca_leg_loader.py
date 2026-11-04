@@ -25,7 +25,6 @@ Idempotente: cada origem apaga e regrava só as próprias linhas.
 """
 
 import csv
-import io
 import logging
 from collections import defaultdict
 from datetime import date, datetime
@@ -37,6 +36,7 @@ from etl.extractors.camara_presenca_eventos_extractor import caminho_do_arquivo
 from etl.extractors.presenca_extractor import carregar_dias
 from etl.pipelines.loader_helpers import normalizar_sigla_presenca
 from etl.utils.bootstrap import ensure_backend_on_path
+from etl.utils.copia import copiar_linhas, transacao_de_carga
 
 ensure_backend_on_path()
 
@@ -123,18 +123,6 @@ def presencas_por_dia(raw_dir: Path, ano: int) -> Tuple[Set[Tuple[int, date]], S
     return presencas, dias
 
 
-def _copiar(cursor, tabela: str, colunas: str, linhas: Iterable[Iterable[Any]]) -> int:
-    saida = io.StringIO()
-    escritor = csv.writer(saida)
-    n = 0
-    for linha in linhas:
-        escritor.writerow(["" if v is None else v for v in linha])
-        n += 1
-    saida.seek(0)
-    cursor.copy_expert(f"COPY {tabela} ({colunas}) FROM STDIN WITH (FORMAT csv, NULL '')", saida)
-    return n
-
-
 _MANDATO_LATERAL = """
     LEFT JOIN LATERAL (
         SELECT m.id FROM core.mandato m
@@ -183,12 +171,12 @@ def _carregar_oficial(
         logger.warning("Carga %s/%s sem linhas desde %s: nada foi alterado.", casa_codigo, fonte_codigo, desde)
         return {"apagados": 0, "inseridos": 0, "lidos": 0}
     cursor.execute("CREATE TEMP TABLE _of (codigo int, data date, tipo text, justificativa text) ON COMMIT DROP")
-    _copiar(cursor, "_of", "codigo, data, tipo, justificativa", selecionadas)
+    copiar_linhas(cursor, "_of", ["codigo", "data", "tipo", "justificativa"], selecionadas)
     cursor.execute("CREATE TEMP TABLE _pt (codigo int, desde date, sigla text) ON COMMIT DROP")
-    _copiar(
+    copiar_linhas(
         cursor,
         "_pt",
-        "codigo, desde, sigla",
+        ["codigo", "desde", "sigla"],
         [(int(c), d, normalizar_sigla_presenca(g)) for c, d, g in (partidos or [])],
     )
     cursor.execute("SELECT id FROM ref.casa_legislativa WHERE codigo = %s", (casa_codigo,))
@@ -271,8 +259,8 @@ def _carregar_camara_eventos(
     anos_antes_do_portal = sorted({a for a in anos if a < PORTAL_DESDE.year})
     cursor.execute("CREATE TEMP TABLE _cp (codigo int, data date) ON COMMIT DROP")
     cursor.execute("CREATE TEMP TABLE _cd (data date) ON COMMIT DROP")
-    _copiar(cursor, "_cp", "codigo, data", sorted(presencas))
-    _copiar(cursor, "_cd", "data", ((d,) for d in sorted(dias)))
+    copiar_linhas(cursor, "_cp", ["codigo", "data"], sorted(presencas))
+    copiar_linhas(cursor, "_cd", ["data"], ((d,) for d in sorted(dias)))
     criados = _garantir_pessoas(cursor, "CAMARA_ID", "CAMARA_API", nomes)
     cursor.execute("SELECT id FROM ref.casa_legislativa WHERE codigo = 'CAMARA_DOS_DEPUTADOS'")
     casa_id = cursor.fetchone()[0]
@@ -344,9 +332,7 @@ def carregar(
         verificar_arquivos(raw_dir, anos)
         presencas, dias = _ler_eventos(raw_dir, anos)
         eventos = (presencas, dias, _nomes_desconhecidos(engine, presencas))  # rede antes da transação
-    conexao = engine.raw_connection()
-    try:
-        cursor = conexao.cursor()
+    with transacao_de_carga(engine) as cursor:
         if eventos:
             resumo["camara_eventos"] = _carregar_camara_eventos(cursor, eventos[0], eventos[1], anos, eventos[2])
         if corpo:
@@ -362,12 +348,6 @@ def carregar(
             )  # fmt: skip
         cursor.execute("SELECT etl.resolver_partido_presenca()")
         resumo["partido_presenca"] = cursor.fetchone()[0]
-        conexao.commit()
-    except Exception:
-        conexao.rollback()
-        raise
-    finally:
-        conexao.close()
     logger.info("Presença carregada em leg.presenca: %s", resumo)
     return resumo
 
