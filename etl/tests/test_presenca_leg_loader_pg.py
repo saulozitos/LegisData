@@ -240,3 +240,81 @@ def test_fonte_oficial_sem_linhas_nao_apaga_a_base(banco, arquivos, tmp_path):
 
     assert resumo["camara_portal"] == {"apagados": 0, "inseridos": 0, "lidos": 0}
     assert len(_linhas(banco, "CAMARA_PORTAL")) == 1
+
+
+def _portal_e_senado(tmp_path):
+    processed = tmp_path / "processed_oficial"
+    processed.mkdir()
+    dias = {
+        "camara": [
+            [COM_EXERCICIO, "2021-04-13", "PRESENTE", None],
+            [COM_EXERCICIO, "2021-04-14", "AUSENCIA_JUSTIFICADA", "Missão oficial"],
+        ],
+        "senado": [[900, "2010-03-02", "PRESENTE", None], [900, "2010-03-03", "AUSENCIA_NAO_JUSTIFICADA", None]],
+        "senado_partidos": [[900, "2009-01-01", "PT"]],
+    }
+    (processed / "presenca_plenario_dias.json.gz").write_bytes(gzip.compress(json.dumps(dias).encode()))
+    (processed / "presenca_plenario_resumo.json").write_text(
+        json.dumps({"resumos": [{"casa": "SENADO", "parlamentar_id": 900, "nome": "Senador Nove"}]}), encoding="utf-8"
+    )
+    return processed
+
+
+def test_fonte_oficial_com_linhas_grava_tipo_justificativa_e_partido_nas_colunas_certas(banco, arquivos, tmp_path):
+    """O caminho do portal e do Senado copia `_of` e `_pt` com lista de colunas: erro de nome ou de ordem apareceria aqui."""
+    resumo = loader.carregar(banco, raw_dir=arquivos, processed_dir=_portal_e_senado(tmp_path), anos_eventos=[])
+
+    assert resumo["camara_portal"] == {"apagados": 0, "inseridos": 2, "lidos": 2}
+    assert resumo["senado"] == {"apagados": 0, "inseridos": 2, "lidos": 2}
+    assert resumo["senadores_criados"] == 1
+    with banco.connect() as conn:
+        linhas = conn.execute(
+            text(
+                """
+                SELECT f.codigo AS fonte, p.data_sessao, p.tipo_codigo, p.justificativa, pa.sigla AS partido
+                FROM leg.presenca p
+                JOIN etl.fonte f ON f.id = p.fonte_id
+                LEFT JOIN core.partido pa ON pa.id = p.partido_id
+                WHERE f.codigo IN ('CAMARA_PORTAL', 'SENADO_API')
+                ORDER BY f.codigo, p.data_sessao
+                """
+            )
+        ).all()
+        sigla_pt_existe = conn.execute(
+            text("SELECT EXISTS (SELECT 1 FROM core.partido WHERE sigla_normalizada = ref.normalizar_texto('PT'))")
+        ).scalar()
+    assert [(r.fonte, r.data_sessao, r.tipo_codigo, r.justificativa) for r in linhas] == [
+        ("CAMARA_PORTAL", date(2021, 4, 13), "PRESENTE", None),
+        ("CAMARA_PORTAL", date(2021, 4, 14), "AUSENCIA_JUSTIFICADA", "Missão oficial"),
+        ("SENADO_API", date(2010, 3, 2), "PRESENTE", None),
+        ("SENADO_API", date(2010, 3, 3), "AUSENCIA_NAO_JUSTIFICADA", None),
+    ]
+    if sigla_pt_existe:  # a sigla do arquivo de partidos chega à coluna certa de `_pt`
+        assert {r.partido for r in linhas if r.fonte == "SENADO_API"} == {"PT"}
+
+
+def _por_fonte(engine):
+    with engine.connect() as conn:
+        return conn.execute(
+            text(
+                """
+                SELECT f.codigo, p.pessoa_id, p.data_sessao, p.tipo_codigo, p.justificativa
+                FROM leg.presenca p JOIN etl.fonte f ON f.id = p.fonte_id
+                WHERE f.codigo IN ('CAMARA_PORTAL', 'SENADO_API') ORDER BY 1, 2, 3
+                """
+            )
+        ).all()
+
+
+def test_carga_oficial_repetida_nao_muda_nada(banco, arquivos, tmp_path):
+    processed = _portal_e_senado(tmp_path)
+    loader.carregar(banco, raw_dir=arquivos, processed_dir=processed, anos_eventos=[])
+    antes = _por_fonte(banco)
+    assert len(antes) == 4  # 2 do portal e 2 do Senado: o teste não passa vazio
+
+    resumo = loader.carregar(banco, raw_dir=arquivos, processed_dir=processed, anos_eventos=[])
+
+    assert resumo["camara_portal"]["apagados"] == 2 and resumo["camara_portal"]["inseridos"] == 2
+    assert resumo["senado"]["apagados"] == 2 and resumo["senado"]["inseridos"] == 2
+    assert resumo["senadores_criados"] == 0  # o senador já existe
+    assert _por_fonte(banco) == antes

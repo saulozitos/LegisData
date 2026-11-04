@@ -8,14 +8,13 @@ Carga dos CSV anuais da Câmara (proposições e autores) no PostgreSQL, em dois
 Reexecutar é seguro: o staging é refeito e o merge é idempotente.
 """
 
-import csv
 import logging
-import sys
-from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable
 
 from etl.extractors.camara_bulk_extractor import ArquivoBaixado
 from etl.utils.bootstrap import ensure_backend_on_path
+from etl.utils.copia import contar, contar_linhas_csv, copiar_arquivo, esvaziar, transacao_de_carga
+from etl.utils.execucao import registrar_arquivo_bruto, registrar_execucao
 
 ensure_backend_on_path()
 
@@ -25,63 +24,33 @@ from sqlalchemy.engine import Engine  # noqa: E402
 
 logger = logging.getLogger("CamaraBulkLoader")
 
+FONTE = "CAMARA_CSV"
 TABELAS = {"proposicoes": "stg.camara_proposicao", "proposicoesAutores": "stg.camara_autor"}
-COPY_SQL = "COPY {tabela} FROM STDIN WITH (FORMAT csv, DELIMITER ';', QUOTE '\"', HEADER true, ENCODING 'UTF8')"
-
-csv.field_size_limit(sys.maxsize)
-
-
-def _cabecalho(caminho: Path) -> List[str]:
-    with open(caminho, encoding="utf-8-sig", newline="") as arquivo:
-        return next(csv.reader(arquivo, delimiter=";"))
-
-
-def _colunas_da_tabela(conexao: Any, tabela: str) -> List[str]:
-    esquema, nome = tabela.split(".")
-    cursor = conexao.cursor()
-    cursor.execute(
-        "SELECT column_name FROM information_schema.columns WHERE table_schema = %s AND table_name = %s "
-        "ORDER BY ordinal_position",
-        (esquema, nome),
-    )
-    return [linha[0] for linha in cursor.fetchall()]
 
 
 def carregar_staging(engine: Engine, arquivos: Iterable[ArquivoBaixado]) -> Dict[str, int]:
-    """Recarrega o staging com os arquivos informados e registra cada um em etl.arquivo_bruto."""
+    """Recarrega o staging com os arquivos informados; registra a execução e cada arquivo em etl.arquivo_bruto."""
     arquivos = list(arquivos)
-    conexao = engine.raw_connection()
     contagem = {tabela: 0 for tabela in TABELAS.values()}
-    try:
-        cursor = conexao.cursor()
-        cursor.execute("TRUNCATE " + ", ".join(TABELAS.values()))
-        esperadas = {recurso: _colunas_da_tabela(conexao, tabela) for recurso, tabela in TABELAS.items()}
-        for arquivo in sorted(arquivos, key=lambda a: (a.recurso, a.ano)):
-            tabela = TABELAS[arquivo.recurso]
-            cabecalho = _cabecalho(arquivo.caminho)
-            if cabecalho != esperadas[arquivo.recurso]:
-                raise ValueError(
-                    f"Cabeçalho inesperado em {arquivo.caminho.name}: o layout da fonte mudou "
-                    f"(esperado {len(esperadas[arquivo.recurso])} colunas, veio {len(cabecalho)})."
+    lidas = 0
+    with registrar_execucao(engine, FONTE, "CARREGAR", {"tabelas": sorted(TABELAS.values())}) as execucao:
+        with transacao_de_carga(engine) as cursor:
+            esvaziar(cursor, list(TABELAS.values()))
+            for arquivo in sorted(arquivos, key=lambda a: (a.recurso, a.ano)):
+                tabela = TABELAS[arquivo.recurso]
+                # lidas vem do arquivo e gravadas do staging: se o COPY perdesse linha, as contagens deixariam de fechar;
+                # contar aqui, dentro da transação, faz uma falha de leitura desfazer a carga inteira em vez de a deixar pela metade
+                lidas += contar_linhas_csv(arquivo.caminho)
+                copiar_arquivo(cursor, tabela, arquivo.caminho)
+                registrar_arquivo_bruto(
+                    cursor, FONTE, arquivo.url, arquivo.sha256, arquivo.bytes, str(arquivo.caminho), execucao.id
                 )
-            with open(arquivo.caminho, "rb") as conteudo:
-                cursor.copy_expert(COPY_SQL.format(tabela=tabela), conteudo)
-            cursor.execute(
-                "INSERT INTO etl.arquivo_bruto (fonte_id, url, sha256, bytes, http_status, caminho) "
-                "SELECT id, %s, %s, %s, 200, %s FROM etl.fonte WHERE codigo = 'CAMARA_CSV' "
-                "ON CONFLICT (fonte_id, sha256) DO NOTHING",
-                (arquivo.url, arquivo.sha256, arquivo.bytes, str(arquivo.caminho)),
-            )
-            logger.info("Staging: %s (%d bytes) -> %s", arquivo.caminho.name, arquivo.bytes, tabela)
-        for tabela in TABELAS.values():
-            cursor.execute(f"SELECT count(*) FROM {tabela}")
-            contagem[tabela] = cursor.fetchone()[0]
-        conexao.commit()
-    except Exception:
-        conexao.rollback()
-        raise
-    finally:
-        conexao.close()
+                logger.info("Staging: %s (%d bytes) -> %s", arquivo.caminho.name, arquivo.bytes, tabela)
+            for tabela in TABELAS.values():
+                contagem[tabela] = contar(cursor, tabela)
+        execucao.lidas = lidas
+        execucao.gravadas = sum(contagem.values())
+        execucao.rejeitadas = 0  # o COPY não rejeita linha: o que a fusão recusa vai para etl.rejeito
     return contagem
 
 

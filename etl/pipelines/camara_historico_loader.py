@@ -3,14 +3,14 @@ Carga do histórico de mandatos dos deputados (API da Câmara) no PostgreSQL: st
 (`etl.merge_camara_historico`), que grava mandato, situações de exercício/licença/suplência e o partido por período.
 """
 
-import csv
-import io
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, List
 
 from etl.utils.bootstrap import ensure_backend_on_path
+from etl.utils.copia import contar, copiar_linhas, esvaziar, transacao_de_carga
+from etl.utils.execucao import registrar_execucao
 
 ensure_backend_on_path()
 
@@ -20,41 +20,31 @@ from sqlalchemy.engine import Engine  # noqa: E402
 
 logger = logging.getLogger("CamaraHistoricoLoader")
 
+FONTE = "CAMARA_API"
 COLUNAS = [
     "id", "uri", "nome", "nomeEleitoral", "siglaPartido", "uriPartido", "siglaUf", "idLegislatura", "email", "urlFoto",
     "dataHora", "situacao", "condicaoEleitoral", "descricaoStatus",
 ]  # fmt: skip
 
 
-def _linhas(eventos: Iterable[Dict[str, Any]]) -> str:
-    saida = io.StringIO()
-    escritor = csv.writer(saida)
-    for evento in eventos:
-        escritor.writerow(["" if evento.get(c) is None else evento.get(c) for c in COLUNAS])
-    return saida.getvalue()
-
-
 def carregar_staging(
     engine: Engine, eventos: List[Dict[str, Any]], legislaturas: List[Dict[str, Any]]
 ) -> Dict[str, int]:
-    conexao = engine.raw_connection()
-    try:
-        cursor = conexao.cursor()
-        cursor.execute("TRUNCATE stg.camara_historico, stg.camara_legislatura")
-        cursor.copy_expert(
-            "COPY stg.camara_historico FROM STDIN WITH (FORMAT csv, HEADER false)", io.StringIO(_linhas(eventos))
-        )
-        for leg in legislaturas:
-            cursor.execute(
-                'INSERT INTO stg.camara_legislatura ("id", "dataInicio", "dataFim") VALUES (%s, %s, %s)',
-                (str(leg["id"]), leg["dataInicio"], leg["dataFim"]),
+    tabelas = ["stg.camara_historico", "stg.camara_legislatura"]
+    with registrar_execucao(engine, FONTE, "CARREGAR", {"tabelas": tabelas}) as execucao:
+        with transacao_de_carga(engine) as cursor:
+            esvaziar(cursor, tabelas)
+            copiar_linhas(cursor, tabelas[0], COLUNAS, ([e.get(c) for c in COLUNAS] for e in eventos))
+            copiar_linhas(
+                cursor,
+                tabelas[1],
+                ["id", "dataInicio", "dataFim"],
+                ([str(leg["id"]), leg["dataInicio"], leg["dataFim"]] for leg in legislaturas),
             )
-        conexao.commit()
-    except Exception:
-        conexao.rollback()
-        raise
-    finally:
-        conexao.close()
+            gravadas = sum(contar(cursor, tabela) for tabela in tabelas)
+        execucao.lidas = len(eventos) + len(legislaturas)
+        execucao.gravadas = gravadas
+        execucao.rejeitadas = 0
     return {"eventos": len(eventos), "legislaturas": len(legislaturas)}
 
 
