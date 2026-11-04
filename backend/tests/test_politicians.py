@@ -7,7 +7,6 @@ from app.models import (
     AttendanceRecord,
     CasaLegislativaEnum,
     Politician,
-    ProcessoJudicial,
     TipoPresencaEnum,
 )
 from app.services import financas_service
@@ -93,7 +92,7 @@ def test_search_treats_special_characters_literally(client, db, seed, term):
     response = client.get(BASE, params={"search": term})
     assert response.status_code == 200
     assert response.json()["total"] == 0  # '%' e '_' não são curingas
-    assert db.execute(text("SELECT COUNT(*) FROM politicos")).scalar() == 6  # a tabela continua intacta
+    assert db.execute(text("SELECT COUNT(*) FROM stg.politicos")).scalar() == 6  # a tabela continua intacta
 
 
 def test_search_party_filter_is_exact_and_current_only(client, seed):
@@ -370,25 +369,6 @@ def test_processo_sem_movimento_nem_orgao_sai_com_null_e_nunca_com_desfecho_inve
     assert processo["tribunal"] is None and processo["data_processo"] is None and processo["descricao"] is None
     assert processo["situacao_juridica"] == "Sem movimentação registrada no DataJud."
     assert processo["status_resumo"] == "DataJud"
-
-
-def test_acervo_legado_de_processos_nao_aparece_mais_no_dossie(client, db, seed):
-    """`public.processos_judiciais` (transcrição manual, D7) não é mais lido: só o `fin` alimenta o dossiê."""
-    db.add(
-        ProcessoJudicial(
-            politician_id=seed.lula_fonte.id,
-            process_number="0001234-56.2020.1.00.0000",
-            court_agency="STF",
-            process_date="2020-05-01",
-            case_class="Ação Penal",
-            description="d",
-            legal_status="Em curso",
-            proof_url="https://exemplo/p",
-            status_summary="Em andamento",
-        )
-    )
-    db.commit()
-    assert client.get(f"{BASE}/{seed.lula_fonte.id}").json()["ficha_limpa"]["processos_detalhados"] == []
 
 
 def _processo_fin(db, politico, **colunas):

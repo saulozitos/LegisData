@@ -14,14 +14,21 @@ import sys
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from app.core.database import SessionLocal
+from app.core.database import SessionLocal, engine
 from app.models.analytics import LogExecucaoCron
-from app.services.legislative_scoring import build_coauthorship_network
-from app.services.party_productivity_service import (
-    calculate_party_ippm_ranking,
-    sync_mandate_history,
+from app.services.cron_log_service import (
+    ETAPA_ECONOMIA,
+    ETAPA_FINANCAS,
+    ETAPA_PRESENCA,
+    ETAPA_VOTACOES,
+    descrever_falha,
 )
+from app.services.legislative_scoring import build_coauthorship_network
+from app.services.party_productivity_service import calculate_party_ippm_ranking
+from app.services.staging_merge import merge_staging
 from sqlalchemy import text
+
+from etl.utils.manutencao import posprocessar_carga, refazer_derivados_apos_carga
 
 logger = logging.getLogger("cron_daily_consolidation")
 
@@ -33,7 +40,16 @@ def execute_cron_pipeline() -> Dict[str, Any]:
     status = "SUCESSO"
     err_msg: Optional[str] = None
     registros_totais = 0
-    erros_etapas: list = []
+    # (etapa, exceção): uma lista só, para o texto do log e o da tabela pública não divergirem; a falha crítica entra
+    # sem etapa (None)
+    falhas_de_etapa: list = []
+    # só etapa e classe da exceção: é o que vai para a tabela pública de logs
+    err_registrado: Optional[str] = None
+    estado_derivados: Optional[str] = None
+
+    def registrar_falha(etapa: str, erro: Exception, descricao: str) -> None:
+        falhas_de_etapa.append((etapa, erro))
+        logger.error(f"Falha na {descricao}: {erro}", exc_info=True)
 
     try:
         logger.info("=== INICIANDO CRON JOB DE CONSOLIDAÇÃO DIÁRIA ===")
@@ -47,53 +63,52 @@ def execute_cron_pipeline() -> Dict[str, Any]:
             votacoes = atualizar_votacoes(sincronizar=False)
             logger.info(f"Etapa 1a concluída: {votacoes.get('carga')}")
         except Exception as e:
-            erros_etapas.append(f"votações: {e}")
-            logger.error(f"Falha na atualização de votações: {e}", exc_info=True)
+            registrar_falha(ETAPA_VOTACOES, e, "atualização de votações")
 
-        # Etapa 1: Sincronização de Entidades Base e Mandatos Dinâmicos
-        logger.info("Etapa 1/4: Sincronizando histórico dinâmico de mandatos...")
-        synced_mandates = sync_mandate_history(db)
+        # Etapa 1: Sincronização de Entidades Base e Mandatos Dinâmicos. `merge_staging` roda a fusão inteira do staging
+        # (cadastro, legislativo, linhagens e unificação) e devolve as situações de mandato fundidas
+        logger.info("Etapa 1/4: Fundindo o staging em core/leg e sincronizando o histórico de mandatos...")
+        synced_mandates = int(merge_staging(db)["situacoes"])
         registros_totais += synced_mandates
-        logger.info(f"Etapa 1 concluída: {synced_mandates} registros de mandatos sincronizados.")
+        logger.info(f"Etapa 1 concluída: fusão do staging feita ({synced_mandates} situações de mandato).")
+        # a fusão sujou os derivados: refaz já, para a primeira leitura do dia não pagar o refresh enquanto as cargas
+        # seguintes (que podem levar minutos) rodam; o pós-processamento final refaz de novo se algum comando tocou uma
+        # dependência (a presidência da etapa 1c sempre toca `core.mandato`, então na prática são dois refreshes por dia)
+        logger.info(f"Derivados do legislativo depois da fusão: {refazer_derivados_apos_carga(engine)}")
 
         # Etapa 1b: presença e faltas, depois da ponte (falha aqui não impede as demais etapas, mas marca FALHA)
         logger.info("Etapa 1b: atualizando presença e faltas do Congresso...")
         try:
-            from app.core.database import engine
-
             from etl.pipelines.presenca_atualizacao import atualizar
 
             presenca = atualizar(engine)
             logger.info(f"Etapa 1b concluída: {presenca}")
         except Exception as e:
-            erros_etapas.append(f"presença: {e}")
-            logger.error(f"Falha na atualização de presença: {e}", exc_info=True)
+            registrar_falha(ETAPA_PRESENCA, e, "atualização de presença")
 
         # Etapa 1c: séries econômicas (BCB, IBGE, INPE, IPEA) e mandatos presidenciais; não bloqueia as demais etapas
         logger.info("Etapa 1c: atualizando séries econômicas...")
         try:
-            from app.core.database import engine as engine_economia
-
             from etl.pipelines.economia_atualizacao import atualizar as atualizar_economia
 
-            economia = atualizar_economia(engine_economia)
+            economia = atualizar_economia(engine)
             logger.info(f"Etapa 1c concluída: {economia}")
         except Exception as e:
-            erros_etapas.append(f"economia: {e}")
-            logger.error(f"Falha na atualização das séries econômicas: {e}", exc_info=True)
+            registrar_falha(ETAPA_ECONOMIA, e, "atualização das séries econômicas")
 
         # Etapa 1d: CEAP e emendas (extração incremental por ano e recarga do `fin`); não bloqueia as demais etapas
         logger.info("Etapa 1d: atualizando CEAP e emendas parlamentares...")
         try:
-            from app.core.database import engine as engine_financas
-
             from etl.pipelines.financas_atualizacao import atualizar as atualizar_financas
 
-            financas = atualizar_financas(engine_financas)
+            financas = atualizar_financas(engine)
             logger.info(f"Etapa 1d concluída: {financas}")
         except Exception as e:
-            erros_etapas.append(f"finanças: {e}")
-            logger.error(f"Falha na atualização de CEAP e emendas: {e}", exc_info=True)
+            registrar_falha(ETAPA_FINANCAS, e, "atualização de CEAP e emendas")
+
+        # Depois de todas as cargas: ANALYZE e derivados do legislativo, para a primeira leitura do dia não pagar o refresh
+        estado_derivados = posprocessar_carga(engine)
+        logger.info(f"Derivados do legislativo ao fim das cargas: {estado_derivados}")
 
         # Etapa 2: Ingestão de Proposições e Autores
         logger.info("Etapa 2/4: Verificando autoria e integridade de proposições...")
@@ -117,13 +132,18 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         logger.info(f"Etapa 4 concluída: Grafo consolidado com {nodes_count} nós e {edges_count} arestas.")
 
     except Exception as e:
+        # a sessão `db` pode estar com a transação abortada (a fusão falhou no meio): sem desfazer, o commit do log abaixo
+        # levantaria PendingRollbackError e a execução com FALHA ficaria sem registro (e a trava reservada, presa)
+        db.rollback()
         status = "FALHA"
-        err_msg = str(e)
+        # as etapas isoladas que já tinham falhado antes da falha crítica continuam registradas, na ordem em que ocorreram
+        falhas_de_etapa.append((None, e))
         logger.error(f"Falha crítica no CRON Job diário: {e}", exc_info=True)
 
-    if erros_etapas and status == "SUCESSO":
+    if falhas_de_etapa:
         status = "FALHA"
-        err_msg = "; ".join(erros_etapas)
+        err_msg = "; ".join(f"{etapa}: {erro}" if etapa else str(erro) for etapa, erro in falhas_de_etapa)
+        err_registrado = "; ".join(descrever_falha(etapa, erro) for etapa, erro in falhas_de_etapa)
 
     t_end = datetime.now(timezone.utc)
     tempo_segundos = max(0, int((t_end - t_start).total_seconds()))
@@ -133,7 +153,7 @@ def execute_cron_pipeline() -> Dict[str, Any]:
             status_execucao=status,
             registros_atualizados=registros_totais,
             tempo_processamento_segundos=tempo_segundos,
-            erro_mensagem=err_msg,
+            erro_mensagem=err_registrado,
             etapa="CONSOLIDACAO_DIARIA_COMPLETA",
         )
         db.add(log_entry)
@@ -148,6 +168,7 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         "tempo_processamento_segundos": tempo_segundos,
         "registros_atualizados": registros_totais,
         "erro_mensagem": err_msg,
+        "derivados": estado_derivados,  # 'ocupado' ou 'falhou' não muda o status: a leitura refaz, mas o operador vê
         "data_execucao": t_start.isoformat(),
     }
     logger.info(f"=== CRON JOB FINALIZADO: {status} em {tempo_segundos}s ({registros_totais} registros) ===")

@@ -58,11 +58,11 @@ def _arquivo(recurso, ano, caminho):
 def carga_lote(db, pg_engine, tmp_path):
     """Duas proposições de 2024 e uma de 2023 com autores de vários tipos, carregadas pelo caminho real."""
     from app.models import PoliticalParty
-    from app.services.core_sync import sync_legacy_to_core
+    from app.services.staging_merge import merge_staging
 
     db.add(PoliticalParty(acronym="REPUBLICANOS", full_name="Republicanos"))  # destino do alias "REPUBLIC"
     db.commit()
-    sync_legacy_to_core(db)
+    merge_staging(db)
     props = _csv(
         tmp_path / "proposicoes-2024.csv",
         CABECALHO_PROPOSICOES,
@@ -357,7 +357,7 @@ def test_layout_change_in_the_source_is_detected(pg_engine, tmp_path):
 
 def test_bridge_adopts_the_legacy_uid_of_a_proposition_loaded_in_bulk(db, carga_lote):
     from app.models import Proposition, StatusTramitacaoEnum, TipoProposicaoEnum
-    from app.services.core_sync import sync_legacy_to_core
+    from app.services.staging_merge import merge_staging
 
     legado = Proposition(
         proposition_type=TipoProposicaoEnum.PL,
@@ -372,7 +372,7 @@ def test_bridge_adopts_the_legacy_uid_of_a_proposition_loaded_in_bulk(db, carga_
     )
     db.add(legado)
     db.commit()
-    sync_legacy_to_core(db)
+    merge_staging(db)
     linha = _rows(db, "SELECT uid::text, status_codigo, area_tematica FROM leg.proposicao WHERE id_camara = 100")
     # uid público preservado, status real da fonte mantido, enriquecimento do legado aproveitado
     assert linha == [(str(legado.id), "APROVADA_E_SANCIONADA", "Economia")]

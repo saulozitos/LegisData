@@ -45,6 +45,7 @@ import networkx as nx
 from app.models.core import Pessoa
 from app.models.enums import StatusTramitacaoEnum, TipoAutoriaEnum, TipoProposicaoEnum
 from app.models.leg import Autoria, Proposicao
+from app.services.derivados_service import garantir_atualizados
 from app.services.ialp_pesos import PesosIALP, carregar_pesos_ialp
 from networkx.algorithms.community import louvain_communities
 from sqlalchemy import text
@@ -311,38 +312,27 @@ def build_coauthorship_network(
     }
 
     params["max_autores"] = MAX_AUTORES_POR_PROPOSICAO
+    garantir_atualizados(db)  # a rede lê o derivado pré-calculado dos pares de coautoria
     query = text(
         """
-        WITH conjuntas AS (
-            SELECT proposicao_id FROM leg.autoria
-            WHERE pessoa_id IS NOT NULL AND tipo_codigo <> 'INSTITUCIONAL'
-            GROUP BY proposicao_id HAVING count(DISTINCT pessoa_id) BETWEEN 2 AND :max_autores
-        )
-        SELECT a.pessoa_id AS pol_x, b.pessoa_id AS pol_y, COUNT(DISTINCT a.proposicao_id) AS peso
-        FROM conjuntas cj
-        JOIN leg.autoria a ON a.proposicao_id = cj.proposicao_id
-        JOIN leg.autoria b ON a.proposicao_id = b.proposicao_id
-        JOIN leg.proposicao p ON a.proposicao_id = p.id
-        WHERE a.pessoa_id IS NOT NULL
-          AND b.pessoa_id IS NOT NULL
-          AND a.pessoa_id < b.pessoa_id
-          AND a.tipo_codigo <> 'INSTITUCIONAL'
-          AND b.tipo_codigo <> 'INSTITUCIONAL'
-          AND (CAST(:ano_inicio AS int) IS NULL OR p.ano >= :ano_inicio)
-          AND (CAST(:ano_fim AS int) IS NULL OR p.ano <= :ano_fim)
+        SELECT pessoa_a AS pol_x, pessoa_b AS pol_y, COUNT(*) AS peso
+        FROM leg.mv_coautoria_par
+        WHERE n_autores <= :max_autores
+          AND (CAST(:ano_inicio AS int) IS NULL OR ano >= :ano_inicio)
+          AND (CAST(:ano_fim AS int) IS NULL OR ano <= :ano_fim)
           AND (
               CAST(:tipo_filter AS text) IS NULL
-              OR (:tipo_filter = 'PEC' AND p.tipo_codigo = 'PEC')
-              OR (:tipo_filter = 'PL_PLP' AND p.tipo_codigo IN ('PL', 'PLP', 'MPV'))
-              OR (:tipo_filter = 'REQ_INC' AND p.tipo_codigo IN ('REQ', 'INC'))
+              OR (:tipo_filter = 'PEC' AND tipo_codigo = 'PEC')
+              OR (:tipo_filter = 'PL_PLP' AND tipo_codigo IN ('PL', 'PLP', 'MPV'))
+              OR (:tipo_filter = 'REQ_INC' AND tipo_codigo IN ('REQ', 'INC'))
           )
           AND (
               CAST(:casa_filter AS text) IS NULL
-              OR (:casa_filter = 'CAMARA' AND p.id_camara IS NOT NULL)
-              OR (:casa_filter = 'SENADO' AND p.id_senado IS NOT NULL)
+              OR (:casa_filter = 'CAMARA' AND da_camara)
+              OR (:casa_filter = 'SENADO' AND do_senado)
           )
-        GROUP BY a.pessoa_id, b.pessoa_id
-        HAVING COUNT(DISTINCT a.proposicao_id) >= :min_weight
+        GROUP BY pessoa_a, pessoa_b
+        HAVING COUNT(*) >= :min_weight
         ORDER BY peso DESC
         """
     )

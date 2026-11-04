@@ -11,14 +11,14 @@ from app.models.legislative import (
     TipoProposicaoEnum,
     VotacaoProposicao,
 )
-from app.services.core_sync import sync_legacy_to_core
+from app.services.staging_merge import merge_staging
 from sqlalchemy import text
 
 BASE = "/api/v1"
 
 
 def _ponte(db):
-    sync_legacy_to_core(db)
+    merge_staging(db)
     db.commit()
 
 

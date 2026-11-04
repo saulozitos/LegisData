@@ -1146,7 +1146,7 @@ def test_resolvedor_junta_o_cadastro_do_legado_ao_que_tem_identificador(pg_engin
         uid = conn.execute(text("SELECT uid FROM core.pessoa WHERE id = :p"), {"p": legado}).scalar()
         conn.execute(
             text(
-                'INSERT INTO public.politicos (id, "nomeCivil", "nomeEleitoral", "camaraId") '
+                'INSERT INTO stg.politicos (id, "nomeCivil", "nomeEleitoral", "camaraId") '
                 "VALUES (:u, 'Gemeo Legado', 'Gemeo Legado', 600)"
             ),
             {"u": uid},
@@ -1159,7 +1159,7 @@ def test_resolvedor_junta_o_cadastro_do_legado_ao_que_tem_identificador(pg_engin
             assert resolvedor.por_nome(["Gemeo Legado"]).situacao == "IDENTIFICADO"
     finally:
         with pg_engine.begin() as conn:
-            conn.execute(text("DELETE FROM public.politicos WHERE id = :u"), {"u": uid})
+            conn.execute(text("DELETE FROM stg.politicos WHERE id = :u"), {"u": uid})
 
 
 def test_cada_carga_grava_a_fonte_certa(pg_engine, banco, tmp_path):

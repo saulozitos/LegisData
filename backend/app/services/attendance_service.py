@@ -3,13 +3,14 @@
 Só entram dias em que a falta é conhecida (`ref.cobertura_presenca`): Senado em todo o período; Câmara a partir de
 2003-02-03, quando antes disso a fonte publica apenas presença. Falta oficial (justificada ou não) e falta inferida
 (Câmara antes de 2020) aparecem separadas; categoria que o recorte não permite saber vem como None, nunca como zero.
-Os pontos IALP vêm de `leg.vw_autoria_pontuada_unica` e dão o contraste entre faltar e produzir.
+Os pontos IALP vêm de `leg.mv_autoria_pontuada_unica` e dão o contraste entre faltar e produzir.
 """
 
 from datetime import date
 from typing import Any, Dict, List, Optional
 
 from app.core.errors import ErroDeDominio
+from app.services.derivados_service import garantir_atualizados
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -24,7 +25,7 @@ _RANKING_POLITICOS = text(
     """
     WITH agg AS (
         SELECT g.*,
-               (SELECT coalesce(sum(v.pontos_ialp), 0) FROM leg.vw_autoria_pontuada_unica v
+               (SELECT coalesce(sum(v.pontos_ialp), 0) FROM leg.mv_autoria_pontuada_unica v
                  WHERE v.pessoa_id = g.pessoa_id AND v.data_apresentacao BETWEEN :pontos_inicio AND :fim) AS pontos_ialp
         FROM (
             SELECT b.pessoa_id,
@@ -156,6 +157,7 @@ def ranking_parlamentares(
     if ordenar not in ORDENACOES:
         raise ErroDeDominio(422, "Ordenação inválida. Use faltas, taxa, nao_justificadas ou baixa_producao.")
     parametros = _parametros(casa, ano_inicio, ano_fim)
+    garantir_atualizados(db)
     linhas = (
         db.execute(_RANKING_POLITICOS, {**parametros, "ordem": ordenar, "minimo": MIN_DIAS_PARA_TAXA, "limite": limite})
         .mappings()

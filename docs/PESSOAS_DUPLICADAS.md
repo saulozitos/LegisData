@@ -25,7 +25,7 @@ por isso cada grupo precisa de conferência antes de unir (ver "Regra proposta")
 
 É o caso mais comum e o que mais afeta as telas. A pessoa existe duas vezes:
 
-- Uma pessoa criada a partir de `public.politicos` pela ponte do legado (fonte 11), **sem** `CAMARA_ID`/`SENADO_ID`,
+- Uma pessoa criada a partir de `stg.politicos` pela fusão do staging (fonte 11), **sem** `CAMARA_ID`/`SENADO_ID`,
   com o mandato de 2019 em diante e todos os **votos nominais** (`leg.voto`).
 - Outra pessoa criada pelas cargas novas (arquivos da Câmara e presença, fonte 2), **com** `CAMARA_ID`, com a
   **presença** (`leg.presenca`) e a **autoria** (`leg.autoria`), mas sem voto.
@@ -129,7 +129,7 @@ ORDER BY votos DESC;
 4. **Câmara e Senado**: a pessoa sobrevivente passa a ter os dois identificadores, e o cadastro do outro é removido.
 5. **Homônimos confirmados**: ficam separados e ganham a data de nascimento como diferenciador no nome de exibição das
    telas de busca.
-6. **Prevenção**: a ponte do legado (`etl.sincronizar_legado_leg`) e as cargas de presença devem procurar a pessoa por
+6. **Prevenção**: a ponte do legado (`etl.merge_legislativo`) e as cargas de presença devem procurar a pessoa por
    identificador oficial antes de criar uma nova. Hoje criam sem checar o cadastro do outro lado.
 7. **Teste de regressão**: depois da unificação, `SELECT` do levantamento acima deve devolver só os homônimos
    confirmados, e a soma de votos, presenças e autorias antes e depois da união tem que ser igual.

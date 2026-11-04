@@ -281,6 +281,19 @@ decidir_financas() {
 # <<< decidir_financas
 
 # 3. migrações e 4. carga das séries econômicas e da curadoria (idempotentes)
+# A revisão de antes: se a API nova não ficar saudável, o passo 6 só devolve a imagem e precisa dizer se o schema mudou.
+consultar_revisao() { docker exec politica_postgres psql -U "$PG_USER" -d "$PG_DB" -tAc "select version_num from alembic_version" 2>/dev/null || true; }
+REVISAO_ANTES="$(consultar_revisao)"
+avisar_rollback_se_o_schema_mudou() { # a imagem antiga sobe sobre o schema que este deploy migrou: o operador precisa saber
+  local depois
+  depois="$(consultar_revisao)"
+  if [[ -z "$REVISAO_ANTES" ]]; then return 0; fi
+  if [[ -z "$depois" ]]; then
+    log "AVISO: não consegui ler a revisão atual do banco (antes do deploy: $REVISAO_ANTES); confira alembic_version antes de decidir se restaura o backup"
+  elif [[ "$REVISAO_ANTES" != "$depois" ]]; then
+    log "AVISO: este deploy migrou o banco de $REVISAO_ANTES para $depois e a imagem antiga sobe sobre o schema novo, sem restaurar o backup; a imagem antiga pode não entender o schema novo e migrações irreversíveis não voltam pelo downgrade; a lista e o procedimento (restaurar o backup em um banco vazio) estão em docs/DEPLOY_AUTOMATICO.md, Voltar uma versão"
+  fi
+}
 log "migrações"
 docker run --rm --network "$REDE" --env-file "$ENV_BANCO" -e ENVIRONMENT=production -e DB_SSLMODE=disable \
   "${CONTENCAO[@]}" "$REGISTRO/legisdata-backend:$TAG" alembic upgrade head 9>&-
@@ -322,6 +335,7 @@ import os
 from app.core.database import engine
 from etl.pipelines.carga_economica import TOLERADAS_NO_DEPLOY, carregar_tudo, falhas_toleradas, plano_do_modo
 from etl.pipelines.financas_loader import registrar_carga_do_git
+from etl.utils.manutencao import posprocessar_carga
 toleradas = TOLERADAS_NO_DEPLOY if os.environ.get('LEGISDATA_FIN_TEM_ALGUM_DADO') == 't' else ()
 plano = plano_do_modo(os.environ.get('LEGISDATA_FIN_MODO', 'nenhuma'), ao_confirmar=registrar_carga_do_git)
 resultados = carregar_tudo(engine, toleradas=toleradas, **plano)
@@ -329,6 +343,9 @@ for chave, resultado in resultados.items():
     print(chave, resultado)
 for chave in falhas_toleradas(resultados):
     print('FALHA_TOLERADA', chave)
+# a carga religa os derivados do legislativo (o passo de presidência atualiza core.mandato): refaz-los aqui evita que a
+# primeira requisição depois do deploy pague o refresh
+print('derivados', posprocessar_carga(engine))
 ")"
   printf '%s\n' "$SAIDA_CARGA"
   # >>> apos_carga
@@ -357,6 +374,7 @@ for _ in $(seq 1 36); do
 done
 if [[ "$estado" != "healthy" ]]; then
   log "API não ficou saudável ($estado); voltando para $ANTERIOR (backup: $DUMP)"
+  avisar_rollback_se_o_schema_mudou
   # com o compose do commit anterior (o novo pode ter tirado volumes de que a imagem antiga precisa); se não der para
   # lê-lo, com o compose atual
   if git show "$COMMIT_ANTERIOR:docker-compose.yml" >"$ENV_BANCO.compose" 2>/dev/null; then

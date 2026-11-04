@@ -17,7 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base, TimeStampedModel
+from .base import StagingBase, StagingTimeStampedModel
 from .enums import (
     CasaLegislativaEnum,
     StatusTramitacaoEnum,
@@ -29,7 +29,7 @@ from .enums import (
 )
 
 
-class Proposition(TimeStampedModel):
+class Proposition(StagingTimeStampedModel):
     __tablename__ = "proposicoes"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -68,11 +68,6 @@ class Proposition(TimeStampedModel):
     voting_sessions: Mapped[List["VotingSession"]] = relationship(
         back_populates="proposition", cascade="all, delete-orphan"
     )
-    economic_impacts: Mapped[List["PolicyEconomicImpact"]] = relationship(
-        "PolicyEconomicImpact",
-        back_populates="proposition",
-        cascade="all, delete-orphan",
-    )
     deliberacoes: Mapped[List["VotacaoProposicao"]] = relationship(
         "VotacaoProposicao",
         back_populates="proposicao",
@@ -92,7 +87,7 @@ class Proposition(TimeStampedModel):
     )
 
 
-class VotingSession(Base):
+class VotingSession(StagingBase):
     __tablename__ = "sessoes_votacao"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -127,7 +122,7 @@ class VotingSession(Base):
     )
 
 
-class ParliamentaryVote(Base):
+class ParliamentaryVote(StagingBase):
     __tablename__ = "votos_parlamentares"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -164,7 +159,7 @@ class ParliamentaryVote(Base):
     )
 
 
-class AttendanceRecord(Base):
+class AttendanceRecord(StagingBase):
     __tablename__ = "registros_presenca"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -194,7 +189,7 @@ class AttendanceRecord(Base):
     __table_args__ = (Index("idx_attendance_politician_date", "politicoId", "dataSessao"),)
 
 
-class PropositionAuthor(Base):
+class PropositionAuthor(StagingBase):
     __tablename__ = "proposicoes_autores"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -229,7 +224,7 @@ class PropositionAuthor(Base):
     )
 
 
-class VotacaoProposicao(Base):
+class VotacaoProposicao(StagingBase):
     __tablename__ = "votacoes_proposicao"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -276,7 +271,7 @@ class VotacaoProposicao(Base):
     )
 
 
-class VotoNominal(Base):
+class VotoNominal(StagingBase):
     __tablename__ = "votos_nominais"
 
     votacao_id: Mapped[uuid.UUID] = mapped_column(
@@ -303,7 +298,7 @@ class VotoNominal(Base):
     )
 
 
-class OrientacaoPartidaria(Base):
+class OrientacaoPartidaria(StagingBase):
     __tablename__ = "orientacoes_partidarias"
 
     votacao_id: Mapped[uuid.UUID] = mapped_column(

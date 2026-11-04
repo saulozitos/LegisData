@@ -1,4 +1,10 @@
 // ==============================================================================
+// OBSOLETO: este arquivo é o desenho original e NÃO descreve o banco atual. Nenhum código o lê. O schema vigente nasce
+// das migrações Alembic em backend/alembic/versions (schemas ref, core, leg, eco, fin, param, etl e stg); várias
+// tabelas abaixo (public.*) foram movidas para stg ou removidas na migração 0035. Mantido só como histórico.
+// ==============================================================================
+
+// ==============================================================================
 // PRISMA SCHEMA - HISTÓRICO POLÍTICO E ECONÔMICO BRASILEIRO (1992 - PRESENTE)
 // ==============================================================================
 // Este schema modela de forma relacional:

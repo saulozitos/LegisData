@@ -56,7 +56,7 @@ A refatoração da branch `fix/analise-completa-correcoes` concluiu **100%** das
 - **Status**: a tabela `fin.processo_judicial`, o extrator (`etl/extractors/processos_extractor.py`), a carga `processos` do `fin` e a leitura do dossiê estão prontos. O acervo digitado à mão (não verificado contra os tribunais) foi removido (D7) e **nenhum processo está carregado**: `processos_curados.json` está vazio.
 - **Por que vazio**: o DataJud só consulta por número de processo e não expõe as partes, então ele não descobre os processos de um parlamentar. Falta uma fonte oficial que ligue processo e pessoa; as certidões do TSE hoje no `fin` são só de registro de candidatura, e o número de processo delas não tem o formato CNJ.
 - **Conformidade Legal**: Observância à Portaria CNJ nº 160/2020, Resolução CNJ nº 332/2020 e LGPD, com resguardo à presunção de inocência (Art. 5º, LVII da CF/88): o dossiê mostra só o último movimento que o tribunal registrou, nunca um desfecho inferido.
-- **Limites conhecidos**: processo do STF (foro privilegiado) não tem índice no DataJud e precisa de outra fonte; o acervo manual antigo ainda está em `public.processos_judiciais` e a flag `possuiProcessosDeclarados` em produção, sem nenhum código que os leia, até a limpeza da Fase 9.
+- **Limites conhecidos**: processo do STF (foro privilegiado) não tem índice no DataJud e precisa de outra fonte; a tabela do acervo manual antigo (`public.processos_judiciais`) saiu na migração 0035; as linhas só existem no backup feito antes dela.
 - **Metadados**: classe e assuntos (TPU), órgão julgador, datas de ajuizamento e do último movimento, vindos do DataJud.
 
 ### 2.4 Votações Secretas no Senado [CONCLUÍDO 100%]
@@ -107,6 +107,10 @@ A refatoração da branch `fix/analise-completa-correcoes` concluiu **100%** das
 
 Os cadastros duplicados dos políticos que existem no legado são unidos pela migração 0034 e a cada sincronização do legado (`core.unificar_duplicadas`), com o `uid` público preservado. Fica uma regra para a Fase 7: o novo ETL tem de resolver a pessoa pelo identificador oficial antes de criar uma, senão a duplicata volta. Pessoas que só existem no histórico e nunca tiveram cadastro público não têm duplicata e continuam com o `uid` do histórico.
 
+### 2.11 Novo ETL direto em `stg` [PRÓXIMA ENTREGA]
+
+O ETL ainda preenche as tabelas de `stg` por ORM (`db_loader.py`) e as funções `etl.merge_*` as projetam em `core` e `leg`. A entrega que fecha a Fase 7 troca isso por `COPY`, registro de execução, arquivo de origem e verificações por fonte, e aposenta o `db_loader`. O roteiro, os pontos de atenção e a prova de que nada se perdeu estão em [`PROXIMA_ENTREGA_NOVO_ETL.md`](PROXIMA_ENTREGA_NOVO_ETL.md).
+
 ## 3. Resolução das Dívidas Técnicas
 
 - [x] **Unificação de Fontes Presidenciais**: Centralizado em `backend/app/services/presidencia_service.py`.
@@ -129,3 +133,41 @@ Os cadastros duplicados dos políticos que existem no legado são unidos pela mi
 5. [`docs/SERIES_CURADAS_E_FONTES.md`](SERIES_CURADAS_E_FONTES.md): Fontes oficiais e justificativas para séries históricas e dados institucionais.
 6. [`docs/EMENDAS_AMBIGUAS.md`](EMENDAS_AMBIGUAS.md): Catálogo detalhado das 570 emendas de autores homônimos.
 7. [`docs/EMENDAS_AUTORES_NAO_ENCONTRADOS.md`](EMENDAS_AUTORES_NAO_ENCONTRADOS.md): Catálogo detalhado das 1.077 emendas de autores de legislaturas anteriores.
+
+## Premissa da legenda MISSÃO (migração 0036)
+
+A API apagava, a cada subida, mandatos de legendas sem registro no TSE e tratava a MISSÃO assim. A 0036 tirou essa
+limpeza: o Partido Missão tem registro no TSE, o banco de desenvolvimento não tem mandato nem filiação dessa sigla e o ETL
+a carrega como qualquer outra legenda. A premissa vale para o banco de hoje. Se uma fonte voltar a atribuir a sigla por
+engano, o mandato entra em `stg.mandatos` e segue para `core.mandato`; confira `core.mandato` por partido depois da
+primeira carga completa e, se aparecer, a regra volta como validação do ETL (não como limpeza na subida da API).
+
+## Funções `SECURITY DEFINER` dos derivados
+
+O dono é o papel `legisdata_derivados` (sem superusuário), não o dono da migração. O banco de produção usa o
+`POSTGRES_USER` da imagem oficial, que é superusuário, como dono das demais tabelas; isso não muda aqui.
+
+As migrações 0036 e 0037 criam papéis (`CREATE ROLE`) e passam a posse de objetos a eles (`ALTER ... OWNER TO`), o que
+exige superusuário (ou `CREATEROLE` com permissão de `SET ROLE`, no PostgreSQL 16 ou mais novo). A produção e o CI usam o
+usuário da imagem oficial, que é superusuário; num Postgres gerenciado sem superusuário, o deploy pararia na 0037 e o
+papel teria de ser criado antes por um administrador.
+
+Duas portas de entrada: `leg.atualizar_derivados(p_bloquear, p_espera)` é do ETL (`EXECUTE` só para o dono da migração) e
+`leg.atualizar_derivados_leitura()` é a que `legisdata_leitura` executa (espera fixa de 500 ms, nunca bloqueante).
+
+## Rankings de partido ainda leem a visão ao vivo
+
+Os pontos por autor (ranking de autores, ausências e dossiê) vêm de `leg.mv_autoria_pontuada_unica`; os rankings de partido
+(`party_productivity_service`, `party_evolution_service`) ainda somam `leg.vw_autoria_pontuada` na hora. Se o refresh
+estiver pendente (`'ocupado'` ou `'falhou'` no fim da carga), a soma por partido e a soma por autor podem divergir até o
+próximo leitor de um derivado. O cron refaz os derivados antes de calcular o ranking de partidos; migrar esses serviços
+para o derivado fecha a divergência e fica para a entrega do novo ETL.
+
+## Gatilhos dos derivados disparam por comando, não por linha alterada
+
+Os gatilhos `BEFORE ... FOR EACH STATEMENT` da migração 0037 ligam o sinalizador `sujo` em todo `INSERT`, `UPDATE` ou `DELETE`
+nas dependências, mesmo que o comando não altere linha nenhuma. Como toda fusão `etl.merge_*` executa esses comandos, o estado
+`'em_dia'` quase nunca aparece logo depois de uma carga e o cron paga dois refreshes por dia (cerca de 10 s cada). O resultado
+é correto; só há trabalho a mais. Um gatilho com tabela de transição (`REFERENCING NEW TABLE`) marcaria só quando houvesse
+linhas, mas teria de ser `AFTER` e mudaria a ordem das travas que evita o deadlock entre cargas (ver a docstring da 0037), então
+fica para a entrega do novo ETL, se o custo incomodar.

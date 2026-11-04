@@ -136,7 +136,8 @@ run-composicao:
 run-load-db:
 	PYTHONPATH=. $(PY) etl/run_etl.py --load-db
 
-# Consolidação diária (presença e faltas, mandatos, IPPM, rede de coautoria). Agende com scripts/systemd/*.timer
+# Consolidação diária (presença e faltas, mandatos, IPPM, rede de coautoria). Agende com scripts/systemd/*.timer.
+# Rode `make db-migrate` antes: o cron não migra o schema e a fusão usa funções criadas pelas migrações até a 0037.
 daily:
 	PYTHONPATH=backend:. $(PY) -m etl.pipelines.cron_daily_consolidation
 

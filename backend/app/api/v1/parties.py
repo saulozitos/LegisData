@@ -8,6 +8,7 @@ from app.schemas.parties import (
     IPPMRankingResponse,
     PartyMandateTimelineResponse,
 )
+from app.services.cron_log_service import mensagem_publica
 from app.services.party_catalog_service import list_party_catalog
 from app.services.party_evolution_service import calculate_party_ippm_evolution
 from app.services.party_productivity_service import (
@@ -83,7 +84,7 @@ def get_cron_logs(db: Session = Depends(get_db)):
             status_execucao=log.status_execucao,
             registros_atualizados=log.registros_atualizados,
             tempo_processamento_segundos=log.tempo_processamento_segundos,
-            erro_mensagem=log.erro_mensagem,
+            erro_mensagem=mensagem_publica(log.erro_mensagem),
             etapa=log.etapa,
         )
         for log in logs
