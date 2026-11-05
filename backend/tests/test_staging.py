@@ -252,3 +252,138 @@ def test_funcoes_de_fusao_nao_sao_executaveis_pelo_publico(pg_engine):
                 text("SELECT has_function_privilege('legisdata_leitura', CAST(:a AS regprocedure), 'EXECUTE')"),
                 {"a": assinatura},
             ).scalar()
+
+
+@pytest.mark.parametrize("referencia", ["presenca", "nomeador", "substituto", "presenca_em_nomeado"])
+def test_fusao_do_cadastro_preserva_o_mandato_que_algo_referencia(pg_engine, referencia):
+    """
+    O staging perdeu um mandato da fonte LEGADO que ainda é referenciado (por uma presença, por um mandato que ele nomeou
+    ou como substituto numa situação): a fusão não pode apagá-lo (estourava a chave estrangeira e a carga inteira
+    falhava). Cada uma das três guardas da 0038 tem o seu caso; o mandato órfão sem referência sai como sempre.
+    """
+    with pg_engine.connect() as conn:
+        transacao = conn.begin()
+        try:
+            conn.execute(text("SELECT leg.reservar_derivados()"))
+            fonte = conn.execute(text("SELECT id FROM etl.fonte WHERE codigo = 'LEGADO'")).scalar_one()
+            pessoa = conn.execute(
+                text("INSERT INTO core.pessoa (nome_exibicao) VALUES ('Zt Mandato') RETURNING id")
+            ).scalar_one()
+            casa = conn.execute(
+                text("SELECT id FROM ref.casa_legislativa WHERE codigo = 'CAMARA_DOS_DEPUTADOS'")
+            ).scalar()
+
+            def mandato(cargo, inicio, fonte_id, nomeado_por=None, numero=1, condicao="TITULAR", orgao=None):
+                return conn.execute(
+                    text(
+                        "INSERT INTO core.mandato (pessoa_id, cargo_id, circunscricao_id, inicio, fonte_id, "
+                        "nomeado_por_mandato_id, numero_mandato, condicao, orgao_nome) VALUES (:p, "
+                        "(SELECT id FROM ref.cargo WHERE codigo = :cargo), "
+                        "(SELECT id FROM ref.circunscricao WHERE tipo = 'BR'), :i, :f, :n, :num, :cond, :org) RETURNING id"
+                    ),
+                    {
+                        "p": pessoa,
+                        "i": inicio,
+                        "f": fonte_id,
+                        "cargo": cargo,
+                        "n": nomeado_por,
+                        "num": numero,
+                        "cond": condicao,
+                        "org": orgao,
+                    },
+                ).scalar_one()
+
+            if referencia == "presenca_em_nomeado":  # o segundo DELETE da fusão, o dos mandatos nomeados
+                referenciado = mandato(
+                    "MINISTRO_DE_ESTADO", "2003-02-01", fonte, condicao="NOMEADO", orgao="Ministério de Teste"
+                )
+            else:
+                referenciado = mandato("DEPUTADO_FEDERAL", "2003-02-01", fonte)
+            orfao = mandato("SENADOR", "2007-02-01", fonte)
+            esperados = {referenciado}
+            if referencia in ("presenca", "presenca_em_nomeado"):
+                conn.execute(
+                    text(
+                        "INSERT INTO leg.presenca (pessoa_id, casa_id, data_sessao, tipo_codigo, mandato_id) "
+                        "VALUES (:p, :c, '2003-03-01', 'PRESENTE', :m)"
+                    ),
+                    {"p": pessoa, "c": casa, "m": referenciado},
+                )
+            elif referencia == "nomeador":
+                # fonte nula: a fusão não toca no mandato que nomeia, então só a guarda protege o nomeador
+                esperados.add(mandato("SENADOR", "2011-02-01", None, nomeado_por=referenciado, numero=2))
+            else:
+                dono = mandato("SENADOR", "2011-02-01", None, numero=2)
+                esperados.add(dono)
+                conn.execute(
+                    text(
+                        "INSERT INTO core.mandato_situacao (mandato_id, situacao, periodo, substituto_mandato_id) "
+                        "VALUES (:d, 'SUPLENCIA', daterange('2011-03-01', '2011-04-01'), :s)"
+                    ),
+                    {"d": dono, "s": referenciado},
+                )
+            conn.execute(text("SELECT etl.merge_cadastro()"))
+            restantes = {
+                r[0] for r in conn.execute(text("SELECT id FROM core.mandato WHERE pessoa_id = :p"), {"p": pessoa})
+            }
+        finally:
+            transacao.rollback()
+    assert orfao not in restantes  # o órfão sem referência sai
+    assert restantes == esperados  # o referenciado fica (e o que o referencia, nos casos em que ele é um mandato)
+
+
+def test_migracao_0038_desce_e_sobe_com_a_definicao_da_fusao(pg_engine, monkeypatch):
+    """Descer a 0037 tira só as três guardas acrescentadas à fusão; subir de novo as devolve."""
+    from alembic import command
+
+    config = _config_do_alembic(monkeypatch)
+
+    def corpo_da_fusao():
+        with pg_engine.connect() as conn:
+            return conn.execute(text("SELECT pg_get_functiondef('etl.merge_cadastro()'::regprocedure)")).scalar_one()
+
+    try:
+        command.downgrade(config, "0037")
+        sem_guardas = corpo_da_fusao()
+        assert "leg.presenca p WHERE p.mandato_id" not in sem_guardas
+        assert "nomeado_por_mandato_id = c.id" not in sem_guardas
+        assert "substituto_mandato_id = c.id" not in sem_guardas
+        assert sem_guardas.count("l.mandato_id = c.id);") == 2  # os dois DELETE de core.mandato, como antes da 0038
+    finally:
+        command.upgrade(config, "head")
+    com_guardas = corpo_da_fusao()
+    for trecho in ("leg.presenca p WHERE p.mandato_id = c.id", "n.nomeado_por_mandato_id = c.id"):
+        assert com_guardas.count(trecho) == 2
+    assert com_guardas.count("s.substituto_mandato_id = c.id") == 2
+
+
+def _migracao_0038():
+    import importlib.util
+
+    from app.core.migrations import BACKEND_DIR
+
+    caminho = BACKEND_DIR / "alembic" / "versions" / "0038_fusao_preserva_mandato_referenciado.py"
+    spec = importlib.util.spec_from_file_location("migracao_0038", caminho)
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+@pytest.mark.parametrize("ocorrencias", [0, 1, 3])
+def test_migracao_0038_recusa_funcao_que_difere_do_texto_esperado(monkeypatch, ocorrencias):
+    """Função editada fora das migrações (não há exatamente 2 DELETE a trocar): falha explícita, sem reescrever às cegas."""
+    from types import SimpleNamespace
+
+    modulo = _migracao_0038()
+    corpo = "CREATE OR REPLACE FUNCTION etl.merge_cadastro() ..." + (modulo.ALVO + " ") * ocorrencias
+    executados = []
+
+    class Conexao:
+        def exec_driver_sql(self, sql):
+            executados.append(sql)
+            return SimpleNamespace(scalar_one=lambda: corpo)
+
+    monkeypatch.setattr(modulo, "op", SimpleNamespace(get_bind=lambda: Conexao()))
+    with pytest.raises(RuntimeError, match="difere do texto esperado"):
+        modulo.upgrade()
+    assert len(executados) == 1  # só a leitura do catálogo; nenhum CREATE OR REPLACE foi enviado

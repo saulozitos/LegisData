@@ -15,7 +15,7 @@ from app.models import (  # noqa: E402
     StatusMandatoEnum,
     VotingSession,
 )
-from sqlalchemy import create_engine
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
 from etl.extractors import votacoes_extractor as ve  # noqa: E402
@@ -522,15 +522,17 @@ def test_run_votacoes_exige_alguma_casa(monkeypatch, tmp_path):
 
 # ---------------------------------------------------------------------------------------------- carga
 @pytest.fixture
-def banco():
-    engine = create_engine("sqlite://").execution_options(schema_translate_map={"stg": None})
-    from app.models import StagingBase
-
-    StagingBase.metadata.create_all(engine)
-    sessao = sessionmaker(bind=engine, expire_on_commit=False)()
+def banco(pg_engine):
+    """Sessão sobre o Postgres de teste (o COPY dos votos exige Postgres), com o staging limpo antes e depois."""
+    limpar = "TRUNCATE stg.votos_parlamentares, stg.sessoes_votacao, stg.mandatos, stg.proposicoes, stg.politicos, stg.partidos_politicos CASCADE"
+    with pg_engine.begin() as conn:
+        conn.execute(text(limpar))
+    sessao = sessionmaker(bind=pg_engine, expire_on_commit=False)()
     yield sessao
+    sessao.rollback()
     sessao.close()
-    engine.dispose()
+    with pg_engine.begin() as conn:
+        conn.execute(text(limpar))
 
 
 @pytest.fixture
@@ -630,6 +632,8 @@ def test_carga_cria_parlamentares_proposicao_sessao_votos_e_mandatos(banco, part
 
     assert (c["sessoes_novas"], c["sessoes_descartadas"], c["proposicoes_criadas"]) == (1, 1, 1)
     assert c["politicos_criados"] == 2 and c["mandatos_criados"] == 3  # Ana: 56 e 57; Beto: 57
+    # Contagem de votos para o registro da execução: V1 traz 3 (o 99 sem cadastro é descartado) e a V2, descartada, traz 1
+    assert (c["votos_lidos"], c["votos_processados"], c["votos_gravados"], c["votos_descartados"]) == (4, 2, 2, 2)
     sessao = banco.query(VotingSession).one()
     assert sessao.external_id == "V1" and sessao.is_approved is True
     assert sessao.government_orientation == "SIM"
@@ -674,6 +678,9 @@ def test_carga_e_idempotente_e_atualiza_orientacao(banco, partidos, tmp_path):
         banco.query(Proposition).count(),
     )
     assert antes == depois and c["sessoes_novas"] == 0 and c["sessoes_atualizadas"] == 1
+    # a recarga não duplica voto, mas os já gravados contam como gravados e a contagem continua fechando
+    assert (c["votos_lidos"], c["votos_gravados"], c["votos_descartados"]) == (4, 2, 2)
+    assert c["votos_lidos"] == c["votos_gravados"] + c["votos_descartados"]
     assert banco.query(VotingSession).one().government_orientation == "NAO"
 
 
@@ -775,6 +782,31 @@ def test_carga_ignora_arquivo_sem_proveniencia(banco, partidos, tmp_path):
     ve.gravar_json_gz(tmp_path / "votacoes" / "camara_2024.json.gz", _arquivo_camara(is_synthetic=True))
     c = _carregar(banco, tmp_path, partidos)
     assert c["sessoes_novas"] == 0 and banco.query(VotingSession).count() == 0
+    assert c["arquivos_ignorados"] == 2  # os dois arquivos pulados inteiros ficam registrados, para a execução avisar
+
+
+def test_carga_ignora_arquivo_ilegivel_e_conta_o_arquivo_ignorado(banco, partidos, tmp_path):
+    (tmp_path / "votacoes").mkdir()
+    (tmp_path / "votacoes" / "camara_2023.json.gz").write_bytes(b"isto nao e gzip")
+    c = _carregar(banco, tmp_path, partidos)
+    assert c["arquivos_ignorados"] == 1 and c["votos_lidos"] == 0 and banco.query(VotingSession).count() == 0
+
+
+def test_sessao_ja_gravada_por_outra_casa_e_descartada_e_seus_votos_contam_como_descartados(banco, partidos, tmp_path):
+    ve.gravar_json_gz(tmp_path / "votacoes" / "camara_2023.json.gz", _arquivo_camara())
+    deputados = {}
+    _carregar(banco, tmp_path, partidos, deputados)
+    banco.commit()
+    assert banco.query(VotingSession).one().external_id == "V1"
+
+    # o Senado traz uma sessão com o mesmo código "V1", que a Câmara já gravou: não pode virar a mesma sessão
+    (tmp_path / "votacoes" / "camara_2023.json.gz").unlink()
+    ve.gravar_json_gz(tmp_path / "votacoes" / "senado_2023.json.gz", _arquivo_camara(casa="SENADO"))
+    c = _carregar(banco, tmp_path, partidos, deputados)
+    banco.commit()
+    assert banco.query(VotingSession).count() == 1  # nenhuma sessão nova nem sobrescrita
+    assert c["sessoes_novas"] == 0 and c["sessoes_descartadas"] == 2  # V1 (outra casa) e V2 (tipo não suportado)
+    assert (c["votos_lidos"], c["votos_descartados"], c["votos_gravados"]) == (4, 4, 0)  # 3 votos de V1 + 1 de V2
 
 
 def test_carga_sem_arquivos_nao_faz_nada(banco, partidos, tmp_path):

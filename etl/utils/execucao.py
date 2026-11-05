@@ -9,8 +9,8 @@ Os parâmetros de uma execução não podem usar as chaves `carga` nem `fonte`: 
 `etl.execucao` (estágio CARREGAR, status OK) por elas para saber quem é dono dos dados de finanças. Toda carga nova registra
 a execução por aqui; quem grava em `etl.execucao` por fora (como `financas_loader`) responde por essa regra sozinho.
 
-Status: `OK` só quando as contagens foram preenchidas, fecham (`lidas == gravadas + rejeitadas`) e nada foi rejeitado; fora
-disso `COM_ALERTA` (contagem ausente não é zero). Uma execução que o processo deixou `EXECUTANDO` (morto sem chance de
+Status: `OK` só quando as contagens foram preenchidas, fecham (`lidas == gravadas + rejeitadas`), nada foi rejeitado e o
+carregador não marcou `com_alerta`; fora disso `COM_ALERTA` (contagem ausente não é zero). Uma execução que o processo deixou `EXECUTANDO` (morto sem chance de
 fechar) é fechada como `ERRO` com `INTERROMPIDA` na próxima abertura da mesma fonte e estágio, depois de `ORFA_APOS`.
 
 Invariantes para quem expurgar histórico: `etl.arquivo_bruto.execucao_id` referencia `etl.execucao` (sem `ON DELETE`), então
@@ -51,6 +51,9 @@ class Execucao:
     lidas: Optional[int] = None
     gravadas: Optional[int] = None
     rejeitadas: Optional[int] = None
+    com_alerta: bool = (
+        False  # o carregador sabe de um problema que as contagens não mostram (ex.: arquivo pulado inteiro)
+    )
 
 
 def _validar(estagio: str, parametros: Optional[Dict[str, Any]]) -> None:
@@ -145,7 +148,7 @@ def registrar_execucao(
             logger.warning("Execução %s não pôde ser fechada como ERRO: %s", execucao.id, falha)
         raise
     fecham = contagem_fecha("contagens", execucao.lidas, execucao.gravadas, execucao.rejeitadas).passou
-    status = STATUS_OK if fecham and not execucao.rejeitadas else STATUS_COM_ALERTA
+    status = STATUS_OK if fecham and not execucao.rejeitadas and not execucao.com_alerta else STATUS_COM_ALERTA
     if not fecham:
         logger.warning(
             "Execução %s: contagens ausentes ou que não fecham (lidas=%s, gravadas=%s, rejeitadas=%s)",

@@ -13,6 +13,7 @@ Princípios (ver revisão do ETL):
 
 import argparse
 import logging
+import time
 from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -30,10 +31,8 @@ from app.models import (  # noqa: E402
     CabinetMember,
     CargoPoliticoEnum,
     CasaLegislativaEnum,
-    EspectroPoliticoEnum,
     Mandate,
     MotivoDesfiliacaoEnum,
-    ParliamentaryVote,
     PartyAffiliation,
     PoliticalParty,
     Politician,
@@ -47,6 +46,7 @@ from app.models import (  # noqa: E402
 )
 
 from etl.config import PROCESSED_DATA_DIR  # noqa: E402
+from etl.pipelines.dados_partidos import PARTY_SPECTRUM_MAP, nome_do_partido  # noqa: E402
 from etl.pipelines.loader_helpers import (  # noqa: E402,F401
     LEGISLATURA_ATUAL,
     LEGISLATURA_ATUAL_INICIO,
@@ -61,8 +61,12 @@ from etl.pipelines.loader_helpers import (  # noqa: E402,F401
     limpar_contatos_inventados,
     resolve_party_id,
 )
+from etl.pipelines.staging_partidos import gravar_partidos, montar_partidos  # noqa: E402
+from etl.pipelines.staging_votos import ContagemDeVotos, gravar_votos  # noqa: E402
 from etl.pipelines.votacoes_loader import carregar_parlamentares_historicos, carregar_votacoes  # noqa: E402
+from etl.utils.copia import cursor_da_sessao  # noqa: E402
 from etl.utils.datafiles import load_deputados, load_json, load_senadores  # noqa: E402
+from etl.utils.execucao import registrar_execucao  # noqa: E402
 from etl.utils.manutencao import posprocessar_carga  # noqa: E402
 from etl.utils.names import build_unique_name_map, normalize_name_tokens  # noqa: E402
 from etl.utils.provenance import is_synthetic, is_trusted  # noqa: E402
@@ -72,326 +76,17 @@ logger = logging.getLogger("DBLoader")
 # Compatibilidade com o nome privado anterior
 _normalize_name_tokens = normalize_name_tokens
 
-PARTY_SPECTRUM_MAP = {
-    # ESQUERDA
-    "PT": EspectroPoliticoEnum.ESQUERDA,
-    "PSOL": EspectroPoliticoEnum.ESQUERDA,
-    "PCdoB": EspectroPoliticoEnum.ESQUERDA,
-    "PC do B": EspectroPoliticoEnum.ESQUERDA,
-    "PSTU": EspectroPoliticoEnum.ESQUERDA,
-    "PCO": EspectroPoliticoEnum.ESQUERDA,
-    "UP": EspectroPoliticoEnum.ESQUERDA,
-    "PCB": EspectroPoliticoEnum.ESQUERDA,
-    # CENTRO_ESQUERDA
-    "PDT": EspectroPoliticoEnum.CENTRO_ESQUERDA,
-    "PSB": EspectroPoliticoEnum.CENTRO_ESQUERDA,
-    "REDE": EspectroPoliticoEnum.CENTRO_ESQUERDA,
-    "PV": EspectroPoliticoEnum.CENTRO_ESQUERDA,
-    "CIDADANIA": EspectroPoliticoEnum.CENTRO_ESQUERDA,
-    # CENTRO
-    "MDB": EspectroPoliticoEnum.CENTRO,
-    "PMDB": EspectroPoliticoEnum.CENTRO,
-    "PSD": EspectroPoliticoEnum.CENTRO,
-    "PSDB": EspectroPoliticoEnum.CENTRO,
-    "SOLIDARIEDADE": EspectroPoliticoEnum.CENTRO,
-    "AVANTE": EspectroPoliticoEnum.CENTRO,
-    "PMN": EspectroPoliticoEnum.CENTRO,
-    "AGIR": EspectroPoliticoEnum.CENTRO,
-    # CENTRO_DIREITA
-    "UNIÃO": EspectroPoliticoEnum.CENTRO_DIREITA,
-    "UNIAO": EspectroPoliticoEnum.CENTRO_DIREITA,
-    "PP": EspectroPoliticoEnum.CENTRO_DIREITA,
-    "PPB": EspectroPoliticoEnum.CENTRO_DIREITA,
-    "PPR": EspectroPoliticoEnum.CENTRO_DIREITA,
-    "REPUBLICANOS": EspectroPoliticoEnum.CENTRO_DIREITA,
-    "PRB": EspectroPoliticoEnum.CENTRO_DIREITA,
-    "PODE": EspectroPoliticoEnum.CENTRO_DIREITA,
-    "PODEMOS": EspectroPoliticoEnum.CENTRO_DIREITA,
-    "PRD": EspectroPoliticoEnum.CENTRO_DIREITA,
-    "PSC": EspectroPoliticoEnum.CENTRO_DIREITA,
-    "DEM": EspectroPoliticoEnum.CENTRO_DIREITA,
-    "PFL": EspectroPoliticoEnum.CENTRO_DIREITA,
-    "PTB": EspectroPoliticoEnum.CENTRO_DIREITA,
-    # DIREITA
-    "PL": EspectroPoliticoEnum.DIREITA,
-    "NOVO": EspectroPoliticoEnum.DIREITA,
-    "PATRIOTA": EspectroPoliticoEnum.DIREITA,
-    "PATRI": EspectroPoliticoEnum.DIREITA,
-    "DC": EspectroPoliticoEnum.DIREITA,
-    "PMB": EspectroPoliticoEnum.DIREITA,
-    "PRTB": EspectroPoliticoEnum.DIREITA,
-    "PSL": EspectroPoliticoEnum.DIREITA,
-}
-
-# Nomes completos de partidos extintos/renomeados que aparecem em filiações históricas e votos. Sem isto,
-# cada um deles virava "Sem Partido" e a trajetória partidária de quem passou por eles era apagada.
-PARTY_FULL_NAMES = {
-    "PTB": "Partido Trabalhista Brasileiro",
-    "PATRIOTA": "Patriota",
-    "PATRI": "Patriota",
-    "PROS": "Partido Republicano da Ordem Social",
-    "PSC": "Partido Social Cristão",
-    "PRP": "Partido Republicano Progressista",
-    "PHS": "Partido Humanista da Solidariedade",
-    "PPS": "Partido Popular Socialista",
-    "PRB": "Partido Republicano Brasileiro",
-    "PMN": "Partido da Mobilização Nacional",
-    "PEN": "Partido Ecológico Nacional",
-    "PR": "Partido da República",
-    "PDS": "Partido Democrático Social",
-    "PPB": "Partido Progressista Brasileiro",
-    "PPR": "Partido Progressista Reformador",
-    "PC DO B": "Partido Comunista do Brasil",
-}
-
-
-PARTY_LOGOS_MAP = {
-    "PT": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c3/PT_%28Brazil%29_logo_2021.svg/250px-PT_%28Brazil%29_logo_2021.svg.png",
-    "PL": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/12/Partido_Liberal_%28Brazil%29_logo.svg/250px-Partido_Liberal_%28Brazil%29_logo.svg.png",
-    "PSDB": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/22/Logo_of_the_Brazilian_Social_Democracy_Party_%282023%29.svg/250px-Logo_of_the_Brazilian_Social_Democracy_Party_%282023%29.svg.png",
-    "MDB": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ef/Movimento_Democr%C3%A1tico_Brasileiro_%282017%29.svg/250px-Movimento_Democr%C3%A1tico_Brasileiro_%282017%29.svg.png",
-    "PMDB": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cc/PMDB_2000_a_2017.svg/250px-PMDB_2000_a_2017.svg.png",
-    "PSOL": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f4/Logo_PSOL_roxo.svg/250px-Logo_PSOL_roxo.svg.png",
-    "NOVO": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d3/Partido_Novo_logo_%282023%29.svg/250px-Partido_Novo_logo_%282023%29.svg.png",
-    "UNIÃO": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/73/Uni%C3%A3o_Brasil_logo.svg/250px-Uni%C3%A3o_Brasil_logo.svg.png",
-    "PP": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/87/Progressistas_%28Brazil%29_logo.svg/250px-Progressistas_%28Brazil%29_logo.svg.png",
-    "PDT": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1f/Bandeira.PDT.png/250px-Bandeira.PDT.png",
-    "PSB": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/19/Partido_Socialista_Brasileiro_logo.png/250px-Partido_Socialista_Brasileiro_logo.png",
-    "REPUBLICANOS": "https://thumb.wikimedia.org/wikipedia/pt/thumb/0/0d/Republicanos_logo.png/250px-Republicanos_logo.png",
-    "PCdoB": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b2/Logomarca_do_Partido_Comunista_do_Brasil.png/250px-Logomarca_do_Partido_Comunista_do_Brasil.png",
-    "PV": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/46/Logomarca_do_Partido_Verde.svg/250px-Logomarca_do_Partido_Verde.svg.png",
-    "REDE": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/39/Rede_Sustentabilidade_logo.svg/250px-Rede_Sustentabilidade_logo.svg.png",
-    "CIDADANIA": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9e/Cidadania_%28Brasil%29_logo_%28variant_1%29.svg/250px-Cidadania_%28Brasil%29_logo_%28variant_1%29.svg.png",
-    "PODEMOS": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2d/Podemos_%28Brasil%29_logo.svg/250px-Podemos_%28Brasil%29_logo.svg.png",
-    "PODE": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2d/Podemos_%28Brasil%29_logo.svg/250px-Podemos_%28Brasil%29_logo.svg.png",
-    "SOLIDARIEDADE": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/77/Solidariedade_77_%28Brasil%29_logo.svg/250px-Solidariedade_77_%28Brasil%29_logo.svg.png",
-    "AVANTE": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f9/Avante_70_%28Brasil%29_logo.svg/250px-Avante_70_%28Brasil%29_logo.svg.png",
-    "PRD": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/dc/Partido_Renova%C3%A7%C3%A3o_Democr%C3%A1tica_logo.svg/250px-Partido_Renova%C3%A7%C3%A3o_Democr%C3%A1tica_logo.svg.png",
-    "PSD": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0c/PSD_Brazil_logo.svg/250px-PSD_Brazil_logo.svg.png",
-    "DC": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ed/Logomarca_Democracia_Crist%C3%A3.svg/250px-Logomarca_Democracia_Crist%C3%A3.svg.png",
-    "DEM": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/39/Democratas_%28Brazil%29_logo_%282018-2022%29_%28horizontal%29.svg/250px-Democratas_%28Brazil%29_logo_%282018-2022%29_%28horizontal%29.svg.png",
-    "PATRIOTA": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f9/Logomarca_do_Partido_Patriota.png/250px-Logomarca_do_Partido_Patriota.png",
-    "PFL": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e7/Partido_da_Frente_Liberal_logo_%281985-2005%29.svg/250px-Partido_da_Frente_Liberal_logo_%281985-2005%29.svg.png",
-    "PRTB": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d5/Logomarca_do_Partido_Renovador_Trabalhista_Brasileiro_2.png/250px-Logomarca_do_Partido_Renovador_Trabalhista_Brasileiro_2.png",
-    "PTB": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6a/Logomarca_Partido_Trabalhista_Brasileiro.png/250px-Logomarca_Partido_Trabalhista_Brasileiro.png",
-    "MISSÃO": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/67/Partido_Miss%C3%A3o_logo_%28light%29.svg/250px-Partido_Miss%C3%A3o_logo_%28light%29.svg.png",
-    "PROS": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ee/Logomarca_do_Partido_Republicano_da_Ordem_Social_%28PROS%29%2C_do_Brasil.png/250px-Logomarca_do_Partido_Republicano_da_Ordem_Social_%28PROS%29%2C_do_Brasil.png",
-    "PSC": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a9/PSC_logo%28cortado%29.png/250px-PSC_logo%28cortado%29.png",
-    "PSL": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c2/Partido_Social_Liberal_logo.svg/250px-Partido_Social_Liberal_logo.svg.png",
-    "PR": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fe/Logomarca_do_Partido_da_Rep%C3%BAblica.png/250px-Logomarca_do_Partido_da_Rep%C3%BAblica.png",
-    "PPS": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d3/Logomarca_do_Partido_Popular_Socialista.png/250px-Logomarca_do_Partido_Popular_Socialista.png",
-    "PRB": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a2/Logomarca_do_Partido_Republicano_Brasileiro_%282012%E2%80%932019%29.png/250px-Logomarca_do_Partido_Republicano_Brasileiro_%282012%E2%80%932019%29.png",
-    "PHS": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/75/Logo_-_Partido_Humanista_da_Solidariedade.png/250px-Logo_-_Partido_Humanista_da_Solidariedade.png",
-    "PMN": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/dd/PMN_logo.svg/250px-PMN_logo.svg.png",
-    "PSDC": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/aa/Bandeira_do_Partido_Social_Democrata_Crist%C3%A3o.svg/250px-Bandeira_do_Partido_Social_Democrata_Crist%C3%A3o.svg.png",
-    "PDC": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/65/Bandeirapdc85melhorada.png/250px-Bandeirapdc85melhorada.png",
-    "PDS": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a9/Partido_Democr%C3%A1tico_Social_logo.svg/250px-Partido_Democr%C3%A1tico_Social_logo.svg.png",
-    "PRONA": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/ca/Partido_de_Reedifica%C3%A7%C3%A3o_da_Ordem_Nacional_logo_%282004%E2%80%932006%29.png/250px-Partido_de_Reedifica%C3%A7%C3%A3o_da_Ordem_Nacional_logo_%282004%E2%80%932006%29.png",
-}
-
-PARTY_METADATA_MAP = {
-    "PT": {
-        "ideologia": "Social-democracia / Trabalhismo democrático",
-        "lema": "O Brasil da esperança e da justiça social",
-        "espectro": EspectroPoliticoEnum.ESQUERDA,
-        "numero": 13,
-    },
-    "PL": {
-        "ideologia": "Conservadorismo social / Liberalismo econômico",
-        "lema": "Deus, Pátria, Família e Liberdade",
-        "espectro": EspectroPoliticoEnum.DIREITA,
-        "numero": 22,
-    },
-    "UNIÃO": {
-        "ideologia": "Liberalismo / Conservadorismo liberal",
-        "lema": "Coragem para mudar, união para governar",
-        "espectro": EspectroPoliticoEnum.CENTRO_DIREITA,
-        "numero": 44,
-    },
-    "PP": {
-        "ideologia": "Centro-direita / Pragmatismo de desenvolvimento",
-        "lema": "O futuro se constrói com trabalho e progresso",
-        "espectro": EspectroPoliticoEnum.CENTRO_DIREITA,
-        "numero": 11,
-    },
-    "MDB": {
-        "ideologia": "Centrismo / Ponto de equilíbrio democrático",
-        "lema": "O partido que equilibra o Brasil",
-        "espectro": EspectroPoliticoEnum.CENTRO,
-        "numero": 15,
-    },
-    "PSD": {
-        "ideologia": "Pragmatismo de centro / Municipalismo",
-        "lema": "Nem direita, nem esquerda: a favor do Brasil",
-        "espectro": EspectroPoliticoEnum.CENTRO,
-        "numero": 55,
-    },
-    "REPUBLICANOS": {
-        "ideologia": "Conservadorismo cristão / Municipalismo",
-        "lema": "Defendendo os valores da família e o desenvolvimento",
-        "espectro": EspectroPoliticoEnum.CENTRO_DIREITA,
-        "numero": 10,
-    },
-    "PSDB": {
-        "ideologia": "Social-democracia clássica / Terceira via",
-        "lema": "Por um Brasil moderno, justo e eficiente",
-        "espectro": EspectroPoliticoEnum.CENTRO,
-        "numero": 45,
-    },
-    "PSB": {
-        "ideologia": "Socialismo democrático / Progressismo",
-        "lema": "Igualdade e liberdade construídas com justiça",
-        "espectro": EspectroPoliticoEnum.CENTRO_ESQUERDA,
-        "numero": 40,
-    },
-    "PDT": {
-        "ideologia": "Trabalhismo brizolista / Nacionalismo desenvolvimentista",
-        "lema": "A educação emancipa, o trabalho dignifica",
-        "espectro": EspectroPoliticoEnum.CENTRO_ESQUERDA,
-        "numero": 12,
-    },
-    "PSOL": {
-        "ideologia": "Socialismo democrático / Ecossocialismo",
-        "lema": "Por um Brasil para a maioria trabalhadora",
-        "espectro": EspectroPoliticoEnum.ESQUERDA,
-        "numero": 50,
-    },
-    "PODE": {
-        "ideologia": "Democracia direta / Centrismo liberal",
-        "lema": "Juntos podemos transformar o Brasil",
-        "espectro": EspectroPoliticoEnum.CENTRO,
-        "numero": 20,
-    },
-    "PODEMOS": {
-        "ideologia": "Democracia direta / Centrismo liberal",
-        "lema": "Juntos podemos transformar o Brasil",
-        "espectro": EspectroPoliticoEnum.CENTRO,
-        "numero": 20,
-    },
-    "NOVO": {
-        "ideologia": "Liberalismo clássico / Estado mínimo",
-        "lema": "Menos governo, mais liberdade individual",
-        "espectro": EspectroPoliticoEnum.DIREITA,
-        "numero": 30,
-    },
-    "PCdoB": {
-        "ideologia": "Comunismo democrático / Antimperialismo",
-        "lema": "Pela soberania nacional e o socialismo",
-        "espectro": EspectroPoliticoEnum.ESQUERDA,
-        "numero": 65,
-    },
-    "PV": {
-        "ideologia": "Ecologismo / Desenvolvimento sustentável",
-        "lema": "Paz, ecologia e justiça socioambiental",
-        "espectro": EspectroPoliticoEnum.CENTRO_ESQUERDA,
-        "numero": 43,
-    },
-    "CIDADANIA": {
-        "ideologia": "Social-liberalismo / Terceira via",
-        "lema": "Construindo cidadania plena e oportunidades",
-        "espectro": EspectroPoliticoEnum.CENTRO,
-        "numero": 23,
-    },
-    "REDE": {
-        "ideologia": "Sustentabilidade ética / Progressismo cívico",
-        "lema": "Conectar pessoas pela ética na política",
-        "espectro": EspectroPoliticoEnum.CENTRO_ESQUERDA,
-        "numero": 18,
-    },
-    "AVANTE": {
-        "ideologia": "Humanismo cívico / Municipalismo",
-        "lema": "O Brasil precisa seguir avante",
-        "espectro": EspectroPoliticoEnum.CENTRO,
-        "numero": 70,
-    },
-    "SOLIDARIEDADE": {
-        "ideologia": "Trabalhismo social / Sindicalismo plural",
-        "lema": "Solidariedade com o trabalhador e o desenvolvimento",
-        "espectro": EspectroPoliticoEnum.CENTRO,
-        "numero": 77,
-    },
-    "PRD": {
-        "ideologia": "Conservadorismo democrático",
-        "lema": "Renovação e ordem institucional",
-        "espectro": EspectroPoliticoEnum.CENTRO_DIREITA,
-        "numero": 25,
-    },
-    "DC": {
-        "ideologia": "Democracia cristã / Conservadorismo social",
-        "lema": "Deus, pátria e família",
-        "espectro": EspectroPoliticoEnum.DIREITA,
-        "numero": 27,
-    },
-    "DEM": {
-        "ideologia": "Liberalismo / Conservadorismo liberal",
-        "lema": "A favor do Brasil",
-        "espectro": EspectroPoliticoEnum.CENTRO_DIREITA,
-        "numero": 25,
-    },
-    "PATRIOTA": {
-        "ideologia": "Conservadorismo / Nacionalismo",
-        "lema": "Brasil acima de tudo",
-        "espectro": EspectroPoliticoEnum.DIREITA,
-        "numero": 51,
-    },
-    "PFL": {
-        "ideologia": "Liberalismo conservador",
-        "lema": "Construindo o futuro",
-        "espectro": EspectroPoliticoEnum.CENTRO_DIREITA,
-        "numero": 25,
-    },
-    "PMDB": {
-        "ideologia": "Centrismo / Democracia partidária",
-        "lema": "O partido do Brasil",
-        "espectro": EspectroPoliticoEnum.CENTRO,
-        "numero": 15,
-    },
-    "PRTB": {
-        "ideologia": "Trabalhismo participativo / Conservadorismo",
-        "lema": "Coragem para transformar",
-        "espectro": EspectroPoliticoEnum.DIREITA,
-        "numero": 28,
-    },
-    "PTB": {
-        "ideologia": "Trabalhismo / Conservadorismo",
-        "lema": "A força do trabalhador",
-        "espectro": EspectroPoliticoEnum.DIREITA,
-        "numero": 14,
-    },
-    "MISSÃO": {
-        "ideologia": "Liberalismo econômico / Renovação política",
-        "lema": "Missão pelo futuro do Brasil",
-        "espectro": EspectroPoliticoEnum.CENTRO_DIREITA,
-        "numero": 99,
-    },
-    "PROS": {
-        "ideologia": "Centrismo / Reformismo social",
-        "lema": "Por um Brasil justo e fraterno",
-        "espectro": EspectroPoliticoEnum.CENTRO,
-        "numero": 90,
-    },
-    "PSC": {
-        "ideologia": "Democracia cristã / Conservadorismo cristão",
-        "lema": "O ser humano em primeiro lugar",
-        "espectro": EspectroPoliticoEnum.CENTRO_DIREITA,
-        "numero": 20,
-    },
-    "PSL": {
-        "ideologia": "Conservadorismo / Liberalismo",
-        "lema": "Mais Brasil, menos Brasília",
-        "espectro": EspectroPoliticoEnum.DIREITA,
-        "numero": 17,
-    },
-}
-
-# Chaves em maiúsculas para correspondência uniforme
-PARTY_LOGOS_MAP = {k.upper(): v for k, v in PARTY_LOGOS_MAP.items()}
-PARTY_METADATA_MAP = {k.upper(): v for k, v in PARTY_METADATA_MAP.items()}
-
 # Arquivos legados de votação do Senado não traziam o ano da matéria; as duas matérias coletadas são conhecidas.
 from etl.extractors.senado_extractor import MATERIAS_BUSCA  # noqa: E402
 
 MATERIA_ANO_CONHECIDA = {(m["sigla"], m["numero"]): m["ano"] for m in MATERIAS_BUSCA}
+
+# Mandato da fonte LEGADO que a fusão do cadastro poupou por ainda ser referenciado (a 0038 só os pula, não os vincula).
+# O critério é o do DELETE de `etl.merge_cadastro` (migrações 0020 e 0038): quem mudar um deve mudar o outro.
+SQL_MANDATOS_PRESERVADOS = (
+    "SELECT count(*) FROM core.mandato c WHERE c.fonte_id = (SELECT id FROM etl.fonte WHERE codigo = 'LEGADO') "
+    "AND NOT EXISTS (SELECT 1 FROM core.mandato_legado l WHERE l.mandato_id = c.id)"
+)
 
 SUPPLIER_CONSOLIDADO = "Consolidado por tipo de despesa"
 
@@ -421,6 +116,24 @@ class DatabaseLoader:
         """Executa a carga completa respeitando as dependências de chaves estrangeiras (uma transação)."""
         self.ensure_tables()
 
+        with registrar_execucao(
+            engine,
+            "LEGADO",
+            "CARREGAR",
+            {"allow_synthetic": self.allow_synthetic, "allow_unverified": self.allow_unverified},
+        ) as execucao:
+            contagens, votos = self._carregar_e_fundir()
+            # Contagem de votos nominais (a maior carga), do plenário e do histórico: lidas = votos que as fontes
+            # trouxeram; rejeitadas = os que não viraram linha (sem sessão, sem político ou com opção desconhecida);
+            # gravadas = inseridas + as que já estavam (a carga é idempotente; ver `ContagemDeVotos`). Arquivo de votos
+            # pulado inteiro (ilegível, sem proveniência ou só com um dos dois lados) deixa a execução em `COM_ALERTA`.
+            execucao.lidas = votos.lidas
+            execucao.gravadas = votos.gravadas
+            execucao.rejeitadas = votos.rejeitadas
+            execucao.com_alerta = votos.arquivos_ignorados > 0
+        return contagens
+
+    def _carregar_e_fundir(self) -> Tuple[Dict[str, int], ContagemDeVotos]:
         session: Session = SessionLocal()
         # A sessão do backend usa autoflush=False: sem isto, consultas feitas logo após um `add` não enxergavam
         # o objeto pendente (checagens de unicidade passavam e estouravam UniqueViolation no commit).
@@ -433,8 +146,14 @@ class DatabaseLoader:
             etapas = 6
             n = 0
 
+            marca = time.monotonic()
+
             def etapa(descricao: str) -> None:
-                nonlocal n
+                nonlocal n, marca
+                agora = time.monotonic()
+                if n:
+                    logger.info(f"   (etapa {n} levou {agora - marca:.1f}s)")
+                marca = agora
                 n += 1
                 logger.info(f"[{n}/{etapas}] {descricao}")
 
@@ -458,8 +177,11 @@ class DatabaseLoader:
             prop_map = self._load_propositions(session, deputy_map, senator_map)
 
             etapa("Sessões de Votação e Votos Parlamentares")
-            self._load_voting_sessions_and_votes(session, prop_map, deputy_map, senator_map, party_map)
-            carregar_votacoes(session, self.data_dir, deputy_map, senator_map, party_map, self._ensure_party)
+            votos = self._load_voting_sessions_and_votes(session, prop_map, deputy_map, senator_map, party_map)
+            historico = carregar_votacoes(
+                session, self.data_dir, deputy_map, senator_map, party_map, self._ensure_party
+            )
+            votos += ContagemDeVotos.de_contadores(historico)
 
             session.commit()
             logger.info("Transação confirmada com sucesso no PostgreSQL!")
@@ -469,7 +191,7 @@ class DatabaseLoader:
 
             counts = self._get_table_counts(session)
             self._print_summary_report(counts)
-            return counts
+            return counts, votos
 
         except Exception as e:
             session.rollback()
@@ -492,6 +214,18 @@ class DatabaseLoader:
             session.rollback()
             logger.error("Fusão staging -> core/leg falhou: %s", exc)  # o trace sai uma vez só, em `load_all`
             raise
+        preservados = DatabaseLoader._mandatos_preservados(session)
+        if preservados:
+            logger.warning(
+                "-> %d mandatos da fonte LEGADO saíram do staging mas seguem em core.mandato: a presença (ou outro "
+                "mandato) ainda os referencia. A fusão seguinte os remove quando a referência sumir.",
+                preservados,
+            )
+
+    @staticmethod
+    def _mandatos_preservados(session: Session) -> int:
+        """Mandatos da fonte LEGADO sem vínculo em `core.mandato_legado`: a fusão os poupou (ver a migração 0038)."""
+        return int(session.execute(text(SQL_MANDATOS_PRESERVADOS)).scalar() or 0)
 
     # ------------------------------------------------------------------ utilidades de proveniência
     def _usable(self, record: Dict[str, Any]) -> bool:
@@ -503,113 +237,8 @@ class DatabaseLoader:
     # ------------------------------------------------------------------ partidos
     def _load_political_parties(self, session: Session) -> Dict[str, Any]:
         """Carrega partidos a partir de presidentes, deputados, senadores e filiações (inclui extintos)."""
-        parties_to_insert = {
-            "PMDB": "Partido do Movimento Democrático Brasileiro",
-            "MDB": "Movimento Democrático Brasileiro",
-            "PSDB": "Partido da Social Democracia Brasileira",
-            "PT": "Partido dos Trabalhadores",
-            "PSL": "Partido Social Liberal",
-            "PL": "Partido Liberal",
-            "PFL": "Partido da Frente Liberal",
-            "DEM": "Democratas",
-            "UNIÃO": "União Brasil",
-            "PP": "Progressistas",
-            "PSD": "Partido Social Democrático",
-            "REPUBLICANOS": "Republicanos",
-            "PSB": "Partido Socialista Brasileiro",
-            "PDT": "Partido Democrático Trabalhista",
-            "PSOL": "Partido Socialismo e Liberdade",
-            "PODE": "Podemos",
-            "AVANTE": "Avante",
-            "SOLIDARIEDADE": "Solidariedade",
-            "NOVO": "Partido Novo",
-            "PCdoB": "Partido Comunista do Brasil",
-            "PV": "Partido Verde",
-            "CIDADANIA": "Cidadania",
-            "REDE": "Rede Sustentabilidade",
-            "PRD": "Partido Renovação Democrática",
-            "PRTB": "Partido Renovador Trabalhista Brasileiro",
-            SEM_PARTIDO: "Sem Partido",
-        }
-
-        # Siglas presentes nas fontes — inclusive partidos extintos citados só em filiações históricas
-        siglas_fontes: List[str] = []
-        siglas_fontes += [d.get("partido_sigla") for d in load_deputados(self.data_dir)]
-        siglas_fontes += [s.get("partido_sigla") for s in load_senadores(self.data_dir)]
-        siglas_fontes += [
-            f.get("partido_sigla") for f in (load_json(self.data_dir / "filiacoes_partidarias.json", []) or [])
-        ]
-        siglas_fontes += [
-            p.get("partido_sigla") for p in (load_json(self.data_dir / "presidentes_historico.json", []) or [])
-        ]
-        conhecidas_upper = {k.upper() for k in parties_to_insert}
-        for sigla in siglas_fontes:
-            if sigla and isinstance(sigla, str) and sigla.upper() not in conhecidas_upper:
-                parties_to_insert[sigla] = PARTY_FULL_NAMES.get(sigla.upper(), f"Partido {sigla}")
-                conhecidas_upper.add(sigla.upper())
-
-        existing_keys_upper = {k.upper(): k for k in parties_to_insert}
-        for p_sigla in PARTY_METADATA_MAP:  # chaves já em maiúsculas
-            if p_sigla not in existing_keys_upper and p_sigla != "PODEMOS":
-                parties_to_insert[p_sigla] = f"Partido {p_sigla}"
-                existing_keys_upper[p_sigla] = p_sigla
-
-        party_map: Dict[str, Any] = {}
-        for sigla, nome in parties_to_insert.items():
-            if sigla.upper() == "PODEMOS" and "PODE" in existing_keys_upper:
-                continue
-            meta = PARTY_METADATA_MAP.get(sigla.upper(), {})
-            # Partidos sem metadados curados ficam SEM ideologia/lema/espectro (antes recebiam
-            # "Centrismo Democrático" e um lema genérico, ou seja, texto inventado).
-            ideologia = meta.get("ideologia")
-            lema = meta.get("lema")
-            num_eleitoral = meta.get("numero")
-            spectrum = meta.get("espectro") or PARTY_SPECTRUM_MAP.get(sigla.upper())
-            logo_url = meta.get("logo_url") or PARTY_LOGOS_MAP.get(sigla.upper())
-
-            party = session.query(PoliticalParty).filter(func.upper(PoliticalParty.acronym) == sigla.upper()).first()
-
-            # Número eleitoral já usado por outro partido => não repetir (evita UniqueViolation)
-            if num_eleitoral:
-                existing_num = (
-                    session.query(PoliticalParty)
-                    .filter(
-                        PoliticalParty.electoral_number == num_eleitoral,
-                        func.upper(PoliticalParty.acronym) != sigla.upper(),
-                    )
-                    .first()
-                )
-                if existing_num:
-                    num_eleitoral = None
-
-            if not party:
-                party = PoliticalParty(
-                    acronym=sigla,
-                    full_name=nome,
-                    political_spectrum=spectrum,
-                    ideology=ideologia,
-                    motto=lema,
-                    electoral_number=num_eleitoral,
-                    logo_url=logo_url,
-                )
-                session.add(party)
-                session.flush()
-            else:
-                if spectrum:
-                    party.political_spectrum = spectrum
-                if ideologia:
-                    party.ideology = ideologia
-                if lema:
-                    party.motto = lema
-                if logo_url:
-                    party.logo_url = logo_url
-                if num_eleitoral:
-                    party.electoral_number = num_eleitoral
-            party_map[sigla] = party.id
-            party_map.setdefault(sigla.upper(), party.id)
-
-        logger.info(f"-> {len({v for v in party_map.values()})} partidos mapeados/carregados.")
-        return party_map
+        with cursor_da_sessao(session) as cursor:  # a mesma transação da sessão: o COPY não a divide
+            return gravar_partidos(cursor, montar_partidos(self.data_dir))
 
     def _ensure_party(self, session: Session, party_map: Dict[str, Any], sigla: str) -> Any:
         """Garante um partido para a sigla (partidos extintos citados em filiações viravam 'Sem Partido')."""
@@ -620,7 +249,7 @@ class DatabaseLoader:
         if not party:
             party = PoliticalParty(
                 acronym=sigla,
-                full_name=PARTY_FULL_NAMES.get(sigla.upper(), f"Partido {sigla}"),
+                full_name=nome_do_partido(sigla),
                 political_spectrum=PARTY_SPECTRUM_MAP.get(sigla.upper()),
             )
             session.add(party)
@@ -1244,17 +873,16 @@ class DatabaseLoader:
         deputy_map: Dict[int, Any],
         senator_map: Dict[int, Any],
         party_map: Dict[str, Any],
-    ):
-        """Sessões e votos nominais (Câmara e Senado), idempotentes e sem associar sessão a proposição arbitrária."""
+    ) -> ContagemDeVotos:
+        """
+        Sessões e votos nominais (Câmara e Senado), idempotentes e sem associar sessão a proposição arbitrária.
+        Devolve a contagem de votos para o registro da execução.
+        """
         session_map: Dict[str, Any] = {}
         votos_inseridos = 0
         descartadas = 0
         votos_invalidos = 0
-
-        # Só os votos das sessões deste arquivo são carregados na memória (a tabela passa de 1 milhão de linhas
-        # depois da carga histórica; consultar todos custava centenas de MB a cada execução).
-        existing_votes_set: set = set()
-        sessoes_com_votos_lidos: set = set()
+        contagem = ContagemDeVotos()
 
         def totais_por_sessao(votos: List[Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
             tot: Dict[str, Dict[str, int]] = {}
@@ -1300,16 +928,8 @@ class DatabaseLoader:
             return obj
 
         def inserir_votos(votos: List[Dict[str, Any]], chave_politico: str, politician_map: Dict[int, Any]) -> None:
-            nonlocal votos_inseridos, votos_invalidos
-            novas = {session_map[k] for k in {str(v["sessao_externa_id"]) for v in votos} if k in session_map}
-            novas -= sessoes_com_votos_lidos
-            if novas:
-                existing_votes_set.update(
-                    session.query(ParliamentaryVote.voting_session_id, ParliamentaryVote.politician_id)
-                    .filter(ParliamentaryVote.voting_session_id.in_(novas))
-                    .all()
-                )
-                sessoes_com_votos_lidos.update(novas)
+            nonlocal votos_inseridos, votos_invalidos, contagem
+            linhas = []
             for v in votos:
                 sessao_id = session_map.get(str(v["sessao_externa_id"]))
                 politico_id = politician_map.get(v.get(chave_politico))
@@ -1319,24 +939,18 @@ class DatabaseLoader:
                 if opcao is None:
                     votos_invalidos += 1  # antes: KeyError derrubava a carga inteira
                     continue
-                if (sessao_id, politico_id) in existing_votes_set:
-                    continue
-                session.add(
-                    ParliamentaryVote(
-                        voting_session_id=sessao_id,
-                        politician_id=politico_id,
-                        party_id=(
-                            resolve_party_id(party_map, v.get("partido_sigla")) if v.get("partido_sigla") else None
-                        ),
-                        vote_choice=opcao,
-                    )
-                )
-                existing_votes_set.add((sessao_id, politico_id))
-                votos_inseridos += 1
+                partido_id = resolve_party_id(party_map, v.get("partido_sigla")) if v.get("partido_sigla") else None
+                linhas.append((sessao_id, politico_id, partido_id, opcao.name))
+            with cursor_da_sessao(session) as cursor:  # o `flush` põe as sessões novas na transação antes do COPY
+                inseridos, existentes = gravar_votos(cursor, linhas)
+            votos_inseridos += inseridos
+            contagem += ContagemDeVotos(len(votos), inseridos + existentes, len(votos) - len(linhas))
 
         # A. Câmara dos Deputados
         sessoes_cam = load_json(self.data_dir / "sessoes_votacao_2023.json", None)
         votos_cam = load_json(self.data_dir / "votos_nominais_2023.json", None)
+        if (sessoes_cam is None) != (votos_cam is None):
+            contagem += self._arquivo_de_votos_incompleto("sessoes_votacao_2023.json", "votos_nominais_2023.json")
         if sessoes_cam is not None and votos_cam is not None:
             totais = totais_por_sessao(votos_cam)
             for s in sessoes_cam:
@@ -1358,6 +972,8 @@ class DatabaseLoader:
         # B. Senado Federal — proposição por (tipo, número, ano) exatos; sem correspondência única => descarta
         sessoes_sen = load_json(self.data_dir / "sessoes_votacao_senado.json", None)
         votos_sen = load_json(self.data_dir / "votos_nominais_senado.json", None)
+        if (sessoes_sen is None) != (votos_sen is None):
+            contagem += self._arquivo_de_votos_incompleto("sessoes_votacao_senado.json", "votos_nominais_senado.json")
         if sessoes_sen is not None and votos_sen is not None:
             totais = totais_por_sessao(votos_sen)
             for s in sessoes_sen:
@@ -1393,6 +1009,13 @@ class DatabaseLoader:
             f"-> {len(session_map)} sessões e {votos_inseridos} votos nominais novos "
             f"({descartadas} sessões descartadas, {votos_invalidos} votos com opção desconhecida)."
         )
+        return contagem
+
+    @staticmethod
+    def _arquivo_de_votos_incompleto(sessoes: str, votos: str) -> ContagemDeVotos:
+        """Só um dos dois arquivos (sessões e votos) existe: sem o par os votos não entram, e a execução avisa."""
+        logger.warning("%s e %s precisam existir juntos: o par foi ignorado.", sessoes, votos)
+        return ContagemDeVotos(arquivos_ignorados=1)
 
     # ------------------------------------------------------------------ relatórios
     def _get_table_counts(self, session: Session) -> Dict[str, int]:
