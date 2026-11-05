@@ -81,7 +81,8 @@ from etl.extractors.senado_extractor import MATERIAS_BUSCA  # noqa: E402
 
 MATERIA_ANO_CONHECIDA = {(m["sigla"], m["numero"]): m["ano"] for m in MATERIAS_BUSCA}
 
-# Mandato da fonte LEGADO que a fusão do cadastro poupou por ainda ser referenciado (a 0038 só os pula, não os vincula)
+# Mandato da fonte LEGADO que a fusão do cadastro poupou por ainda ser referenciado (a 0038 só os pula, não os vincula).
+# O critério é o do DELETE de `etl.merge_cadastro` (migrações 0020 e 0038): quem mudar um deve mudar o outro.
 SQL_MANDATOS_PRESERVADOS = (
     "SELECT count(*) FROM core.mandato c WHERE c.fonte_id = (SELECT id FROM etl.fonte WHERE codigo = 'LEGADO') "
     "AND NOT EXISTS (SELECT 1 FROM core.mandato_legado l WHERE l.mandato_id = c.id)"
@@ -124,10 +125,12 @@ class DatabaseLoader:
             contagens, votos = self._carregar_e_fundir()
             # Contagem de votos nominais (a maior carga), do plenário e do histórico: lidas = votos que as fontes
             # trouxeram; rejeitadas = os que não viraram linha (sem sessão, sem político ou com opção desconhecida);
-            # gravadas = inseridas + as que já estavam (a carga é idempotente; ver `ContagemDeVotos`).
+            # gravadas = inseridas + as que já estavam (a carga é idempotente; ver `ContagemDeVotos`). Arquivo de votos
+            # pulado inteiro (ilegível, sem proveniência ou só com um dos dois lados) deixa a execução em `COM_ALERTA`.
             execucao.lidas = votos.lidas
             execucao.gravadas = votos.gravadas
             execucao.rejeitadas = votos.rejeitadas
+            execucao.com_alerta = votos.arquivos_ignorados > 0
         return contagens
 
     def _carregar_e_fundir(self) -> Tuple[Dict[str, int], ContagemDeVotos]:
@@ -178,11 +181,7 @@ class DatabaseLoader:
             historico = carregar_votacoes(
                 session, self.data_dir, deputy_map, senator_map, party_map, self._ensure_party
             )
-            votos += ContagemDeVotos(
-                lidas=historico["votos_lidos"],
-                gravadas=historico["votos_gravados"],
-                rejeitadas=historico["votos_descartados"],
-            )
+            votos += ContagemDeVotos.de_contadores(historico)
 
             session.commit()
             logger.info("Transação confirmada com sucesso no PostgreSQL!")
@@ -950,6 +949,8 @@ class DatabaseLoader:
         # A. Câmara dos Deputados
         sessoes_cam = load_json(self.data_dir / "sessoes_votacao_2023.json", None)
         votos_cam = load_json(self.data_dir / "votos_nominais_2023.json", None)
+        if (sessoes_cam is None) != (votos_cam is None):
+            contagem += self._arquivo_de_votos_incompleto("sessoes_votacao_2023.json", "votos_nominais_2023.json")
         if sessoes_cam is not None and votos_cam is not None:
             totais = totais_por_sessao(votos_cam)
             for s in sessoes_cam:
@@ -971,6 +972,8 @@ class DatabaseLoader:
         # B. Senado Federal — proposição por (tipo, número, ano) exatos; sem correspondência única => descarta
         sessoes_sen = load_json(self.data_dir / "sessoes_votacao_senado.json", None)
         votos_sen = load_json(self.data_dir / "votos_nominais_senado.json", None)
+        if (sessoes_sen is None) != (votos_sen is None):
+            contagem += self._arquivo_de_votos_incompleto("sessoes_votacao_senado.json", "votos_nominais_senado.json")
         if sessoes_sen is not None and votos_sen is not None:
             totais = totais_por_sessao(votos_sen)
             for s in sessoes_sen:
@@ -1007,6 +1010,12 @@ class DatabaseLoader:
             f"({descartadas} sessões descartadas, {votos_invalidos} votos com opção desconhecida)."
         )
         return contagem
+
+    @staticmethod
+    def _arquivo_de_votos_incompleto(sessoes: str, votos: str) -> ContagemDeVotos:
+        """Só um dos dois arquivos (sessões e votos) existe: sem o par os votos não entram, e a execução avisa."""
+        logger.warning("%s e %s precisam existir juntos: o par foi ignorado.", sessoes, votos)
+        return ContagemDeVotos(arquivos_ignorados=1)
 
     # ------------------------------------------------------------------ relatórios
     def _get_table_counts(self, session: Session) -> Dict[str, int]:

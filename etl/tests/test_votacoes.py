@@ -782,6 +782,31 @@ def test_carga_ignora_arquivo_sem_proveniencia(banco, partidos, tmp_path):
     ve.gravar_json_gz(tmp_path / "votacoes" / "camara_2024.json.gz", _arquivo_camara(is_synthetic=True))
     c = _carregar(banco, tmp_path, partidos)
     assert c["sessoes_novas"] == 0 and banco.query(VotingSession).count() == 0
+    assert c["arquivos_ignorados"] == 2  # os dois arquivos pulados inteiros ficam registrados, para a execução avisar
+
+
+def test_carga_ignora_arquivo_ilegivel_e_conta_o_arquivo_ignorado(banco, partidos, tmp_path):
+    (tmp_path / "votacoes").mkdir()
+    (tmp_path / "votacoes" / "camara_2023.json.gz").write_bytes(b"isto nao e gzip")
+    c = _carregar(banco, tmp_path, partidos)
+    assert c["arquivos_ignorados"] == 1 and c["votos_lidos"] == 0 and banco.query(VotingSession).count() == 0
+
+
+def test_sessao_ja_gravada_por_outra_casa_e_descartada_e_seus_votos_contam_como_descartados(banco, partidos, tmp_path):
+    ve.gravar_json_gz(tmp_path / "votacoes" / "camara_2023.json.gz", _arquivo_camara())
+    deputados = {}
+    _carregar(banco, tmp_path, partidos, deputados)
+    banco.commit()
+    assert banco.query(VotingSession).one().external_id == "V1"
+
+    # o Senado traz uma sessão com o mesmo código "V1", que a Câmara já gravou: não pode virar a mesma sessão
+    (tmp_path / "votacoes" / "camara_2023.json.gz").unlink()
+    ve.gravar_json_gz(tmp_path / "votacoes" / "senado_2023.json.gz", _arquivo_camara(casa="SENADO"))
+    c = _carregar(banco, tmp_path, partidos, deputados)
+    banco.commit()
+    assert banco.query(VotingSession).count() == 1  # nenhuma sessão nova nem sobrescrita
+    assert c["sessoes_novas"] == 0 and c["sessoes_descartadas"] == 2  # V1 (outra casa) e V2 (tipo não suportado)
+    assert (c["votos_lidos"], c["votos_descartados"], c["votos_gravados"]) == (4, 4, 0)  # 3 votos de V1 + 1 de V2
 
 
 def test_carga_sem_arquivos_nao_faz_nada(banco, partidos, tmp_path):

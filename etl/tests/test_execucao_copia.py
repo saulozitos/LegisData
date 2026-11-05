@@ -57,6 +57,15 @@ def test_execucao_com_rejeitadas_fecha_com_alerta(pg_engine):
     assert _executar(pg_engine, 10, 8, 2).status == "COM_ALERTA"
 
 
+def test_carregador_pode_marcar_alerta_mesmo_com_as_contagens_fechando(pg_engine):
+    """Um arquivo pulado inteiro não aparece nas contagens: o carregador marca `com_alerta` e a execução não sai OK."""
+    with execucao.registrar_execucao(pg_engine, "CAMARA_CSV", "CARREGAR", MARCA) as e:
+        e.lidas, e.gravadas, e.rejeitadas = 10, 10, 0
+        e.com_alerta = True
+    assert _linha(pg_engine, e.id).status == "COM_ALERTA"
+    assert _executar(pg_engine, 10, 10, 0).status == "OK"  # sem a marca, as mesmas contagens fecham OK
+
+
 def test_contagem_ausente_ou_que_nao_fecha_nao_vira_ok(pg_engine, caplog):
     """Desconhecido não é zero: o deploy lê CARREGAR+OK, então uma carga sem contagens não pode aparecer como OK."""
     with caplog.at_level(logging.WARNING, logger="Execucao"):
@@ -356,20 +365,23 @@ def test_transacao_de_carga_confirma_desfaz_e_devolve_a_conexao(pg_engine, tabel
         assert [r[0] for r in conn.execute(text(f"SELECT a FROM {tabela_de_copia}"))] == ["ok"]
 
 
-def test_cursor_da_sessao_enxerga_o_flush_fica_na_transacao_da_sessao_e_fecha_o_cursor(pg_engine, tabela_de_copia):
+def test_cursor_da_sessao_da_flush_fica_na_transacao_da_sessao_e_fecha_o_cursor(pg_engine):
+    from app.models import PoliticalParty
     from sqlalchemy.orm import sessionmaker
 
-    sessao = sessionmaker(bind=pg_engine)()
+    sigla = f"ZTCS{os.getpid()}"
+    sessao = sessionmaker(bind=pg_engine, autoflush=False)()
     try:
-        sessao.execute(text(f"INSERT INTO {tabela_de_copia} (a) VALUES ('da sessao')"))  # ainda sem commit
+        sessao.add(PoliticalParty(acronym=sigla, full_name="Partido de teste"))  # pendente: sem flush nem commit
         with copia.cursor_da_sessao(sessao) as cursor:
-            cursor.execute(f"SELECT a FROM {tabela_de_copia}")
-            assert [r[0] for r in cursor.fetchall()] == ["da sessao"]  # a mesma transação: enxerga o que a sessão pôs
-            cursor.execute(f"INSERT INTO {tabela_de_copia} (a) VALUES ('do cursor')")
+            cursor.execute("SELECT count(*) FROM stg.partidos_politicos WHERE sigla = %s", (sigla,))
+            assert cursor.fetchone()[0] == 1  # o `flush` do helper levou o objeto à transação antes do cursor ler
         assert cursor.closed
-        assert {r[0] for r in sessao.execute(text(f"SELECT a FROM {tabela_de_copia}"))} == {"da sessao", "do cursor"}
-        sessao.rollback()  # quem decide é a sessão: desfazer leva as duas linhas
+        sessao.rollback()  # quem decide é a sessão: desfazer leva a linha
     finally:
         sessao.close()
     with pg_engine.connect() as conn:
-        assert conn.execute(text(f"SELECT count(*) FROM {tabela_de_copia}")).scalar() == 0
+        assert (
+            conn.execute(text("SELECT count(*) FROM stg.partidos_politicos WHERE sigla = :s"), {"s": sigla}).scalar()
+            == 0
+        )

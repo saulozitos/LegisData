@@ -222,3 +222,14 @@ def test_a_tabela_temporaria_some_com_a_transacao(staging):
         assert cursor.fetchone()[0] is None  # ON COMMIT DROP
     finally:
         conexao.close()
+
+
+def test_duas_cargas_na_mesma_transacao_reaproveitam_a_tabela_sem_misturar_linhas(staging):
+    with copia.transacao_de_carga(staging) as cursor:
+        primeiro = sp.gravar_partidos(cursor, [_p("ZTk", numero=9995)])
+        segundo = sp.gravar_partidos(cursor, [_p("ZTl")])  # a segunda chamada não reprocessa a linha da primeira
+        cursor.execute("SELECT count(*) FROM _partido")
+        sobrando = cursor.fetchone()[0]
+    assert set(primeiro) == {"ZTk", "ZTK"} and set(segundo) == {"ZTl", "ZTL"}
+    assert sobrando == 0
+    assert _linha(staging, "ZTk").numero == 9995 and _linha(staging, "ZTl").numero is None

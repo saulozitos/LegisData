@@ -21,7 +21,7 @@ from etl.pipelines.loader_helpers import (
     legislatura_datas,
     resolve_party_id,
 )
-from etl.pipelines.staging_votos import LinhaDeVoto, gravar_votos
+from etl.pipelines.staging_votos import ContagemDeVotos, LinhaDeVoto, gravar_votos
 from etl.utils.bootstrap import ensure_backend_on_path
 from etl.utils.copia import cursor_da_sessao
 from etl.utils.datafiles import load_json
@@ -97,6 +97,9 @@ class _Contexto:
         self.senator_map = senator_map
         self.party_map = party_map
         self.ensure_party = ensure_party
+        # Votos lidos, gravados e descartados dos arquivos (inclusive os de sessão descartada) e arquivos pulados inteiros;
+        # vai para `contadores` ao fim da carga, pelas chaves de `ContagemDeVotos.como_contadores`
+        self.votos = ContagemDeVotos()
         self.contadores: Dict[str, int] = {
             "politicos_criados": 0,
             "politicos_vinculados": 0,
@@ -106,9 +109,6 @@ class _Contexto:
             "sessoes_atualizadas": 0,
             "sessoes_descartadas": 0,
             "votos_processados": 0,  # votos que viraram linha (sessão e político conhecidos, opção válida)
-            "votos_lidos": 0,  # todos os votos que os arquivos trouxeram, inclusive os de sessão descartada
-            "votos_descartados": 0,  # lidos que não viraram linha
-            "votos_gravados": 0,  # linhas entregues ao staging: inseridas + as que já estavam
             "datas_aproximadas": 0,
         }
         self._mandatos = {
@@ -442,12 +442,15 @@ def carregar_votacoes(
                 dados = ler_json_gz(caminho)
             except (OSError, ValueError) as exc:
                 logger.error("Falha ao ler %s: %s", caminho.name, exc)
+                ctx.votos += ContagemDeVotos(arquivos_ignorados=1)
                 continue
             if not _arquivo_confiavel(dados, caminho):
+                ctx.votos += ContagemDeVotos(arquivos_ignorados=1)
                 continue
             votos_total += _carregar_arquivo(ctx, dados, casa)
             session.flush()
     ctx.contadores["votos_inseridos"] = votos_total
+    ctx.contadores.update(ctx.votos.como_contadores())
     c = ctx.contadores
     logger.info(
         "-> Votações históricas: %d sessões novas, %d atualizadas, %d descartadas; %d votos inseridos "
@@ -471,8 +474,7 @@ def carregar_votacoes(
 def _descartar_votos(ctx: _Contexto, sessao: Dict[str, Any]) -> None:
     """Os votos de uma sessão descartada contam como lidos e descartados: não somem sem deixar rastro na execução."""
     votos = len(sessao.get("votos") or [])
-    ctx.contadores["votos_lidos"] += votos
-    ctx.contadores["votos_descartados"] += votos
+    ctx.votos += ContagemDeVotos(lidas=votos, rejeitadas=votos)
 
 
 def _carregar_arquivo(ctx: _Contexto, dados: Dict[str, Any], casa: str) -> int:
@@ -540,10 +542,9 @@ def _carregar_arquivo(ctx: _Contexto, dados: Dict[str, Any], casa: str) -> int:
             linhas.append((obj.id, pol_id, partido, opcao))
         aceitos = len(linhas) - antes
         ctx.contadores["votos_processados"] += aceitos
-        ctx.contadores["votos_lidos"] += len(votos)
-        ctx.contadores["votos_descartados"] += len(votos) - aceitos
+        ctx.votos += ContagemDeVotos(lidas=len(votos), rejeitadas=len(votos) - aceitos)
     # Um COPY por arquivo (e não por sessão): milhares de sessões por arquivo, todas já no banco pelo `flush` do cursor
     with cursor_da_sessao(session) as cursor:
         inseridos, existentes = gravar_votos(cursor, linhas)
-    ctx.contadores["votos_gravados"] += inseridos + existentes
+    ctx.votos += ContagemDeVotos(gravadas=inseridos + existentes)
     return inseridos

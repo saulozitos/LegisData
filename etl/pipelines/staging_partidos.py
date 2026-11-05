@@ -88,8 +88,8 @@ def gravar_partidos(cursor: Any, partidos: List[Dict[str, Any]]) -> Dict[str, An
     `{sigla: id}` dos partidos da lista, com a sigla como veio e em maiúsculas.
     """
     cursor.execute(
-        "CREATE TEMP TABLE _partido (sigla text, nome text, espectro text, ideologia text, lema text, numero int, "
-        "logo_url text) ON COMMIT DROP"
+        "CREATE TEMP TABLE IF NOT EXISTS _partido (sigla text, nome text, espectro text, ideologia text, lema text, "
+        "numero int, logo_url text) ON COMMIT DROP"
     )
     copiar_linhas(cursor, "_partido", COLUNAS, ([p[c] for c in COLUNAS] for p in partidos))
     cursor.execute(
@@ -127,5 +127,6 @@ def gravar_partidos(cursor: Any, partidos: List[Dict[str, Any]]) -> Dict[str, An
         identificador = uuid.UUID(str(identificador))
         mapa[sigla] = identificador
         mapa.setdefault(sigla.upper(), identificador)
+    cursor.execute("TRUNCATE _partido")  # a tabela é da transação: uma segunda chamada nela não reprocessa estas linhas
     logger.info("-> %d partidos mapeados/carregados.", len({v for v in mapa.values()}))
     return mapa

@@ -23,6 +23,7 @@ from sqlalchemy.orm import sessionmaker
 
 from etl.extractors.presidents_extractor import PresidentsExtractor  # noqa: E402
 from etl.pipelines import db_loader  # noqa: E402
+from etl.pipelines.staging_votos import ContagemDeVotos  # noqa: E402
 
 
 def escrever(dir_, nome, dados):
@@ -498,7 +499,7 @@ def test_carga_que_falha_registra_erro_so_com_a_classe_da_excecao(ambiente, monk
         raise RuntimeError("detalhe sigiloso: senha=abc")
 
     monkeypatch.setattr(db_loader.DatabaseLoader, "_load_politicians", explode)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match="detalhe sigiloso"):  # a exceção sobe inteira; o registro guarda só a classe
         carregar(dados)
     (status, _, erro, *_) = _execucoes(Sessao)[-1]
     assert (status, erro) == ("ERRO", "RuntimeError")
@@ -523,9 +524,8 @@ def test_contagem_da_execucao_soma_os_votos_do_historico(ambiente, monkeypatch):
     """Os votos das votações históricas entram em lidas, gravadas e rejeitadas (e não só os que casaram)."""
     dados, Sessao = ambiente
     proposicoes_e_votacoes(dados)
-    monkeypatch.setattr(
-        db_loader, "carregar_votacoes", lambda *a, **k: {"votos_lidos": 10, "votos_gravados": 6, "votos_descartados": 4}
-    )
+    historico = ContagemDeVotos(lidas=10, gravadas=6, rejeitadas=4).como_contadores()
+    monkeypatch.setattr(db_loader, "carregar_votacoes", lambda *a, **k: historico)
     carregar(dados)
     (status, _, _, lidas, gravadas, rejeitadas) = _execucoes(Sessao)[-1]
     assert (lidas, gravadas, rejeitadas) == (7 + 10, 5 + 6, 2 + 4)  # plenário (7, 5, 2) + histórico
@@ -578,6 +578,31 @@ def test_consulta_de_mandatos_preservados_conta_so_o_mandato_legado_sem_vinculo(
             ),
             {"m": vinculado},
         )
-        assert db_loader.DatabaseLoader._mandatos_preservados(s) == 1
-        assert solto != vinculado
+        assert db_loader.DatabaseLoader._mandatos_preservados(s) == 1  # só o `solto`, da fonte LEGADO e sem vínculo
+        s.execute(
+            text(
+                "INSERT INTO core.mandato_legado (legado_id, tabela, mandato_id) VALUES (gen_random_uuid(), 'mandatos', :m)"
+            ),
+            {"m": solto},
+        )
+        assert db_loader.DatabaseLoader._mandatos_preservados(s) == 0  # vinculado, deixa de contar
         s.rollback()
+
+
+def test_arquivo_de_votos_so_com_um_dos_lados_deixa_a_execucao_em_alerta(ambiente):
+    """Sessões sem os votos (ou o contrário): o par é ignorado e nenhuma contagem acusa; a execução não pode sair OK."""
+    dados, Sessao = ambiente
+    escrever(dados, "sessoes_votacao_2023.json", [])  # sem votos_nominais_2023.json
+    carregar(dados)
+    (status, _, erro, lidas, gravadas, rejeitadas) = _execucoes(Sessao)[-1]
+    assert (lidas, gravadas, rejeitadas) == (0, 0, 0) and erro is None  # as contagens fecham
+    assert status == "COM_ALERTA"
+
+
+def test_historico_ilegivel_deixa_a_execucao_em_alerta(ambiente):
+    dados, Sessao = ambiente
+    (dados / "votacoes").mkdir()
+    (dados / "votacoes" / "camara_2023.json.gz").write_bytes(b"isto nao e gzip")
+    carregar(dados)
+    (status, *_) = _execucoes(Sessao)[-1]
+    assert status == "COM_ALERTA"
