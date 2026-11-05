@@ -354,3 +354,22 @@ def test_transacao_de_carga_confirma_desfaz_e_devolve_a_conexao(pg_engine, tabel
             raise RuntimeError
     with pg_engine.connect() as conn:
         assert [r[0] for r in conn.execute(text(f"SELECT a FROM {tabela_de_copia}"))] == ["ok"]
+
+
+def test_cursor_da_sessao_enxerga_o_flush_fica_na_transacao_da_sessao_e_fecha_o_cursor(pg_engine, tabela_de_copia):
+    from sqlalchemy.orm import sessionmaker
+
+    sessao = sessionmaker(bind=pg_engine)()
+    try:
+        sessao.execute(text(f"INSERT INTO {tabela_de_copia} (a) VALUES ('da sessao')"))  # ainda sem commit
+        with copia.cursor_da_sessao(sessao) as cursor:
+            cursor.execute(f"SELECT a FROM {tabela_de_copia}")
+            assert [r[0] for r in cursor.fetchall()] == ["da sessao"]  # a mesma transação: enxerga o que a sessão pôs
+            cursor.execute(f"INSERT INTO {tabela_de_copia} (a) VALUES ('do cursor')")
+        assert cursor.closed
+        assert {r[0] for r in sessao.execute(text(f"SELECT a FROM {tabela_de_copia}"))} == {"da sessao", "do cursor"}
+        sessao.rollback()  # quem decide é a sessão: desfazer leva as duas linhas
+    finally:
+        sessao.close()
+    with pg_engine.connect() as conn:
+        assert conn.execute(text(f"SELECT count(*) FROM {tabela_de_copia}")).scalar() == 0

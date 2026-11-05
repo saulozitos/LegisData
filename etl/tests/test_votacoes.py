@@ -15,7 +15,7 @@ from app.models import (  # noqa: E402
     StatusMandatoEnum,
     VotingSession,
 )
-from sqlalchemy import create_engine
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
 from etl.extractors import votacoes_extractor as ve  # noqa: E402
@@ -522,15 +522,17 @@ def test_run_votacoes_exige_alguma_casa(monkeypatch, tmp_path):
 
 # ---------------------------------------------------------------------------------------------- carga
 @pytest.fixture
-def banco():
-    engine = create_engine("sqlite://").execution_options(schema_translate_map={"stg": None})
-    from app.models import StagingBase
-
-    StagingBase.metadata.create_all(engine)
-    sessao = sessionmaker(bind=engine, expire_on_commit=False)()
+def banco(pg_engine):
+    """Sessão sobre o Postgres de teste (o COPY dos votos exige Postgres), com o staging limpo antes e depois."""
+    limpar = "TRUNCATE stg.votos_parlamentares, stg.sessoes_votacao, stg.mandatos, stg.proposicoes, stg.politicos, stg.partidos_politicos CASCADE"
+    with pg_engine.begin() as conn:
+        conn.execute(text(limpar))
+    sessao = sessionmaker(bind=pg_engine, expire_on_commit=False)()
     yield sessao
+    sessao.rollback()
     sessao.close()
-    engine.dispose()
+    with pg_engine.begin() as conn:
+        conn.execute(text(limpar))
 
 
 @pytest.fixture
@@ -630,6 +632,8 @@ def test_carga_cria_parlamentares_proposicao_sessao_votos_e_mandatos(banco, part
 
     assert (c["sessoes_novas"], c["sessoes_descartadas"], c["proposicoes_criadas"]) == (1, 1, 1)
     assert c["politicos_criados"] == 2 and c["mandatos_criados"] == 3  # Ana: 56 e 57; Beto: 57
+    # Contagem de votos para o registro da execução: V1 traz 3 (o 99 sem cadastro é descartado) e a V2, descartada, traz 1
+    assert (c["votos_lidos"], c["votos_processados"], c["votos_gravados"], c["votos_descartados"]) == (4, 2, 2, 2)
     sessao = banco.query(VotingSession).one()
     assert sessao.external_id == "V1" and sessao.is_approved is True
     assert sessao.government_orientation == "SIM"
@@ -674,6 +678,9 @@ def test_carga_e_idempotente_e_atualiza_orientacao(banco, partidos, tmp_path):
         banco.query(Proposition).count(),
     )
     assert antes == depois and c["sessoes_novas"] == 0 and c["sessoes_atualizadas"] == 1
+    # a recarga não duplica voto, mas os já gravados contam como gravados e a contagem continua fechando
+    assert (c["votos_lidos"], c["votos_gravados"], c["votos_descartados"]) == (4, 2, 2)
+    assert c["votos_lidos"] == c["votos_gravados"] + c["votos_descartados"]
     assert banco.query(VotingSession).one().government_orientation == "NAO"
 
 

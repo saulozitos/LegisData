@@ -40,6 +40,7 @@ def ambiente(tmp_path, monkeypatch):
     monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
     Sessao = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     monkeypatch.setattr(db_loader, "SessionLocal", Sessao)
+    monkeypatch.setattr(db_loader, "engine", engine)  # o registro da execução usa o mesmo banco de teste
 
     dados = tmp_path / "processed"
     dados.mkdir()
@@ -470,3 +471,113 @@ def test_fusao_do_staging_que_falha_sobe_para_a_etapa_nao_aparecer_como_ok(monke
     with pytest.raises(RuntimeError, match="fusão quebrou"):
         db_loader.DatabaseLoader._fundir_staging(sessao)
     sessao.rollback.assert_called_once()
+
+
+def _execucoes(sessao):
+    with sessao() as s:
+        return s.execute(
+            text(
+                "SELECT e.status, e.estagio, e.erro, e.linhas_lidas, e.linhas_gravadas, e.linhas_rejeitadas "
+                "FROM etl.execucao e JOIN etl.fonte f ON f.id = e.fonte_id WHERE f.codigo = 'LEGADO' AND e.estagio = 'CARREGAR' ORDER BY e.id"
+            )
+        ).all()
+
+
+def test_carga_registra_a_execucao_com_contagens_de_votos(ambiente):
+    dados, Sessao = ambiente
+    carregar(dados)
+    (status, estagio, erro, lidas, gravadas, rejeitadas) = _execucoes(Sessao)[-1]
+    assert (status, estagio, erro) == ("OK", "CARREGAR", None)
+    assert (lidas, gravadas, rejeitadas) == (0, 0, 0)  # sem arquivos de votação, as contagens são zero e fecham
+
+
+def test_carga_que_falha_registra_erro_so_com_a_classe_da_excecao(ambiente, monkeypatch):
+    dados, Sessao = ambiente
+
+    def explode(self, session):
+        raise RuntimeError("detalhe sigiloso: senha=abc")
+
+    monkeypatch.setattr(db_loader.DatabaseLoader, "_load_politicians", explode)
+    with pytest.raises(RuntimeError):
+        carregar(dados)
+    (status, _, erro, *_) = _execucoes(Sessao)[-1]
+    assert (status, erro) == ("ERRO", "RuntimeError")
+
+
+def test_contagem_de_votos_da_execucao_fecha_e_a_recarga_conta_os_ja_gravados(ambiente):
+    dados, Sessao = ambiente
+    proposicoes_e_votacoes(dados)
+    carregar(dados)
+    carregar(dados)  # a recarga não duplica no staging: os votos já gravados contam como gravados
+    (status, _, _, lidas, gravadas, rejeitadas) = _execucoes(Sessao)[-1]
+    with Sessao() as s:
+        no_staging = s.execute(text("SELECT count(*) FROM stg.votos_parlamentares")).scalar()
+    # 4 votos da Câmara (1 com opção desconhecida) + 3 do Senado (1 de sessão descartada, sem sessão para receber o voto)
+    assert (lidas, gravadas, rejeitadas) == (7, 5, 2)
+    assert no_staging == 5  # nenhum duplicado no staging, mesmo com `gravadas` contando as linhas já existentes
+    assert lidas == gravadas + rejeitadas
+    assert status == "COM_ALERTA"  # houve rejeitada
+
+
+def test_contagem_da_execucao_soma_os_votos_do_historico(ambiente, monkeypatch):
+    """Os votos das votações históricas entram em lidas, gravadas e rejeitadas (e não só os que casaram)."""
+    dados, Sessao = ambiente
+    proposicoes_e_votacoes(dados)
+    monkeypatch.setattr(
+        db_loader, "carregar_votacoes", lambda *a, **k: {"votos_lidos": 10, "votos_gravados": 6, "votos_descartados": 4}
+    )
+    carregar(dados)
+    (status, _, _, lidas, gravadas, rejeitadas) = _execucoes(Sessao)[-1]
+    assert (lidas, gravadas, rejeitadas) == (7 + 10, 5 + 6, 2 + 4)  # plenário (7, 5, 2) + histórico
+    assert status == "COM_ALERTA"
+
+
+def test_mandato_preservado_pela_fusao_aparece_no_log(ambiente, caplog):
+    """A 0038 poupa o mandato que algo ainda referencia: a carga avisa quantos ficaram, para não ser silencioso."""
+    from unittest.mock import MagicMock
+
+    sessao = MagicMock()
+    sessao.execute.return_value.scalar.return_value = 2
+    with caplog.at_level("WARNING", logger="DBLoader"):
+        db_loader.DatabaseLoader._fundir_staging(sessao)
+    assert any("2 mandatos da fonte LEGADO" in r.message for r in caplog.records)
+
+    caplog.clear()
+    sessao.execute.return_value.scalar.return_value = 0
+    with caplog.at_level("WARNING", logger="DBLoader"):
+        db_loader.DatabaseLoader._fundir_staging(sessao)
+    assert not caplog.records
+
+
+def test_consulta_de_mandatos_preservados_conta_so_o_mandato_legado_sem_vinculo(ambiente):
+    dados, Sessao = ambiente
+    carregar(dados)  # aplica as migrações e deixa a fusão normal: nenhum mandato poupado
+    with Sessao() as s:
+        assert db_loader.DatabaseLoader._mandatos_preservados(s) == 0
+        fonte = s.execute(text("SELECT id FROM etl.fonte WHERE codigo = 'LEGADO'")).scalar_one()
+        pessoa = s.execute(
+            text("INSERT INTO core.pessoa (nome_exibicao) VALUES ('Zt Preservado') RETURNING id")
+        ).scalar()
+
+        def mandato(cargo, inicio, fonte_id, numero=1):
+            return s.execute(
+                text(
+                    "INSERT INTO core.mandato (pessoa_id, cargo_id, circunscricao_id, inicio, fonte_id, numero_mandato) "
+                    "VALUES (:p, (SELECT id FROM ref.cargo WHERE codigo = :c), "
+                    "(SELECT id FROM ref.circunscricao WHERE tipo = 'BR'), :i, :f, :n) RETURNING id"
+                ),
+                {"p": pessoa, "c": cargo, "i": inicio, "f": fonte_id, "n": numero},
+            ).scalar_one()
+
+        vinculado = mandato("DEPUTADO_FEDERAL", "2003-02-01", fonte)
+        solto = mandato("SENADOR", "2007-02-01", fonte)
+        mandato("SENADOR", "2011-02-01", None, numero=2)  # de outra fonte (ou sem fonte): não é do LEGADO
+        s.execute(
+            text(
+                "INSERT INTO core.mandato_legado (legado_id, tabela, mandato_id) VALUES (gen_random_uuid(), 'mandatos', :m)"
+            ),
+            {"m": vinculado},
+        )
+        assert db_loader.DatabaseLoader._mandatos_preservados(s) == 1
+        assert solto != vinculado
+        s.rollback()

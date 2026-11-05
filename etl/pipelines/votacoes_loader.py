@@ -8,7 +8,6 @@ registros deixem de ficar sem vínculo. Nada é presumido: sessão sem proposiç
 
 import json
 import logging
-import uuid
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -22,7 +21,9 @@ from etl.pipelines.loader_helpers import (
     legislatura_datas,
     resolve_party_id,
 )
+from etl.pipelines.staging_votos import LinhaDeVoto, gravar_votos
 from etl.utils.bootstrap import ensure_backend_on_path
+from etl.utils.copia import cursor_da_sessao
 from etl.utils.datafiles import load_json
 from etl.utils.names import build_unique_name_map, normalize_name_tokens
 
@@ -32,7 +33,6 @@ from app.models import (  # noqa: E402
     CargoPoliticoEnum,
     CasaLegislativaEnum,
     Mandate,
-    ParliamentaryVote,
     Politician,
     Proposition,
     StatusMandatoEnum,
@@ -46,7 +46,6 @@ from app.models import (  # noqa: E402
 logger = logging.getLogger("VotacoesLoader")
 
 ANO_NUMERACAO_UNICA = 2019  # a partir daí Câmara e Senado compartilham a numeração de PL/PLP/PEC/...
-LOTE_VOTOS = 2000
 ARQUIVO_HISTORICOS = "parlamentares_legislaturas_anteriores.json"
 
 EnsureParty = Callable[[Session, Dict[str, Any], str], Any]
@@ -73,16 +72,6 @@ def _datetime(valor: Any) -> Optional[datetime]:
 
 def _status_mandato(fim: Optional[date]) -> StatusMandatoEnum:
     return StatusMandatoEnum.CONCLUIDO if fim and fim < date.today() else StatusMandatoEnum.TITULAR_ATIVO
-
-
-def _insert_ignorando_conflito(session: Session):
-    """`INSERT ... ON CONFLICT DO NOTHING` do dialeto em uso (PostgreSQL em produção, SQLite nos testes)."""
-    nome = session.get_bind().dialect.name
-    if nome == "postgresql":
-        from sqlalchemy.dialects.postgresql import insert
-    else:
-        from sqlalchemy.dialects.sqlite import insert
-    return insert(ParliamentaryVote.__table__).on_conflict_do_nothing(index_elements=["sessaoVotacaoId", "politicoId"])
 
 
 def _arquivo_confiavel(dados: Any, caminho: Path) -> bool:
@@ -116,7 +105,10 @@ class _Contexto:
             "sessoes_novas": 0,
             "sessoes_atualizadas": 0,
             "sessoes_descartadas": 0,
-            "votos_processados": 0,
+            "votos_processados": 0,  # votos que viraram linha (sessão e político conhecidos, opção válida)
+            "votos_lidos": 0,  # todos os votos que os arquivos trouxeram, inclusive os de sessão descartada
+            "votos_descartados": 0,  # lidos que não viraram linha
+            "votos_gravados": 0,  # linhas entregues ao staging: inseridas + as que já estavam
             "datas_aproximadas": 0,
         }
         self._mandatos = {
@@ -476,6 +468,13 @@ def carregar_votacoes(
     return dict(ctx.contadores)
 
 
+def _descartar_votos(ctx: _Contexto, sessao: Dict[str, Any]) -> None:
+    """Os votos de uma sessão descartada contam como lidos e descartados: não somem sem deixar rastro na execução."""
+    votos = len(sessao.get("votos") or [])
+    ctx.contadores["votos_lidos"] += votos
+    ctx.contadores["votos_descartados"] += votos
+
+
 def _carregar_arquivo(ctx: _Contexto, dados: Dict[str, Any], casa: str) -> int:
     session = ctx.session
     casa_enum = CasaLegislativaEnum.CAMARA_DOS_DEPUTADOS if casa == "CAMARA" else CasaLegislativaEnum.SENADO_FEDERAL
@@ -487,15 +486,14 @@ def _carregar_arquivo(ctx: _Contexto, dados: Dict[str, Any], casa: str) -> int:
         garantir(int(pid), info)
 
     partidos = [ctx.party_id(s) for s in dados.get("partidos") or []]
-    inseridos = 0
-    stmt = _insert_ignorando_conflito(session)
-    agora = datetime.utcnow()
+    linhas: List[LinhaDeVoto] = []
 
     for s in dados.get("sessoes") or []:
         dt = _datetime(s.get("data_hora"))
         prop_id = ctx.proposicao(s.get("proposicao") or {}, casa)
         if dt is None or prop_id is None:
             ctx.contadores["sessoes_descartadas"] += 1
+            _descartar_votos(ctx, s)
             continue
 
         aprovada = s.get("aprovada")
@@ -506,6 +504,7 @@ def _carregar_arquivo(ctx: _Contexto, dados: Dict[str, Any], casa: str) -> int:
         obj = session.query(VotingSession).filter_by(external_id=ext_id).first()
         if obj is not None and obj.legislative_house != casa_enum:
             ctx.contadores["sessoes_descartadas"] += 1
+            _descartar_votos(ctx, s)
             continue
         titulo = (s.get("proposicao") or {}).get("titulo") or "matéria"
         if obj is None:
@@ -531,24 +530,20 @@ def _carregar_arquivo(ctx: _Contexto, dados: Dict[str, Any], casa: str) -> int:
         obj.party_orientations = json.dumps(s["orientacoes"], ensure_ascii=False) if s.get("orientacoes") else None
         session.flush()
 
-        linhas: List[Dict[str, Any]] = []
-        for pol_ext, opcao, idx_partido in s.get("votos") or []:
+        antes = len(linhas)
+        votos = s.get("votos") or []
+        for pol_ext, opcao, idx_partido in votos:
             pol_id = mapa_politicos.get(int(pol_ext))
             if pol_id is None or opcao not in VotoOpcaoEnum.__members__:
                 continue
-            linhas.append(
-                {
-                    "id": uuid.uuid4(),
-                    "created_at": agora,
-                    "sessaoVotacaoId": obj.id,
-                    "politicoId": pol_id,
-                    "partidoId": partidos[idx_partido] if 0 <= idx_partido < len(partidos) else None,
-                    "voto": VotoOpcaoEnum[opcao],
-                }
-            )
-        ctx.contadores["votos_processados"] += len(linhas)
-        for i in range(0, len(linhas), LOTE_VOTOS):
-            resultado = session.execute(stmt, linhas[i : i + LOTE_VOTOS])
-            if resultado.rowcount and resultado.rowcount > 0:
-                inseridos += resultado.rowcount
+            partido = partidos[idx_partido] if 0 <= idx_partido < len(partidos) else None
+            linhas.append((obj.id, pol_id, partido, opcao))
+        aceitos = len(linhas) - antes
+        ctx.contadores["votos_processados"] += aceitos
+        ctx.contadores["votos_lidos"] += len(votos)
+        ctx.contadores["votos_descartados"] += len(votos) - aceitos
+    # Um COPY por arquivo (e não por sessão): milhares de sessões por arquivo, todas já no banco pelo `flush` do cursor
+    with cursor_da_sessao(session) as cursor:
+        inseridos, existentes = gravar_votos(cursor, linhas)
+    ctx.contadores["votos_gravados"] += inseridos + existentes
     return inseridos
