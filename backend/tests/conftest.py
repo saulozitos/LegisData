@@ -17,16 +17,8 @@ from app.core.migrations import upgrade_schema  # noqa: E402
 from app.models import (  # noqa: E402
     CargoPoliticoEnum,
     CasaLegislativaEnum,
-    Mandate,
-    ParliamentaryVote,
-    PartyAffiliation,
-    PoliticalParty,
-    Politician,
-    Proposition,
-    StagingBase,
     StatusMandatoEnum,
     TipoProposicaoEnum,
-    VotingSession,
     VotoOpcaoEnum,
 )
 from app.services import cidadania_service  # noqa: E402
@@ -35,6 +27,16 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.exc import OperationalError  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
+from tests.stg_models import (  # noqa: E402
+    Mandate,
+    ParliamentaryVote,
+    PartyAffiliation,
+    PoliticalParty,
+    Politician,
+    Proposition,
+    StagingBase,
+    VotingSession,
+)
 
 FAR_FUTURE = date(2999, 1, 31)
 

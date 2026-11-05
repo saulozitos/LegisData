@@ -24,6 +24,11 @@ def limpa(pg_engine):
             )
         )
         conn.execute(text("DELETE FROM etl.arquivo_bruto WHERE caminho LIKE '/teste/%'"))
+        ids = f"SELECT id FROM etl.execucao WHERE {FILTRO_MARCA}"
+        conn.execute(
+            text(f"DELETE FROM etl.verificacao WHERE execucao_id IN ({ids})")
+        )  # toda execução tem a de contagens
+        conn.execute(text(f"DELETE FROM etl.rejeito WHERE execucao_id IN ({ids})"))
         conn.execute(text(f"DELETE FROM etl.execucao WHERE {FILTRO_MARCA}"))
 
 
@@ -365,23 +370,77 @@ def test_transacao_de_carga_confirma_desfaz_e_devolve_a_conexao(pg_engine, tabel
         assert [r[0] for r in conn.execute(text(f"SELECT a FROM {tabela_de_copia}"))] == ["ok"]
 
 
-def test_cursor_da_sessao_da_flush_fica_na_transacao_da_sessao_e_fecha_o_cursor(pg_engine):
-    from app.models import PoliticalParty
-    from sqlalchemy.orm import sessionmaker
-
-    sigla = f"ZTCS{os.getpid()}"
-    sessao = sessionmaker(bind=pg_engine, autoflush=False)()
-    try:
-        sessao.add(PoliticalParty(acronym=sigla, full_name="Partido de teste"))  # pendente: sem flush nem commit
-        with copia.cursor_da_sessao(sessao) as cursor:
-            cursor.execute("SELECT count(*) FROM stg.partidos_politicos WHERE sigla = %s", (sigla,))
-            assert cursor.fetchone()[0] == 1  # o `flush` do helper levou o objeto à transação antes do cursor ler
-        assert cursor.closed
-        sessao.rollback()  # quem decide é a sessão: desfazer leva a linha
-    finally:
-        sessao.close()
+# ---------------------------------------------------------------------------------------------- verificações e rejeitos
+def _verificacoes(pg_engine, execucao_id):
     with pg_engine.connect() as conn:
-        assert (
-            conn.execute(text("SELECT count(*) FROM stg.partidos_politicos WHERE sigla = :s"), {"s": sigla}).scalar()
-            == 0
-        )
+        return {
+            r.nome: (r.passou, r.detalhe)
+            for r in conn.execute(
+                text("SELECT nome, passou, detalhe FROM etl.verificacao WHERE execucao_id = :id"), {"id": execucao_id}
+            )
+        }
+
+
+def test_verificacoes_medidas_e_a_de_contagens_vao_para_etl_verificacao(pg_engine):
+    from etl.utils.verificacoes import cobertura_minima, sem_duplicatas
+
+    with execucao.registrar_execucao(pg_engine, "CAMARA_CSV", "CARREGAR", MARCA) as e:
+        e.lidas, e.gravadas, e.rejeitadas = 10, 10, 0
+        e.verificar(sem_duplicatas("ids_unicos", [1, 2, 3]))
+        e.verificar(cobertura_minima("cobertura", 10, 10))
+    registradas = _verificacoes(pg_engine, e.id)
+    assert set(registradas) == {"ids_unicos", "cobertura", "contagens"}
+    assert all(passou for passou, _ in registradas.values())
+    assert _linha(pg_engine, e.id).status == "OK"
+
+
+def test_verificacao_reprovada_deixa_a_execucao_em_alerta_e_o_detalhe_explica(pg_engine):
+    from etl.utils.verificacoes import sem_duplicatas
+
+    with execucao.registrar_execucao(pg_engine, "CAMARA_CSV", "CARREGAR", MARCA) as e:
+        e.lidas, e.gravadas, e.rejeitadas = 3, 3, 0  # as contagens fecham e nada foi rejeitado
+        e.verificar(sem_duplicatas("ids_unicos", [1, 1, 2]))
+    passou, detalhe = _verificacoes(pg_engine, e.id)["ids_unicos"]
+    assert passou is False and detalhe["repetidas"] == 1
+    assert _linha(pg_engine, e.id).status == "COM_ALERTA"
+
+
+def test_contagem_desconhecida_registra_a_verificacao_reprovada_sem_virar_zero(pg_engine):
+    with execucao.registrar_execucao(pg_engine, "CAMARA_CSV", "CARREGAR", MARCA) as e:
+        pass  # nenhuma contagem informada
+    assert _verificacoes(pg_engine, e.id)["contagens"][0] is False
+    linha = _linha(pg_engine, e.id)
+    assert (linha.linhas_lidas, linha.linhas_gravadas, linha.linhas_rejeitadas) == (None, None, None)
+
+
+def test_rejeitadas_por_motivo_viram_um_registro_agregado_em_etl_rejeito(pg_engine):
+    contagem = execucao.Contagem()
+    for _ in range(5):
+        contagem.ler()
+    contagem.gravar(3)
+    contagem.rejeitar("NAO_CADASTRADO", 2)
+    with execucao.registrar_execucao(pg_engine, "CAMARA_CSV", "CARREGAR", {**MARCA, "recurso": "demo"}) as e:
+        e.aplicar(contagem)
+    with pg_engine.connect() as conn:
+        rejeitos = conn.execute(
+            text("SELECT recurso, motivo, (payload->>'total')::int FROM etl.rejeito WHERE execucao_id = :id"),
+            {"id": e.id},
+        ).all()
+    assert [tuple(r) for r in rejeitos] == [("demo", "NAO_CADASTRADO", 2)]
+    linha = _linha(pg_engine, e.id)
+    assert (linha.status, linha.linhas_lidas, linha.linhas_gravadas, linha.linhas_rejeitadas) == ("COM_ALERTA", 5, 3, 2)
+
+
+def test_contagem_soma_motivos_e_fecha():
+    a, b = execucao.Contagem(lidas=3, gravadas=2), execucao.Contagem(lidas=2, gravadas=1)
+    a.rejeitar("X")
+    b.rejeitar("X")
+    b.rejeitar("Y")
+    soma = a + b
+    assert (soma.lidas, soma.gravadas, soma.rejeitadas, soma.motivos) == (5, 3, 3, {"X": 2, "Y": 1})
+    assert soma.lidas != soma.gravadas + soma.rejeitadas  # o exemplo não fecha de propósito: quem confere é a execução
+
+
+def test_fonte_da_esteira_existe_depois_da_migracao_0039(pg_engine):
+    with pg_engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM etl.fonte WHERE codigo = 'PIPELINE'")).scalar() == 1

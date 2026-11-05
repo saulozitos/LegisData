@@ -4,9 +4,19 @@ from datetime import date, datetime, timezone
 
 import pytest
 from app.models import (
-    AttendanceRecord,
     CargoPoliticoEnum,
     CasaLegislativaEnum,
+    StatusTramitacaoEnum,
+    TipoAutoriaEnum,
+    TipoPresencaEnum,
+    TipoProposicaoEnum,
+    VotoOpcaoEnum,
+)
+from app.services.staging_merge import merge_staging
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from tests.stg_models import (
+    AttendanceRecord,
     Mandate,
     OrientacaoPartidaria,
     ParliamentaryVote,
@@ -14,18 +24,10 @@ from app.models import (
     Politician,
     Proposition,
     PropositionAuthor,
-    StatusTramitacaoEnum,
-    TipoAutoriaEnum,
-    TipoPresencaEnum,
-    TipoProposicaoEnum,
     VotacaoProposicao,
     VotingSession,
     VotoNominal,
-    VotoOpcaoEnum,
 )
-from app.services.staging_merge import merge_staging
-from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
 
 FAR_FUTURE = date(2999, 1, 31)
 INSTANTE = datetime(2023, 5, 4, 12, 0, tzinfo=timezone.utc)
@@ -365,7 +367,7 @@ def test_python_loader_is_strict(db):
 
 
 def test_author_is_scored_in_the_party_he_belonged_to_when_the_bill_was_filed(db, cenario):
-    from app.models import PartyAffiliation
+    from tests.stg_models import PartyAffiliation
 
     ana, pt, pl = cenario["ana"], cenario["pt"], cenario["pl"]
     db.add_all(
@@ -429,8 +431,8 @@ def test_placar_counts_nominal_votes_and_falls_back_to_source_totals(db, cenario
 
 
 def test_party_seat_days_follow_affiliation_changes_inside_the_period(db, cenario):
-    from app.models import PartyAffiliation
     from app.services.party_productivity_service import calculate_party_active_seats
+    from tests.stg_models import PartyAffiliation
 
     ana = cenario["ana"]
     db.add_all(
@@ -470,7 +472,7 @@ def test_seat_days_exclude_the_period_holder_serves_as_minister(db, cenario):
     )
     db.add(mandato_pres)
     db.flush()
-    from app.models import CabinetMember, PartyAffiliation
+    from tests.stg_models import CabinetMember, PartyAffiliation
 
     db.add_all(
         [

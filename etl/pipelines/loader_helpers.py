@@ -1,6 +1,6 @@
 """
 Funções puras da carga (sem acesso a banco): conversões, classificação, resolução de autores e de partidos.
-Separadas do `db_loader` para poderem ser testadas sem Postgres e reutilizadas pelos scripts de saneamento.
+Separadas das cargas para poderem ser testadas sem Postgres e reutilizadas pelos scripts de saneamento.
 """
 
 import math

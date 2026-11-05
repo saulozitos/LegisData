@@ -4,10 +4,11 @@ from datetime import date
 
 import pytest
 from app.api.v1.politicians import _status_do_mandato
-from app.models import CargoPoliticoEnum, PartyAffiliation
+from app.models import CargoPoliticoEnum
 from app.models.enums import MotivoDesfiliacaoEnum, StatusMandatoEnum
 from app.services import politico_service
 from sqlalchemy import text
+from tests.stg_models import PartyAffiliation
 
 BASE = "/api/v1/politicians"
 

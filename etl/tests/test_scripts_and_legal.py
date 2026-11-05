@@ -3,35 +3,33 @@
 from datetime import date
 
 import pytest
-from app.models import (
-    Politician,
-    Proposition,
-    StagingBase,
-)
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
+from etl.pipelines import stg_tabela
 from etl.scripts.diagnose_anomalies import nome_aparece
 from etl.scripts.fix_author_associations import sanitize_all_proposition_authors
+from etl.utils.copia import transacao_de_carga
+
+LIMPAR = "TRUNCATE stg.votos_parlamentares, stg.sessoes_votacao, stg.proposicoes, stg.politicos CASCADE"
 
 
 @pytest.fixture
-def sessao():
-    engine = create_engine("sqlite://").execution_options(schema_translate_map={"stg": None})
-    StagingBase.metadata.create_all(engine)
-    with sessionmaker(bind=engine, autoflush=False)() as s:
-        yield s
+def staging(pg_engine):
+    """O staging limpo antes e depois: o saneamento lê e grava `stg.politicos` e `stg.proposicoes`."""
+    from sqlalchemy import text
+
+    with pg_engine.begin() as conn:
+        conn.execute(text(LIMPAR))
+    yield pg_engine
+    with pg_engine.begin() as conn:
+        conn.execute(text(LIMPAR))
 
 
-def politico(s, eleitoral, civil=None):
-    p = Politician(civil_name=civil or eleitoral, electoral_name=eleitoral)
-    s.add(p)
-    s.flush()
-    return p
+def politico(tabela, eleitoral, civil=None):
+    return tabela.nova(civil_name=civil or eleitoral, electoral_name=eleitoral)
 
 
-def proposicao(s, numero, autor_nome, autor_id):
-    pr = Proposition(
+def proposicao(tabela, numero, autor_nome, autor_id):
+    return tabela.nova(
         proposition_type="PL",
         number=numero,
         year=2023,
@@ -41,44 +39,56 @@ def proposicao(s, numero, autor_nome, autor_id):
         author_name=autor_nome,
         author_politician_id=autor_id,
     )
-    s.add(pr)
-    s.flush()
-    return pr
 
 
-def test_saneamento_reatribui_falso_positivo_sem_remover_vinculo_correto(sessao):
-    edu = politico(sessao, "Eduardo Bolsonaro", "Eduardo Nantes Bolsonaro")
-    dino = politico(sessao, "Flávio Dino")
-    joao = politico(sessao, "João da Silva")
-    errada = proposicao(sessao, 1, "Flávio Dino", edu.id)  # vínculo errado (caso clássico)
-    certa = proposicao(sessao, 2, "Joao da Silva", joao.id)  # sem acento na fonte: antes o vínculo era APAGADO
-    sem_pessoa = proposicao(sessao, 3, "Poder Executivo", edu.id)
-    desconhecida = proposicao(sessao, 4, "Maria Qualquer", edu.id)  # nada em comum com o político atual
-    coautor = proposicao(sessao, 5, "Eduardo Bolsonaro, Flávio Dino", edu.id)  # primeiro signatário correto
-    sessao.commit()
+def _autor(engine, identificador):
+    with transacao_de_carga(engine) as cursor:
+        return next(p.author_politician_id for p in stg_tabela.proposicoes().carregar(cursor) if p.id == identificador)
+
+
+def _sanear(engine, apply):
+    with transacao_de_carga(engine) as cursor:
+        resultado = sanitize_all_proposition_authors(cursor, apply=apply)
+        if not apply:
+            cursor.connection.rollback()  # simulação: nada fica
+    return resultado
+
+
+def test_saneamento_reatribui_falso_positivo_sem_remover_vinculo_correto(staging):
+    pessoas, props = stg_tabela.politicos(), stg_tabela.proposicoes()
+    edu = politico(pessoas, "Eduardo Bolsonaro", "Eduardo Nantes Bolsonaro")
+    dino = politico(pessoas, "Flávio Dino")
+    joao = politico(pessoas, "João da Silva")
+    errada = proposicao(props, 1, "Flávio Dino", edu.id)  # vínculo errado (caso clássico)
+    certa = proposicao(props, 2, "Joao da Silva", joao.id)  # sem acento na fonte: antes o vínculo era APAGADO
+    sem_pessoa = proposicao(props, 3, "Poder Executivo", edu.id)
+    desconhecida = proposicao(props, 4, "Maria Qualquer", edu.id)  # nada em comum com o político atual
+    coautor = proposicao(props, 5, "Eduardo Bolsonaro, Flávio Dino", edu.id)  # primeiro signatário correto
+    with transacao_de_carga(staging) as cursor:
+        pessoas.gravar(cursor)
+        props.gravar(cursor)
 
     # Padrão: simulação, nada é gravado
-    resultado = sanitize_all_proposition_authors(sessao, apply=False)
+    resultado = _sanear(staging, apply=False)
     assert resultado["reatribuidos"] == 1 and resultado["desvinculados"] == 2
-    sessao.expire_all()
-    assert sessao.get(Proposition, errada.id).author_politician_id == edu.id
+    assert _autor(staging, errada.id) == edu.id
 
-    sanitize_all_proposition_authors(sessao, apply=True)
-    sessao.expire_all()
-    assert sessao.get(Proposition, errada.id).author_politician_id == dino.id
-    assert sessao.get(Proposition, certa.id).author_politician_id == joao.id
-    assert sessao.get(Proposition, sem_pessoa.id).author_politician_id is None
-    assert sessao.get(Proposition, desconhecida.id).author_politician_id is None
-    assert sessao.get(Proposition, coautor.id).author_politician_id == edu.id
+    _sanear(staging, apply=True)
+    assert _autor(staging, errada.id) == dino.id
+    assert _autor(staging, certa.id) == joao.id
+    assert _autor(staging, sem_pessoa.id) is None
+    assert _autor(staging, desconhecida.id) is None
+    assert _autor(staging, coautor.id) == edu.id
 
 
-def test_saneamento_tolera_nomes_nulos(sessao):
-    p = Politician(civil_name="Fulano", electoral_name="Fulano")
-    sessao.add(p)
-    sessao.flush()
-    proposicao(sessao, 1, None, p.id)
-    sessao.commit()
-    assert sanitize_all_proposition_authors(sessao, apply=True)["total_analisado"] == 1
+def test_saneamento_tolera_nomes_nulos(staging):
+    pessoas, props = stg_tabela.politicos(), stg_tabela.proposicoes()
+    p = politico(pessoas, "Fulano")
+    proposicao(props, 1, None, p.id)
+    with transacao_de_carga(staging) as cursor:
+        pessoas.gravar(cursor)
+        props.gravar(cursor)
+    assert _sanear(staging, apply=True)["total_analisado"] == 1
 
 
 def test_diagnostico_ignora_nome_vazio_e_acentos():

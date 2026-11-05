@@ -1,7 +1,7 @@
 """
 Saneamento de vínculos de autoria legislativa (proposição -> político).
 
-Reaplica a MESMA regra do loader (`AuthorResolver`): primeiro signatário, nome completo normalizado e inequívoco.
+Reaplica a MESMA regra da carga (`AuthorResolver`): primeiro signatário, nome completo normalizado e inequívoco.
 Corrige falsos positivos de versões antigas — como as proposições atribuídas a Eduardo Bolsonaro por colisão de
 tokens ("Flávio Dino" -> "Flávio") — sem nomes hardcoded e sem remover vínculos corretos.
 
@@ -16,9 +16,10 @@ import argparse
 import logging
 from typing import Any, Dict, Optional
 
-from sqlalchemy.orm import Session
-
+from etl.pipelines import stg_tabela
+from etl.pipelines.loader_helpers import AuthorResolver
 from etl.utils.bootstrap import ensure_backend_on_path
+from etl.utils.copia import transacao_de_carga
 from etl.utils.names import NON_PERSON_AUTHORS, first_signatory, normalize_name_tokens
 
 ensure_backend_on_path()
@@ -33,18 +34,15 @@ def tokens_do_politico(pol: Any) -> set:
     return toks
 
 
-def sanitize_all_proposition_authors(db: Session, apply: bool = False) -> Dict[str, int]:
-    from app.models.legislative import Proposition
-    from app.models.politician import Politician
-
-    from etl.pipelines.db_loader import AuthorResolver
-
-    politicos = db.query(Politician).all()
+def sanitize_all_proposition_authors(cursor: Any, apply: bool = False) -> Dict[str, int]:
+    """Saneia `stg.proposicoes.autorPoliticoId` na transação do cursor; só grava com `apply` (o chamador confirma)."""
+    politicos = list(stg_tabela.politicos().carregar(cursor))
+    proposicoes = stg_tabela.proposicoes().carregar(cursor)
     por_id = {p.id: p for p in politicos}
     # camara_id/senado_id vazios: aqui só a regra por nome é necessária
     resolver = AuthorResolver(politicos, deputy_map={}, senator_map={})
 
-    props = db.query(Proposition).filter(Proposition.author_politician_id.isnot(None)).all()
+    props = [p for p in proposicoes if p.author_politician_id is not None]
     resultado = {"total_analisado": len(props), "total_corrigidos": 0, "reatribuidos": 0, "desvinculados": 0}
 
     for prop in props:
@@ -74,9 +72,8 @@ def sanitize_all_proposition_authors(db: Session, apply: bool = False) -> Dict[s
             resultado["total_corrigidos"] += 1
 
     if apply:
-        db.commit()
+        proposicoes.gravar(cursor)
     else:
-        db.rollback()
         logger.warning("DRY-RUN: nenhuma alteração gravada. Use --apply para persistir.")
     return resultado
 
@@ -86,10 +83,12 @@ def main(argv: Optional[list] = None) -> Dict[str, int]:
     parser.add_argument("--apply", action="store_true", help="Grava as correções (padrão: apenas simula).")
     args = parser.parse_args(argv)
 
-    from app.core.database import SessionLocal
+    from app.core.database import engine
 
-    with SessionLocal() as session:
-        res = sanitize_all_proposition_authors(session, apply=args.apply)
+    with transacao_de_carga(engine) as cursor:
+        res = sanitize_all_proposition_authors(cursor, apply=args.apply)
+        if not args.apply:
+            cursor.connection.rollback()
     print("Resultado do saneamento de autoria:")
     print(f"  Proposições analisadas: {res['total_analisado']}")
     print(f"  Vínculos reatribuídos:  {res['reatribuidos']}")

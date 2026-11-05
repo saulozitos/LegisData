@@ -4,19 +4,10 @@ from datetime import date, datetime, timezone
 
 import psycopg2.errors
 import pytest
-from app.models import (
-    CasaLegislativaEnum,
-    PoliticalParty,
-    Politician,
-    Proposition,
-    StatusTramitacaoEnum,
-    TipoProposicaoEnum,
-    VotingSession,
-)
 from sqlalchemy import text
-from sqlalchemy.orm import sessionmaker
 
 from etl.pipelines.staging_votos import ContagemDeVotos, gravar_votos
+from etl.tests.stg_consulta import PoliticalParty, Politician, Proposition, Sessao, VotingSession
 from etl.utils import copia
 
 LIMPAR = (
@@ -29,32 +20,30 @@ LIMPAR = (
 def base(pg_engine):
     with pg_engine.begin() as conn:
         conn.execute(text(LIMPAR))
-    sessao = sessionmaker(bind=pg_engine, expire_on_commit=False)()
+    sessao = Sessao(pg_engine)
     partido = PoliticalParty(acronym="ZTV", full_name="Partido ZTV")
     politicos = [
         Politician(civil_name=f"Pessoa {i}", electoral_name=f"Pessoa {i}", camara_id=900 + i) for i in range(3)
     ]
     prop = Proposition(
         external_camara_id=777,
-        proposition_type=TipoProposicaoEnum.PL,
+        proposition_type="PL",
         number=1,
         year=2023,
         title="PL 1/2023",
         summary="x",
         presentation_date=date(2023, 1, 1),
-        status=StatusTramitacaoEnum.EM_TRAMITACAO,
+        status="EM_TRAMITACAO",
     )
-    sessao.add_all([partido, prop, *politicos])
-    sessao.flush()
     votacao = VotingSession(
         external_id="zt-1",
         proposition_id=prop.id,
-        legislative_house=CasaLegislativaEnum.CAMARA_DOS_DEPUTADOS,
+        legislative_house="CAMARA_DOS_DEPUTADOS",
         session_datetime=datetime(2023, 5, 1, tzinfo=timezone.utc),
         agenda_title="t",
         is_approved=True,
     )
-    sessao.add(votacao)
+    sessao.add_all([partido, prop, *politicos, votacao])
     sessao.commit()
     yield pg_engine, votacao.id, [p.id for p in politicos], partido.id
     sessao.close()

@@ -199,6 +199,13 @@ python etl/run_etl.py --load-economia    # semeia do git só a CEAP/emendas que 
 ```
 Para recarregar CEAP e emendas dos arquivos gerados à mão: `--load-economia --recarregar-ceap-emendas`.
 
+Reexecutar uma fonte sem tocar nas outras, e ver o que cada uma carregou (linhas, rejeitos por motivo, verificações):
+```bash
+python -m etl.run_etl --listar-fontes
+python -m etl.run_etl --fonte votacoes --estagio carregar    # extrair, carregar ou tudo (padrão)
+python -m etl.run_etl --relatorio                            # relatório das execuções das últimas 24 horas
+```
+
 ### Passo 5: Iniciar o Backend (FastAPI)
 ```bash
 make backend-dev

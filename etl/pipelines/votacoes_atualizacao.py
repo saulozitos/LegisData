@@ -1,8 +1,8 @@
 """
 Atualização das votações nominais (Câmara e Senado) sem refazer a carga completa do banco.
 
-Extrai os anos pedidos, carrega só as votações no schema legado (mesmos mapas de partidos, deputados e senadores que a
-carga completa monta) e sincroniza o resultado para `leg` pela ponte. Idempotente.
+Extrai os anos pedidos, carrega só as votações no staging (mesmos mapas de partidos, deputados e senadores que a carga
+completa usa) e funde o resultado em `leg`. Idempotente.
 """
 
 import logging
@@ -11,15 +11,13 @@ from typing import Any, Dict, Optional
 
 from etl.config import PROCESSED_DATA_DIR
 from etl.extractors.votacoes_extractor import run_votacoes
-from etl.pipelines.db_loader import DatabaseLoader
-from etl.pipelines.votacoes_loader import carregar_votacoes
+from etl.pipelines.carga_cadastro import CargaCadastro
 from etl.utils.bootstrap import ensure_backend_on_path
 from etl.utils.manutencao import posprocessar_carga
 
 ensure_backend_on_path()
 
-from app.core.database import SessionLocal, engine  # noqa: E402
-from app.services.staging_merge import merge_staging  # noqa: E402
+from app.core.database import engine  # noqa: E402
 
 logger = logging.getLogger("VotacoesAtualizacao")
 
@@ -27,22 +25,17 @@ logger = logging.getLogger("VotacoesAtualizacao")
 def atualizar(ano_inicio: Optional[int] = None, force: bool = False, sincronizar: bool = True) -> Dict[str, Any]:
     """Extrai de `ano_inicio` (padrão: ano anterior) até hoje, carrega e sincroniza com o schema novo.
 
-    Com `sincronizar=False` só o legado é atualizado: quem chama (a consolidação diária) roda a ponte uma única vez
+    Com `sincronizar=False` só o staging é atualizado: quem chama (a consolidação diária) roda a fusão uma única vez
     depois, em vez de reconstruir `leg.voto` a cada etapa.
     """
     hoje = date.today()
     anos = list(range(ano_inicio or hoje.year - 1, hoje.year + 1))
     extracao = run_votacoes(anos=anos, force=force)
-    carregador = DatabaseLoader(data_dir=PROCESSED_DATA_DIR)
-    with SessionLocal() as sessao:
-        sessao.autoflush = True
-        mapa_partidos = carregador._load_political_parties(sessao)
-        _, mapa_deputados, mapa_senadores = carregador._load_politicians(sessao)
-        contadores = carregar_votacoes(
-            sessao, PROCESSED_DATA_DIR, mapa_deputados, mapa_senadores, mapa_partidos, carregador._ensure_party
-        )
-        sessao.commit()
-        ponte = merge_staging(sessao) if sincronizar else None
+    # Os mapas de partido, deputado e senador saem do próprio staging: partidos e políticos são recarregados antes (idempotente)
+    carga = CargaCadastro(data_dir=PROCESSED_DATA_DIR, engine=engine)
+    carga.load_all(recursos=["partidos", "politicos", "votacoes_historico"], fundir=sincronizar, migrar=False)
+    contadores = {recurso: vars(contagem) for recurso, contagem in carga.contagens.items()}
+    ponte = carga.resumo_fusao
     if sincronizar:
         posprocessar_carga(engine)  # sem fusão, quem chamou (o cron diário) roda `posprocessar_carga` depois
     resumo = {"anos": anos, "extracao": {k: v for k, v in extracao.items() if k != "parlamentares_historicos"}}

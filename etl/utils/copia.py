@@ -146,18 +146,3 @@ def transacao_de_carga(engine: Any) -> Iterator[Any]:
         raise
     finally:
         conexao.close()
-
-
-@contextmanager
-def cursor_da_sessao(session: Any) -> Iterator[Any]:
-    """
-    Um cursor DB-API na MESMA transação de uma `Session` do ORM: o `COPY` enxerga o que a sessão já gravou e a sessão
-    enxerga o que o `COPY` gravou. Antes, `flush()` entrega à transação o que o ORM ainda guardava (sessões novas que o
-    COPY referencia). Quem confirma ou desfaz é a sessão; aqui só o cursor é fechado.
-    """
-    session.flush()
-    cursor = session.connection().connection.cursor()
-    try:
-        yield cursor
-    finally:
-        cursor.close()

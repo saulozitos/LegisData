@@ -57,8 +57,8 @@ def _arquivo(recurso, ano, caminho):
 @pytest.fixture()
 def carga_lote(db, pg_engine, tmp_path):
     """Duas proposições de 2024 e uma de 2023 com autores de vários tipos, carregadas pelo caminho real."""
-    from app.models import PoliticalParty
     from app.services.staging_merge import merge_staging
+    from tests.stg_models import PoliticalParty
 
     db.add(PoliticalParty(acronym="REPUBLICANOS", full_name="Republicanos"))  # destino do alias "REPUBLIC"
     db.commit()
@@ -408,8 +408,9 @@ def test_layout_change_in_the_source_is_detected(db, pg_engine, tmp_path):
 
 
 def test_bridge_adopts_the_legacy_uid_of_a_proposition_loaded_in_bulk(db, carga_lote):
-    from app.models import Proposition, StatusTramitacaoEnum, TipoProposicaoEnum
+    from app.models import StatusTramitacaoEnum, TipoProposicaoEnum
     from app.services.staging_merge import merge_staging
+    from tests.stg_models import Proposition
 
     legado = Proposition(
         proposition_type=TipoProposicaoEnum.PL,

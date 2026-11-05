@@ -3,16 +3,11 @@
 import uuid
 from datetime import date, datetime, timezone
 
-from app.models import AttendanceRecord, CasaLegislativaEnum, PoliticalParty
-from app.models.legislative import (
-    Proposition,
-    PropositionAuthor,
-    TipoAutoriaEnum,
-    TipoProposicaoEnum,
-    VotacaoProposicao,
-)
+from app.models import CasaLegislativaEnum
+from app.models.enums import TipoAutoriaEnum, TipoProposicaoEnum
 from app.services.staging_merge import merge_staging
 from sqlalchemy import text
+from tests.stg_models import AttendanceRecord, PoliticalParty, Proposition, PropositionAuthor, VotacaoProposicao
 
 BASE = "/api/v1"
 

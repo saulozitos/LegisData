@@ -294,15 +294,19 @@ def test_posprocessamento_da_esteira_devolve_o_estado_dos_derivados(monkeypatch)
     assert run_etl._posprocessar() == "falhou" == manutencao.ESTADO_FALHOU
 
 
-def test_ponto_de_entrada_proprio_do_db_loader_posprocessa_depois_da_carga(monkeypatch):
-    """`python -m etl.pipelines.db_loader` não passa pela esteira nem pelo cron: ele mesmo roda o pós-processamento."""
-    from etl.pipelines import db_loader
+def test_ponto_de_entrada_proprio_da_carga_do_cadastro_posprocessa_depois_da_carga(monkeypatch):
+    """`python -m etl.pipelines.carga_cadastro` não passa pela esteira nem pelo cron: ele mesmo roda o pós-processamento."""
+    from etl.pipelines import carga_cadastro
 
     ordem = []
-    monkeypatch.setattr(db_loader.DatabaseLoader, "load_all", lambda self: ordem.append("carga") or {"x": 1})
-    monkeypatch.setattr(db_loader, "posprocessar_carga", lambda motor: ordem.append(("pos", motor)))
-    assert db_loader.main([]) == {"x": 1}
-    assert ordem == ["carga", ("pos", db_loader.engine)]
+    monkeypatch.setattr(
+        carga_cadastro.CargaCadastro,
+        "load_all",
+        lambda self, recursos=None, fundir=True: ordem.append("carga") or {"x": 1},
+    )
+    monkeypatch.setattr(carga_cadastro, "posprocessar_carga", lambda motor: ordem.append(("pos", motor)))
+    assert carga_cadastro.main([]) == {"x": 1}
+    assert ordem == ["carga", ("pos", carga_cadastro.engine_padrao)]
 
 
 def _pontos_de_entrada_das_cargas():

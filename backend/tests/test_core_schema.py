@@ -3,19 +3,11 @@
 from datetime import date
 
 import pytest
-from app.models import (
-    CabinetMember,
-    CargoPoliticoEnum,
-    Mandate,
-    MotivoDesfiliacaoEnum,
-    PartyAffiliation,
-    PoliticalParty,
-    Politician,
-    StatusMandatoEnum,
-)
+from app.models import CargoPoliticoEnum, MotivoDesfiliacaoEnum, StatusMandatoEnum
 from app.services.staging_merge import merge_staging
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
+from tests.stg_models import CabinetMember, Mandate, PartyAffiliation, PoliticalParty, Politician
 
 FAR_FUTURE = date(2999, 1, 31)
 
@@ -493,7 +485,7 @@ def test_party_alias_resolves_old_spellings(db):
 
 
 def test_staging_orm_models_match_the_migrated_database(pg_engine):
-    from app.models import StagingBase
+    from tests.stg_models import StagingBase
 
     inspector = inspect(pg_engine)
     faltando = []

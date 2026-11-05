@@ -10,8 +10,6 @@ import logging
 from collections import defaultdict
 from typing import Optional
 
-from sqlalchemy import func
-
 from etl.utils.bootstrap import ensure_backend_on_path
 from etl.utils.names import first_signatory, normalize_name_tokens
 
@@ -30,45 +28,45 @@ def nome_aparece(nome_politico: Optional[str], autor: Optional[str]) -> bool:
 
 
 def diagnose_anomalies() -> None:
-    from app.core.database import SessionLocal
-    from app.models.legislative import Proposition
-    from app.models.politician import Politician
+    from app.core.database import engine
 
-    with SessionLocal() as db:
-        ranking = (
-            db.query(
-                Politician.id, Politician.electoral_name, Politician.civil_name, func.count(Proposition.id).label("n")
-            )
-            .join(Proposition, Proposition.author_politician_id == Politician.id)
-            .group_by(Politician.id)
-            .order_by(func.count(Proposition.id).desc())
-            .all()
-        )
-        print(f"Total de políticos com proposições: {len(ranking)}")
+    from etl.pipelines import stg_tabela
+    from etl.utils.copia import transacao_de_carga
 
-        top = ranking[:LIMITE_TOP]
-        ids = [r[0] for r in top]
-        # Um único SELECT para todos os autores do top (antes: um por político)
-        autores_por_pol = defaultdict(list)
-        for pol_id, autor in db.query(Proposition.author_politician_id, Proposition.author_name).filter(
-            Proposition.author_politician_id.in_(ids)
-        ):
-            autores_por_pol[pol_id].append(autor)
+    with transacao_de_carga(engine) as cursor:
+        politicos = {p.id: p for p in stg_tabela.politicos().carregar(cursor)}
+        proposicoes = list(stg_tabela.proposicoes().carregar(cursor))
 
-        print(f"\n=== TOP {LIMITE_TOP} POLÍTICOS COM MAIS PROPOSIÇÕES ===")
-        for i, (pol_id, elec_name, civil_name, total) in enumerate(top, start=1):
-            suspeitos = [
-                a for a in autores_por_pol[pol_id] if not (nome_aparece(elec_name, a) or nome_aparece(civil_name, a))
-            ]
-            if not suspeitos and total <= LIMITE_VOLUME_ALTO:
-                continue
-            print(f"\n{i}. {elec_name} (ID: {pol_id}) - {total} proposições")
-            print(f"   Nome Civil: {civil_name}")
-            if suspeitos:
-                print(f"   ALERTA: {len(suspeitos)} proposições suspeitas ({len(suspeitos) / total * 100:.1f}%)")
-                print("   Exemplos de author_name suspeitos:")
-                for nome in list(dict.fromkeys(suspeitos))[:10]:
-                    print(f"     - {nome}")
+    # Um único passe pelas proposições (antes: uma consulta por político)
+    autores_por_pol = defaultdict(list)
+    for prop in proposicoes:
+        if prop.author_politician_id in politicos:
+            autores_por_pol[prop.author_politician_id].append(prop.author_name)
+    ranking = sorted(
+        (
+            (pol_id, politicos[pol_id].electoral_name, politicos[pol_id].civil_name, len(autores))
+            for pol_id, autores in autores_por_pol.items()
+        ),
+        key=lambda r: r[3],
+        reverse=True,
+    )
+    print(f"Total de políticos com proposições: {len(ranking)}")
+
+    top = ranking[:LIMITE_TOP]
+    print(f"\n=== TOP {LIMITE_TOP} POLÍTICOS COM MAIS PROPOSIÇÕES ===")
+    for i, (pol_id, elec_name, civil_name, total) in enumerate(top, start=1):
+        suspeitos = [
+            a for a in autores_por_pol[pol_id] if not (nome_aparece(elec_name, a) or nome_aparece(civil_name, a))
+        ]
+        if not suspeitos and total <= LIMITE_VOLUME_ALTO:
+            continue
+        print(f"\n{i}. {elec_name} (ID: {pol_id}) - {total} proposições")
+        print(f"   Nome Civil: {civil_name}")
+        if suspeitos:
+            print(f"   ALERTA: {len(suspeitos)} proposições suspeitas ({len(suspeitos) / total * 100:.1f}%)")
+            print("   Exemplos de author_name suspeitos:")
+            for nome in list(dict.fromkeys(suspeitos))[:10]:
+                print(f"     - {nome}")
 
 
 def main(argv: Optional[list] = None) -> None:

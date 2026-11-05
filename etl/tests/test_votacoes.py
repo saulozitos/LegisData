@@ -5,21 +5,21 @@ import os
 from datetime import date
 
 import pytest
-from app.models import (  # noqa: E402
-    CargoPoliticoEnum,
+from sqlalchemy import text
+
+from etl.extractors import votacoes_extractor as ve  # noqa: E402
+from etl.pipelines import staging_votacoes as vl  # noqa: E402
+from etl.pipelines import stg_tabela  # noqa: E402
+from etl.tests.stg_consulta import (  # noqa: E402
     Mandate,
     ParliamentaryVote,
     PoliticalParty,
     Politician,
     Proposition,
-    StatusMandatoEnum,
+    Sessao,
     VotingSession,
 )
-from sqlalchemy import text
-from sqlalchemy.orm import sessionmaker
-
-from etl.extractors import votacoes_extractor as ve  # noqa: E402
-from etl.pipelines import votacoes_loader as vl  # noqa: E402
+from etl.utils.copia import transacao_de_carga  # noqa: E402
 
 
 # ---------------------------------------------------------------------------------------------- utilidades de parsing
@@ -527,9 +527,8 @@ def banco(pg_engine):
     limpar = "TRUNCATE stg.votos_parlamentares, stg.sessoes_votacao, stg.mandatos, stg.proposicoes, stg.politicos, stg.partidos_politicos CASCADE"
     with pg_engine.begin() as conn:
         conn.execute(text(limpar))
-    sessao = sessionmaker(bind=pg_engine, expire_on_commit=False)()
+    sessao = Sessao(pg_engine)
     yield sessao
-    sessao.rollback()
     sessao.close()
     with pg_engine.begin() as conn:
         conn.execute(text(limpar))
@@ -537,21 +536,14 @@ def banco(pg_engine):
 
 @pytest.fixture
 def partidos(banco):
+    """O mapa `{sigla: id}` com três partidos já no staging; os demais a carga cria quando a sigla aparece."""
     mapa = {}
-
-    def garantir(session, party_map, sigla):
-        existente = party_map.get(sigla)
-        if existente:
-            return existente
-        p = PoliticalParty(acronym=sigla, full_name=f"Partido {sigla}")
-        session.add(p)
-        session.flush()
-        party_map[sigla] = p.id
-        return p.id
-
     for sigla in ("PT", "PL", "S.PART."):
-        garantir(banco, mapa, sigla)
-    return mapa, garantir
+        partido = PoliticalParty(acronym=sigla, full_name=f"Partido {sigla}")
+        banco.add(partido)
+        mapa[sigla] = partido.id
+    banco.commit()
+    return mapa
 
 
 def _prop(**kw):
@@ -612,15 +604,24 @@ def _arquivo_camara(**sobre):
     return dados
 
 
+def _rodar(banco, funcao, *args):
+    """Executa uma função da carga histórica sobre o staging do banco de teste e grava o que ela mudou."""
+    with transacao_de_carga(banco.engine) as cursor:
+        staging = stg_tabela.Staging.carregar(cursor)
+        resultado = funcao(cursor, staging, *args)
+        staging.gravar(cursor)
+    banco.rollback()  # a próxima consulta lê o que a carga gravou
+    return resultado
+
+
 def _carregar(banco, tmp_path, partidos, deputy_map=None, senator_map=None):
-    mapa, garantir = partidos
-    return vl.carregar_votacoes(
+    return _rodar(
         banco,
+        vl.carregar_votacoes,
         tmp_path,
         deputy_map if deputy_map is not None else {},
         senator_map if senator_map is not None else {},
-        mapa,
-        garantir,
+        partidos,
     )
 
 
@@ -641,14 +642,14 @@ def test_carga_cria_parlamentares_proposicao_sessao_votos_e_mandatos(banco, part
     assert (sessao.votes_yes_count, sessao.votes_no_count) == (1, 1)
     assert banco.query(ParliamentaryVote).count() == 2  # deputado 99 sem cadastro é ignorado
     prop = banco.query(Proposition).one()
-    assert prop.external_camara_id == 1000 and prop.status.value == "ARQUIVADA" and prop.impact_axis != "(numero+ano)%5"
+    assert prop.external_camara_id == 1000 and prop.status == "ARQUIVADA" and prop.impact_axis != "(numero+ano)%5"
     assert str(prop.presentation_date) == "2023-03-01" and prop.official_url.endswith("idProposicao=1000")
     ana = banco.query(Politician).filter_by(camara_id=1).one()
     assert prop.author_politician_id == ana.id
     anos = {m.election_year: m for m in banco.query(Mandate).filter_by(politician_id=ana.id)}
     assert set(anos) == {2018, 2022}
-    assert anos[2018].end_date == date(2023, 1, 31) and anos[2018].status == StatusMandatoEnum.CONCLUIDO
-    assert anos[2018].office == CargoPoliticoEnum.DEPUTADO_FEDERAL
+    assert anos[2018].end_date == date(2023, 1, 31) and anos[2018].status == "CONCLUIDO"
+    assert anos[2018].office == "DEPUTADO_FEDERAL"
 
 
 def test_carga_e_idempotente_e_atualiza_orientacao(banco, partidos, tmp_path):
@@ -688,7 +689,7 @@ def test_carga_reaproveita_proposicao_e_politico_existentes(banco, partidos, tmp
     existente = Politician(civil_name="Ana Dep", electoral_name="Ana Dep", camara_id=1)
     prop = Proposition(
         external_camara_id=1000,
-        proposition_type=vl.TipoProposicaoEnum.PL,
+        proposition_type="PL",
         number=100,
         year=2023,
         title="PL 100/2023",
@@ -862,37 +863,36 @@ def test_parlamentares_historicos_criam_ex_deputados_e_senadores_titulares(banco
         tmp_path / "votacoes" / "senado_2021.json.gz",
         {"fonte": "x", "is_synthetic": False, "parlamentares": {"11": {"nome": "Suplente Votante"}}, "sessoes": []},
     )
-    mapa, garantir = partidos
+    mapa = partidos
     deputados, senadores = {}, {}
-    r = vl.carregar_parlamentares_historicos(banco, tmp_path, deputados, senadores, mapa, garantir)
-    banco.commit()
+    r, _ = _rodar(banco, vl.carregar_parlamentares_historicos, tmp_path, deputados, senadores, mapa)
 
     assert r == {"politicos_criados": 3, "politicos_vinculados": 0, "mandatos_criados": 3}
     assert 7 in deputados and 9 in senadores and 11 in senadores and 10 not in senadores
     assert banco.query(Politician).filter_by(electoral_name="Suplente Que Nunca Votou").count() == 0
     sup = banco.query(Mandate).filter_by(politician_id=senadores[11]).one()
-    assert sup.status == StatusMandatoEnum.SUPLENTE_EM_EXERCICIO and sup.jurisdiction_state == "SP"
+    assert sup.status == "SUPLENTE_EM_EXERCICIO" and sup.jurisdiction_state == "SP"
     tit = banco.query(Mandate).filter_by(politician_id=senadores[9]).one()
-    assert tit.office == CargoPoliticoEnum.SENADOR and tit.election_year == 2018
+    assert tit.office == "SENADOR" and tit.election_year == 2018
 
     # idempotência
-    r2 = vl.carregar_parlamentares_historicos(banco, tmp_path, deputados, senadores, mapa, garantir)
+    r2, _ = _rodar(banco, vl.carregar_parlamentares_historicos, tmp_path, deputados, senadores, mapa)
     assert r2 == {"politicos_criados": 0, "politicos_vinculados": 0, "mandatos_criados": 0}
 
 
 def test_parlamentares_historicos_sem_arquivo_confiavel(banco, partidos, tmp_path):
-    mapa, garantir = partidos
-    assert vl.carregar_parlamentares_historicos(banco, tmp_path, {}, {}, mapa, garantir) == {}
+    mapa = partidos
+    assert _rodar(banco, vl.carregar_parlamentares_historicos, tmp_path, {}, {}, mapa)[0] == {}
     (tmp_path / vl.ARQUIVO_HISTORICOS).write_text(json.dumps({"deputados": []}), encoding="utf-8")
-    assert vl.carregar_parlamentares_historicos(banco, tmp_path, {}, {}, mapa, garantir) == {}
+    assert _rodar(banco, vl.carregar_parlamentares_historicos, tmp_path, {}, {}, mapa)[0] == {}
 
 
 def test_helpers_de_data_e_status():
     assert vl._date("2023-02-01T10:00") == date(2023, 2, 1) and vl._date("xx") is None and vl._date(None) is None
     assert vl._datetime("2023-02-01T10:00:00").hour == 10 and vl._datetime("x") is None and vl._datetime("") is None
-    assert vl._status_mandato(date(2000, 1, 1)) == StatusMandatoEnum.CONCLUIDO
-    assert vl._status_mandato(date(2999, 1, 1)) == StatusMandatoEnum.TITULAR_ATIVO
-    assert vl._status_mandato(None) == StatusMandatoEnum.TITULAR_ATIVO
+    assert vl._status_mandato(date(2000, 1, 1)) == "CONCLUIDO"
+    assert vl._status_mandato(date(2999, 1, 1)) == "TITULAR_ATIVO"
+    assert vl._status_mandato(None) == "TITULAR_ATIVO"
 
 
 def test_orientacao_do_governo_aceita_grafias_da_camara_e_recusa_conflito():
@@ -1028,27 +1028,37 @@ def test_cache_do_ano_anterior_expirado_e_refeito_antes_de_marco(tmp_path):
 
 
 def _atualizar_com_dublês(monkeypatch, sincronizar):
-    from contextlib import nullcontext
     from unittest.mock import MagicMock
 
     from etl.pipelines import votacoes_atualizacao as va
 
     chamadas = []
     monkeypatch.setattr(va, "run_votacoes", lambda anos, force: {})
-    carregador = MagicMock()
-    carregador._load_politicians.return_value = (0, {}, {})
-    monkeypatch.setattr(va, "DatabaseLoader", lambda data_dir: carregador)
-    monkeypatch.setattr(va, "carregar_votacoes", lambda *args: {})
-    monkeypatch.setattr(va, "SessionLocal", lambda: nullcontext(MagicMock()))
-    monkeypatch.setattr(va, "merge_staging", lambda sessao: chamadas.append("merge") or {})
+
+    class CargaFalsa:
+        contagens = {}
+        resumo_fusao = {}
+
+        def __init__(self, data_dir, engine):
+            pass
+
+        def load_all(self, recursos, fundir, migrar):
+            # os mapas saem do staging: partidos e políticos entram antes das votações; o cron não migra o schema
+            assert recursos == ["partidos", "politicos", "votacoes_historico"] and migrar is False
+            chamadas.append("carga")
+            if fundir:
+                chamadas.append("merge")
+
+    monkeypatch.setattr(va, "CargaCadastro", CargaFalsa)
     monkeypatch.setattr(va, "posprocessar_carga", lambda motor: chamadas.append("pos") if motor is va.engine else None)
+    va.engine = MagicMock() if va.engine is None else va.engine
     va.atualizar(sincronizar=sincronizar)
     return chamadas
 
 
 def test_atualizacao_de_votacoes_funde_e_depois_posprocessa(monkeypatch):
-    assert _atualizar_com_dublês(monkeypatch, sincronizar=True) == ["merge", "pos"]
+    assert _atualizar_com_dublês(monkeypatch, sincronizar=True) == ["carga", "merge", "pos"]
 
 
 def test_atualizacao_sem_fusao_deixa_o_posprocessamento_a_quem_chamou(monkeypatch):
-    assert _atualizar_com_dublês(monkeypatch, sincronizar=False) == []
+    assert _atualizar_com_dublês(monkeypatch, sincronizar=False) == ["carga"]

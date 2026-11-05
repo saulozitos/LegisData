@@ -1,7 +1,8 @@
 from datetime import date
 
-from app.models import CargoPoliticoEnum, Mandate, PartyAffiliation, Politician, StatusMandatoEnum
+from app.models import CargoPoliticoEnum, StatusMandatoEnum
 from app.services.staging_merge import merge_staging
+from tests.stg_models import Mandate, PartyAffiliation, Politician
 
 from .conftest import criar_mandato_presidencial
 from .test_composicao import _composicao
@@ -33,7 +34,7 @@ def test_list_parties_excludes_placeholder_party_and_sorts_by_caucus(client, db,
 
 
 def test_list_parties_does_not_invent_ideology_motto_or_spectrum(client, db, seed):
-    from app.models import PoliticalParty
+    from tests.stg_models import PoliticalParty
 
     db.add(PoliticalParty(acronym="SEMDADOS", full_name="Partido Sem Dados"))
     db.commit()

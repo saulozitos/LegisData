@@ -1,9 +1,9 @@
 """
 Diagnóstico das emendas parlamentares sem vínculo com um político da base (somente leitura).
 
-Usa o MESMO critério do `DatabaseLoader._load_emendas_parlamentares` (nome normalizado único entre nomes
+Usa o MESMO critério da carga das emendas (nome normalizado único entre nomes
 eleitorais e civis) e separa o que ficou de fora em:
-  - institucional: bancadas estaduais, Relator-Geral, comissões, mesa — não são pessoas e não têm `Politician`;
+  - institucional: bancadas estaduais, Relator-Geral, comissões, mesa — não são pessoas e não têm político no staging;
   - ambiguo: o nome normalizado casa com mais de um político (o loader recusa de propósito);
   - ausente: nenhum político com esse nome (ex-parlamentar não carregado ou grafia diferente).
 
@@ -76,13 +76,15 @@ def diagnosticar(emendas: Iterable[Dict[str, Any]], nomes_politicos: Iterable[Tu
 
 
 def nomes_da_base() -> List[Tuple[Any, str]]:
-    from app.core.database import SessionLocal
-    from app.models import Politician
+    from app.core.database import engine
 
-    with SessionLocal() as db:
+    from etl.pipelines import stg_tabela
+    from etl.utils.copia import transacao_de_carga
+
+    with transacao_de_carga(engine) as cursor:
         pares: List[Tuple[Any, str]] = []
-        for pid, eleitoral, civil in db.query(Politician.id, Politician.electoral_name, Politician.civil_name).all():
-            pares.extend((pid, n) for n in (eleitoral, civil) if n)
+        for pol in stg_tabela.politicos().carregar(cursor):
+            pares.extend((pol.id, n) for n in (pol.electoral_name, pol.civil_name) if n)
         return pares
 
 
