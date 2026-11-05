@@ -7,7 +7,7 @@ sempre verdadeiro e escondia justamente os casos suspeitos.
 
 import argparse
 import logging
-from collections import defaultdict
+from types import SimpleNamespace
 from typing import Optional
 
 from etl.utils.bootstrap import ensure_backend_on_path
@@ -27,21 +27,26 @@ def nome_aparece(nome_politico: Optional[str], autor: Optional[str]) -> bool:
     return toks <= set(normalize_name_tokens(first_signatory(autor)).split())
 
 
+SQL_AUTORIA = (
+    "SELECT pe.id, pe.nome_exibicao, "
+    "(SELECT n.nome FROM core.pessoa_nome n WHERE n.pessoa_id = pe.id AND n.tipo = 'CIVIL' ORDER BY n.id LIMIT 1), "
+    "array_agg(l.autor_nome) FROM leg.proposicao l JOIN core.pessoa pe ON pe.id = l.autor_pessoa_id "
+    "GROUP BY pe.id, pe.nome_exibicao"
+)
+
+
 def diagnose_anomalies() -> None:
     from app.core.database import engine
+    from sqlalchemy import text
 
-    from etl.pipelines import stg_tabela
-    from etl.utils.copia import transacao_de_carga
+    with engine.connect() as conexao:
+        linhas = conexao.execute(text(SQL_AUTORIA)).all()
+    politicos = {
+        pessoa_id: SimpleNamespace(electoral_name=eleitoral, civil_name=civil)
+        for pessoa_id, eleitoral, civil, _ in linhas
+    }
+    autores_por_pol = {pessoa_id: list(autores) for pessoa_id, _, _, autores in linhas}
 
-    with transacao_de_carga(engine) as cursor:
-        politicos = {p.id: p for p in stg_tabela.politicos().carregar(cursor)}
-        proposicoes = list(stg_tabela.proposicoes().carregar(cursor))
-
-    # Um único passe pelas proposições (antes: uma consulta por político)
-    autores_por_pol = defaultdict(list)
-    for prop in proposicoes:
-        if prop.author_politician_id in politicos:
-            autores_por_pol[prop.author_politician_id].append(prop.author_name)
     ranking = sorted(
         (
             (pol_id, politicos[pol_id].electoral_name, politicos[pol_id].civil_name, len(autores))

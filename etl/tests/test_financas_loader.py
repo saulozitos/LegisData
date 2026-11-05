@@ -1139,29 +1139,6 @@ def test_fronteiras_do_mandato_dentro_do_ano(pg_engine, banco):
         assert resolvedor.por_nome(["Eva Fim"], 2021).pessoa_id == b  # começa em 01/01 do outro
 
 
-def test_resolvedor_junta_o_cadastro_do_legado_ao_que_tem_identificador(pg_engine, banco):
-    with pg_engine.begin() as conn:
-        legado = _pessoa(conn, "Gemeo Legado")
-        canonica = _pessoa(conn, "Gemeo Legado", camara_id=600, mandato=("2023-02-01", None))
-        uid = conn.execute(text("SELECT uid FROM core.pessoa WHERE id = :p"), {"p": legado}).scalar()
-        conn.execute(
-            text(
-                'INSERT INTO stg.politicos (id, "nomeCivil", "nomeEleitoral", "camaraId") '
-                "VALUES (:u, 'Gemeo Legado', 'Gemeo Legado', 600)"
-            ),
-            {"u": uid},
-        )
-    try:
-        with pg_engine.connect() as conn:
-            resolvedor = ResolvedorDePessoas(conn)
-            # os dois cadastros contam como uma pessoa: sem homônimo, e o dado vai para o que tem identificador
-            assert resolvedor.por_nome(["Gemeo Legado"], 2024).pessoa_id == canonica
-            assert resolvedor.por_nome(["Gemeo Legado"]).situacao == "IDENTIFICADO"
-    finally:
-        with pg_engine.begin() as conn:
-            conn.execute(text("DELETE FROM stg.politicos WHERE id = :u"), {"u": uid})
-
-
 def test_cada_carga_grava_a_fonte_certa(pg_engine, banco, tmp_path):
     _carga_com_dado_bom(tmp_path)
     _gravar(tmp_path, fin.CEAP_ARQUIVO, {"A": _ceap(), "S": _ceap(camara_id=None, senado_id=200, nome="BETO")})

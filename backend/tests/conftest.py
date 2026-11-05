@@ -95,6 +95,12 @@ def pg_engine():
             os.environ.pop("ALEMBIC_DATABASE_URL", None)
         else:
             os.environ["ALEMBIC_DATABASE_URL"] = previous
+    # tabelas de trabalho da fusão: em produção são temporárias (`etl.preparar_staging`); aqui são comuns, com as mesmas colunas
+    # das temporárias (`etl.criar_trabalho`), para o teste semear com objetos e a fusão achá-las pelo search_path
+    with engine.begin() as conn:
+        conn.execute(text("SELECT etl.criar_trabalho()"))
+        for tabela in [t.name for t in StagingBase.metadata.sorted_tables if t.schema is None]:
+            conn.execute(text(f"CREATE TABLE IF NOT EXISTS public.{tabela} (LIKE pg_temp.{tabela} INCLUDING DEFAULTS)"))
     yield engine
     engine.dispose()
 
@@ -113,7 +119,7 @@ def _truncate_sql(pg_engine):
                 )
             )
         ]
-    legacy = [f'stg."{t.name}"' for t in StagingBase.metadata.sorted_tables if t.schema == "stg"]
+    legacy = [f'{t.schema or "public"}."{t.name}"' for t in StagingBase.metadata.sorted_tables]
     return "TRUNCATE " + ", ".join(legacy + core + list(_ETL_DATA_TABLES)) + " RESTART IDENTITY CASCADE"
 
 
@@ -143,9 +149,9 @@ def client(session_factory):
             # Os testes semeiam o schema legado; os endpoints leem o schema novo. A ponte projeta o legado antes de
             # cada requisição (só quando há dados legados, para não apagar dados escritos direto nos schemas novos).
             if session.execute(
-                text("SELECT EXISTS (SELECT 1 FROM stg.politicos) OR EXISTS (SELECT 1 FROM stg.proposicoes)")
+                text("SELECT EXISTS (SELECT 1 FROM w_politicos) OR EXISTS (SELECT 1 FROM w_proposicoes)")
             ).scalar():
-                merge_staging(session)
+                merge_staging(session, preparar=False)
             yield session
         finally:
             session.close()
@@ -254,7 +260,7 @@ def pessoa(db):
 
 def pessoa_do(db, politico):
     """`core.pessoa` do político do legado (a ponte cria o cadastro com o mesmo `uid`)."""
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     return db.execute(text("SELECT id FROM core.pessoa WHERE uid = :uid"), {"uid": politico.id}).scalar_one()
 
 

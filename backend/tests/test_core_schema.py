@@ -215,7 +215,7 @@ def test_mandate_situations_cannot_overlap(db):
 
 
 def test_bridge_creates_people_names_identifiers_and_never_copies_cpf(db, cenario):
-    summary = merge_staging(db)
+    summary = merge_staging(db, preparar=False)
     assert summary["pessoas"] == 2
     assert _scalar(db, "SELECT count(*) FROM core.pessoa_nome WHERE tipo = 'CIVIL'") == 2
     assert _scalar(db, "SELECT count(*) FROM core.pessoa_identificador WHERE tipo = 'CAMARA_ID'") == 2
@@ -225,7 +225,7 @@ def test_bridge_creates_people_names_identifiers_and_never_copies_cpf(db, cenari
 
 
 def test_bridge_collapses_one_legacy_mandate_per_party_into_one_mandate(db, cenario):
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     assert _scalar(db, "SELECT count(*) FROM core.mandato WHERE condicao <> 'NOMEADO'") == 2
     assert _scalar(db, "SELECT count(*) FROM core.mandato_legado") == 3  # todos os ids legados continuam rastreáveis
     # partido do mandato = filiação vigente na posse (PT), não o último a ser carregado
@@ -240,7 +240,7 @@ def test_bridge_collapses_one_legacy_mandate_per_party_into_one_mandate(db, cena
 
 
 def test_bridge_is_idempotent(db, cenario):
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     antes = _rows(db, "SELECT id, pessoa_id, cargo_id, partido_id FROM core.mandato ORDER BY id")
     contagens = _rows(
         db,
@@ -248,7 +248,7 @@ def test_bridge_is_idempotent(db, cenario):
         "(SELECT count(*) FROM core.filiacao), (SELECT count(*) FROM core.mandato_situacao), "
         "(SELECT count(*) FROM core.partido)",
     )
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     assert _rows(db, "SELECT id, pessoa_id, cargo_id, partido_id FROM core.mandato ORDER BY id") == antes
     assert (
         _rows(
@@ -268,7 +268,7 @@ def test_bridge_closes_open_affiliation_when_the_next_one_starts(db, cenario):
         )
     )
     db.commit()
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     rows = _rows(
         db,
         "SELECT pa.sigla, lower(f.periodo), upper(f.periodo), f.fim_inferido FROM core.filiacao f "
@@ -294,7 +294,7 @@ def test_bridge_rejects_same_start_conflict_keeping_the_party_of_the_mandate(db,
         )
     )
     db.commit()
-    summary = merge_staging(db)
+    summary = merge_staging(db, preparar=False)
     assert summary["rejeitos"] == 1
     assert _rows(db, "SELECT motivo FROM etl.rejeito") == [("FILIACAO_MESMO_INICIO_QUE_OUTRA_DA_MESMA_PESSOA",)]
     assert (
@@ -337,7 +337,7 @@ def test_bridge_splits_mandate_when_holder_serves_as_minister(db, cenario):
         )
     )
     db.commit()
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     rows = _rows(
         db,
         "SELECT ms.situacao, lower(ms.periodo), upper(ms.periodo) FROM core.mandato_situacao ms "
@@ -377,7 +377,7 @@ def test_minister_without_legacy_link_is_never_merged_by_name(db, cenario):
         )
     )
     db.commit()
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     assert (
         _scalar(db, "SELECT count(*) FROM core.pessoa WHERE nome_exibicao ILIKE '%beatriz%lima%'") == 1
     )  # só o ministro
@@ -388,7 +388,7 @@ def test_minister_without_legacy_link_is_never_merged_by_name(db, cenario):
 
 
 def test_bancada_atual_counts_each_person_once_in_the_current_party(db, cenario):
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     bancada = dict(
         _rows(db, "SELECT pa.sigla, b.total FROM core.vw_bancada_atual b JOIN core.partido pa ON pa.id = b.partido_id")
     )
@@ -410,7 +410,7 @@ def test_bancada_atual_excludes_licensed_holder(db, cenario):
         )
     )
     db.commit()
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     assert (
         _scalar(
             db,
@@ -422,7 +422,7 @@ def test_bancada_atual_excludes_licensed_holder(db, cenario):
 
 
 def test_vw_politico_composes_name_party_and_office(db, cenario):
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     ana = _rows(
         db,
         "SELECT nome_exibicao, partido_atual, cargo_atual, uf, total_mandatos FROM core.vw_politico "
@@ -445,7 +445,7 @@ def test_vw_historico_mandato_marks_finished_terms(db, cenario):
         )
     )
     db.commit()
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     assert _scalar(db, "SELECT situacao FROM core.vw_historico_mandato WHERE data_inicio = '2015-02-01'") in (
         "EXERCICIO",
         "ENCERRADO",
@@ -459,7 +459,7 @@ def test_party_succession_and_unknown_enum_values_are_preserved(db):
     db.flush()
     antigo.successor_party_id = novo.id
     db.commit()
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     assert _rows(
         db,
         "SELECT o.sigla, d.sigla, s.tipo FROM core.partido_sucessao s "
@@ -470,7 +470,7 @@ def test_party_succession_and_unknown_enum_values_are_preserved(db):
 def test_party_alias_resolves_old_spellings(db):
     db.add(PoliticalParty(acronym="PODE", full_name="Podemos"))
     db.commit()
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     assert (
         _scalar(
             db,
@@ -485,6 +485,7 @@ def test_party_alias_resolves_old_spellings(db):
 
 
 def test_staging_orm_models_match_the_migrated_database(pg_engine):
+    """As cinco tabelas congeladas de `stg` e as de trabalho (`etl.criar_trabalho`) têm o que os modelos esperam."""
     from tests.stg_models import StagingBase
 
     inspector = inspect(pg_engine)
@@ -503,6 +504,22 @@ def test_staging_orm_models_match_the_migrated_database(pg_engine):
         faltando += [f"{table.name}.{c.name}" for c in table.columns if c.name not in existentes]
     assert faltando == []
 
+    with pg_engine.connect() as conn:
+        transacao = conn.begin()
+        conn.execute(text("SELECT etl.criar_trabalho()"))  # as temporárias da fusão, como a carga as monta
+        temporarias = {}
+        for tabela, coluna in conn.execute(
+            text(
+                "SELECT table_name, column_name FROM information_schema.columns "
+                "WHERE table_schema LIKE 'pg_temp%' AND table_name LIKE 'w\\_%'"
+            )
+        ):
+            temporarias.setdefault(tabela, set()).add(coluna)
+        transacao.rollback()
+    for table in StagingBase.metadata.sorted_tables:
+        if table.schema is None:
+            assert {c.name for c in table.columns} <= temporarias[table.name], table.name
+
 
 def test_motivo_desfiliacao_values_are_preserved(db, cenario):
     db.add(
@@ -515,7 +532,7 @@ def test_motivo_desfiliacao_values_are_preserved(db, cenario):
         )
     )
     db.commit()
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     assert (
         _scalar(
             db,

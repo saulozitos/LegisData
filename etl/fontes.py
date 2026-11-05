@@ -31,9 +31,9 @@ FONTES: Dict[str, Fonte] = {
     ),
     "filiacoes": Fonte("Filiações partidárias (TSE)", extrair=("tse",), recursos=("filiacoes",)),
     "mandatos": Fonte(
-        "Mandatos de presidentes, deputados e senadores e gabinete presidencial",
+        "Mandatos de presidentes, deputados e senadores e gabinete presidencial (saem dos mesmos arquivos dos políticos)",
         extrair=("camara", "senado"),
-        recursos=("mandatos",),
+        recursos=("politicos",),
     ),
     "proposicoes": Fonte("Proposições da Câmara e do Senado", extrair=("camara", "senado"), recursos=("proposicoes",)),
     "votacoes": Fonte(

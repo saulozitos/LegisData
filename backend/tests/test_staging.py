@@ -3,20 +3,22 @@
 import pytest
 from sqlalchemy import text
 
-TABELAS_DE_ENTRADA = {
+TABELAS_CONGELADAS = {  # sem escritor desde a 0040, mas a fusão ainda as lê
+    "proposicoes_autores",
+    "registros_presenca",
+    "votacoes_proposicao",
+    "votos_nominais",
+    "orientacoes_partidarias",
+}
+TABELAS_RELACIONAIS_QUE_CAIRAM = {
     "politicos",
     "partidos_politicos",
     "filiacoes_partidarias",
     "mandatos",
     "membros_gabinete",
     "proposicoes",
-    "proposicoes_autores",
     "sessoes_votacao",
     "votos_parlamentares",
-    "registros_presenca",
-    "votacoes_proposicao",
-    "votos_nominais",
-    "orientacoes_partidarias",
 }
 APOSENTADAS = {
     "remuneracoes_politicos",
@@ -44,8 +46,10 @@ def _tabelas(db, schema):
 
 
 def test_tabelas_de_entrada_vivem_em_stg_e_o_public_so_guarda_a_versao_do_alembic(db):
-    assert TABELAS_DE_ENTRADA <= _tabelas(db, "stg")
-    assert _tabelas(db, "public") <= {"alembic_version"}  # nenhum dado de domínio no public
+    assert TABELAS_CONGELADAS <= _tabelas(db, "stg")
+    assert TABELAS_RELACIONAIS_QUE_CAIRAM.isdisjoint(_tabelas(db, "stg"))
+    # nenhum dado de domínio no public (as `w_*` são só do banco de teste: em produção a fusão as cria temporárias)
+    assert {t for t in _tabelas(db, "public") if not t.startswith("w_")} <= {"alembic_version"}
 
 
 def test_tabelas_aposentadas_nao_existem_em_lugar_nenhum(db):
@@ -57,7 +61,7 @@ def test_tabelas_aposentadas_nao_existem_em_lugar_nenhum(db):
     assert existentes.isdisjoint(APOSENTADAS)
 
 
-def test_funcoes_de_fusao_tem_o_nome_novo_e_leem_stg(db):
+def test_funcoes_de_fusao_tem_o_nome_novo_e_leem_as_tabelas_de_trabalho(db):
     nomes = set(
         db.execute(
             text("SELECT proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'etl'")
@@ -70,21 +74,22 @@ def test_funcoes_de_fusao_tem_o_nome_novo_e_leem_stg(db):
         "etl.merge_legislativo",
         "etl.merge_camara_bulk",
         "etl.merge_camara_historico",
-        "core.unificar_duplicadas",
     ):
         fonte = db.execute(text("SELECT pg_get_functiondef(CAST(:f AS regproc))"), {"f": funcao}).scalar()
         assert "public." not in fonte.replace("public.alembic", "")  # nenhuma leitura do public
 
 
-def test_politico_nao_tem_coluna_de_cpf(db):
+def test_staging_nao_tem_coluna_de_cpf(db):
+    """Decisão D3: nenhum CPF em lugar nenhum do staging, nem nas tabelas planas novas nem nas congeladas."""
     colunas = set(
         db.execute(
             text(
-                "SELECT column_name FROM information_schema.columns WHERE table_schema = 'stg' AND table_name = 'politicos'"
+                "SELECT table_name || '.' || column_name FROM information_schema.columns "
+                "WHERE table_schema IN ('stg', 'core') AND lower(column_name) LIKE '%cpf%'"
             )
         ).scalars()
     )
-    assert "cpf" not in colunas and "nomeCivil" in colunas
+    assert colunas == set()
 
 
 def test_log_do_cron_vive_em_etl(db):
@@ -112,7 +117,7 @@ def test_papel_de_leitura_so_le(db):
         assert pode(tabela, "SELECT") is True
         for escrita in ("INSERT", "UPDATE", "DELETE"):
             assert pode(tabela, escrita) is False
-    assert pode("stg.politicos", "SELECT") is False  # a API nunca lê o staging
+    assert pode("stg.camara_deputado", "SELECT") is False  # a API nunca lê o staging
     assert pode("etl.rejeito", "SELECT") is False  # nem o que o ETL rejeitou (pode trazer dado bruto da fonte)
 
 
@@ -154,6 +159,12 @@ def test_migracoes_0036_e_0037_descem_e_sobem_com_dados(pg_engine, monkeypatch):
         with pg_engine.connect() as conn:
             return conn.execute(text(sql)).scalar()
 
+    try:
+        command.downgrade(config, "0039")  # a 0041 e a 0040 descem: voltam as tabelas relacionais de stg (vazias)
+        assert escalar("SELECT to_regclass('stg.politicos') IS NOT NULL")
+    except BaseException:
+        command.upgrade(config, "head")
+        raise
     with pg_engine.begin() as conn:
         conn.execute(
             text(
@@ -186,12 +197,8 @@ def test_migracoes_0036_e_0037_descem_e_sobem_com_dados(pg_engine, monkeypatch):
     finally:
         command.upgrade(config, "head")  # mesmo se um assert falhar, o banco de teste volta ao head
         with pg_engine.connect() as conn:
-            voltaram = (  # subir leva as linhas de volta: a pessoa para o staging e as 3 linhas do log para o `etl`
-                conn.execute(
-                    text("SELECT count(*) FROM stg.politicos WHERE \"nomeCivil\" = 'Pessoa de Teste'")
-                ).scalar(),
-                conn.execute(text("SELECT count(*) FROM etl.log_execucao_cron")).scalar(),
-            )
+            # subir leva as 3 linhas do log para o `etl`; a 0040 apaga as tabelas relacionais de stg (a pessoa não volta)
+            voltaram = conn.execute(text("SELECT count(*) FROM etl.log_execucao_cron")).scalar()
             mensagens = {
                 linha[0]
                 for linha in conn.execute(
@@ -200,9 +207,8 @@ def test_migracoes_0036_e_0037_descem_e_sobem_com_dados(pg_engine, monkeypatch):
             }
         # e sem as linhas que este teste gravou fora do TRUNCATE da fixture `db` (senão o teste seguinte as enxerga)
         with pg_engine.begin() as conn:
-            conn.execute(text("DELETE FROM stg.politicos WHERE \"nomeCivil\" = 'Pessoa de Teste'"))
             conn.execute(text("DELETE FROM etl.log_execucao_cron"))
-    assert voltaram == (1, 3)
+    assert voltaram == 3
     # a mensagem crua da exceção (host, caminho, SQL) não volta para a tabela que o papel de leitura enxerga
     assert mensagens == {
         "Falha registrada; o detalhe está no log do servidor.",
@@ -242,7 +248,8 @@ def test_funcoes_de_fusao_nao_sao_executaveis_pelo_publico(pg_engine):
             "etl.merge_legislativo()",
             "etl.merge_camara_bulk()",
             "etl.merge_camara_historico()",
-            "core.unificar_duplicadas()",
+            "etl.preparar_staging(boolean, boolean)",
+            "etl.criar_trabalho()",
         ):
             acl = conn.execute(
                 text("SELECT proacl::text FROM pg_proc WHERE oid = CAST(:a AS regprocedure)"), {"a": assinatura}

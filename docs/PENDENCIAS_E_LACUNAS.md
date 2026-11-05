@@ -103,13 +103,13 @@ A refatoração da branch `fix/analise-completa-correcoes` concluiu **100%** das
 
 ---
 
-### 2.10 Cadastros duplicados de uma mesma pessoa [CONCLUÍDO PARA O LEGADO]
+### 2.10 Cadastros duplicados de uma mesma pessoa [CONCLUÍDO]
 
-Os cadastros duplicados dos políticos que existem no legado são unidos pela migração 0034 e a cada sincronização do legado (`core.unificar_duplicadas`), com o `uid` público preservado. Fica uma regra para a Fase 7: o novo ETL tem de resolver a pessoa pelo identificador oficial antes de criar uma, senão a duplicata volta. Pessoas que só existem no histórico e nunca tiveram cadastro público não têm duplicata e continuam com o `uid` do histórico.
+Os cadastros duplicados dos políticos que existiam no legado foram unidos pela migração 0034, com o `uid` público preservado. Desde a migração 0040 a carga resolve a pessoa pelo identificador oficial, em `core`, antes de criar uma (`etl.preparar_cadastro`), então a duplicata não nasce mais e a migração 0041 tirou `core.unificar_duplicadas`; `core.unificar_pessoas` (a união em si) fica para quem precisar unir à mão. Pessoas que só existem no histórico e nunca tiveram cadastro público não têm duplicata e continuam com o `uid` do histórico.
 
-### 2.11 Novo ETL direto em `stg` [FEITA, com uma decisão consciente em aberto]
+### 2.11 Novo ETL direto em `stg` [FEITA]
 
-A carga relacional (`etl/pipelines/carga_cadastro.py`) grava o `stg` por `COPY` sem ORM, um recurso por vez, cada um com a sua execução em `etl.execucao`, os arquivos de origem em `etl.arquivo_bruto` e as verificações do catálogo em `etl.verificacao`; `etl.run_etl` imprime o relatório da rodada e aceita `--fonte`/`--estagio`. O `db_loader` e os modelos ORM do `stg` saíram do pacote da API. **O que não foi feito:** as tabelas planas por arquivo (B.1) e a reescrita das funções de fusão para lê-las (B.3). O `stg` continua relacional porque é o contrato das funções `etl.merge_*`; trocá-lo obrigaria portar para SQL a resolução de pessoa, mandato e autor que fica em Python, que é onde está o risco (o `uid` público e as duplicatas). Detalhes e números em [`PROXIMA_ENTREGA_NOVO_ETL.md`](PROXIMA_ENTREGA_NOVO_ETL.md).
+O ETL copia cada arquivo para a sua tabela plana de `stg` (`etl/pipelines/planas_*.py`, só `COPY`, uma execução em `etl.execucao` por recurso, os arquivos de origem em `etl.arquivo_bruto` e as verificações do catálogo em `etl.verificacao`); a função SQL `etl.preparar_staging` resolve, na fusão, a que pessoa, partido, mandato, proposição e sessão cada registro se refere (a identidade vem de `core`/`leg`: o `uid` público não muda, e a pessoa se acha pelo identificador oficial antes de criar outra) e `etl.merge_cadastro`/`etl.merge_legislativo` leem as tabelas de trabalho temporárias que ela monta. `etl.run_etl` imprime o relatório da rodada e aceita `--fonte`/`--estagio`. O `db_loader`, os modelos ORM e as oito tabelas relacionais de `stg` saíram (migração 0040); as cinco que nenhuma carga escreve mais (autores, presença, votações e votos nominais do legado) ficam **congeladas** porque a fusão ainda as lê e nenhum arquivo atual reproduz o que elas guardam. Detalhes, números e a conferência contra a carga anterior em [`PROXIMA_ENTREGA_NOVO_ETL.md`](PROXIMA_ENTREGA_NOVO_ETL.md).
 
 ## 3. Resolução das Dívidas Técnicas
 

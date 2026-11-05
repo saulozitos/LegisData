@@ -13,7 +13,7 @@ BASE = "/api/v1"
 
 
 def _ponte(db):
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     db.commit()
 
 

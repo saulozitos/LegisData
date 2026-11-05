@@ -25,7 +25,7 @@ def test_carregar_so_pede_a_carga_e_extrair_so_pede_a_extracao():
 def test_fontes_repetidas_nao_repetem_etapas_e_a_carga_vem_uma_vez():
     chaves, recursos = resolver(["politicos", "mandatos"], "tudo")
     assert chaves.count("camara") == 1 and chaves.count("load_db") == 1
-    assert recursos == ["partidos", "politicos", "mandatos"]
+    assert recursos == ["partidos", "politicos"]  # os mandatos saem dos arquivos dos políticos: um recurso só
 
 
 def test_etapas_proprias_entram_pela_chave_da_esteira():

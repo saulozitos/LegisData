@@ -88,7 +88,7 @@ def test_search_treats_special_characters_literally(client, db, seed, term):
     response = client.get(BASE, params={"search": term})
     assert response.status_code == 200
     assert response.json()["total"] == 0  # '%' e '_' não são curingas
-    assert db.execute(text("SELECT COUNT(*) FROM stg.politicos")).scalar() == 6  # a tabela continua intacta
+    assert db.execute(text("SELECT COUNT(*) FROM w_politicos")).scalar() == 6  # a tabela continua intacta
 
 
 def test_search_party_filter_is_exact_and_current_only(client, seed):

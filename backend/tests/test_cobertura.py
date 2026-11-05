@@ -62,7 +62,7 @@ def carga_lote(db, pg_engine, tmp_path):
 
     db.add(PoliticalParty(acronym="REPUBLICANOS", full_name="Republicanos"))  # destino do alias "REPUBLIC"
     db.commit()
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     props = _csv(
         tmp_path / "proposicoes-2024.csv",
         CABECALHO_PROPOSICOES,
@@ -425,7 +425,7 @@ def test_bridge_adopts_the_legacy_uid_of_a_proposition_loaded_in_bulk(db, carga_
     )
     db.add(legado)
     db.commit()
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     linha = _rows(db, "SELECT uid::text, status_codigo, area_tematica FROM leg.proposicao WHERE id_camara = 100")
     # uid público preservado, status real da fonte mantido, enriquecimento do legado aproveitado
     assert linha == [(str(legado.id), "APROVADA_E_SANCIONADA", "Economia")]

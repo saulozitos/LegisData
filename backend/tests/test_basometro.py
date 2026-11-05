@@ -29,7 +29,7 @@ def _votar(db, seed, politico, orientacao, voto, indice):
 
 def _pessoa_id(db, politico):
     """Id interno em core.pessoa do político legado (a ponte carrega o legado para o schema novo)."""
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     return db.execute(text("SELECT id FROM core.pessoa WHERE uid = :u"), {"u": politico.id}).scalar()
 
 

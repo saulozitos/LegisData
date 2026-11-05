@@ -1,5 +1,7 @@
 # Pessoas cadastradas duas vezes em `core.pessoa`
 
+> **Resolvido.** A migração 0034 uniu os cadastros e, desde a 0040, a carga acha a pessoa pelo identificador oficial antes de criar uma: a duplicata não nasce mais (a 0041 tirou `core.unificar_duplicadas`). O texto abaixo é o levantamento original.
+
 Levantamento feito no banco de desenvolvimento em 16/10/2026, na migration 0024. Nada foi unificado: este documento só
 registra os casos, a causa provável, o efeito nas telas e a regra proposta para resolver depois. A unificação está
 fora do escopo da entrega 2C e entra no planejamento da entrega 3 (limpeza do legado).
@@ -25,7 +27,7 @@ por isso cada grupo precisa de conferência antes de unir (ver "Regra proposta")
 
 É o caso mais comum e o que mais afeta as telas. A pessoa existe duas vezes:
 
-- Uma pessoa criada a partir de `stg.politicos` pela fusão do staging (fonte 11), **sem** `CAMARA_ID`/`SENADO_ID`,
+- Uma pessoa criada a partir do cadastro relacional do legado (`stg.politicos`, que a 0040 removeu) pela fusão do staging (fonte 11), **sem** `CAMARA_ID`/`SENADO_ID`,
   com o mandato de 2019 em diante e todos os **votos nominais** (`leg.voto`).
 - Outra pessoa criada pelas cargas novas (arquivos da Câmara e presença, fonte 2), **com** `CAMARA_ID`, com a
   **presença** (`leg.presenca`) e a **autoria** (`leg.autoria`), mas sem voto.

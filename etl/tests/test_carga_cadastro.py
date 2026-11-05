@@ -1,10 +1,12 @@
 """
 Carga no banco (Postgres de teste): idempotência, proveniência e resolução inequívoca de pessoas.
 
-Usa o fluxo completo de `CargaCadastro.load_all` (migrações Alembic, staging por COPY e fusão em `core`/`leg`), por isso
-exige o Postgres de teste (`make test-db-up`). As consultas ao staging usam `etl.tests.stg_consulta`.
+Usa o fluxo completo de `CargaCadastro.load_all` (migrações Alembic, cópia dos arquivos para as tabelas planas de `stg` e
+fusão em `core`/`leg` pela função SQL `etl.preparar_staging` e as `etl.merge_*`), por isso exige o Postgres de teste
+(`make test-db-up`). As conferências leem o resultado em `core` e `leg`: é onde as regras de identificação aparecem.
 """
 
+import gzip
 import json
 import os
 
@@ -14,19 +16,48 @@ from sqlalchemy.orm import sessionmaker
 
 from etl.extractors.presidents_extractor import PresidentsExtractor  # noqa: E402
 from etl.pipelines import carga_cadastro  # noqa: E402
-from etl.pipelines.staging_votos import ContagemDeVotos  # noqa: E402
-from etl.tests.stg_consulta import (
-    Mandate,
-    ParliamentaryVote,
-    PartyAffiliation,
-    PoliticalParty,
-    Politician,
-    Proposition,
-)
-from etl.tests.stg_consulta import Sessao as _Sessao  # noqa: E402
-from etl.tests.stg_consulta import (
-    VotingSession,
-)
+
+
+class _Resultado:
+    def __init__(self, linhas):
+        self.linhas = linhas
+
+    def all(self):
+        return self.linhas
+
+    def scalar(self):
+        return self.linhas[0][0] if self.linhas else None
+
+    def scalar_one(self):
+        assert len(self.linhas) == 1
+        return self.linhas[0][0]
+
+    def __iter__(self):
+        return iter(self.linhas)
+
+
+class _Leitor:
+    """
+    Consultas soltas ao banco de teste, cada uma na sua transação (confirmada na hora). Uma sessão do ORM esquecida aberta
+    deixaria a transação pendente e travaria o `DROP SCHEMA` do teste seguinte.
+    """
+
+    def __init__(self, engine):
+        self.engine = engine
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return None
+
+    def execute(self, comando, parametros=None):
+        with self.engine.begin() as conexao:
+            resultado = conexao.execute(comando, parametros or {})
+            return _Resultado([tuple(linha) for linha in resultado.all()] if resultado.returns_rows else [])
+
+    def commit(self):
+        return None
 
 
 def escrever(dir_, nome, dados):
@@ -44,7 +75,7 @@ def ambiente(tmp_path, monkeypatch):
     monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
     monkeypatch.setattr(carga_cadastro, "SessionLocal", sessionmaker(bind=engine))  # a fusão usa o banco de teste
     monkeypatch.setattr(carga_cadastro, "engine_padrao", engine)
-    Sessao = lambda: _Sessao(engine)  # noqa: E731
+    Sessao = lambda: _Leitor(engine)  # noqa: E731
     Sessao.engine = engine
 
     dados = tmp_path / "processed"
@@ -143,58 +174,99 @@ def carregar(dados, **kwargs):
     return carga_cadastro.CargaCadastro(data_dir=dados, engine=carga_cadastro.engine_padrao, **kwargs).load_all()
 
 
+def consulta(Sessao, sql, **parametros):
+    with Sessao() as s:
+        return [tuple(linha) for linha in s.execute(text(sql), parametros).all()]
+
+
+def escalar(Sessao, sql, **parametros):
+    with Sessao() as s:
+        return s.execute(text(sql), parametros).scalar()
+
+
+def pessoa_por(Sessao, tipo, valor):
+    """A pessoa de `core` com o identificador oficial: `(id, uid, nome_exibicao, email, sala, telefone, uf_nasc)`."""
+    return consulta(
+        Sessao,
+        "SELECT p.id, p.uid, p.nome_exibicao, p.email, p.gabinete_sala, p.gabinete_telefone, p.uf_nascimento "
+        "FROM core.pessoa p JOIN core.pessoa_identificador i ON i.pessoa_id = p.id "
+        "WHERE i.tipo = :t AND i.valor = :v",
+        t=tipo,
+        v=str(valor),
+    )
+
+
+def _estado(Sessao):
+    """Contagem das tabelas de domínio que a fusão preenche: se a carga é idempotente, não muda entre duas rodadas."""
+    tabelas = (
+        "core.pessoa",
+        "core.pessoa_nome",
+        "core.pessoa_identificador",
+        "core.partido",
+        "core.filiacao",
+        "core.mandato",
+        "core.mandato_situacao",
+        "leg.proposicao",
+        "leg.autoria",
+        "leg.votacao",
+        "leg.voto",
+    )
+    return {t: escalar(Sessao, f"SELECT count(*) FROM {t}") for t in tabelas}  # nosec B608 - nomes constantes
+
+
 def test_politicos_deduplicados_e_sem_contato_inventado(ambiente):
     dados, Sessao = ambiente
     carregar(dados)
-    with Sessao() as s:
-        deputados = {p.camara_id: p for p in s.query(Politician).filter(Politician.camara_id.isnot(None))}
-        assert len(deputados) == 4
-        edu = deputados[1]
-        assert edu.email == "dep.eduardo@camara.leg.br"  # vem da fonte
-        assert edu.cabinet_room == "Anexo 4, Gabinete 100" and edu.birthplace_state == "RJ"
-        flavio = deputados[2]
-        assert flavio.email is None and flavio.cabinet_room is None and flavio.cabinet_phone is None
-        assert flavio.birthplace_state is None  # UF eleitoral não é naturalidade
+    assert escalar(Sessao, "SELECT count(*) FROM core.pessoa_identificador WHERE tipo = 'CAMARA_ID'") == 4
+    ((_, _, _, email, sala, _, uf_nasc),) = pessoa_por(Sessao, "CAMARA_ID", 1)
+    assert email == "dep.eduardo@camara.leg.br"  # vem da fonte
+    assert sala == "Anexo 4, Gabinete 100" and uf_nasc == "RJ"
+    ((_, _, _, email, sala, telefone, uf_nasc),) = pessoa_por(Sessao, "CAMARA_ID", 2)
+    assert email is None and sala is None and telefone is None
+    assert uf_nasc is None  # UF eleitoral não é naturalidade
 
 
 def test_carga_e_idempotente(ambiente):
     dados, Sessao = ambiente
-    primeira = carregar(dados)
+    proposicoes_e_votacoes(dados)
+    primeira, estado = carregar(dados), None
+    estado = _estado(Sessao)
     segunda = carregar(dados)
     assert primeira == segunda
+    assert _estado(Sessao) == estado  # a segunda rodada não muda nenhuma linha de core/leg
 
 
 def test_filiacoes_partidos_extintos_e_data_desconhecida(ambiente):
     dados, Sessao = ambiente
     carregar(dados)
-    with Sessao() as s:
-        siglas = {p.acronym for p in s.query(PoliticalParty)}
-        assert {"PSL", "PTB", "PL"} <= siglas  # extintos viram partidos reais, não "Sem Partido"
-        edu = s.query(Politician).filter_by(camara_id=1).one()
-        afs = s.query(PartyAffiliation).filter_by(politician_id=edu.id).all()
-        assert len(afs) == 2
-        atual = next(a for a in afs if a.is_current)
-        assert atual.start_date.isoformat() == "2023-02-01"  # limite inferior de observação, não data real inventada
-        assert s.query(PartyAffiliation).count() == 2  # linha sem id e com nome não único/desconhecido não vira vínculo
+    siglas = {r[0] for r in consulta(Sessao, "SELECT sigla FROM core.partido")}
+    assert {"PSL", "PTB", "PL"} <= siglas  # extintos viram partidos reais, não "Sem Partido"
+    filiacoes = consulta(
+        Sessao,
+        "SELECT lower(f.periodo), upper_inf(f.periodo) FROM core.filiacao f "
+        "JOIN core.pessoa_identificador i ON i.pessoa_id = f.pessoa_id AND i.tipo = 'CAMARA_ID' AND i.valor = '1'",
+    )
+    assert len(filiacoes) == 2
+    (inicio,) = [str(f[0]) for f in filiacoes if f[1]]  # a atual (sem fim)
+    assert inicio == "2023-02-01"  # limite inferior de observação, não data real inventada
+    assert (
+        escalar(Sessao, "SELECT count(*) FROM core.filiacao") == 2
+    )  # linha sem id e com nome desconhecido não vira vínculo
 
 
 def test_mandatos_de_senadores_usam_datas_da_fonte(ambiente):
     dados, Sessao = ambiente
     carregar(dados)
-    with Sessao() as s:
-        sen_ok = s.query(Politician).filter_by(senado_id=101).one()
-        m = s.query(Mandate).filter_by(politician_id=sen_ok.id).one()
-        assert (m.start_date.isoformat(), m.end_date.isoformat(), m.election_year) == ("2019-02-01", "2027-01-31", 2018)
-        sen_sem = s.query(Politician).filter_by(senado_id=100).one()
-        m2 = s.query(Mandate).filter_by(politician_id=sen_sem.id).one()
-        assert m2.end_date is None  # sem datas na fonte: não se inventa término em 2031
-        dep = s.query(Politician).filter_by(camara_id=1).one()
-        md = s.query(Mandate).filter_by(politician_id=dep.id).one()
-        assert (md.start_date.isoformat(), md.end_date.isoformat(), md.election_year) == (
-            "2023-02-01",
-            "2027-01-31",
-            2022,
-        )
+    sql = (
+        "SELECT m.inicio, m.fim, e.ano FROM core.mandato m JOIN core.pessoa_identificador i ON i.pessoa_id = m.pessoa_id "
+        "JOIN core.eleicao e ON e.id = m.eleicao_id WHERE i.tipo = :t AND i.valor = :v AND m.fonte_id IS NOT NULL"
+    )
+    ((ini, fim, ano),) = consulta(Sessao, sql, t="SENADO_ID", v="101")
+    assert (ini.isoformat(), fim.isoformat(), ano) == ("2019-02-01", "2027-01-31", 2018)
+    ((_, fim_sem, _),) = consulta(Sessao, sql, t="SENADO_ID", v="100")
+    assert fim_sem is None  # sem datas na fonte: não se inventa término em 2031
+    ((ini, fim, ano),) = consulta(Sessao, sql, t="CAMARA_ID", v="1")
+    assert (ini.isoformat(), fim.isoformat(), ano) == ("2023-02-01", "2027-01-31", 2022)
 
 
 def proposicoes_e_votacoes(dados):
@@ -325,66 +397,75 @@ def proposicoes_e_votacoes(dados):
     )
 
 
+def _proposicao(Sessao, coluna, valor):
+    """`(uid, autor_pessoa_id, autor_nome, eixo_impacto, area_tematica, iniciativa_executivo)` da proposição pelo id da casa."""
+    (linha,) = consulta(
+        Sessao,
+        f"SELECT uid, autor_pessoa_id, autor_nome, eixo_impacto, area_tematica, iniciativa_executivo "  # nosec B608
+        f"FROM leg.proposicao WHERE {coluna} = :v",
+        v=valor,
+    )
+    return linha
+
+
 def test_autoria_exata_e_senado_nao_funde_com_camara(ambiente):
     dados, Sessao = ambiente
     proposicoes_e_votacoes(dados)
     carregar(dados)
-    with Sessao() as s:
-        dino = s.query(Politician).filter_by(camara_id=2).one()
-        drflavio = s.query(Politician).filter_by(camara_id=3).one()
-        p74 = s.query(Proposition).filter_by(external_camara_id=10).one()
-        assert p74.author_politician_id == dino.id  # "Flávio Dino" != "Dr. Flávio"
-        p75 = s.query(Proposition).filter_by(external_camara_id=11).one()
-        # "Dr. Flávio" (1 token após normalização) não pode virar autor por subconjunto de tokens; aqui é igualdade exata
-        assert p75.author_politician_id == drflavio.id
-        assert s.query(Proposition).filter_by(external_senado_id=900).one().id != p74.id
-        assert s.query(Proposition).count() == 4  # nada foi fundido
-        exec_ = s.query(Proposition).filter_by(external_camara_id=12).one()
-        assert (
-            exec_.author_politician_id is None
-            and exec_.author_name == "Poder Executivo"
-            and exec_.is_executive_initiative
-        )
-        # sem eixo aleatório e sem área temática inventada
-        assert p74.impact_axis is None and p74.thematic_area is None
+    dino = pessoa_por(Sessao, "CAMARA_ID", 2)[0][0]
+    drflavio = pessoa_por(Sessao, "CAMARA_ID", 3)[0][0]
+    p74 = _proposicao(Sessao, "id_camara", 10)
+    assert p74[1] == dino  # "Flávio Dino" != "Dr. Flávio"
+    # "Dr. Flávio" (1 token após normalização) não pode virar autor por subconjunto de tokens; aqui é igualdade exata
+    assert _proposicao(Sessao, "id_camara", 11)[1] == drflavio
+    assert _proposicao(Sessao, "id_senado", 900)[0] != p74[0]
+    assert escalar(Sessao, "SELECT count(*) FROM leg.proposicao") == 4  # nada foi fundido
+    executivo = _proposicao(Sessao, "id_camara", 12)
+    assert executivo[1] is None and executivo[2] == "Poder Executivo" and executivo[5]
+    assert p74[3] is None and p74[4] is None  # sem eixo aleatório e sem área temática inventada
 
 
 def test_votacoes_sem_proposicao_unica_sao_descartadas_e_voto_invalido_nao_derruba(ambiente):
     dados, Sessao = ambiente
     proposicoes_e_votacoes(dados)
     carregar(dados)
-    with Sessao() as s:
-        externos = {v.external_id for v in s.query(VotingSession)}
-        assert externos == {"S-CAM-1", "SEN-1"}  # órfã, matéria desconhecida e sem data ficaram de fora
-        cam = s.query(VotingSession).filter_by(external_id="S-CAM-1").one()
-        assert (cam.votes_yes_count, cam.votes_no_count) == (1, 1)  # recalculado dos votos nominais
-        assert s.query(ParliamentaryVote).filter_by(voting_session_id=cam.id).count() == 3  # voto "OPCAO_NOVA" ignorado
-        sen = s.query(VotingSession).filter_by(external_id="SEN-1").one()
-        arcabouco = s.query(Proposition).filter_by(external_camara_id=12).one()
-        assert sen.proposition_id == arcabouco.id
+    externos = {r[0] for r in consulta(Sessao, "SELECT id_externo FROM leg.votacao")}
+    assert externos == {"S-CAM-1", "SEN-1"}  # órfã, matéria desconhecida e sem data ficaram de fora
+    ((sim, nao, votos),) = consulta(
+        Sessao,
+        "SELECT v.total_sim_fonte, v.total_nao_fonte, (SELECT count(*) FROM leg.voto x WHERE x.votacao_id = v.id) "
+        "FROM leg.votacao v WHERE v.id_externo = 'S-CAM-1'",
+    )
+    assert (sim, nao) == (1, 1)  # recalculado dos votos nominais
+    assert votos == 3  # voto "OPCAO_NOVA" ignorado
+    (mesma,) = consulta(
+        Sessao,
+        "SELECT p.id_camara FROM leg.votacao v JOIN leg.proposicao p ON p.id = v.proposicao_id WHERE v.id_externo = 'SEN-1'",
+    )[0]
+    assert mesma == 12  # a do Senado achou o PLP 93/2023 da Câmara por tipo, número e ano
 
 
 def test_vinculo_errado_antigo_e_corrigido_na_recarga(ambiente):
     dados, Sessao = ambiente
     proposicoes_e_votacoes(dados)
     carregar(dados)
-    with Sessao() as s:
-        edu = s.query(Politician).filter_by(camara_id=1).one()
-        p = s.query(Proposition).filter_by(external_camara_id=10).one()
-        p.author_politician_id = edu.id  # vínculo errado como o do caso Eduardo Bolsonaro
+    edu = pessoa_por(Sessao, "CAMARA_ID", 1)[0][0]
+    with Sessao() as s:  # vínculo errado como o do caso Eduardo Bolsonaro
+        s.execute(text("UPDATE leg.proposicao SET autor_pessoa_id = :p WHERE id_camara = 10"), {"p": edu})
         s.commit()
     carregar(dados)
-    with Sessao() as s:
-        dino = s.query(Politician).filter_by(camara_id=2).one()
-        assert s.query(Proposition).filter_by(external_camara_id=10).one().author_politician_id == dino.id
+    dino = pessoa_por(Sessao, "CAMARA_ID", 2)[0][0]
+    assert _proposicao(Sessao, "id_camara", 10)[1] == dino
 
 
 def test_mandato_presidencial_nao_usa_vice_como_coligacao(ambiente):
     dados, Sessao = ambiente
     carregar(dados)
-    with Sessao() as s:
-        presidenciais = s.query(Mandate).filter(Mandate.jurisdiction_state == "BR").all()
-        assert presidenciais and all(m.coalition_name is None for m in presidenciais)
+    presidenciais = consulta(
+        Sessao,
+        "SELECT m.coligacao FROM core.mandato m JOIN ref.cargo c ON c.id = m.cargo_id WHERE c.codigo = 'PRESIDENTE'",
+    )
+    assert presidenciais and all(m[0] is None for m in presidenciais)
 
 
 def test_autoria_legada_sem_proveniencia_e_ignorada_a_menos_que_autorizada(ambiente):
@@ -419,27 +500,26 @@ def test_autoria_legada_sem_proveniencia_e_ignorada_a_menos_que_autorizada(ambie
         ],
     )
     carregar(dados)
-    with Sessao() as s:
-        p1 = s.query(Proposition).filter_by(external_camara_id=10).one()
-        assert p1.author_politician_id is None and p1.author_name is None
-        p2 = s.query(Proposition).filter_by(external_camara_id=11).one()
-        assert p2.author_name == "Poder Executivo"  # iniciativa do Executivo é fato curado, não palpite
+    p1 = _proposicao(Sessao, "id_camara", 10)
+    assert p1[1] is None and p1[2] is None
+    assert (
+        _proposicao(Sessao, "id_camara", 11)[2] == "Poder Executivo"
+    )  # iniciativa do Executivo é fato curado, não palpite
     carregar(dados, allow_unverified=True)
-    with Sessao() as s:
-        dino = s.query(Politician).filter_by(camara_id=2).one()
-        assert s.query(Proposition).filter_by(external_camara_id=10).one().author_politician_id == dino.id
+    dino = pessoa_por(Sessao, "CAMARA_ID", 2)[0][0]
+    assert _proposicao(Sessao, "id_camara", 10)[1] == dino
 
 
 def test_filiacoes_legadas_sem_proveniencia_sao_ignoradas(ambiente):
     dados, Sessao = ambiente
+    conta = (
+        "SELECT count(*) FROM core.filiacao f JOIN core.pessoa_identificador i ON i.pessoa_id = f.pessoa_id "
+        "AND i.tipo = 'CAMARA_ID' AND i.valor = '2'"
+    )
     carregar(dados)
-    with Sessao() as s:
-        dino = s.query(Politician).filter_by(camara_id=2).one()
-        assert s.query(PartyAffiliation).filter_by(politician_id=dino.id).count() == 0
+    assert escalar(Sessao, conta) == 0
     carregar(dados, allow_unverified=True)
-    with Sessao() as s:
-        dino = s.query(Politician).filter_by(camara_id=2).one()
-        assert s.query(PartyAffiliation).filter_by(politician_id=dino.id).count() == 1
+    assert escalar(Sessao, conta) == 1
 
 
 def test_sessoes_legadas_do_senado_sem_ano_usam_materias_conhecidas(ambiente):
@@ -460,8 +540,7 @@ def test_sessoes_legadas_do_senado_sem_ano_usam_materias_conhecidas(ambiente):
     )
     escrever(dados, "votos_nominais_senado.json", [{"sessao_externa_id": "SEN-LEG", "senador_id": 101, "voto": "SIM"}])
     carregar(dados)
-    with Sessao() as s:
-        assert s.query(VotingSession).filter_by(external_id="SEN-LEG").count() == 1
+    assert escalar(Sessao, "SELECT count(*) FROM leg.votacao WHERE id_externo = 'SEN-LEG'") == 1
 
 
 def _execucoes(sessao, recurso, estagio="CARREGAR"):
@@ -480,13 +559,13 @@ def _execucoes(sessao, recurso, estagio="CARREGAR"):
 
 
 def test_fusao_do_staging_que_falha_sobe_para_a_etapa_nao_aparecer_como_ok(ambiente, monkeypatch):
-    """A carga do staging já foi confirmada, mas `core`/`leg` ficaram sem ela: a esteira tem de registrar a falha."""
+    """A carga das planas já foi confirmada, mas `core`/`leg` ficaram sem ela: a esteira tem de registrar a falha."""
     dados, Sessao = ambiente
 
-    def quebra(_sessao):
+    def quebra(_sessao, **_):
         raise RuntimeError("fusão quebrou")
 
-    carregar(dados)  # aplica as migrações e deixa o staging pronto
+    carregar(dados)  # aplica as migrações e deixa as planas prontas
     monkeypatch.setattr("app.services.staging_merge.merge_staging", quebra)
     carga = carga_cadastro.CargaCadastro(data_dir=dados, engine=Sessao.engine)
     with pytest.raises(RuntimeError, match="fusão quebrou"):
@@ -522,7 +601,7 @@ def test_cada_recurso_registra_a_sua_execucao_e_a_fusao_a_dela(ambiente):
             "WHERE e.parametros->>'recurso' = 'politicos'"
         )
     )
-    assert verificacoes.scalar() >= 4  # as do recurso mais a de contagens
+    assert verificacoes.scalar() >= 4  # a de contagens e a da cópia de cada tabela plana
 
 
 def test_recurso_pode_ser_recarregado_sozinho_sem_mudar_o_resto(ambiente):
@@ -533,12 +612,12 @@ def test_recurso_pode_ser_recarregado_sozinho_sem_mudar_o_resto(ambiente):
         "SELECT count(*) FROM etl.execucao WHERE parametros->>'recurso' IS NOT NULL"
     )  # as da carga, não as da fusão
     antes = Sessao().execute(conta).scalar()
-    contagens = carga_cadastro.CargaCadastro(data_dir=dados, engine=Sessao.engine).load_all(
-        recursos=["votacoes_plenario"]
-    )
+    estado = _estado(Sessao)
+    carga_cadastro.CargaCadastro(data_dir=dados, engine=Sessao.engine).load_all(recursos=["votacoes_plenario"])
     depois = Sessao().execute(conta).scalar()
     assert depois == antes + 2  # só o recurso pedido e a fusão
-    assert contagens["Votos Parlamentares Nominais"] == 5  # os 5 votos válidos da fixture, sem duplicar
+    assert _estado(Sessao) == estado  # e o resultado é o mesmo: os 5 votos válidos da fixture, sem duplicar
+    assert estado["leg.voto"] == 5
     with pytest.raises(ValueError, match="recurso desconhecido"):
         carga_cadastro.CargaCadastro(data_dir=dados, engine=Sessao.engine).load_all(recursos=["nao_existe"])
 
@@ -554,7 +633,7 @@ def test_carga_registra_a_execucao_com_contagens_de_votos(ambiente):
 def test_carga_que_falha_registra_erro_so_com_a_classe_da_excecao(ambiente, monkeypatch):
     dados, Sessao = ambiente
 
-    def explode(self, cursor):
+    def explode(self, cursor, execucao_id):
         raise RuntimeError("detalhe sigiloso: senha=abc")
 
     monkeypatch.setattr(carga_cadastro.CargaCadastro, "_politicos", explode)
@@ -564,53 +643,111 @@ def test_carga_que_falha_registra_erro_so_com_a_classe_da_excecao(ambiente, monk
     assert (status, erro) == ("ERRO", "RuntimeError")
 
 
-def test_contagem_de_votos_da_execucao_fecha_e_a_recarga_conta_os_ja_gravados(ambiente):
+def test_votos_da_carga_sao_copiados_inteiros_e_a_fusao_rejeita_com_motivo(ambiente):
+    """A carga das planas copia os 7 votos do arquivo; o que não vira `leg.voto` aparece como rejeitado na fusão."""
     dados, Sessao = ambiente
     proposicoes_e_votacoes(dados)
     carregar(dados)
-    carregar(dados)  # a recarga não duplica no staging: os votos já gravados contam como gravados
+    carregar(dados)  # a recarga não duplica: as planas são substituídas e o resultado é o mesmo
     (status, _, _, lidas, gravadas, rejeitadas) = _execucoes(Sessao, "votacoes_plenario")[-1]
-    no_staging = Sessao().execute(text("SELECT count(*) FROM stg.votos_parlamentares")).scalar()
-    # 4 votos da Câmara (1 com opção desconhecida) + 3 do Senado (1 de sessão descartada, sem sessão para receber o voto)
-    assert (lidas, gravadas, rejeitadas) == (7, 5, 2)
-    assert no_staging == 5  # nenhum duplicado no staging, mesmo com `gravadas` contando as linhas já existentes
-    assert lidas == gravadas + rejeitadas
-    assert status == "COM_ALERTA"  # houve rejeitada
-    motivos = (
-        Sessao()
-        .execute(
-            text(
-                "SELECT r.motivo, (r.payload->>'total')::int FROM etl.rejeito r JOIN etl.execucao e ON e.id = r.execucao_id "
-                "WHERE e.id = (SELECT max(id) FROM etl.execucao WHERE parametros->>'recurso' = 'votacoes_plenario')"
-            )
-        )
-        .all()
+    # 4 votos da Câmara (1 com opção desconhecida, que já fica de fora na carga) + 3 do Senado (1 de sessão descartada)
+    assert (lidas, gravadas, rejeitadas) == (7, 6, 1) and status == "COM_ALERTA"
+    assert escalar(Sessao, "SELECT count(*) FROM leg.voto") == 5  # nenhum duplicado, mesmo recarregando
+    motivos = consulta(
+        Sessao,
+        "SELECT r.motivo, (r.payload->>'total')::int FROM etl.rejeito r JOIN etl.execucao e ON e.id = r.execucao_id "
+        "WHERE e.id = (SELECT max(id) FROM etl.execucao WHERE parametros->>'recurso' = 'cadastro_e_legislativo')",
     )
-    assert [tuple(m) for m in motivos] == [(carga_cadastro.MOTIVO_VOTO, 2)]  # o motivo e o total ficam em etl.rejeito
+    assert (carga_cadastro.MOTIVO_VOTO, 1) in motivos  # o do Senado cuja sessão foi descartada, em etl.rejeito
+    assert ("SEM_PROVENIENCIA", 1) in motivos and ("NAO_CADASTRADO", 1) in motivos  # filiações do arquivo
 
 
-def test_contagem_do_historico_e_uma_execucao_propria(ambiente, monkeypatch):
-    """Os votos das votações históricas têm a execução deles: lidas, gravadas e rejeitadas vêm de `ContagemDeVotos`."""
+def test_votos_ja_acumulados_nao_somem_quando_os_arquivos_de_votacao_somem(ambiente):
+    """`leg.voto` é refeito a cada fusão; se o arquivo de hoje não traz os votos, os de ontem têm de continuar."""
     dados, Sessao = ambiente
     proposicoes_e_votacoes(dados)
-    historico = ContagemDeVotos(lidas=10, gravadas=6, rejeitadas=4).como_contadores()
-    monkeypatch.setattr(carga_cadastro, "carregar_votacoes", lambda *a, **k: historico)
     carregar(dados)
+    assert escalar(Sessao, "SELECT count(*) FROM leg.voto") == 5
+    for nome in (
+        "votos_nominais_2023.json",
+        "votos_nominais_senado.json",
+        "sessoes_votacao_2023.json",
+        "sessoes_votacao_senado.json",
+    ):
+        (dados / nome).unlink()
+    carregar(dados)
+    assert escalar(Sessao, "SELECT count(*) FROM leg.voto") == 5
+    assert escalar(Sessao, "SELECT count(*) FROM leg.votacao") == 2
+
+
+def _historico(dados, sessoes_extra=None):
+    """Um arquivo anual da Câmara com dois deputados e uma sessão; devolve o caminho."""
+    (dados / "votacoes").mkdir(exist_ok=True)
+    arquivo = {
+        "casa": "CAMARA",
+        "ano": 2023,
+        "fonte": "teste",
+        "is_synthetic": False,
+        "partidos": ["PL", "PSB"],
+        "parlamentares": {
+            "1": {"nome": "Eduardo Bolsonaro", "partido": "PL", "uf": "SP", "legislaturas": [57]},
+            "777": {"nome": "Novo Deputado", "partido": "PSB", "uf": "BA", "legislaturas": [56, 57]},
+        },
+        "sessoes": [
+            {
+                "id": "H-1",
+                "data_hora": "2023-04-01T10:00:00",
+                "descricao": "Aprovado",
+                "aprovada": True,
+                "proposicao": {
+                    "camara_id": 500,
+                    "tipo": "PL",
+                    "numero": 4015,
+                    "ano": 2023,
+                    "titulo": "PL 4015/2023",
+                    "ementa": "x",
+                },
+                "totais": {"SIM": 1, "NAO": 1},
+                "votos": [[1, "SIM", 0], [777, "NAO", 1], [888, "SIM", 0]],
+            }
+        ]
+        + (sessoes_extra or []),
+    }
+    caminho = dados / "votacoes" / "camara_2023.json.gz"
+    caminho.write_bytes(gzip.compress(json.dumps(arquivo).encode()))
+    return caminho
+
+
+def test_historico_cria_parlamentar_proposicao_sessao_e_voto(ambiente):
+    dados, Sessao = ambiente
+    _historico(dados)
+    carregar(dados)
+    assert pessoa_por(Sessao, "CAMARA_ID", 777)  # o deputado do arquivo que não existia virou pessoa
+    assert not pessoa_por(Sessao, "CAMARA_ID", 888)  # voto de quem o arquivo não lista: sem pessoa, o voto fica de fora
+    assert escalar(Sessao, "SELECT count(*) FROM leg.votacao WHERE id_externo = 'H-1'") == 1
+    assert escalar(Sessao, "SELECT count(*) FROM leg.voto") == 2
+    assert escalar(Sessao, "SELECT count(*) FROM leg.proposicao WHERE id_camara = 500") == 1
+    mandatos_777 = consulta(
+        Sessao,
+        "SELECT e.ano FROM core.mandato m JOIN core.pessoa_identificador i ON i.pessoa_id = m.pessoa_id "
+        "AND i.tipo = 'CAMARA_ID' AND i.valor = '777' JOIN core.eleicao e ON e.id = m.eleicao_id ORDER BY 1",
+    )
+    assert mandatos_777 == [(2018,), (2022,)]  # um mandato por legislatura do arquivo
     (status, _, _, lidas, gravadas, rejeitadas) = _execucoes(Sessao, "votacoes_historico")[-1]
-    assert (lidas, gravadas, rejeitadas) == (10, 6, 4)
-    assert status == "COM_ALERTA"
-    (_, _, _, lidas, gravadas, rejeitadas) = _execucoes(Sessao, "votacoes_plenario")[-1]
-    assert (lidas, gravadas, rejeitadas) == (7, 5, 2)  # o plenário não mistura com o histórico
+    assert (lidas, gravadas, rejeitadas) == (3, 3, 0)
+    carregar(dados)  # idempotente
+    assert escalar(Sessao, "SELECT count(*) FROM leg.voto") == 2
 
 
 def test_mandato_preservado_pela_fusao_aparece_no_log(ambiente, monkeypatch, caplog):
     """A 0038 poupa o mandato que algo ainda referencia: a carga avisa quantos ficaram, para não ser silencioso."""
     dados, Sessao = ambiente
     carregar(dados)
-    monkeypatch.setattr("app.services.staging_merge.merge_staging", lambda _sessao: {"rejeitos": 0})
+    monkeypatch.setattr("app.services.staging_merge.merge_staging", lambda _sessao, **_: {"rejeitos": 0})
     carga = carga_cadastro.CargaCadastro(data_dir=dados, engine=Sessao.engine)
 
     monkeypatch.setattr(carga_cadastro.CargaCadastro, "_mandatos_preservados", staticmethod(lambda _s: 2))
+    monkeypatch.setattr(carga_cadastro.CargaCadastro, "_verificar_fusao", staticmethod(lambda _s, _e: None))
     with caplog.at_level("WARNING", logger="CargaCadastro"):
         carga._fundir_staging()
     assert any("2 mandatos da fonte LEGADO" in r.message for r in caplog.records)

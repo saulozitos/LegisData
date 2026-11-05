@@ -76,16 +76,18 @@ def diagnosticar(emendas: Iterable[Dict[str, Any]], nomes_politicos: Iterable[Tu
 
 
 def nomes_da_base() -> List[Tuple[Any, str]]:
+    """Os nomes de cada pessoa de `core` (exibição e os registrados), como pares `(id da pessoa, nome)`."""
     from app.core.database import engine
+    from sqlalchemy import text
 
-    from etl.pipelines import stg_tabela
-    from etl.utils.copia import transacao_de_carga
-
-    with transacao_de_carga(engine) as cursor:
-        pares: List[Tuple[Any, str]] = []
-        for pol in stg_tabela.politicos().carregar(cursor):
-            pares.extend((pol.id, n) for n in (pol.electoral_name, pol.civil_name) if n)
-        return pares
+    with engine.connect() as conexao:
+        return [
+            (pessoa_id, nome)
+            for pessoa_id, nome in conexao.execute(
+                text("SELECT pessoa_id, nome FROM core.pessoa_nome UNION SELECT id, nome_exibicao FROM core.pessoa")
+            )
+            if nome
+        ]
 
 
 def main(argv: Optional[List[str]] = None) -> Dict[str, Any]:

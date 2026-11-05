@@ -1,10 +1,13 @@
 """
-Modelos declarativos do schema `stg`, SÓ para os testes do backend.
+Modelos declarativos das tabelas de entrada da fusão, SÓ para os testes do backend.
 
-O `stg` é o que o ETL grava (`etl.pipelines.stg_tabela`) e as funções `etl.merge_*` projetam em `core`/`leg`; a API nunca o
-lê. Estes modelos servem para semear linhas de teste com objetos (`Politician(...)`, `db.add`) e para a guarda de deriva
-entre o schema migrado e o que o ETL espera (`test_staging_orm_models_match_the_migrated_database`). Antes moravam em
-`app.models`, exportados à API sem uso.
+Em produção a fusão (`etl.merge_cadastro`, `etl.merge_legislativo`) lê tabelas TEMPORÁRIAS de trabalho (`w_politicos`,
+`w_mandatos`...) que `etl.preparar_staging` monta a partir das tabelas planas de `stg` e de `core`/`leg`. Nos testes essas
+oito são tabelas comuns em `public` (criadas só no banco de teste, ver `conftest`): o teste semeia linhas com objetos
+(`Politician(...)`, `db.add`) e chama `merge_staging(db, preparar=False)`; sem tabela temporária no caminho, a fusão acha as
+persistentes pelo `search_path`. As cinco tabelas congeladas de `stg` (autores, presença, votações e votos nominais do legado)
+são as migradas de verdade. A API nunca lê nada disso. A guarda de deriva (`test_staging_orm_models_match_the_migrated_database`)
+confere os modelos contra o schema migrado e contra `etl.criar_trabalho`.
 """
 
 import uuid
@@ -46,9 +49,9 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class StagingBase(DeclarativeBase):
-    """Tabelas de entrada do ETL (schema `stg`): o que o ETL grava e as funções `etl.merge_*` projetam em `core`/`leg`."""
+    """Tabelas de entrada da fusão: `w_*` em `public` (só nos testes) e as cinco congeladas de `stg`."""
 
-    metadata = MetaData(schema="stg")
+    metadata = MetaData()
 
 
 class StagingTimeStampedModel(StagingBase):
@@ -66,7 +69,7 @@ class StagingTimeStampedModel(StagingBase):
 
 
 class Politician(StagingTimeStampedModel):
-    __tablename__ = "politicos"
+    __tablename__ = "w_politicos"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     civil_name: Mapped[str] = mapped_column("nomeCivil", String(255), nullable=False)
@@ -100,7 +103,7 @@ class Politician(StagingTimeStampedModel):
 
 
 class PoliticalParty(StagingTimeStampedModel):
-    __tablename__ = "partidos_politicos"
+    __tablename__ = "w_partidos"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     acronym: Mapped[str] = mapped_column("sigla", String(20), unique=True, nullable=False)
@@ -111,7 +114,7 @@ class PoliticalParty(StagingTimeStampedModel):
     successor_party_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         "partidoSucessorId",
         UUID(as_uuid=True),
-        ForeignKey("partidos_politicos.id"),
+        ForeignKey("w_partidos.id"),
         nullable=True,
     )
     logo_url: Mapped[Optional[str]] = mapped_column("logoUrl", Text, nullable=True)
@@ -139,19 +142,19 @@ class PoliticalParty(StagingTimeStampedModel):
 
 
 class PartyAffiliation(StagingBase):
-    __tablename__ = "filiacoes_partidarias"
+    __tablename__ = "w_filiacoes"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     politician_id: Mapped[uuid.UUID] = mapped_column(
         "politicoId",
         UUID(as_uuid=True),
-        ForeignKey("politicos.id", ondelete="CASCADE"),
+        ForeignKey("w_politicos.id", ondelete="CASCADE"),
         nullable=False,
     )
     party_id: Mapped[uuid.UUID] = mapped_column(
         "partidoId",
         UUID(as_uuid=True),
-        ForeignKey("partidos_politicos.id"),
+        ForeignKey("w_partidos.id"),
         nullable=False,
     )
     start_date: Mapped[date] = mapped_column("dataFiliacao", Date, nullable=False)
@@ -162,6 +165,10 @@ class PartyAffiliation(StagingBase):
     )
     state: Mapped[Optional[str]] = mapped_column("uf", String(2), nullable=True)
     created_at: Mapped[date] = mapped_column(Date, default=date.today)
+    # a que já está em `core.filiacao` ganha o empate de início (ver a migração 0040); o teste semeia sempre sem ela
+    survivor: Mapped[bool] = mapped_column(
+        "sobrevivente", Boolean, default=False, server_default="false", nullable=False
+    )
 
     # Relationships
     politician: Mapped["Politician"] = relationship(back_populates="affiliations")
@@ -175,19 +182,19 @@ class PartyAffiliation(StagingBase):
 
 
 class Mandate(StagingTimeStampedModel):
-    __tablename__ = "mandatos"
+    __tablename__ = "w_mandatos"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     politician_id: Mapped[uuid.UUID] = mapped_column(
         "politicoId",
         UUID(as_uuid=True),
-        ForeignKey("politicos.id", ondelete="CASCADE"),
+        ForeignKey("w_politicos.id", ondelete="CASCADE"),
         nullable=False,
     )
     party_id: Mapped[uuid.UUID] = mapped_column(
         "partidoId",
         UUID(as_uuid=True),
-        ForeignKey("partidos_politicos.id"),
+        ForeignKey("w_partidos.id"),
         nullable=False,
     )
     office: Mapped[CargoPoliticoEnum] = mapped_column("cargo", Enum(CargoPoliticoEnum), nullable=False)
@@ -234,17 +241,17 @@ class Mandate(StagingTimeStampedModel):
 
 
 class CabinetMember(StagingBase):
-    __tablename__ = "membros_gabinete"
+    __tablename__ = "w_gabinete"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     mandate_id: Mapped[uuid.UUID] = mapped_column(
         "mandatoId",
         UUID(as_uuid=True),
-        ForeignKey("mandatos.id", ondelete="CASCADE"),
+        ForeignKey("w_mandatos.id", ondelete="CASCADE"),
         nullable=False,
     )
     politician_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        "politicoId", UUID(as_uuid=True), ForeignKey("politicos.id"), nullable=True
+        "politicoId", UUID(as_uuid=True), ForeignKey("w_politicos.id"), nullable=True
     )
     occupant_name: Mapped[str] = mapped_column("nomeOcupante", String(255), nullable=False)
     ministry_name: Mapped[str] = mapped_column("ministerioNome", String(200), nullable=False)
@@ -256,7 +263,7 @@ class CabinetMember(StagingBase):
 
 
 class Proposition(StagingTimeStampedModel):
-    __tablename__ = "proposicoes"
+    __tablename__ = "w_proposicoes"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     external_camara_id: Mapped[Optional[int]] = mapped_column("idExternoCamara", Integer, unique=True, nullable=True)
@@ -280,7 +287,7 @@ class Proposition(StagingTimeStampedModel):
     is_structural_reform: Mapped[bool] = mapped_column("isReformaEstrutural", Boolean, default=False, nullable=False)
     author_name: Mapped[Optional[str]] = mapped_column("autorNome", Text, nullable=True)
     author_politician_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        "autorPoliticoId", UUID(as_uuid=True), ForeignKey("politicos.id"), nullable=True
+        "autorPoliticoId", UUID(as_uuid=True), ForeignKey("w_politicos.id"), nullable=True
     )
     is_executive_initiative: Mapped[bool] = mapped_column(
         "iniciativaPoderExecutivo", Boolean, default=False, nullable=False
@@ -314,14 +321,14 @@ class Proposition(StagingTimeStampedModel):
 
 
 class VotingSession(StagingBase):
-    __tablename__ = "sessoes_votacao"
+    __tablename__ = "w_sessoes"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     external_id: Mapped[Optional[str]] = mapped_column("idExterno", String(100), unique=True, nullable=True)
     proposition_id: Mapped[uuid.UUID] = mapped_column(
         "proposicaoId",
         UUID(as_uuid=True),
-        ForeignKey("proposicoes.id", ondelete="CASCADE"),
+        ForeignKey("w_proposicoes.id", ondelete="CASCADE"),
         nullable=False,
     )
     legislative_house: Mapped[CasaLegislativaEnum] = mapped_column(
@@ -349,25 +356,25 @@ class VotingSession(StagingBase):
 
 
 class ParliamentaryVote(StagingBase):
-    __tablename__ = "votos_parlamentares"
+    __tablename__ = "w_votos"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     voting_session_id: Mapped[uuid.UUID] = mapped_column(
         "sessaoVotacaoId",
         UUID(as_uuid=True),
-        ForeignKey("sessoes_votacao.id", ondelete="CASCADE"),
+        ForeignKey("w_sessoes.id", ondelete="CASCADE"),
         nullable=False,
     )
     politician_id: Mapped[uuid.UUID] = mapped_column(
         "politicoId",
         UUID(as_uuid=True),
-        ForeignKey("politicos.id", ondelete="CASCADE"),
+        ForeignKey("w_politicos.id", ondelete="CASCADE"),
         nullable=False,
     )
     party_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         "partidoId",
         UUID(as_uuid=True),
-        ForeignKey("partidos_politicos.id"),
+        ForeignKey("w_partidos.id"),
         nullable=True,
     )
     vote_choice: Mapped[VotoOpcaoEnum] = mapped_column("voto", Enum(VotoOpcaoEnum), nullable=False)
@@ -392,13 +399,13 @@ class AttendanceRecord(StagingBase):
     politician_id: Mapped[uuid.UUID] = mapped_column(
         "politicoId",
         UUID(as_uuid=True),
-        ForeignKey("politicos.id", ondelete="CASCADE"),
+        ForeignKey("w_politicos.id", ondelete="CASCADE"),
         nullable=False,
     )
     mandate_id: Mapped[uuid.UUID] = mapped_column(
         "mandatoId",
         UUID(as_uuid=True),
-        ForeignKey("mandatos.id", ondelete="CASCADE"),
+        ForeignKey("w_mandatos.id", ondelete="CASCADE"),
         nullable=False,
     )
     legislative_house: Mapped[CasaLegislativaEnum] = mapped_column(
@@ -412,7 +419,7 @@ class AttendanceRecord(StagingBase):
     politician: Mapped["Politician"] = relationship("Politician", back_populates="attendances")
     mandate: Mapped["Mandate"] = relationship("Mandate", back_populates="attendances")
 
-    __table_args__ = (Index("idx_attendance_politician_date", "politicoId", "dataSessao"),)
+    __table_args__ = (Index("idx_attendance_politician_date", "politicoId", "dataSessao"), {"schema": "stg"})
 
 
 class PropositionAuthor(StagingBase):
@@ -422,13 +429,13 @@ class PropositionAuthor(StagingBase):
     proposition_id: Mapped[uuid.UUID] = mapped_column(
         "proposicaoId",
         UUID(as_uuid=True),
-        ForeignKey("proposicoes.id", ondelete="CASCADE"),
+        ForeignKey("w_proposicoes.id", ondelete="CASCADE"),
         nullable=False,
     )
     politician_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         "politicoId",
         UUID(as_uuid=True),
-        ForeignKey("politicos.id", ondelete="CASCADE"),
+        ForeignKey("w_politicos.id", ondelete="CASCADE"),
         nullable=True,
     )
     author_name: Mapped[str] = mapped_column("nomeAutor", Text, nullable=False)
@@ -447,6 +454,7 @@ class PropositionAuthor(StagingBase):
     __table_args__ = (
         Index("idx_prop_autor_pol_tipo", "politicoId", "tipoAutoria"),
         Index("idx_prop_autor_prop_ordem", "proposicaoId", "ordem"),
+        {"schema": "stg"},
     )
 
 
@@ -457,7 +465,7 @@ class VotacaoProposicao(StagingBase):
     proposicao_id: Mapped[uuid.UUID] = mapped_column(
         "proposicao_id",
         UUID(as_uuid=True),
-        ForeignKey("proposicoes.id", ondelete="CASCADE"),
+        ForeignKey("w_proposicoes.id", ondelete="CASCADE"),
         nullable=False,
     )
     data_hora: Mapped[datetime] = mapped_column("data_hora", DateTime(timezone=True), nullable=False)
@@ -494,6 +502,7 @@ class VotacaoProposicao(StagingBase):
         Index("idx_votacoes_prop_id", "proposicao_id"),
         Index("idx_votacoes_prop_tipo", "tipo_deliberacao"),
         Index("idx_votacoes_prop_data", "data_hora"),
+        {"schema": "stg"},
     )
 
 
@@ -503,13 +512,13 @@ class VotoNominal(StagingBase):
     votacao_id: Mapped[uuid.UUID] = mapped_column(
         "votacao_id",
         UUID(as_uuid=True),
-        ForeignKey("votacoes_proposicao.id", ondelete="CASCADE"),
+        ForeignKey("stg.votacoes_proposicao.id", ondelete="CASCADE"),
         primary_key=True,
     )
     parlamentar_id: Mapped[uuid.UUID] = mapped_column(
         "parlamentar_id",
         UUID(as_uuid=True),
-        ForeignKey("politicos.id", ondelete="CASCADE"),
+        ForeignKey("w_politicos.id", ondelete="CASCADE"),
         primary_key=True,
     )
     voto: Mapped[str] = mapped_column("voto", String(20), nullable=False)  # 'SIM', 'NAO', 'ABSTENCAO', 'OBSTRUCAO'
@@ -521,6 +530,7 @@ class VotoNominal(StagingBase):
     __table_args__ = (
         Index("idx_votos_nominais_voto", "voto"),
         Index("idx_votos_nominais_parlamentar", "parlamentar_id"),
+        {"schema": "stg"},
     )
 
 
@@ -530,7 +540,7 @@ class OrientacaoPartidaria(StagingBase):
     votacao_id: Mapped[uuid.UUID] = mapped_column(
         "votacao_id",
         UUID(as_uuid=True),
-        ForeignKey("votacoes_proposicao.id", ondelete="CASCADE"),
+        ForeignKey("stg.votacoes_proposicao.id", ondelete="CASCADE"),
         primary_key=True,
     )
     partido_bancada: Mapped[str] = mapped_column("partido_bancada", String(50), primary_key=True)
@@ -541,4 +551,4 @@ class OrientacaoPartidaria(StagingBase):
 
     votacao: Mapped["VotacaoProposicao"] = relationship("VotacaoProposicao", back_populates="orientacoes_partidarias")
 
-    __table_args__ = (Index("idx_orientacoes_partido", "partido_bancada"),)
+    __table_args__ = (Index("idx_orientacoes_partido", "partido_bancada"), {"schema": "stg"})

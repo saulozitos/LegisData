@@ -136,7 +136,7 @@ def _pessoa_id(db, uid):
 
 @pytest.fixture()
 def duplicado(client, db, seed):
-    """Fulano (cadastro público, camara_id 111) cujo identificador oficial ficou com um cadastro do histórico."""
+    """Fulano (cadastro público, camara_id 111) cujo identificador oficial ficou com um cadastro do histórico, já unidos."""
     client.get(BASE)  # a ponte do legado projeta o cadastro público em `core`
     historico = _pessoa_so_do_historico(db, "Fulano de Tal (histórico)", inicio=date(1999, 2, 1), fim=date(2003, 1, 31))
     db.execute(
@@ -151,8 +151,16 @@ def duplicado(client, db, seed):
     return historico
 
 
-def test_a_sincronizacao_une_o_cadastro_do_historico_ao_publico_e_o_uid_sobrevive(client, db, seed, duplicado):
-    client.get(BASE)  # a próxima sincronização do legado une os dois cadastros
+def _unir(client, db, seed, historico):
+    """A união manual (`core.unificar_pessoas`): depois da projeção do legado, como a sincronização fazia (a carga já não cria a duplicata, 0040)."""
+    client.get(BASE)
+    db.execute(text("SELECT core.unificar_pessoas(:m, :a)"), {"m": _pessoa_id(db, seed.fulano.id), "a": historico})
+    db.commit()
+
+
+def test_a_uniao_leva_o_cadastro_do_historico_ao_publico_e_o_uid_sobrevive(client, db, seed, duplicado):
+    _unir(client, db, seed, duplicado)
+    client.get(BASE)
     assert db.execute(text("SELECT count(*) FROM core.pessoa WHERE id = :h"), {"h": duplicado}).scalar() == 0
     publico = _pessoa_id(db, seed.fulano.id)
     assert (
@@ -179,12 +187,13 @@ def test_a_sincronizacao_une_o_cadastro_do_historico_ao_publico_e_o_uid_sobreviv
 def test_unir_completa_so_o_que_esta_vazio_e_nao_troca_o_que_o_cadastro_publico_ja_tem(client, db, seed, duplicado):
     seed.fulano.email = "publico@exemplo.leg.br"  # o legado tem e-mail e não tem biografia
     db.commit()
-    client.get(BASE)
+    _unir(client, db, seed, duplicado)  # a projeção leva o e-mail ao cadastro público; a união completa só a biografia
     pol = politico_service.resolver(db, str(seed.fulano.id))
     assert pol.email == "publico@exemplo.leg.br" and pol.biography == "Do histórico"
 
 
-def test_a_pessoa_aparece_uma_vez_so_na_lista_e_com_todos_os_mandatos(client, seed, duplicado):
+def test_a_pessoa_aparece_uma_vez_so_na_lista_e_com_todos_os_mandatos(client, seed, duplicado, db):
+    _unir(client, db, seed, duplicado)
     nomes = _nomes(client)
     assert nomes.count("Fulano") == 1 and "Fulano de Tal (histórico)" not in nomes
     trajetoria = client.get(f"{BASE}/{seed.fulano.id}").json()["trajetoria_mandatos"]
@@ -192,19 +201,21 @@ def test_a_pessoa_aparece_uma_vez_so_na_lista_e_com_todos_os_mandatos(client, se
 
 
 def test_resolver_pelo_identificador_oficial_chega_ao_cadastro_publico(client, db, seed, duplicado):
+    _unir(client, db, seed, duplicado)
     client.get(BASE)
     assert politico_service.resolver(db, "111").id == seed.fulano.id
 
 
 def test_o_uid_do_cadastro_apagado_deixa_de_existir(client, db, seed, duplicado):
+    _unir(client, db, seed, duplicado)
     uid_historico = db.execute(text("SELECT uid FROM core.pessoa WHERE id = :i"), {"i": duplicado}).scalar()
     client.get(BASE)
     assert client.get(f"{BASE}/{uid_historico}").status_code == 404
 
 
 def test_unificar_e_idempotente_e_nao_mexe_em_outro_politico_do_legado(client, db, seed, duplicado):
+    _unir(client, db, seed, duplicado)
     client.get(BASE)
-    assert db.execute(text("SELECT core.unificar_duplicadas()")).scalar() == 0  # nada a unir na segunda vez
     # o ID da Câmara de outro político do legado nunca leva à fusão com ele
     outro = _pessoa_id(db, seed.lula_fonte.id)
     antes = db.execute(text("SELECT count(*) FROM core.pessoa")).scalar()
@@ -213,6 +224,7 @@ def test_unificar_e_idempotente_e_nao_mexe_em_outro_politico_do_legado(client, d
 
 
 def test_colisao_descarta_a_linha_do_duplicado_e_move_o_resto(client, db, seed, duplicado):
+    _unir(client, db, seed, duplicado)
     publico = _pessoa_id(db, seed.fulano.id)
     client.get(BASE)  # cria o que a ponte projeta para o cadastro público
     segundo = _pessoa_so_do_historico(db, "Fulano outro", inicio=date(1999, 2, 1), fim=date(2003, 1, 31))
