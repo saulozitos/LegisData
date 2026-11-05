@@ -572,6 +572,39 @@ def test_historico_vincula_por_nome_unico_quem_ja_existe_com_outro_id(pg_engine)
     assert resumo["sessoes_novas"] == 1
 
 
+def test_historico_acha_no_core_quem_foi_parlamentar_antes_e_nao_repete_o_mandato_que_o_core_ja_tem(pg_engine):
+    with transacao(pg_engine) as c:
+        partido_curado(c, "PT", "S.PART.")
+        (pid, uid) = c.execute(
+            text("INSERT INTO core.pessoa (nome_exibicao) VALUES ('Davidson Antigo') RETURNING id, uid")
+        ).one()
+        c.execute(
+            text(
+                "INSERT INTO core.pessoa_identificador (pessoa_id, fonte_id, tipo, valor) "
+                "VALUES (:p, (SELECT id FROM etl.fonte WHERE codigo = 'CAMARA_API'), 'CAMARA_ID', '9')"
+            ),
+            {"p": pid},
+        )
+        # a legislatura 56 (2019-02-01 a 2023-01-31) já está em core, com datas da API (começou 4 dias depois)
+        c.execute(
+            text(
+                "INSERT INTO core.mandato (pessoa_id, cargo_id, circunscricao_id, inicio, fim) "
+                "SELECT :p, (SELECT id FROM ref.cargo WHERE codigo = 'DEPUTADO_FEDERAL'), "
+                "(SELECT id FROM ref.circunscricao WHERE tipo = 'BR' LIMIT 1), '2019-02-05', '2023-01-31'"
+            ),
+            {"p": pid},
+        )
+        inserir(c, "historico_parlamentar", _parlamentar(9, "DAVIDSON ANTIGO", legislaturas=json.dumps([56, 57])))
+        inserir(c, "historico_sessao", _sessao_historica())
+        resumo = preparar(c)["historico"]
+        assert consulta(c, 'SELECT id::text, "camaraId" FROM w_politicos') == [
+            (str(uid), 9)
+        ]  # o mesmo uid, sem outra pessoa
+        anos = consulta(c, 'SELECT "anoEleicao" FROM w_mandatos WHERE "politicoId" = :u', u=str(uid))
+    assert anos == [(2022,)]  # só a 57; a 56 o core já cobre
+    assert resumo["proposicoes_criadas"] == 1
+
+
 def test_historico_liga_proposicao_do_senado_a_da_camara_so_com_numeracao_unica_a_partir_de_2019(pg_engine):
     with transacao(pg_engine) as c:
         partido_curado(c, "PT", "S.PART.")

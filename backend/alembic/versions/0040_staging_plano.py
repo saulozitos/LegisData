@@ -720,6 +720,32 @@ BEGIN
 END
 $fn$;
 
+-- traz para w_politicos a pessoa que o core já tem com esse identificador da casa (quem foi parlamentar numa legislatura anterior
+-- não está no arquivo da atual e não vem do legado): sem isto o histórico criaria outra pessoa ao lado dela
+CREATE OR REPLACE FUNCTION etl.politico_do_core(p_tipo text, p_ext integer) RETURNS uuid LANGUAGE plpgsql AS $fn$
+DECLARE v_uid uuid;
+BEGIN
+    SELECT pe.uid INTO v_uid FROM core.pessoa_identificador i JOIN core.pessoa pe ON pe.id = i.pessoa_id
+     WHERE i.tipo = p_tipo AND i.valor = p_ext::text ORDER BY i.id LIMIT 1;
+    IF v_uid IS NULL THEN RETURN NULL; END IF;
+    IF EXISTS (SELECT 1 FROM w_politicos WHERE id = v_uid) THEN
+        IF p_tipo = 'CAMARA_ID' THEN UPDATE w_politicos SET "camaraId" = coalesce("camaraId", p_ext) WHERE id = v_uid;
+        ELSE UPDATE w_politicos SET "senadoId" = coalesce("senadoId", p_ext) WHERE id = v_uid; END IF;
+        RETURN v_uid;
+    END IF;
+    INSERT INTO w_politicos (id, "nomeCivil", "nomeEleitoral", "camaraId", "senadoId", "dataNascimento", "dataFalecimento", genero,
+                             "naturalidadeMunicipio", "naturalidadeUf", "fotoUrl", biografia, "redesSociais", email,
+                             "gabineteSala", "gabineteTelefone", "possuiProcessosDeclarados")
+    SELECT pe.uid, coalesce((SELECT n.nome FROM core.pessoa_nome n WHERE n.pessoa_id = pe.id AND n.tipo = 'CIVIL' ORDER BY n.id LIMIT 1), pe.nome_exibicao),
+           pe.nome_exibicao, CASE WHEN p_tipo = 'CAMARA_ID' THEN p_ext END, CASE WHEN p_tipo = 'SENADO_ID' THEN p_ext END,
+           pe.data_nascimento, pe.data_falecimento, pe.sexo, pe.municipio_nascimento, pe.uf_nascimento,
+           (SELECT m.url_origem FROM core.midia m WHERE m.id = pe.foto_midia_id), pe.biografia, pe.redes_sociais::json, pe.email,
+           pe.gabinete_sala, pe.gabinete_telefone, pe.possui_processos_declarados
+      FROM core.pessoa pe WHERE pe.uid = v_uid;
+    RETURN v_uid;
+END
+$fn$;
+
 -- cria o político (ou vincula o id da casa a um de mesmo nome único que ainda não o tinha) e garante os mandatos do arquivo
 CREATE OR REPLACE FUNCTION etl.garantir_historicos(p_origem text) RETURNS jsonb LANGUAGE plpgsql AS $fn$
 DECLARE
@@ -738,6 +764,7 @@ BEGIN
     FOR r IN SELECT * FROM stg.historico_parlamentar WHERE origem = p_origem ORDER BY casa DESC, linha LOOP
         IF r.casa = 'CAMARA' THEN
             SELECT id INTO v_pol FROM w_politicos WHERE "camaraId" = r.ext_id;
+            IF v_pol IS NULL THEN v_pol := etl.politico_do_core('CAMARA_ID', r.ext_id); END IF;
             IF v_pol IS NULL THEN
                 IF nullif(r.nome, '') IS NULL THEN CONTINUE; END IF;
                 SELECT n.id INTO v_cand FROM _h_nome_cam n WHERE n.k = etl.nome_tokens(r.nome);
@@ -755,6 +782,9 @@ BEGIN
                 v_ini := etl.legislatura_inicio(v_leg); v_fim := make_date(extract(year FROM v_ini)::int + 4, 1, 31);
                 IF EXISTS (SELECT 1 FROM w_mandatos WHERE "politicoId" = v_pol AND cargo = 'DEPUTADO_FEDERAL'
                               AND "anoEleicao" = extract(year FROM v_ini)::int - 1) THEN CONTINUE; END IF;
+                IF EXISTS (SELECT 1 FROM core.mandato m JOIN core.pessoa pe ON pe.id = m.pessoa_id JOIN ref.cargo cg ON cg.id = m.cargo_id
+                            WHERE pe.uid = v_pol AND cg.codigo = 'DEPUTADO_FEDERAL'
+                              AND daterange(m.inicio, coalesce(m.fim, 'infinity'::date), '[]') && daterange(v_ini, v_fim, '[]')) THEN CONTINUE; END IF;
                 v_part := coalesce(etl.garantir_partido(nullif(btrim(coalesce(r.partido, '')), '')), etl.garantir_partido('S.PART.'));
                 IF v_part IS NULL THEN c_sem_partido := c_sem_partido + 1; CONTINUE; END IF;
                 INSERT INTO w_mandatos (id, "politicoId", "partidoId", cargo, esfera, "ufJurisdicao", "anoEleicao",
@@ -766,6 +796,7 @@ BEGIN
             END LOOP;
         ELSE
             SELECT id INTO v_pol FROM w_politicos WHERE "senadoId" = r.ext_id;
+            IF v_pol IS NULL THEN v_pol := etl.politico_do_core('SENADO_ID', r.ext_id); END IF;
             IF v_pol IS NULL THEN
                 IF nullif(r.nome, '') IS NULL THEN CONTINUE; END IF;
                 SELECT n.id INTO v_cand FROM _h_nome_sen n WHERE n.k = etl.nome_tokens(r.nome);
@@ -785,6 +816,9 @@ BEGIN
                 v_chave := extract(year FROM v_ini)::int - 1;
                 IF EXISTS (SELECT 1 FROM w_mandatos WHERE "politicoId" = v_pol AND cargo = 'SENADOR'
                               AND abs("anoEleicao" - v_chave) <= 4) THEN CONTINUE; END IF;
+                IF EXISTS (SELECT 1 FROM core.mandato m JOIN core.pessoa pe ON pe.id = m.pessoa_id JOIN ref.cargo cg ON cg.id = m.cargo_id
+                            WHERE pe.uid = v_pol AND cg.codigo = 'SENADOR'
+                              AND daterange(m.inicio, coalesce(m.fim, 'infinity'::date), '[]') && daterange(v_ini, coalesce(v_fim, 'infinity'::date), '[]')) THEN CONTINUE; END IF;
                 v_part := coalesce(etl.garantir_partido(nullif(btrim(coalesce(r.partido, '')), '')), etl.garantir_partido('S.PART.'));
                 IF v_part IS NULL THEN c_sem_partido := c_sem_partido + 1; CONTINUE; END IF;
                 v_sup := lower(coalesce(m->>'participacao', '')) LIKE '%suplente%';
@@ -1246,6 +1280,7 @@ FUNCOES_DA_0040 = (
     "preparar_proposicoes()",
     "legislatura_inicio(integer)",
     "achar_proposicao(text, integer)",
+    "politico_do_core(text, integer)",
     "garantir_historicos(text)",
     "preparar_votacoes_plenario()",
     "preparar_votacoes_historico()",
@@ -1309,6 +1344,7 @@ def upgrade() -> None:
         "semear_cadastro",
         "preparar_cadastro",
         "preparar_proposicoes",
+        "politico_do_core",
         "garantir_historicos",
         "preparar_votacoes_plenario",
         "preparar_votacoes_historico",
