@@ -68,6 +68,8 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         # Etapa 1: Sincronização de Entidades Base e Mandatos Dinâmicos. `merge_staging` roda a fusão inteira do staging
         # (cadastro, legislativo, linhagens e unificação) e devolve as situações de mandato fundidas
         logger.info("Etapa 1/4: Fundindo o staging em core/leg e sincronizando o histórico de mandatos...")
+        # O cron funde com o critério estrito (sem `allow_synthetic`/`allow_unverified`): filiação carregada com
+        # `--allow-unverified` volta a ser rejeitada aqui (motivo em `etl.rejeito`), sem apagar nada que já está em `core`.
         synced_mandates = int(merge_staging(db)["situacoes"])
         registros_totais += synced_mandates
         logger.info(f"Etapa 1 concluída: fusão do staging feita ({synced_mandates} situações de mandato).")

@@ -14,13 +14,13 @@ Isso funciona e está testado, mas tem três problemas:
 2. **A conferência é parcial.** Não há, para cada fonte, um relatório do tipo "chegaram 513 deputados, entraram 513; o total de votos bate com o que a fonte informou; sobrou ninguém sem partido". Os problemas aparecem depois, na tela.
 3. **Há duas maneiras de fazer a mesma coisa.** A Câmara em lote (proposições e autores) e o histórico de mandatos da Câmara já usam o modelo bom (copiar o arquivo para `stg`, rodar uma função de fusão, registrar a execução). O resto ainda usa o modelo antigo. Manter os dois custa caro.
 
-A entrega leva todas as fontes para o modelo bom e aposenta o `db_loader.py` (hoje com 1.450 linhas).
+A entrega leva todas as fontes para o modelo bom e aposenta o `db_loader.py` (tinha 1.450 linhas; já saiu, ver C.1).
 
 ## 2. O que existe hoje (estado da `main`)
 
 ### Fluxo
 ```
-arquivos em etl/data/processed ──► db_loader.py (ORM, um registro por vez) ──► stg.*  ──► etl.merge_cadastro / etl.merge_legislativo ──► core.* e leg.*
+arquivos em etl/data/processed ──► (antes) db_loader.py (ORM, um registro por vez) ──► stg.*  ──► etl.merge_cadastro / etl.merge_legislativo ──► core.* e leg.*
 arquivos da Câmara em lote     ──► camara_bulk_loader.py (COPY)           ──► stg.camara_* ──► etl.merge_camara_bulk ──► leg.*      (modelo bom)
 histórico de mandatos da Câmara ─► camara_historico_loader.py             ──► stg.camara_historico ──► etl.merge_camara_historico ──► core.mandato (modelo bom)
 ```
@@ -120,7 +120,7 @@ Hoje `stg.politicos`, `stg.mandatos` etc. são tabelas relacionais com chave est
 1. **O `uid` público das pessoas não pode mudar.** O dossiê, os links compartilhados e as finanças são endereçados por ele. Hoje o `uid` vem do cadastro do legado (`stg.politicos.id`). Na carga nova, a pessoa deve ser resolvida pelo identificador oficial (Câmara/Senado) **antes** de criar uma nova; só cria se não existir. Foi exatamente a ausência disso que gerou os cadastros duplicados que a migração 0034 uniu (338 no banco de desenvolvimento). Se a carga nova criar a pessoa sem consultar o identificador, a duplicata volta.
 2. **A migração 0034 não tem volta.** Ela une cadastros no banco de destino. Não mexa nela. Faça backup antes de qualquer migração desta entrega (o deploy já faz `pg_dump`; rode `scripts/deploy/verificar_backup.sh` antes de começar).
 3. **Nenhum CPF em lugar nenhum (decisão D3).** O staging novo não pode ter coluna de CPF, mesmo vazia. A guarda de arquivos versionados continua valendo. Não coloque CPF real, nem sintético com dígito verificador válido, em testes.
-4. **Só fonte oficial e rastreável (D7).** Cada linha de `stg` precisa apontar para o arquivo de origem (`etl.arquivo_bruto`). Linha sem fonte registrada não entra (hoje isso é a regra `autor_fonte`/`allow_unverified` do `db_loader`; preserve o comportamento).
+4. **Só fonte oficial e rastreável (D7).** Cada linha de `stg` precisa apontar para o arquivo de origem (`etl.arquivo_bruto`). Linha sem fonte registrada não entra (era a regra `autor_fonte`/`allow_unverified` do `db_loader`; hoje vive em `planas_*` e na fusão, e o comportamento foi preservado).
 5. **Janela de dados a partir de 1995-01-01 (D8).** Conferir nas verificações.
 6. **Desconhecido é nulo, nunca zero.** Ao converter texto em número no `COPY`/fusão, campo vazio vira `NULL`, não `0`.
 7. **Idempotência.** Rodar duas vezes seguidas não pode mudar nenhuma linha. Provar por contagem e por checksum por tabela (seção 5).

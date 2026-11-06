@@ -65,6 +65,9 @@ def linhas_camara(data_dir: Path, allow_unverified: bool, contagem: Contagem) ->
     ignorados = 0
     for p in load_json(data_dir / "proposicoes_2023.json", []) or []:
         contagem.ler()
+        if not isinstance(p, dict):  # item que não é objeto: não há o que ler
+            contagem.rejeitar("FORMATO_LEGADO")
+            continue
         cid = p.get("camara_id")
         if not cid:
             contagem.rejeitar("SEM_ID")

@@ -321,3 +321,68 @@ def test_plenario_acumula_so_voto_com_parlamentar_e_opcao_validos(tmp_path, pg_e
                 text("SELECT casa, sessao_ext_id, parlamentar_ext_id, opcao, partido FROM stg.historico_voto")
             )
         ] == [("CAMARA", "S1", 1, "SIM", "PT")]
+
+
+def test_proposicao_da_camara_rejeita_item_que_nao_e_objeto(tmp_path):
+    escrever(
+        tmp_path, "proposicoes_2023.json", [123, "texto", {"camara_id": 5, "tipo": "pl", "numero": 1, "ano": 2020}]
+    )
+    contagem = Contagem()
+    linhas, _ = pp.linhas_camara(tmp_path, False, contagem)
+    assert contagem.motivos == {"FORMATO_LEGADO": 2} and len(linhas) == 1
+
+
+def test_plenario_ignora_linha_sem_id_de_sessao_e_conta_o_voto_como_rejeitado(tmp_path, pg_engine):
+    escrever(
+        tmp_path,
+        "sessoes_votacao_2023.json",
+        [
+            {"sessao_externa_id": "S1", "proposicao_camara_id": 1, "data_hora": "2023-05-10T19:00:00"},
+            {"titulo_pauta": "x"},
+        ],
+    )
+    escrever(
+        tmp_path,
+        "votos_nominais_2023.json",
+        [
+            {"sessao_externa_id": "S1", "deputado_camara_id": 1, "voto": "SIM"},
+            {"deputado_camara_id": 2, "voto": "SIM"},  # sem sessão: antes virava a sessão "None"
+        ],
+    )
+    with transacao_de_carga(pg_engine) as cursor:
+        cursor.execute("TRUNCATE stg.historico_voto")
+        votos = pv.gravar_planas_plenario(cursor, tmp_path, 3)
+    assert (votos.lidas, votos.gravadas, votos.rejeitadas) == (2, 1, 1)
+    with pg_engine.connect() as conexao:
+        assert conexao.execute(text("SELECT count(*) FROM stg.camara_sessao_plenario")).scalar() == 1
+        assert conexao.execute(text("SELECT count(*) FROM stg.camara_voto_plenario")).scalar() == 1
+
+
+def test_historico_aguenta_totais_nulos_parlamentar_sem_id_e_indice_de_partido_nulo(tmp_path, pg_engine):
+    pasta = tmp_path / "votacoes"
+    pasta.mkdir()
+    dados = {
+        "fonte": "oficial",
+        "is_synthetic": False,
+        "partidos": ["PT"],
+        "parlamentares": {"1": {"nome": "Ana", "partido": "PT"}, "abc": {"nome": "Sem Id"}},
+        "sessoes": [
+            {"id": "V1", "data_hora": "2023-03-01T19:00:00", "proposicao": {"camara_id": 9, "tipo": "PL", "numero": 1, "ano": 2023},
+             "totais": {"SIM": None}, "votos": [[1, "SIM", None], ["abc", "SIM", 0]]},
+            {"data_hora": "2023-03-02T19:00:00", "votos": []},
+        ],
+    }  # fmt: skip
+    (pasta / "camara_2023.json.gz").write_bytes(gzip.compress(json.dumps(dados).encode()))
+    with transacao_de_carga(pg_engine) as cursor:
+        cursor.execute("TRUNCATE stg.historico_voto")
+        votos = pv.gravar_planas_historico(cursor, tmp_path, 7)
+    assert (votos.lidas, votos.gravadas, votos.rejeitadas) == (2, 1, 1)
+    with pg_engine.connect() as conexao:
+        assert (
+            conexao.execute(text("SELECT count(*) FROM stg.historico_sessao WHERE ext_id = 'V1'")).scalar() == 1
+        )
+        assert (
+            conexao.execute(text("SELECT count(*) FROM stg.historico_parlamentar WHERE origem = 'VOTACOES'")).scalar()
+            == 1
+        )
+        assert conexao.execute(text("SELECT partido FROM stg.historico_voto")).scalars().all() == [None]

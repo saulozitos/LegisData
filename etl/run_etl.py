@@ -19,7 +19,7 @@ import argparse
 import logging
 import sys
 import time
-from contextlib import nullcontext
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -309,15 +309,18 @@ def executar_registrando(etapas: List[Etapa], modo_completo: bool) -> Dict[str, 
     puladas. Registrar a rodada nunca derruba a esteira.
     """
     engine = _engine_ou_none() if any(e.grava_banco for e in etapas) else None
-    contexto = nullcontext(None)
-    if engine is not None:
-        try:
-            from etl.utils.execucao import registrar_execucao
+    with ExitStack() as pilha:
+        execucao = None
+        if engine is not None:
+            try:
+                from etl.utils.execucao import registrar_execucao
 
-            contexto = registrar_execucao(engine, "PIPELINE", "TUDO", {"etapas": [e.chave for e in etapas]})
-        except Exception as exc:  # noqa: BLE001 - banco fora do ar ou migração 0039 ainda não aplicada
-            logger.warning("Rodada não registrada em etl.execucao: %s", type(exc).__name__)
-    with contexto as execucao:
+                # o registro abre aqui dentro: banco fora do ar ou migração 0039 ainda não aplicada falham ao ENTRAR
+                execucao = pilha.enter_context(
+                    registrar_execucao(engine, "PIPELINE", "TUDO", {"etapas": [e.chave for e in etapas]})
+                )
+            except Exception as exc:  # noqa: BLE001 - registrar a rodada nunca derruba a esteira
+                logger.warning("Rodada não registrada em etl.execucao: %s", type(exc).__name__)
         resultados = executar(etapas, modo_completo)
         if execucao is not None:
             falhas = sum(1 for v in resultados.values() if not v.startswith("OK"))

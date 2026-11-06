@@ -149,7 +149,7 @@ def _config_do_alembic(monkeypatch):
     return config
 
 
-def test_migracoes_0036_e_0037_descem_e_sobem_com_dados(pg_engine, monkeypatch):
+def test_descer_a_0035_devolve_o_legado_ao_public_e_subir_leva_tudo_de_volta(pg_engine, monkeypatch):
     """Descer a 0035 devolve tabelas, funções e o log do cron ao `public` com os dados; subir leva tudo de volta."""
     from alembic import command
 
@@ -224,6 +224,81 @@ def test_migracoes_0036_e_0037_descem_e_sobem_com_dados(pg_engine, monkeypatch):
     assert escalar("SELECT prosecdef FROM pg_proc WHERE oid = 'leg.atualizar_derivados(boolean, text)'::regprocedure")
     assert escalar("SELECT prosecdef FROM pg_proc WHERE oid = 'leg.atualizar_derivados_leitura()'::regprocedure")
     assert escalar("SELECT has_table_privilege('legisdata_leitura', 'core.pessoa', 'SELECT')")  # e voltou ao subir
+
+
+def test_migracao_0040_passa_os_votos_do_staging_relacional_para_a_plana_cumulativa(pg_engine, monkeypatch):
+    """Subir a 0040 copia os votos que o staging relacional guardava para `stg.historico_voto` (senão a 1ª fusão esvazia `leg.voto`)."""
+    from alembic import command
+
+    config = _config_do_alembic(monkeypatch)
+    try:
+        command.downgrade(config, "0039")  # volta o staging relacional (vazio): é nele que o deploy encontra os votos
+        with pg_engine.begin() as conn:
+            conn.execute(
+                text(
+                    'INSERT INTO stg.partidos_politicos (id, sigla, "nomeCompleto") '
+                    "VALUES ('00000000-0000-0000-0000-0000000000a1', 'PT', 'Partido dos Trabalhadores')"
+                )
+            )
+            conn.execute(
+                text(
+                    'INSERT INTO stg.politicos (id, "nomeCivil", "nomeEleitoral", "camaraId", "senadoId") VALUES '
+                    "('00000000-0000-0000-0000-0000000000b1', 'Ana', 'Ana', 101, NULL), "
+                    "('00000000-0000-0000-0000-0000000000b2', 'Beto', 'Beto', NULL, 202), "
+                    "('00000000-0000-0000-0000-0000000000b3', 'Sem Id', 'Sem Id', NULL, NULL)"
+                )
+            )
+            conn.execute(
+                text(
+                    'INSERT INTO stg.proposicoes (id, "idExternoCamara", tipo, numero, ano, titulo, ementa, '
+                    '"dataApresentacao", "statusTramitacao", "isReformaEstrutural", "iniciativaPoderExecutivo") '
+                    "VALUES ('00000000-0000-0000-0000-0000000000c1', 1, 'PEC', 1, 2020, 'PEC 1/2020', 'Ementa', "
+                    "'2020-01-01', 'APROVADA_E_SANCIONADA', false, false)"
+                )
+            )
+            conn.execute(
+                text(
+                    'INSERT INTO stg.sessoes_votacao (id, "idExterno", "proposicaoId", "casaLegislativa", '
+                    '"dataHoraVotacao", "tituloPauta", "isVotacaoSecreta", aprovada, "totalSim", "totalNao", '
+                    '"totalAbstencao", "totalObstrucao", created_at) VALUES '
+                    "('00000000-0000-0000-0000-0000000000d1', 'SC1', '00000000-0000-0000-0000-0000000000c1', "
+                    "'CAMARA_DOS_DEPUTADOS', now(), 'Pauta', false, true, 1, 0, 0, 0, now()), "
+                    "('00000000-0000-0000-0000-0000000000d2', 'SS1', '00000000-0000-0000-0000-0000000000c1', "
+                    "'SENADO_FEDERAL', now(), 'Pauta', false, true, 1, 0, 0, 0, now())"
+                )
+            )
+            conn.execute(
+                text(
+                    'INSERT INTO stg.votos_parlamentares (id, "sessaoVotacaoId", "politicoId", "partidoId", voto, '
+                    "created_at) VALUES "
+                    "(gen_random_uuid(), '00000000-0000-0000-0000-0000000000d1', "
+                    "'00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000a1', 'SIM', now()), "
+                    "(gen_random_uuid(), '00000000-0000-0000-0000-0000000000d2', "
+                    "'00000000-0000-0000-0000-0000000000b2', NULL, 'NAO', now()), "
+                    "(gen_random_uuid(), '00000000-0000-0000-0000-0000000000d1', "
+                    "'00000000-0000-0000-0000-0000000000b3', NULL, 'SIM', now())"
+                )
+            )
+    except BaseException:
+        command.upgrade(config, "head")
+        raise
+    try:
+        command.upgrade(config, "head")
+        with pg_engine.connect() as conn:
+            copiados = [
+                tuple(linha)
+                for linha in conn.execute(
+                    text(
+                        "SELECT casa, sessao_ext_id, parlamentar_ext_id, opcao, partido FROM stg.historico_voto "
+                        "ORDER BY casa, sessao_ext_id"
+                    )
+                )
+            ]
+    finally:
+        with pg_engine.begin() as conn:  # a fixture `db` não limpa a plana cumulativa: não deixar rastro
+            conn.execute(text("DELETE FROM stg.historico_voto"))
+    # o voto do parlamentar sem identificador oficial não tem como ser ligado de novo e fica de fora
+    assert copiados == [("CAMARA", "SC1", 101, "SIM", "PT"), ("SENADO", "SS1", 202, "NAO", None)]
 
 
 def test_migracao_0035_nao_desce(pg_engine, monkeypatch):

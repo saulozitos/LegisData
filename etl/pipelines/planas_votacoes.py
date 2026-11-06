@@ -11,6 +11,7 @@ sai `COM_ALERTA`, porque os votos dele não dá para contar.
 """
 
 import logging
+import zlib
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -186,6 +187,10 @@ def gravar_planas_plenario(cursor: Any, data_dir: Path, execucao_id: Any) -> Con
             votos_contados += ContagemDeVotos(arquivos_ignorados=1)
         if sessoes is None or votos is None:
             sessoes, votos = [], []
+        # linha sem `sessao_externa_id` não tem a que sessão pertencer (`str(None)` viraria a sessão "None")
+        sessoes = [s for s in sessoes if isinstance(s, dict) and s.get("sessao_externa_id") is not None]
+        votos_lidos = len(votos)
+        votos = [v for v in votos if isinstance(v, dict) and v.get("sessao_externa_id") is not None]
         chave_parlamentar = "deputado_camara_id" if casa == CAMARA else "senador_id"
         validos = [
             [
@@ -199,7 +204,9 @@ def gravar_planas_plenario(cursor: Any, data_dir: Path, execucao_id: Any) -> Con
         ]
         validos = [v for v in validos if v[2] is not None and v[3] is not None]
         acumulados += validos
-        votos_contados += ContagemDeVotos(lidas=len(votos), gravadas=len(validos), rejeitadas=len(votos) - len(validos))
+        votos_contados += ContagemDeVotos(
+            lidas=votos_lidos, gravadas=len(validos), rejeitadas=votos_lidos - len(validos)
+        )
         if casa == CAMARA:
             tabelas["camara_sessao_plenario"] = (
                 COLUNAS_SESSAO_CAMARA,
@@ -277,9 +284,11 @@ def _senadores_votantes(data_dir: Path) -> set:
     for caminho in listar_arquivos_processados(Path(data_dir), "senado"):
         try:
             dados = ler_json_gz(caminho)
-        except (OSError, ValueError):
+        except (OSError, ValueError, EOFError, zlib.error):
             continue
-        votantes.update(int(k) for k in (dados.get("parlamentares") or {}))
+        if not isinstance(dados, dict):
+            continue
+        votantes.update(n for n in (inteiro(k) for k in (dados.get("parlamentares") or {})) if n is not None)
     return votantes
 
 
@@ -431,10 +440,10 @@ def _linha_de_sessao(s: Dict[str, Any], casa: str) -> List[Any]:
         _bool(aprovada),
         _bool(s.get("secreta")),
         _texto(s.get("orientacao_governo")),
-        int(totais.get("SIM", 0)),
-        int(totais.get("NAO", 0)),
-        int(totais.get("ABSTENCAO", 0)),
-        int(totais.get("OBSTRUCAO", 0)),
+        _inteiro_ou_zero(totais.get("SIM")),
+        _inteiro_ou_zero(totais.get("NAO")),
+        _inteiro_ou_zero(totais.get("ABSTENCAO")),
+        _inteiro_ou_zero(totais.get("OBSTRUCAO")),
         _bool(valida),
         inteiro(prop.get("camara_id")) if casa == CAMARA else None,
         inteiro(prop.get("senado_id")) if casa != CAMARA else None,
@@ -470,14 +479,17 @@ def gravar_planas_historico(cursor: Any, data_dir: Path, execucao_id: Any) -> Co
         for caminho in listar_arquivos_processados(Path(data_dir), prefixo):
             try:
                 dados = ler_json_gz(caminho)
-            except (OSError, ValueError) as exc:
+            except (OSError, ValueError, EOFError, zlib.error) as exc:
                 logger.error("Falha ao ler %s: %s", caminho.name, exc)
                 contagem += ContagemDeVotos(arquivos_ignorados=1)
                 continue
             if not _arquivo_confiavel(dados, caminho):
                 contagem += ContagemDeVotos(arquivos_ignorados=1)
                 continue
-            for pid, info in (dados.get("parlamentares") or {}).items():
+            for pid_bruto, info in (dados.get("parlamentares") or {}).items():
+                pid = inteiro(pid_bruto)
+                if pid is None or not isinstance(info, dict):
+                    continue
                 nome = (info.get("nome") or info.get("nome_eleitoral") or "").strip()
                 partido = (
                     (info.get("partido") or info.get("partido_sigla"))
@@ -488,7 +500,7 @@ def gravar_planas_historico(cursor: Any, data_dir: Path, execucao_id: Any) -> Co
                     [
                         "VOTACOES",
                         casa,
-                        int(pid),
+                        pid,
                         nome,
                         _texto(info.get("nome_civil")),
                         partido,
@@ -506,15 +518,21 @@ def gravar_planas_historico(cursor: Any, data_dir: Path, execucao_id: Any) -> Co
                     vistos_partidos.add(chave)
                     partidos.append([chave])
             for s in dados.get("sessoes") or []:
+                if not isinstance(s, dict) or s.get("id") is None:
+                    continue  # sem id não há a que sessão ligar os votos (`str(None)` viraria a sessão "None")
                 sessoes.append(_linha_de_sessao(s, casa))
                 lidos = validos = 0
                 for pol_ext, opcao, idx_partido in s.get("votos") or []:
                     lidos += 1
-                    if _opcao(opcao) is None:
-                        continue  # opção desconhecida: fica de fora e conta como rejeitada
+                    parlamentar = inteiro(pol_ext)
+                    if _opcao(opcao) is None or parlamentar is None:
+                        continue  # opção desconhecida ou parlamentar sem id: fica de fora e conta como rejeitada
                     validos += 1
-                    sigla = lista_partidos[idx_partido] if 0 <= idx_partido < len(lista_partidos) else None
-                    votos.append([casa, str(s["id"]), int(pol_ext), _opcao(opcao), (sigla or "").strip() or None])
+                    posicao = inteiro(idx_partido)
+                    sigla = (
+                        lista_partidos[posicao] if posicao is not None and 0 <= posicao < len(lista_partidos) else None
+                    )
+                    votos.append([casa, str(s["id"]), parlamentar, _opcao(opcao), (sigla or "").strip() or None])
                 contagem += ContagemDeVotos(lidas=lidos, gravadas=validos, rejeitadas=lidos - validos)
     _inserir(cursor, "stg.historico_parlamentar", COLUNAS_PARLAMENTAR, parlamentares, execucao_id, "VOTACOES")
     _gravar(cursor, "stg.historico_partido", ["sigla"], partidos, execucao_id)

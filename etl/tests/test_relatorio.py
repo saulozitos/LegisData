@@ -91,3 +91,20 @@ def test_esteira_so_de_extracao_nao_registra_nada_no_banco(monkeypatch):
     monkeypatch.setattr(run_etl, "_engine_ou_none", lambda: chamadas.append("engine"))
     resultados = run_etl.executar_registrando([run_etl.Etapa("x", "X", lambda: None)], modo_completo=False)
     assert resultados["x"].startswith("OK") and chamadas == []  # sem etapa que grava, nem se abre o banco
+
+
+def test_esteira_segue_quando_o_registro_da_rodada_nao_abre(monkeypatch):
+    """Banco fora do ar ao ABRIR o registro (o erro sai do `with`, não da criação do contexto): as etapas rodam do mesmo jeito."""
+    monkeypatch.setattr(run_etl, "_engine_ou_none", lambda: object())
+    monkeypatch.setattr(run_etl, "_posprocessar", lambda: "em_dia")
+
+    class Quebrado:
+        def __enter__(self):
+            raise ConnectionError("banco fora do ar")
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(execucao, "registrar_execucao", lambda *a, **k: Quebrado())
+    resultados = run_etl.executar_registrando([run_etl.Etapa("a", "A", lambda: None, grava_banco=True)], False)
+    assert resultados["a"].startswith("OK")

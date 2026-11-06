@@ -297,6 +297,48 @@ def test_filiacao_sem_data_usa_o_inicio_da_legislatura_e_a_repetida_conta_uma_ve
         assert consulta(c, 'SELECT "dataFiliacao"::text, "isAtual" FROM w_filiacoes') == [("2023-02-01", True)]
 
 
+def test_filiacao_que_ja_esta_em_core_vence_a_de_mesmo_inicio_que_chega_de_outra_fonte(pg_engine):
+    """No empate de início, a fusão mantém a filiação gravada antes (o `sobrevivente`); a nova do mesmo dia é rejeitada."""
+    with transacao(pg_engine) as c:
+        partido_curado(c, "PT", "PSB", "S.PART.")
+        for sigla in ("PT", "PSB"):
+            c.execute(text("INSERT INTO core.partido (sigla, nome, catalogo) VALUES (:s, :s, true)"), {"s": sigla})
+        pid = c.execute(text("INSERT INTO core.pessoa (nome_exibicao) VALUES ('Ana') RETURNING id")).scalar_one()
+        c.execute(
+            text(
+                "INSERT INTO core.pessoa_identificador (pessoa_id, fonte_id, tipo, valor) "
+                "VALUES (:p, (SELECT id FROM etl.fonte WHERE codigo = 'CAMARA_API'), 'CAMARA_ID', '1')"
+            ),
+            {"p": pid},
+        )
+        c.execute(
+            text(
+                "INSERT INTO core.pessoa_nome (pessoa_id, tipo, nome, fonte_id) "
+                "VALUES (:p, 'CIVIL', 'Ana', (SELECT id FROM etl.fonte WHERE codigo = 'LEGADO'))"
+            ),
+            {"p": pid},
+        )
+        c.execute(
+            text(
+                "INSERT INTO core.filiacao (pessoa_id, partido_id, periodo, fonte_id) "
+                "SELECT :p, (SELECT id FROM core.partido WHERE sigla = 'PSB'), daterange('2015-01-01', NULL), "
+                "(SELECT id FROM etl.fonte WHERE codigo = 'LEGADO')"
+            ),
+            {"p": pid},
+        )
+        inserir(c, "camara_deputado", deputado(1, "Ana"))
+        inserir(c, "tse_filiacao", _fil(data_filiacao="2015-01-01", partido_sigla="PT"))
+        preparar(c)
+        c.execute(text("SELECT etl.merge_cadastro()"))
+        filiacoes = consulta(
+            c,
+            "SELECT pa.sigla, lower(f.periodo)::text FROM core.filiacao f JOIN core.partido pa ON pa.id = f.partido_id "
+            "WHERE f.pessoa_id = :p",
+            p=pid,
+        )
+    assert filiacoes == [("PSB", "2015-01-01")]
+
+
 def test_pessoa_achada_pelo_nome_so_quando_o_nome_e_unico(pg_engine):
     with transacao(pg_engine) as c:
         partido_curado(c, "PT", "S.PART.")
