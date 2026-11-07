@@ -1,7 +1,7 @@
 from datetime import date
 
 from app.models import CargoPoliticoEnum, StatusMandatoEnum
-from app.services.staging_merge import merge_staging
+from tests.projecao import merge_staging
 from tests.stg_models import Mandate, PartyAffiliation, Politician
 
 from .conftest import criar_mandato_presidencial
@@ -247,7 +247,7 @@ def test_service_merge_staging_and_active_seats(db, seed):
     from datetime import date
 
     from app.services.party_productivity_service import calculate_party_active_seats
-    from app.services.staging_merge import merge_staging
+    from tests.projecao import merge_staging
 
     synced = int(merge_staging(db, preparar=False)["situacoes"])
     assert synced >= 0

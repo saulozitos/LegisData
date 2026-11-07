@@ -105,11 +105,11 @@ A refatoração da branch `fix/analise-completa-correcoes` concluiu **100%** das
 
 ### 2.10 Cadastros duplicados de uma mesma pessoa [CONCLUÍDO]
 
-Os cadastros duplicados dos políticos que existiam no legado foram unidos pela migração 0034, com o `uid` público preservado. Desde a migração 0040 a carga resolve a pessoa pelo identificador oficial, em `core`, antes de criar uma (`etl.preparar_cadastro`), então a duplicata não nasce mais e a migração 0041 tirou `core.unificar_duplicadas`; `core.unificar_pessoas` (a união em si) fica para quem precisar unir à mão. Pessoas que só existem no histórico e nunca tiveram cadastro público não têm duplicata e continuam com o `uid` do histórico.
+Os cadastros duplicados dos políticos que existiam no legado foram unidos pela migração 0034, com o `uid` público preservado. A carga resolve a pessoa só pelo identificador oficial (`etl/carga/sql/pessoas.sql`), então a duplicata não nasce mais (a 0041 tirou `core.unificar_duplicadas`); `core.unificar_pessoas` (a união em si) fica para quem precisar unir à mão. Pessoas que só existem no histórico e nunca tiveram cadastro público não têm duplicata e continuam com o `uid` do histórico.
 
-### 2.11 Novo ETL direto em `stg` [FEITA]
+### 2.11 ETL direto, sem staging [FEITA]
 
-O ETL copia cada arquivo para a sua tabela plana de `stg` (`etl/pipelines/planas_*.py`, só `COPY`, uma execução em `etl.execucao` por recurso, os arquivos de origem em `etl.arquivo_bruto` e as verificações do catálogo em `etl.verificacao`); a função SQL `etl.preparar_staging` resolve, na fusão, a que pessoa, partido, mandato, proposição e sessão cada registro se refere (a identidade vem de `core`/`leg`: o `uid` público não muda, e a pessoa se acha pelo identificador oficial antes de criar outra) e `etl.merge_cadastro`/`etl.merge_legislativo` leem as tabelas de trabalho temporárias que ela monta. `etl.run_etl` imprime o relatório da rodada e aceita `--fonte`/`--estagio`. O `db_loader`, os modelos ORM e as oito tabelas relacionais de `stg` saíram (migração 0040); as cinco que nenhuma carga escreve mais (autores, presença, votações e votos nominais do legado) ficam **congeladas** porque a fusão ainda as lê e nenhum arquivo atual reproduz o que elas guardam. Detalhes, números e a conferência contra a carga anterior em [`PROXIMA_ENTREGA_NOVO_ETL.md`](PROXIMA_ENTREGA_NOVO_ETL.md).
+A carga do cadastro e do legislativo lê o arquivo, despeja numa tabela temporária da própria transação e grava em `core`/`leg` com `INSERT ... ON CONFLICT` pela chave natural (identificador oficial da pessoa, número e ano da proposição, id da votação), numa execução própria por recurso em `etl.execucao` (`etl/carga`; o desenho está em `docs/ETL_SIMPLES.md`). Não há tabela `stg`, tabela de trabalho nem função de fusão; `etl.corte` guarda até que data cada fonte foi baixada. O nome nunca cria nem une pessoa: a mesma pessoa com ids diferentes vira linha em `core.pessoa_candidata_duplicidade`.
 
 ## 3. Resolução das Dívidas Técnicas
 
@@ -139,7 +139,7 @@ O ETL copia cada arquivo para a sua tabela plana de `stg` (`etl/pipelines/planas
 A API apagava, a cada subida, mandatos de legendas sem registro no TSE e tratava a MISSÃO assim. A 0036 tirou essa
 limpeza: o Partido Missão tem registro no TSE, o banco de desenvolvimento não tem mandato nem filiação dessa sigla e o ETL
 a carrega como qualquer outra legenda. A premissa vale para o banco de hoje. Se uma fonte voltar a atribuir a sigla por
-engano, o mandato entra em `stg.mandatos` e segue para `core.mandato`; confira `core.mandato` por partido depois da
+engano, o mandato entra pela carga das pessoas em `core.mandato`; confira `core.mandato` por partido depois da
 primeira carga completa e, se aparecer, a regra volta como validação do ETL (não como limpeza na subida da API).
 
 ## Funções `SECURITY DEFINER` dos derivados
@@ -166,7 +166,7 @@ para o derivado fecha a divergência e fica para a entrega do novo ETL.
 ## Gatilhos dos derivados disparam por comando, não por linha alterada
 
 Os gatilhos `BEFORE ... FOR EACH STATEMENT` da migração 0037 ligam o sinalizador `sujo` em todo `INSERT`, `UPDATE` ou `DELETE`
-nas dependências, mesmo que o comando não altere linha nenhuma. Como toda fusão `etl.merge_*` executa esses comandos, o estado
+nas dependências, mesmo que o comando não altere linha nenhuma. Como toda carga em `etl/carga` executa esses comandos, o estado
 `'em_dia'` quase nunca aparece logo depois de uma carga e o cron paga dois refreshes por dia (cerca de 10 s cada). O resultado
 é correto; só há trabalho a mais. Um gatilho com tabela de transição (`REFERENCING NEW TABLE`) marcaria só quando houvesse
 linhas, mas teria de ser `AFTER` e mudaria a ordem das travas que evita o deadlock entre cargas (ver a docstring da 0037), então

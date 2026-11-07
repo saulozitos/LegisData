@@ -1,1 +1,0 @@
-"""Removido: a resolução de sessões, votos e ex-parlamentares passou para as funções SQL `etl.preparar_votacoes_*` e `etl.garantir_historicos` (migração 0040); os arquivos vão para as tabelas planas de `etl.pipelines.planas_votacoes`. Pode apagar este arquivo."""

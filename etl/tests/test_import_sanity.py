@@ -22,11 +22,11 @@ def test_modulo_importa(nome):
     importlib.import_module(nome)
 
 
-def test_carga_cadastro_importa_e_expoe_api_publica():
-    carga = importlib.import_module("etl.pipelines.carga_cadastro")
-    assert hasattr(carga, "CargaCadastro") and carga.RECURSOS
-    for metodo in ("load_all", "ensure_tables", "_fundir_staging", *(f"_{r}" for r in carga.RECURSOS)):
-        assert callable(getattr(carga.CargaCadastro, metodo)), metodo
+def test_carga_direta_importa_e_expoe_api_publica():
+    carga = importlib.import_module("etl.carga.orquestra")
+    assert hasattr(carga, "Carga") and carga.RECURSOS
+    for metodo in ("carregar", "lote", *(f"_{r}" for r in carga.RECURSOS)):
+        assert callable(getattr(carga.Carga, metodo)), metodo
 
 
 def test_nenhum_nome_indefinido_nos_fontes():

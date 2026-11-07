@@ -1,7 +1,7 @@
 """
 Resolve, em `core`, a pessoa a que um registro das fontes de finanças se refere.
 
-Ordem: identificador oficial (Câmara ou Senado) e, na falta dele, nome normalizado ÚNICO (qualquer nome registrado da
+Ordem: identificador oficial (Câmara ou Senado), depois o HMAC do CPF (`CPF_HMAC`, o registro traz só o HMAC) e, na falta deles, nome normalizado ÚNICO (qualquer nome registrado da
 pessoa: civil, eleitoral, parlamentar, histórico ou grafia da fonte). Nome que casa com mais de uma pessoa nunca é
 atribuído por palpite: só se desfaz pelo mandato no ano do registro (regra de intervalo temporal da decisão 2 de
 `docs/DECISOES_E_DUVIDAS_PENDENTES.md`): vale a única pessoa com mandato no ano e, sem nenhuma, a única que não foi
@@ -54,6 +54,11 @@ class ResolvedorDePessoas:
                 if chave:
                     indice[chave].add(pessoa_id)
         self._por_nome = nomes
+        self._por_cpf_hmac: Dict[str, Set[int]] = defaultdict(set)
+        for valor, pessoa_id in conn.execute(
+            text("SELECT valor, pessoa_id FROM core.pessoa_identificador WHERE tipo = 'CPF_HMAC'")
+        ):
+            self._por_cpf_hmac[str(valor)].add(pessoa_id)
         self._por_nome_sem_titulo = nomes_sem_titulo
 
         self._mandatos: Dict[int, List[Tuple[date, Optional[date]]]] = defaultdict(list)
@@ -67,6 +72,10 @@ class ResolvedorDePessoas:
             if achado is not None:
                 return achado
         return None
+
+    def por_cpf_hmac(self, cpf_hmac: Any) -> Optional[int]:
+        pessoas = self._por_cpf_hmac.get(str(cpf_hmac or ""), set())
+        return next(iter(pessoas)) if len(pessoas) == 1 else None
 
     def _tinha_mandato_em(self, pessoa_id: int, ano: int) -> bool:
         inicio_ano, fim_ano = date(ano, 1, 1), date(ano, 12, 31)
@@ -111,6 +120,9 @@ class ResolvedorDePessoas:
     def resolver(self, item: Dict[str, Any], ano: Optional[int] = None) -> Resolucao:
         """Registro das fontes com `camara_id`/`senado_id` e nomes civil e eleitoral."""
         achado = self.por_identificador(item.get("camara_id"), item.get("senado_id"))
+        if achado is not None:
+            return Resolucao(achado, "IDENTIFICADO")
+        achado = self.por_cpf_hmac(item.get("cpf_hmac"))
         if achado is not None:
             return Resolucao(achado, "IDENTIFICADO")
         # Identificador que o cadastro não conhece cai no nome, mesmo que o candidato tenha OUTRO identificador do mesmo

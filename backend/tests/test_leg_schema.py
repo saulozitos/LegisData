@@ -12,9 +12,9 @@ from app.models import (
     TipoProposicaoEnum,
     VotoOpcaoEnum,
 )
-from app.services.staging_merge import merge_staging
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+from tests.projecao import merge_staging
 from tests.stg_models import (
     AttendanceRecord,
     Mandate,
@@ -201,7 +201,6 @@ def test_both_legacy_vote_representations_become_one_votacao(db, cenario):
     _votacao_completa(db, cenario)
     merge_staging(db, preparar=False)
     assert _scalar(db, "SELECT count(*) FROM leg.votacao") == 1
-    assert _scalar(db, "SELECT count(*) FROM leg.votacao_legado") == 2  # os dois ids legados continuam rastreáveis
     row = _rows(
         db,
         "SELECT tipo_deliberacao, id_externo, local_deliberacao, total_sim_fonte, c.codigo "

@@ -761,6 +761,9 @@ def _cpfs_na_sequencia_canonica(normal: str) -> int:
     return achados
 
 
+_HMAC_DE_CPF_RE = re.compile(r"(?<![0-9a-fA-F])[0-9a-f]{64}(?![0-9a-fA-F])")
+
+
 def cpfs_suspeitos_em(valor: Any, janelas: bool = True) -> int:
     """
     Para a guarda de D3 dos arquivos versionados, que precisa ser mais desconfiada que o saneamento: além de
@@ -771,6 +774,9 @@ def cpfs_suspeitos_em(valor: Any, janelas: bool = True) -> int:
     e valores em reais vêm separados por vírgula e dariam falso positivo, então a guarda desliga `janelas` ali. Endereços
     (URLs) não entram em `janelas`.
     """
+    # o HMAC do CPF (64 hexadecimais) é o único jeito permitido de citar um CPF: seus dígitos somam 11 seguidos que passam
+    # no verificador por acaso, e não são CPF
+    valor = _HMAC_DE_CPF_RE.sub(" ", texto(valor) or "")
     normal = _ascii(texto(valor))
     achados = cpfs_validos_em(valor)
     achados += sum(1 for m in _CNPJ_FORMATADO_RE.finditer(normal) if cpf_com_zeros(so_digitos(m.group("cnpj"))))

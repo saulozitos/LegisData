@@ -300,7 +300,8 @@ def explorar(
         multiplicador = pesos.peso_status(p.status_codigo)
         resultado = "EM_TRAMITACAO"
         if sessao:
-            resultado = "APROVADA" if sessao.get("aprovada") else "REJEITADA"
+            aprovada = sessao.get("aprovada")
+            resultado = "SEM_RESULTADO" if aprovada is None else ("APROVADA" if aprovada else "REJEITADA")
         elif p.status_codigo in STATUS_LEI:
             resultado = "APROVADA"
 

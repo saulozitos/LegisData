@@ -1,1 +1,0 @@
-"""Removido: a resolução de políticos, filiações e mandatos passou para a função SQL `etl.preparar_cadastro` (migração 0040); os arquivos vão para as tabelas planas de `etl.pipelines.planas_cadastro`. Pode apagar este arquivo."""

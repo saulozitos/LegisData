@@ -1,7 +1,8 @@
-"""Pipelines do ETL. Imports são preguiçosos: `carga_cadastro` exige SQLAlchemy/backend e não deve ser
-carregado só porque outro pipeline (ex.: sync_ceap_emendas) foi importado."""
+"""Pipelines do ETL. Imports são preguiçosos: o pipeline de presidentes exige SQLAlchemy/backend e não deve ser
+carregado só porque outro pipeline (ex.: sync_ceap_emendas) foi importado. A carga do cadastro e do legislativo vive em
+`etl.carga`."""
 
-__all__ = ["PresidentsEconomicSyncPipeline", "CargaCadastro"]
+__all__ = ["PresidentsEconomicSyncPipeline"]
 
 
 def __getattr__(name):
@@ -9,8 +10,4 @@ def __getattr__(name):
         from .presidents_economic_sync import PresidentsEconomicSyncPipeline
 
         return PresidentsEconomicSyncPipeline
-    if name == "CargaCadastro":
-        from .carga_cadastro import CargaCadastro
-
-        return CargaCadastro
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

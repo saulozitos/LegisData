@@ -27,11 +27,9 @@ Data do registro: 2026-10-13.
 
 ---
 
-## 3. Fidelidade Partidária (`NOMADES_HISTORICO`)
+## 3. Filiações partidárias
 
-- **Arquivo**: `etl/data/processed/fidelidade_partidaria_historica.json`.
-- **Fonte Primária**: Dados Abertos do TSE — tabela `filiacao_partidaria` (arquivos estaduais consolidados).
-- **Verificação**: Políticos rotulados como "nômades" (com alto número de trocas partidárias) possuem todas as suas desfiliações e novas filiações rastreadas por data oficial de certidão de filiação partidária no TSE.
+- **Não há arquivo curado.** `core.filiacao` é derivada pela carga (`etl/carga/sql/filiacoes.sql`) dos períodos de partido que a Câmara informa por mandato (`core.mandato_partido`) e do partido na posse dos demais mandatos. O que as fontes não informam fica sem filiação (desconhecido), nunca digitado à mão.
 
 ---
 

@@ -27,6 +27,7 @@ from etl.extractors.tse_core import (
     ler_csv_zip,
     parse_brl,
 )
+from etl.utils.cpf import identificador_cpf
 from etl.utils.io_utils import write_json_if_valid
 from etl.utils.provenance import mark_official
 
@@ -113,6 +114,7 @@ class TSEPatrimonioExtractor:
                 mark_official(
                     {
                         **politico.identificadores(),
+                        "cpf_hmac": identificador_cpf(candidatos.at[idx, "NR_CPF_CANDIDATO"]),
                         "ano_eleicao": ano,
                         "valor_declarado_brl": resumo["total"],
                         "detalhes_bens": resumir_bens(resumo["por_tipo"], resumo["quantidade"]),

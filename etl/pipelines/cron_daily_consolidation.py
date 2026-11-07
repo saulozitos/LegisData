@@ -25,10 +25,9 @@ from app.services.cron_log_service import (
 )
 from app.services.legislative_scoring import build_coauthorship_network
 from app.services.party_productivity_service import calculate_party_ippm_ranking
-from app.services.staging_merge import merge_staging
 from sqlalchemy import text
 
-from etl.utils.manutencao import posprocessar_carga, refazer_derivados_apos_carga
+from etl.utils.manutencao import posprocessar_carga
 
 logger = logging.getLogger("cron_daily_consolidation")
 
@@ -54,29 +53,18 @@ def execute_cron_pipeline() -> Dict[str, Any]:
     try:
         logger.info("=== INICIANDO CRON JOB DE CONSOLIDAÇÃO DIÁRIA ===")
 
-        # Etapa 1a: votações nominais do ano anterior e do corrente (alimenta o Calendário de Votações). Só atualiza o
-        # legado: a ponte roda uma vez, na etapa 1, depois de todas as cargas.
-        logger.info("Etapa 1a: atualizando votações nominais...")
+        # Etapa 1: votações nominais do ano anterior e do corrente (alimenta o Calendário de Votações). A carga é direta:
+        # pessoas, proposições, votações, votos e orientações entram em `core`/`leg` pela chave natural (identificador
+        # oficial), sem staging nem fusão, e o corte em `etl.corte` avança só se a transação confirmar.
+        logger.info("Etapa 1/4: atualizando votações nominais e o cadastro de quem votou...")
         try:
             from etl.pipelines.votacoes_atualizacao import atualizar as atualizar_votacoes
 
-            votacoes = atualizar_votacoes(sincronizar=False)
-            logger.info(f"Etapa 1a concluída: {votacoes.get('carga')}")
+            votacoes = atualizar_votacoes()
+            registros_totais += int(sum(c.get("gravadas") or 0 for c in votacoes.get("carga", {}).values()))
+            logger.info(f"Etapa 1 concluída: {votacoes.get('carga')}")
         except Exception as e:
             registrar_falha(ETAPA_VOTACOES, e, "atualização de votações")
-
-        # Etapa 1: Sincronização de Entidades Base e Mandatos Dinâmicos. `merge_staging` roda a fusão inteira do staging
-        # (cadastro, legislativo, linhagens e unificação) e devolve as situações de mandato fundidas
-        logger.info("Etapa 1/4: Fundindo o staging em core/leg e sincronizando o histórico de mandatos...")
-        # O cron funde com o critério estrito (sem `allow_synthetic`/`allow_unverified`): filiação carregada com
-        # `--allow-unverified` volta a ser rejeitada aqui (motivo em `etl.rejeito`), sem apagar nada que já está em `core`.
-        synced_mandates = int(merge_staging(db)["situacoes"])
-        registros_totais += synced_mandates
-        logger.info(f"Etapa 1 concluída: fusão do staging feita ({synced_mandates} situações de mandato).")
-        # a fusão sujou os derivados: refaz já, para a primeira leitura do dia não pagar o refresh enquanto as cargas
-        # seguintes (que podem levar minutos) rodam; o pós-processamento final refaz de novo se algum comando tocou uma
-        # dependência (a presidência da etapa 1c sempre toca `core.mandato`, então na prática são dois refreshes por dia)
-        logger.info(f"Derivados do legislativo depois da fusão: {refazer_derivados_apos_carga(engine)}")
 
         # Etapa 1b: presença e faltas, depois da ponte (falha aqui não impede as demais etapas, mas marca FALHA)
         logger.info("Etapa 1b: atualizando presença e faltas do Congresso...")
@@ -134,8 +122,8 @@ def execute_cron_pipeline() -> Dict[str, Any]:
         logger.info(f"Etapa 4 concluída: Grafo consolidado com {nodes_count} nós e {edges_count} arestas.")
 
     except Exception as e:
-        # a sessão `db` pode estar com a transação abortada (a fusão falhou no meio): sem desfazer, o commit do log abaixo
-        # levantaria PendingRollbackError e a execução com FALHA ficaria sem registro (e a trava reservada, presa)
+        # a sessão `db` pode estar com a transação abortada: sem desfazer, o commit do log abaixo levantaria
+        # PendingRollbackError e a execução com FALHA ficaria sem registro
         db.rollback()
         status = "FALHA"
         # as etapas isoladas que já tinham falhado antes da falha crítica continuam registradas, na ordem em que ocorreram

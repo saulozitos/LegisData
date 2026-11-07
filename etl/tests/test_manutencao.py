@@ -295,18 +295,36 @@ def test_posprocessamento_da_esteira_devolve_o_estado_dos_derivados(monkeypatch)
 
 
 def test_ponto_de_entrada_proprio_da_carga_do_cadastro_posprocessa_depois_da_carga(monkeypatch):
-    """`python -m etl.pipelines.carga_cadastro` não passa pela esteira nem pelo cron: ele mesmo roda o pós-processamento."""
-    from etl.pipelines import carga_cadastro
+    """`python -m etl.carga.orquestra` não passa pela esteira nem pelo cron: ele mesmo roda o pós-processamento."""
+    from etl.carga import orquestra
 
     ordem = []
-    monkeypatch.setattr(
-        carga_cadastro.CargaCadastro,
-        "load_all",
-        lambda self, recursos=None, fundir=True: ordem.append("carga") or {"x": 1},
-    )
-    monkeypatch.setattr(carga_cadastro, "posprocessar_carga", lambda motor: ordem.append(("pos", motor)))
-    assert carga_cadastro.main([]) == {"x": 1}
-    assert ordem == ["carga", ("pos", carga_cadastro.engine_padrao)]
+    monkeypatch.setattr(orquestra.Carga, "carregar", lambda self, recursos=None: ordem.append("carga") or {"x": 1})
+    monkeypatch.setattr(orquestra, "posprocessar_carga", lambda motor: ordem.append(("pos", motor)))
+    assert orquestra.main([]) == {"x": 1}
+    assert ordem == ["carga", ("pos", orquestra.engine_padrao)]
+
+
+def test_a_transacao_da_carga_direta_comeca_reservando_os_derivados():
+    """
+    A carga direta tem um único ponto de transação (`etl.carga.base.rodar`) e a trava de controle dos derivados tem de ser a
+    PRIMEIRA instrução dele (ver a docstring da migração 0037): senão uma carga pode segurar uma linha de `core.pessoa` e só
+    depois pedir o controle, e formar um ciclo de espera com outra carga.
+    """
+    import ast
+    from pathlib import Path
+
+    fonte = (Path(__file__).resolve().parents[1] / "carga" / "base.py").read_text(encoding="utf-8")
+    rodar = next(n for n in ast.walk(ast.parse(fonte)) if isinstance(n, ast.FunctionDef) and n.name == "rodar")
+    blocos = [
+        n.body
+        for n in ast.walk(rodar)
+        if isinstance(n, ast.With)
+        and any(getattr(getattr(i.context_expr, "func", None), "id", "") == "transacao_de_carga" for i in n.items)
+    ]
+    assert len(blocos) == 1
+    primeira = ast.get_source_segment(fonte, blocos[0][0])
+    assert "leg.reservar_derivados()" in primeira
 
 
 def _pontos_de_entrada_das_cargas():
@@ -382,9 +400,6 @@ def test_toda_carga_que_escreve_nas_dependencias_reserva_a_trava_no_inicio_da_tr
 
     pontos = _pontos_de_entrada_das_cargas()
     conhecidos = {
-        "backend/app/services/staging_merge.py::merge_staging",
-        "etl/pipelines/camara_bulk_loader.py::mesclar",
-        "etl/pipelines/camara_historico_loader.py::carregar",
         "etl/pipelines/presidencia_loader.py::carregar",
     }
     assert conhecidos <= set(pontos), f"a descoberta deixou de achar {conhecidos - set(pontos)}"

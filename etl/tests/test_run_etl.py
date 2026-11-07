@@ -12,7 +12,7 @@ def args(*argv):
 
 def test_modo_completo_inclui_ceap_e_carga_mas_nao_itens_com_autorizacao_explicita():
     chaves = [e.chave for e in construir_etapas(args())]
-    assert "ceap" in chaves and "load_db" in chaves and "tse" in chaves and "patrimonio" in chaves
+    assert "ceap" in chaves and "load_db" in chaves and "patrimonio" in chaves
     assert "processos" not in chaves and "sinteticos" not in chaves
     # presença/remuneração oficiais: extração antes da carga e carga depois do load_db
     assert chaves.index("presenca") < chaves.index("load_db") < chaves.index("load_presenca")

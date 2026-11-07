@@ -64,10 +64,12 @@ def _senado():
     return SenadoExtractor().run_full_extraction()
 
 
-def _filiacoes():
-    from etl.extractors.tse_extractor import TSEExtractor
+def _cpf():
+    from etl.extractors import senadores_basicos_extractor
+    from etl.extractors.cpf_extractor import gerar
 
-    return TSEExtractor().run()
+    senadores_basicos_extractor.gerar()
+    return gerar()
 
 
 def _patrimonio(force: bool):
@@ -112,12 +114,13 @@ def _pnad(force: bool):
     return PNADExtractor().run(force=force)
 
 
-def _votacoes(ano_inicio: int, force: bool):
+def _votacoes(ano_inicio: Optional[int], force: bool):
     from datetime import date
 
     from etl.extractors.votacoes_extractor import run_votacoes
 
-    return run_votacoes(anos=list(range(ano_inicio, date.today().year + 1)), force=force)
+    inicio = _ano_a_partir_do_corte("CAMARA_API", "votacoes", ano_inicio, 2019)
+    return run_votacoes(anos=list(range(inicio, date.today().year + 1)), force=force)
 
 
 def _composicao():
@@ -175,9 +178,17 @@ def _ceap_emendas(ano_inicio: int, usar_cache: bool = True):
 
 
 def _load_db(allow_synthetic: bool, allow_unverified: bool, recursos: Optional[List[str]] = None):
-    from etl.pipelines.carga_cadastro import CargaCadastro
+    from etl.carga.orquestra import RECURSOS, Carga
+    from etl.utils.bootstrap import ensure_backend_on_path
 
-    return CargaCadastro(allow_synthetic=allow_synthetic, allow_unverified=allow_unverified).load_all(recursos=recursos)
+    ensure_backend_on_path()
+    from app.core.migrations import upgrade_schema
+
+    upgrade_schema()
+    # camara_historico e camara_lote têm etapa própria (baixam e carregam juntos): aqui só o que vem dos arquivos processados
+    pedidos = [r for r in (recursos or RECURSOS) if r not in ("camara_historico", "camara_lote")]
+    resultados = Carga(allow_synthetic=allow_synthetic, allow_unverified=allow_unverified).carregar(pedidos)
+    return {recurso: vars(r.contagem) for recurso, r in resultados.items()}
 
 
 def _processos():
@@ -186,7 +197,24 @@ def _processos():
     return extrair()
 
 
-def _camara_bulk(force: bool, ano_inicio: int):
+def _ano_a_partir_do_corte(fonte: str, recurso: str, explicito: Optional[int], padrao: int) -> int:
+    """
+    O primeiro ano a baixar: o que o usuário pediu; sem pedido, o ano do corte da última carga (os arquivos do ano
+    corrente mudam todo dia, então o ano anterior ao corte é refeito por segurança); sem corte, o início da janela.
+    """
+    if explicito is not None:
+        return explicito
+    from etl.carga.base import data_de_corte
+    from etl.utils.bootstrap import ensure_backend_on_path
+
+    ensure_backend_on_path()
+    from app.core.database import engine
+
+    corte = data_de_corte(engine, fonte, recurso)
+    return max(padrao, corte.year - 1) if corte else padrao
+
+
+def _camara_bulk(force: bool, ano_inicio: Optional[int]):
     from datetime import date
 
     from etl.utils.bootstrap import ensure_backend_on_path
@@ -195,14 +223,15 @@ def _camara_bulk(force: bool, ano_inicio: int):
     from app.core.database import engine
     from app.core.migrations import upgrade_schema
 
+    from etl.carga.orquestra import Carga
     from etl.extractors.camara_bulk_extractor import CamaraBulkExtractor
-    from etl.pipelines.camara_bulk_loader import carregar
 
     upgrade_schema()
-    arquivos = CamaraBulkExtractor(anos=range(ano_inicio, date.today().year + 1)).run(force=force)
-    resumo = carregar(engine, arquivos)
-    print(f"    {resumo['merge']}")
-    return resumo
+    inicio = _ano_a_partir_do_corte("CAMARA_CSV", "camara_lote", ano_inicio, 1995)
+    arquivos = CamaraBulkExtractor(anos=range(inicio, date.today().year + 1)).run(force=force)
+    resultados = Carga(engine=engine, lote_arquivos=arquivos).carregar(["camara_lote"])
+    print(f"    {resultados['camara_lote'].contagem}")
+    return {"camara_lote": resultados["camara_lote"].extras}
 
 
 def _camara_historico(force: bool):
@@ -212,17 +241,17 @@ def _camara_historico(force: bool):
     from app.core.database import engine
     from app.core.migrations import upgrade_schema
 
+    from etl.carga.orquestra import Carga
     from etl.extractors.camara_historico_extractor import CamaraHistoricoExtractor
-    from etl.pipelines.camara_historico_loader import carregar
 
     upgrade_schema()
     extrator = CamaraHistoricoExtractor()
     baixado = extrator.run(force=force)
     if baixado["falhas"]:
         raise RuntimeError(f"{len(baixado['falhas'])} históricos não baixados (ex.: {baixado['falhas'][0]})")
-    resumo = carregar(engine, extrator.raw_dir)
-    print(f"    {resumo['merge']}")
-    return resumo
+    resultados = Carga(engine=engine, historico_dir=extrator.raw_dir).carregar(["camara_historico"])
+    print(f"    {resultados['camara_historico'].contagem}")
+    return {"camara_historico": resultados["camara_historico"].extras}
 
 
 def _presenca(no_cache: bool, max_paginas: Optional[int]):
@@ -351,7 +380,7 @@ def montar_parser() -> argparse.ArgumentParser:
         ("economic", "Extração econômica e de presidentes (BCB/INPE/indicadores)"),
         ("camara", "Dados abertos da Câmara dos Deputados"),
         ("senado", "Dados abertos do Senado Federal"),
-        ("tse", "Filiações partidárias"),
+        ("cpf", "Identificador do CPF por HMAC (Câmara e TSE; o CPF nunca é gravado)"),
         ("patrimonio", "Declarações de patrimônio (TSE, bem_candidato)"),
         ("doacoes", "Financiamento de campanha (TSE, prestação de contas de candidatos)"),
         ("eleicoes", "Eleições presidenciais por UF (TSE, votação por candidato/município/zona)"),
@@ -422,9 +451,17 @@ def montar_parser() -> argparse.ArgumentParser:
         help="Máximo de páginas novas do portal da Câmara por execução (o portal limita a taxa; a extração é retomável)",
     )
     p.add_argument(
-        "--bulk-ano-inicio", type=int, default=1995, help="Ano inicial das proposições em lote (padrão: 1995)"
+        "--bulk-ano-inicio",
+        type=int,
+        default=None,
+        help="Ano inicial das proposições em lote (padrão: o ano anterior ao corte da última carga; sem corte, 1995)",
     )
-    p.add_argument("--votacoes-ano-inicio", type=int, default=2019, help="Ano inicial das votações (padrão: 2019)")
+    p.add_argument(
+        "--votacoes-ano-inicio",
+        type=int,
+        default=None,
+        help="Ano inicial das votações (padrão: o ano anterior ao corte da última carga; sem corte, 2019)",
+    )
     p.add_argument(
         "--allow-synthetic", action="store_true", help="Gera/carrega dados SINTÉTICOS marcados (demonstração)"
     )
@@ -441,7 +478,6 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         "economic",
         "camara",
         "senado",
-        "tse",
         "patrimonio",
         "doacoes",
         "eleicoes",
@@ -452,6 +488,7 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         "pnad",
         "ceap",
         "votacoes",
+        "cpf",
         "presenca",
         "remuneracao",
         "camara_bulk",
@@ -486,7 +523,6 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         Etapa("economic", "Extração econômica e presidentes (BCB / INPE)", lambda: _economic(cache)),
         Etapa("camara", "Dados abertos da Câmara dos Deputados", lambda: _camara(args.no_cache)),
         Etapa("senado", "Dados abertos do Senado Federal", _senado),
-        Etapa("tse", "Filiações partidárias", _filiacoes),
         Etapa("patrimonio", "Declarações de patrimônio (TSE)", lambda: _patrimonio(args.no_cache)),
         Etapa("doacoes", "Financiamento de campanha (TSE)", lambda: _doacoes(args.no_cache)),
         Etapa("eleicoes", "Eleições presidenciais por UF (TSE)", lambda: _eleicoes(args.no_cache)),
@@ -503,6 +539,7 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
             "Votações nominais e orientação do governo (Câmara e Senado)",
             lambda: _votacoes(args.votacoes_ano_inicio, args.no_cache),
         ),
+        Etapa("cpf", "Identificador do CPF por HMAC (Câmara e TSE)", _cpf),
         Etapa(
             "presenca",
             "Presença em plenário (Câmara e Senado)",
@@ -642,7 +679,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             "economic",
             "camara",
             "senado",
-            "tse",
             "patrimonio",
             "social",
             "orcamento",
@@ -650,6 +686,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             "pnad",
             "ceap",
             "votacoes",
+            "cpf",
             "presenca",
             "remuneracao",
             "camara_bulk",

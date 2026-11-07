@@ -4,9 +4,9 @@ from datetime import date
 
 import pytest
 from app.models import CargoPoliticoEnum, MotivoDesfiliacaoEnum, StatusMandatoEnum
-from app.services.staging_merge import merge_staging
-from sqlalchemy import inspect, text
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+from tests.projecao import merge_staging
 from tests.stg_models import CabinetMember, Mandate, PartyAffiliation, PoliticalParty, Politician
 
 FAR_FUTURE = date(2999, 1, 31)
@@ -227,7 +227,6 @@ def test_bridge_creates_people_names_identifiers_and_never_copies_cpf(db, cenari
 def test_bridge_collapses_one_legacy_mandate_per_party_into_one_mandate(db, cenario):
     merge_staging(db, preparar=False)
     assert _scalar(db, "SELECT count(*) FROM core.mandato WHERE condicao <> 'NOMEADO'") == 2
-    assert _scalar(db, "SELECT count(*) FROM core.mandato_legado") == 3  # todos os ids legados continuam rastreáveis
     # partido do mandato = filiação vigente na posse (PT), não o último a ser carregado
     assert (
         _scalar(
@@ -479,46 +478,6 @@ def test_party_alias_resolves_old_spellings(db):
         )
         == "PODE"
     )
-
-
-# ── guarda contra deriva entre modelos ORM legados e o schema criado pelas migrações ─────────────
-
-
-def test_staging_orm_models_match_the_migrated_database(pg_engine):
-    """As cinco tabelas congeladas de `stg` e as de trabalho (`etl.criar_trabalho`) têm o que os modelos esperam."""
-    from tests.stg_models import StagingBase
-
-    inspector = inspect(pg_engine)
-    faltando = []
-    for table in StagingBase.metadata.sorted_tables:
-        if table.schema != "stg":
-            continue
-        existentes = (
-            {c["name"] for c in inspector.get_columns(table.name, schema="stg")}
-            if inspector.has_table(table.name, schema="stg")
-            else None
-        )
-        if existentes is None:
-            faltando.append(f"tabela {table.name}")
-            continue
-        faltando += [f"{table.name}.{c.name}" for c in table.columns if c.name not in existentes]
-    assert faltando == []
-
-    with pg_engine.connect() as conn:
-        transacao = conn.begin()
-        conn.execute(text("SELECT etl.criar_trabalho()"))  # as temporárias da fusão, como a carga as monta
-        temporarias = {}
-        for tabela, coluna in conn.execute(
-            text(
-                "SELECT table_name, column_name FROM information_schema.columns "
-                "WHERE table_schema LIKE 'pg_temp%' AND table_name LIKE 'w\\_%'"
-            )
-        ):
-            temporarias.setdefault(tabela, set()).add(coluna)
-        transacao.rollback()
-    for table in StagingBase.metadata.sorted_tables:
-        if table.schema is None:
-            assert {c.name for c in table.columns} <= temporarias[table.name], table.name
 
 
 def test_motivo_desfiliacao_values_are_preserved(db, cenario):

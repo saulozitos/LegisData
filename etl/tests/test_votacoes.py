@@ -639,38 +639,39 @@ def test_cache_do_ano_anterior_expirado_e_refeito_antes_de_marco(tmp_path):
     assert ext_depois._json_com_cache("u", "votacao", 2025, False) == [{"x": 2}]  # depois de março, cache eterno
 
 
-def _atualizar_com_dublês(monkeypatch, sincronizar):
+def _atualizar_com_dublês(monkeypatch, derivados):
+    from types import SimpleNamespace
     from unittest.mock import MagicMock
 
     from etl.pipelines import votacoes_atualizacao as va
 
     chamadas = []
     monkeypatch.setattr(va, "run_votacoes", lambda anos, force: {})
+    monkeypatch.setattr(va, "data_de_corte", lambda motor, fonte, recurso: None)
 
     class CargaFalsa:
-        contagens = {}
-        resumo_fusao = {}
+        def __init__(self, data_dir, engine, votacoes_ano_inicio):
+            chamadas.append(f"ano_inicio={votacoes_ano_inicio}")
 
-        def __init__(self, data_dir, engine):
-            pass
-
-        def load_all(self, recursos, fundir, migrar):
-            # os mapas saem do staging: partidos e políticos entram antes das votações; o cron não migra o schema
-            assert recursos == ["partidos", "politicos", "votacoes_historico"] and migrar is False
+        def carregar(self, recursos):
+            # as pessoas que votam entram antes das votações (partidos primeiro, para a sigla existir)
+            assert recursos == ["partidos", "pessoas", "votacoes"]
             chamadas.append("carga")
-            if fundir:
-                chamadas.append("merge")
+            return {
+                r: SimpleNamespace(contagem=SimpleNamespace(lidas=1, gravadas=1, rejeitadas=0, motivos={}))
+                for r in recursos
+            }
 
-    monkeypatch.setattr(va, "CargaCadastro", CargaFalsa)
+    monkeypatch.setattr(va, "Carga", CargaFalsa)
     monkeypatch.setattr(va, "posprocessar_carga", lambda motor: chamadas.append("pos") if motor is va.engine else None)
     va.engine = MagicMock() if va.engine is None else va.engine
-    va.atualizar(sincronizar=sincronizar)
+    va.atualizar(derivados=derivados)
     return chamadas
 
 
-def test_atualizacao_de_votacoes_funde_e_depois_posprocessa(monkeypatch):
-    assert _atualizar_com_dublês(monkeypatch, sincronizar=True) == ["carga", "merge", "pos"]
+def test_atualizacao_de_votacoes_carrega_e_posprocessa_quando_pedido(monkeypatch):
+    assert _atualizar_com_dublês(monkeypatch, derivados=True) == [f"ano_inicio={date.today().year - 1}", "carga", "pos"]
 
 
-def test_atualizacao_sem_fusao_deixa_o_posprocessamento_a_quem_chamou(monkeypatch):
-    assert _atualizar_com_dublês(monkeypatch, sincronizar=False) == ["carga"]
+def test_atualizacao_sem_derivados_deixa_o_posprocessamento_a_quem_chamou(monkeypatch):
+    assert _atualizar_com_dublês(monkeypatch, derivados=False) == [f"ano_inicio={date.today().year - 1}", "carga"]

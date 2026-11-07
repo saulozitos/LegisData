@@ -1,1 +1,0 @@
-"""Removido: o ETL não grava mais tabelas relacionais em `stg`: copia os arquivos para tabelas planas (`etl.pipelines.planas_*`) e a função SQL `etl.preparar_staging` resolve a identidade na fusão. Pode apagar este arquivo."""

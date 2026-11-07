@@ -219,6 +219,25 @@ def _contar(engine, tabela):
         return conn.execute(text(f"SELECT count(*) FROM fin.{tabela}")).scalar()
 
 
+def test_resolvedor_liga_pelo_hmac_do_cpf_antes_do_nome(pg_engine, banco):
+    hmac_ana = "a" * 64
+    with pg_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO core.pessoa_identificador (pessoa_id, fonte_id, tipo, valor) VALUES (:p, "
+                "(SELECT id FROM etl.fonte WHERE codigo = 'CAMARA_API'), 'CPF_HMAC', :v)"
+            ),
+            {"p": banco["ana"], "v": hmac_ana},
+        )
+    with pg_engine.connect() as conn:
+        resolvedor = ResolvedorDePessoas(conn)
+        # sem id oficial e com nome diferente, o HMAC do CPF acha a pessoa
+        assert resolvedor.resolver({"cpf_hmac": hmac_ana, "nome_civil": "Nome Diferente"}).pessoa_id == banco["ana"]
+        # HMAC desconhecido ou ausente não atrapalha: cai no nome
+        assert resolvedor.resolver({"cpf_hmac": "c" * 64, "nome": "Ana Souza"}).pessoa_id == banco["ana"]
+        assert resolvedor.resolver({"cpf_hmac": None, "nome": "Ninguem"}).situacao == "NAO_CADASTRADO"
+
+
 def test_resolvedor_usa_id_depois_nome_unico_e_desfaz_homonimo_pelo_mandato(pg_engine, banco):
     with pg_engine.connect() as conn:
         resolvedor = ResolvedorDePessoas(conn)

@@ -454,20 +454,24 @@ export default function VotingCalendarPanel({
                         </div>
 
                         <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 rounded-full border ${
-                          sess.aprovada
+                          sess.aprovada === true
                             ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                            : "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                            : sess.aprovada === false
+                              ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                              : "bg-slate-500/20 text-slate-300 border-slate-500/40"
                         }`}>
-                          {sess.aprovada ? (
+                          {sess.aprovada === true ? (
                             <>
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
                               <span>Aprovada</span>
                             </>
-                          ) : (
+                          ) : sess.aprovada === false ? (
                             <>
                               <XCircle className="w-3.5 h-3.5 text-rose-400" aria-hidden="true" />
                               <span>Rejeitada</span>
                             </>
+                          ) : (
+                            <span>Resultado n/d</span>
                           )}
                         </span>
                       </div>

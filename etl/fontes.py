@@ -5,9 +5,9 @@ Catálogo das fontes do ETL para o comando por fonte e por estágio:
     python -m etl.run_etl --fonte politicos --fonte filiacoes          # extrai e carrega as duas
     python -m etl.run_etl --listar-fontes
 
-Cada fonte diz que etapas da esteira a extraem e que recursos da carga relacional (`carga_cadastro.RECURSOS`) ou que etapa de
-carga a levam ao banco. Reexecutar uma fonte não toca nas outras: a carga relacional lê os mapas de que precisa do próprio
-`stg`. Depois de carregar recursos relacionais a fusão em `core`/`leg` roda uma vez.
+Cada fonte diz que etapas da esteira a extraem e que recursos da carga relacional (`etl.carga.orquestra.RECURSOS`) ou que etapa de
+carga a levam ao banco. Reexecutar uma fonte não toca nas outras: cada recurso grava direto em `core`/`leg` pela chave natural
+(identificador oficial), então a ordem dos recursos é a de `RECURSOS` e a repetição não duplica nada.
 """
 
 from dataclasses import dataclass, field
@@ -27,19 +27,23 @@ class Fonte:
 FONTES: Dict[str, Fonte] = {
     "partidos": Fonte("Partidos políticos (curadoria e siglas das fontes)", recursos=("partidos",)),
     "politicos": Fonte(
-        "Presidentes, deputados e senadores", extrair=("camara", "senado"), recursos=("partidos", "politicos")
+        "Presidentes, deputados e senadores",
+        extrair=("camara", "senado", "votacoes", "cpf"),
+        recursos=("partidos", "pessoas"),
     ),
-    "filiacoes": Fonte("Filiações partidárias (TSE)", extrair=("tse",), recursos=("filiacoes",)),
+    "filiacoes": Fonte(
+        "Filiações partidárias (derivadas dos períodos de partido de cada mandato)", recursos=("filiacoes",)
+    ),
     "mandatos": Fonte(
         "Mandatos de presidentes, deputados e senadores e gabinete presidencial (saem dos mesmos arquivos dos políticos)",
         extrair=("camara", "senado"),
-        recursos=("politicos",),
+        recursos=("partidos", "pessoas"),
     ),
     "proposicoes": Fonte("Proposições da Câmara e do Senado", extrair=("camara", "senado"), recursos=("proposicoes",)),
     "votacoes": Fonte(
         "Votações nominais em plenário e histórico (Câmara e Senado) e ex-parlamentares",
-        extrair=("camara", "senado", "votacoes"),
-        recursos=("parlamentares_historicos", "votacoes_plenario", "votacoes_historico"),
+        extrair=("camara", "senado", "votacoes", "cpf"),
+        recursos=("partidos", "pessoas", "votacoes"),
     ),
     "camara-bulk": Fonte(
         "Proposições e autores de todos os anos (CSV em lote da Câmara)",

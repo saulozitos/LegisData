@@ -1,5 +1,9 @@
 # Plano de Refatoração do Banco de Dados — LegisData
 
+> **Atualização (novembro de 2026): o ETL em estágios (staging + fusão em SQL) descrito nas seções 7 e seguintes foi substituído
+> pela carga direta de `docs/ETL_SIMPLES.md` (migração 0042).** As menções a `stg.*`, `etl.merge_*`, `etl.preparar_*` e
+> `db_loader` abaixo são o histórico do que existiu.
+
 Data da análise: 2026-10-15. Escopo: nova modelagem PostgreSQL, ETL que baixa, lê e popula o banco, e migração de tudo que hoje está "solto" no código.
 
 Este documento é um plano, não uma implementação. Nenhuma tabela ou código foi alterado.

@@ -1,1 +1,0 @@
-"""Removido: a fusão refaz o vínculo de autor de cada proposição a cada carga (`etl.preparar_proposicoes`: id oficial, nome exato, normalizado ou conjunto de palavras, sempre só quando único), então não há mais autor a sanear no staging. Pode apagar este arquivo."""

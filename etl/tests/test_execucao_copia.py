@@ -231,32 +231,6 @@ def _copiar(pg_engine, acao):
         return acao(cursor)
 
 
-def test_colunas_da_tabela_ignoram_as_de_controle(pg_engine, tabela_de_copia):
-    assert _copiar(pg_engine, lambda c: copia.colunas_da_tabela(c, tabela_de_copia)) == ["a", "bC"]
-
-
-def test_copiar_arquivo_confere_o_cabecalho_e_trata_vazio_como_nulo(pg_engine, tabela_de_copia, tmp_path):
-    bom = tmp_path / "bom.csv"
-    bom.write_text('a;bC\nx;"com; ponto e vírgula"\n;\n', encoding="utf-8")
-    _copiar(pg_engine, lambda c: copia.copiar_arquivo(c, tabela_de_copia, bom))
-    with pg_engine.connect() as conn:
-        linhas = conn.execute(text(f'SELECT a, "bC", execucao_id FROM {tabela_de_copia} ORDER BY a NULLS LAST')).all()
-    assert linhas == [("x", "com; ponto e vírgula", None), (None, None, None)]  # vazio é NULL, nunca ''
-
-    mudou = tmp_path / "mudou.csv"
-    mudou.write_text("a;outra\nx;y\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="layout da fonte mudou"):
-        _copiar(pg_engine, lambda c: copia.copiar_arquivo(c, tabela_de_copia, mudou))
-
-
-def test_arquivo_vazio_e_layout_mudado_e_nao_stopiteration(pg_engine, tabela_de_copia, tmp_path):
-    vazio = tmp_path / "vazio.csv"
-    vazio.write_bytes(b"")
-    assert copia.cabecalho_do_arquivo(vazio) == []
-    with pytest.raises(ValueError, match="layout da fonte mudou"):
-        _copiar(pg_engine, lambda c: copia.copiar_arquivo(c, tabela_de_copia, vazio))
-
-
 def test_contar_linhas_do_csv_ignora_cabecalho_e_conta_registro_com_quebra_de_linha_uma_vez(tmp_path):
     arquivo = tmp_path / "x.csv"
     arquivo.write_text('a;b\n1;"duas\nlinhas"\n2;y\n', encoding="utf-8")
@@ -281,16 +255,6 @@ def test_copiar_linhas_de_uma_coluna_grava_none_como_nulo_em_texto_e_em_data(pg_
         assert cursor.fetchone() == (1, 1)
 
 
-def test_arquivo_de_fonte_mantem_o_vazio_entre_aspas_como_texto_vazio(pg_engine, tabela_de_copia, tmp_path):
-    """A fonte publica `""` para campo vazio; o COPY de arquivo não decide por ela (a função de fusão trata com nullif)."""
-    arquivo = tmp_path / "aspas.csv"
-    arquivo.write_text('"a";"bC"\n"";"x"\n;"y"\n', encoding="utf-8")
-    _copiar(pg_engine, lambda c: copia.copiar_arquivo(c, tabela_de_copia, arquivo))
-    with pg_engine.connect() as conn:
-        linhas = conn.execute(text(f'SELECT a, "bC" FROM {tabela_de_copia} ORDER BY "bC"')).all()
-    assert linhas == [("", "x"), (None, "y")]
-
-
 def test_esvaziar_valida_os_nomes_e_limpa_varias_tabelas_de_uma_vez(pg_engine, tabela_de_copia):
     with copia.transacao_de_carga(pg_engine) as cursor:
         cursor.execute("CREATE TEMP TABLE _outra (x int) ON COMMIT DROP")
@@ -302,23 +266,6 @@ def test_esvaziar_valida_os_nomes_e_limpa_varias_tabelas_de_uma_vez(pg_engine, t
             copia.esvaziar(cursor, ["stg.x; DROP TABLE y"])
         with pytest.raises(ValueError, match="ao menos uma"):
             copia.esvaziar(cursor, [])
-
-
-def test_tabela_sem_schema_e_recusada_onde_o_schema_e_obrigatorio(tmp_path):
-    arquivo = tmp_path / "a.csv"
-    arquivo.write_text("a\n1\n", encoding="utf-8")
-
-    class CursorQueNaoDeveSerUsado:
-        def __getattr__(self, nome):
-            def chamada(*args, **kwargs):
-                raise AssertionError("o comando não pode chegar ao banco")
-
-            return chamada
-
-    with pytest.raises(ValueError, match="informe schema.nome"):
-        copia.colunas_da_tabela(CursorQueNaoDeveSerUsado(), "so_nome")
-    with pytest.raises(ValueError, match="informe schema.nome"):
-        copia.copiar_arquivo(CursorQueNaoDeveSerUsado(), "so_nome", arquivo)
 
 
 def test_copiar_linhas_normalizadas(pg_engine, tabela_de_copia):
@@ -348,8 +295,8 @@ def test_nomes_e_delimitador_que_nao_sao_simples_sao_recusados(tmp_path):
     arquivo.write_text("a\n1\n", encoding="utf-8")
     for delimitador in ["'", '"', "\\", "\n", "", ";;"]:
         with pytest.raises(ValueError, match="delimitador inválido"):
-            copia.cabecalho_do_arquivo(arquivo, delimitador)
-    assert copia.cabecalho_do_arquivo(arquivo, "|") == ["a"]
+            copia.contar_linhas_csv(arquivo, delimitador)
+    assert copia.contar_linhas_csv(arquivo, "|") == 1
 
 
 def test_tabelas_temporarias_sem_schema_continuam_aceitas(pg_engine):

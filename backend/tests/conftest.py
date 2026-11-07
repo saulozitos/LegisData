@@ -22,11 +22,12 @@ from app.models import (  # noqa: E402
     VotoOpcaoEnum,
 )
 from app.services import cidadania_service  # noqa: E402
-from app.services.staging_merge import merge_staging  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.exc import OperationalError  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
+from tests.projecao import instalar as instalar_projecao  # noqa: E402
+from tests.projecao import merge_staging  # noqa: E402
 from tests.stg_models import (  # noqa: E402
     Mandate,
     ParliamentaryVote,
@@ -95,12 +96,8 @@ def pg_engine():
             os.environ.pop("ALEMBIC_DATABASE_URL", None)
         else:
             os.environ["ALEMBIC_DATABASE_URL"] = previous
-    # tabelas de trabalho da fusão: em produção são temporárias (`etl.preparar_staging`); aqui são comuns, com as mesmas colunas
-    # das temporárias (`etl.criar_trabalho`), para o teste semear com objetos e a fusão achá-las pelo search_path
-    with engine.begin() as conn:
-        conn.execute(text("SELECT etl.criar_trabalho()"))
-        for tabela in [t.name for t in StagingBase.metadata.sorted_tables if t.schema is None]:
-            conn.execute(text(f"CREATE TABLE IF NOT EXISTS public.{tabela} (LIKE pg_temp.{tabela} INCLUDING DEFAULTS)"))
+    # tabelas de entrada da projeção de teste (`w_*` e as do legado em `stg`) e as funções que as levam a core/leg
+    instalar_projecao(engine)
     yield engine
     engine.dispose()
 
