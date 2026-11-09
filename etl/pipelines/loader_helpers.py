@@ -131,12 +131,45 @@ def soma_na_faixa(valor: Decimal, limite: Decimal) -> Optional[Decimal]:
     return centavos if abs(centavos) < limite else None
 
 
-def _texto_ou_none(value: Any) -> Optional[str]:
+def texto_ou_none(value: Any) -> Optional[str]:
     """Texto aparado; None/NaN/vazio -> None (CSV do pandas devolve NaN para célula vazia)."""
     if value is None or (isinstance(value, float) and value != value):
         return None
     texto = str(value).strip()
     return texto or None
+
+
+def ano_da_eleicao(inicio: date) -> int:
+    """
+    Ano da eleição que deu o mandato iniciado em `inicio`. As eleições gerais caem em anos ≡ 2 (mod 4) e a posse é no ano
+    seguinte (1º de fevereiro): o suplente que assume no meio do mandato (2021-05) herda a eleição do titular (2018), e não
+    uma eleição inventada em `ano - 1`.
+    """
+    ano = inicio.year - 1
+    return ano - ((ano - 2) % 4)
+
+
+def data_iso(valor: Any) -> Optional[str]:
+    """Data 'AAAA-MM-DD' (ou None) de qualquer formato que `_to_date` entenda."""
+    convertida = _to_date(valor)
+    return convertida.isoformat() if convertida else None
+
+
+def opcao_de_voto(valor: Any) -> Optional[str]:
+    """A opção como a fonte a publica (maiúscula); vazio é desconhecido (nulo), não 'ausente'."""
+    texto = texto_ou_none(valor)
+    return texto.upper() if texto else None
+
+
+def data_hora_iso(valor: Any) -> Optional[str]:
+    """Data e hora sem fuso ('AAAA-MM-DDTHH:MM:SS'), ou None."""
+    convertida = _to_datetime(valor)
+    return convertida.replace(tzinfo=None).isoformat() if convertida else None
+
+
+def total_de(totais: Any, chave: str) -> Optional[int]:
+    """Total inteiro de `totais[chave]`; chave ausente, nula ou inválida é desconhecida (None)."""
+    return inteiro(totais.get(chave)) if isinstance(totais, dict) and totais.get(chave) is not None else None
 
 
 def _to_date(value: Any) -> Optional[date]:
@@ -761,7 +794,9 @@ def _cpfs_na_sequencia_canonica(normal: str) -> int:
     return achados
 
 
-_HMAC_DE_CPF_RE = re.compile(r"(?<![0-9a-fA-F])[0-9a-f]{64}(?![0-9a-fA-F])")
+# 64 hexadecimais em minúsculas, com pelo menos uma letra: uma sequência de 64 dígitos decimais NÃO é um HMAC e não vira exceção
+# (poderia esconder um CPF dentro de um número corrido)
+_HMAC_DE_CPF_RE = re.compile(r"(?<![0-9a-fA-F])(?=[0-9]*[a-f])[0-9a-f]{64}(?![0-9a-fA-F])")
 
 
 def cpfs_suspeitos_em(valor: Any, janelas: bool = True) -> int:

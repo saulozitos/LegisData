@@ -10,8 +10,9 @@ falhar em um não desfaz os anteriores, e rodar de novo é seguro (tudo é `INSE
 import argparse
 import hashlib
 import logging
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from etl.carga import camara, filiacoes, partidos, pessoas, proposicoes, votacoes
 from etl.carga.base import Resultado, rodar
@@ -27,32 +28,57 @@ from app.core.database import engine as engine_padrao  # noqa: E402
 
 logger = logging.getLogger("Carga")
 
-RECURSOS = ("partidos", "pessoas", "camara_historico", "filiacoes", "camara_lote", "proposicoes", "votacoes")
-ARQUIVOS = {
-    "pessoas": (
-        "presidentes_historico.json",
-        "deputados_camara.json",
-        "senadores_senado.json",
-        pessoas.ARQUIVO_ANTERIORES,
+
+@dataclass(frozen=True)
+class Recurso:
+    """
+    Um recurso da carga. `fonte` é a da execução e a chave do corte (`etl.corte`); `arquivos` são os arquivos que ele lê, cada
+    um com a fonte que o gerou (a proveniência de `etl.arquivo_bruto` é por arquivo: o Senado não é "Câmara").
+    """
+
+    nome: str
+    fonte: str
+    arquivos: Tuple[Tuple[str, str], ...] = ()  # (fonte do arquivo, nome ou padrão em data_dir)
+    exige: Optional[str] = None  # atributo de `Carga` que, vazio, faz o recurso ser pulado
+
+
+CATALOGO = (
+    Recurso("partidos", "CURADORIA"),
+    Recurso(
+        "pessoas",
+        "CAMARA_API",
+        (
+            ("CURADORIA", "presidentes_historico.json"),
+            ("CAMARA_API", "deputados_camara.json"),
+            ("SENADO_API", "senadores_senado.json"),
+            ("CAMARA_API", pessoas.ARQUIVO_ANTERIORES),  # as duas casas; o lote do arquivo anual de cada uma
+            ("SENADO_API", pessoas.ARQUIVO_SENADORES_BASICOS),
+            ("SENADO_API", pessoas.ARQUIVO_FILIACOES_SENADO),
+        ),
     ),
-    "proposicoes": ("proposicoes_2023.json", "proposicoes_senado.json"),
-    "votacoes": (
-        "sessoes_votacao_2023.json",
-        "votos_nominais_2023.json",
-        "sessoes_votacao_senado.json",
-        "votos_nominais_senado.json",
-        "votacoes/*.json.gz",
+    Recurso("camara_historico", "CAMARA_API", exige="historico_dir"),
+    Recurso("filiacoes", "CAMARA_API"),
+    Recurso("camara_lote", "CAMARA_CSV", exige="lote_arquivos"),
+    Recurso(
+        "proposicoes",
+        "CAMARA_API",
+        (("CAMARA_API", "proposicoes_2023.json"), ("SENADO_API", "proposicoes_senado.json")),
     ),
-}
-FONTES = {
-    "partidos": "CURADORIA",
-    "pessoas": "CAMARA_API",
-    "filiacoes": "CAMARA_API",
-    "camara_historico": "CAMARA_API",
-    "camara_lote": "CAMARA_CSV",
-    "proposicoes": "CAMARA_API",
-    "votacoes": "CAMARA_API",
-}
+    Recurso(
+        "votacoes",
+        "CAMARA_API",
+        (
+            ("CAMARA_API", "sessoes_votacao_2023.json"),
+            ("CAMARA_API", "votos_nominais_2023.json"),
+            ("SENADO_API", "sessoes_votacao_senado.json"),
+            ("SENADO_API", "votos_nominais_senado.json"),
+            ("CAMARA_API", "votacoes/camara_*.json.gz"),
+            ("SENADO_API", "votacoes/senado_*.json.gz"),
+        ),
+    ),
+)
+RECURSOS = tuple(r.nome for r in CATALOGO)
+_POR_NOME = {r.nome: r for r in CATALOGO}
 
 
 def _sha256(caminho: Path) -> str:
@@ -92,6 +118,12 @@ def _caminhos(data_dir: Path, nomes: Sequence[str]) -> List[Path]:
     return achados
 
 
+def registrar_origens(cursor: Any, execucao: Execucao, recurso: Recurso, data_dir: Path) -> None:
+    """Registra cada arquivo que o recurso lê com a fonte que o gerou."""
+    for fonte, nome in recurso.arquivos:
+        registrar_origem(cursor, execucao, fonte, _caminhos(data_dir, [nome]))
+
+
 class Carga:
     def __init__(
         self,
@@ -127,6 +159,7 @@ class Carga:
             votantes = votacoes.ler_parlamentares_dos_arquivos(lote, self.data_dir, self.votacoes_ano_inicio)
             pessoas.ler_anteriores(lote, self.data_dir, votantes)
             pessoas.ler_senadores_basicos(lote, self.data_dir)
+            pessoas.ler_filiacoes_senadores(lote, self.data_dir)
             self._lote = lote
         return self._lote
 
@@ -136,13 +169,13 @@ class Carga:
         return partidos.carregar_partidos(cursor, siglas)
 
     def _pessoas(self, cursor: Any, execucao: Execucao) -> Resultado:
-        registrar_origem(cursor, execucao, "CAMARA_API", _caminhos(self.data_dir, ARQUIVOS["pessoas"]))
+        registrar_origens(cursor, execucao, _POR_NOME["pessoas"], self.data_dir)
         resultado = pessoas.gravar_lote(cursor, self.lote())
         cursor.execute(
-            "SELECT inicio FROM core.mandato WHERE condicao <> 'NOMEADO' AND fonte_id IN "
+            "SELECT coalesce(fim, inicio) FROM core.mandato WHERE condicao <> 'NOMEADO' AND fonte_id IN "
             "(SELECT id FROM etl.fonte WHERE codigo IN ('CAMARA_API', 'SENADO_API', 'CURADORIA'))"
         )
-        execucao.verificar(dentro_da_janela("mandatos_a_partir_de_1995", (linha[0] for linha in cursor.fetchall())))
+        execucao.verificar(dentro_da_janela("mandatos_que_chegam_a_1995", (linha[0] for linha in cursor.fetchall())))
         for nome, tipo, total in (
             (
                 "deputados_da_fonte_com_pessoa",
@@ -195,12 +228,12 @@ class Carga:
         return resultado
 
     def _proposicoes(self, cursor: Any, execucao: Execucao) -> Resultado:
-        registrar_origem(cursor, execucao, "CAMARA_API", _caminhos(self.data_dir, ARQUIVOS["proposicoes"]))
+        registrar_origens(cursor, execucao, _POR_NOME["proposicoes"], self.data_dir)
         resultado = proposicoes.carregar_proposicoes(cursor, self.data_dir, self.allow_unverified)
         return resultado
 
     def _votacoes(self, cursor: Any, execucao: Execucao) -> Resultado:
-        registrar_origem(cursor, execucao, "CAMARA_API", _caminhos(self.data_dir, ARQUIVOS["votacoes"]))
+        registrar_origens(cursor, execucao, _POR_NOME["votacoes"], self.data_dir)
         return votacoes.carregar_votacoes(cursor, self.data_dir, self.votacoes_ano_inicio)
 
     # ------------------------------------------------------------------ execução
@@ -209,27 +242,15 @@ class Carga:
         desconhecidos = [r for r in pedidos if r not in RECURSOS]
         if desconhecidos:
             raise ValueError(f"recurso desconhecido: {desconhecidos}; use um de {RECURSOS}")
-        funcoes = {
-            "partidos": self._partidos,
-            "pessoas": self._pessoas,
-            "filiacoes": self._filiacoes,
-            "camara_historico": self._camara_historico,
-            "camara_lote": self._camara_lote,
-            "proposicoes": self._proposicoes,
-            "votacoes": self._votacoes,
-        }
-        for recurso in (r for r in RECURSOS if r in pedidos):
-            if recurso == "camara_lote" and not self.lote_arquivos:
-                logger.info("camara_lote: nenhum CSV informado, recurso pulado.")
+        for recurso in (r for r in CATALOGO if r.nome in pedidos):
+            if recurso.exige and not getattr(self, recurso.exige):
+                logger.info("%s: %s não informado, recurso pulado.", recurso.nome, recurso.exige)
                 continue
-            if recurso == "camara_historico" and self.historico_dir is None:
-                logger.info("camara_historico: pasta do histórico não informada, recurso pulado.")
-                continue
-            self.resultados[recurso] = rodar(
+            self.resultados[recurso.nome] = rodar(
                 self.engine,
-                FONTES[recurso],
-                recurso,
-                funcoes[recurso],
+                recurso.fonte,
+                recurso.nome,
+                getattr(self, f"_{recurso.nome}"),  # cada recurso tem o método `_<nome>`
                 {"allow_synthetic": self.allow_synthetic, "allow_unverified": self.allow_unverified},
             )
         return self.resultados

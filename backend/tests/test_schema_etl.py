@@ -109,7 +109,7 @@ def test_migracao_0035_nao_desce(pg_engine, monkeypatch):
 
 
 def test_nao_existe_staging_nem_funcao_de_fusao(pg_engine):
-    """A carga é direta (migração 0042): o schema `stg` e as funções `etl.preparar_*`/`etl.merge_*` não existem."""
+    """A carga é direta (migração 0039): o schema `stg` e as funções `etl.preparar_*`/`etl.merge_*` não existem."""
     with pg_engine.connect() as conn:
         # o banco de teste recria um `stg` e funções `public.projetar_*` SÓ para semear dado (backend/tests/projecao)
         funcoes = set(
@@ -179,14 +179,14 @@ def test_identificador_curado_e_aceito_e_um_tipo_qualquer_nao(db):
     db.rollback()
 
 
-def test_migracao_0042_nao_desce(pg_engine, monkeypatch):
+def test_migracao_0039_nao_desce(pg_engine, monkeypatch):
     """O staging e as pontes do legado não voltam: o downgrade recusa em vez de fingir."""
     from alembic import command
 
     config = _config_do_alembic(monkeypatch)
     try:
         with pytest.raises(NotImplementedError, match="irreversível"):
-            command.downgrade(config, "0041")
+            command.downgrade(config, "0038")
         with pg_engine.connect() as conn:
             assert conn.execute(text("SELECT to_regclass('etl.corte') IS NOT NULL")).scalar()
     finally:

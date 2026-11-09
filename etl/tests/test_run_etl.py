@@ -17,6 +17,9 @@ def test_modo_completo_inclui_ceap_e_carga_mas_nao_itens_com_autorizacao_explici
     # presença/remuneração oficiais: extração antes da carga e carga depois do load_db
     assert chaves.index("presenca") < chaves.index("load_db") < chaves.index("load_presenca")
     assert "remuneracao" in chaves
+    # os dados básicos dos senadores saem depois da presença (de onde vêm os senadores) e antes do CPF, e tudo antes da carga
+    ordem = ["presenca", "senadores_basicos", "senadores_filiacoes", "cpf", "load_db"]
+    assert [chaves.index(c) for c in ordem] == sorted(chaves.index(c) for c in ordem)
 
 
 def test_modo_completo_tem_a_carga_economica_depois_do_load_db_e_nao_tem_mais_renda():

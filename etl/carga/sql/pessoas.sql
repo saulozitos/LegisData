@@ -1,8 +1,10 @@
 -- Pessoas e mandatos de quem as fontes oficiais listam. A pessoa se acha pelo identificador oficial (CAMARA_ID, SENADO_ID,
 -- TSE_ID), pela chave curada (presidentes e ministros) ou, quando é a primeira vez que a fonte a cita, pelo NOME CIVIL
 -- COMPLETO + DATA DE NASCIMENTO (os dois presentes e iguais): assim quem foi deputado e depois senador é uma pessoa só,
--- com os dois identificadores. Nome sem data de nascimento nunca une ninguém (vira candidata a duplicidade). Idempotente.
--- Entradas (tabelas temporárias da transação): _in_pessoa, _in_mandato, _in_ministro. Saída: _rej (motivo, n).
+-- com os dois identificadores. O mesmo CPF (HMAC) em dois cadastros também é a mesma pessoa; CPF diferente nunca une.
+-- Nome sem data de nascimento nunca une ninguém (vira candidata a duplicidade). Idempotente.
+-- Entradas (tabelas temporárias da transação): _in_pessoa, _in_mandato, _in_ministro, _in_filiacao_senador, _in_cpf (HMAC
+-- por id oficial; nunca o CPF). Saída: _rej (motivo, n).
 
 UPDATE _in_pessoa SET id_valor = ref.normalizar_texto(id_valor) WHERE id_tipo = 'CURADORIA_ID';
 UPDATE _in_mandato SET id_valor = ref.normalizar_texto(id_valor) WHERE id_tipo = 'CURADORIA_ID';
@@ -35,10 +37,15 @@ UPDATE _p SET pessoa_id = (
     ORDER BY i.pessoa_id LIMIT 1)
 WHERE pessoa_id IS NULL AND cpf_hmac IS NOT NULL;
 
--- primeira vez que a fonte cita o id: se já existe pessoa com o mesmo nome civil e a mesma data de nascimento, é ela
+-- primeira vez que a fonte cita o id: se já existe pessoa com o mesmo nome civil e a mesma data de nascimento, é ela.
+-- CPF diferente prova que são pessoas diferentes: quem já tem CPF_HMAC e nenhum igual ao do registro não é candidata
 UPDATE _p SET pessoa_id = (
     SELECT pe.id FROM core.pessoa pe JOIN core.pessoa_nome n ON n.pessoa_id = pe.id AND n.tipo = 'CIVIL'
     WHERE n.nome_normalizado = ref.normalizar_texto(_p.nome_civil) AND pe.data_nascimento = _p.data_nascimento
+      AND (_p.cpf_hmac IS NULL
+           OR NOT EXISTS (SELECT 1 FROM core.pessoa_identificador h WHERE h.pessoa_id = pe.id AND h.tipo = 'CPF_HMAC')
+           OR EXISTS (SELECT 1 FROM core.pessoa_identificador h
+                       WHERE h.pessoa_id = pe.id AND h.tipo = 'CPF_HMAC' AND h.valor = _p.cpf_hmac))
     ORDER BY pe.id LIMIT 1)
 WHERE pessoa_id IS NULL AND nullif(btrim(nome_civil), '') IS NOT NULL AND data_nascimento IS NOT NULL;
 
@@ -49,35 +56,65 @@ FROM (SELECT DISTINCT chave_pessoa FROM _p WHERE pessoa_id IS NULL AND chave_pes
 UPDATE _p SET uid_novo = k.uid FROM _uid_chave k WHERE _p.pessoa_id IS NULL AND _p.chave_pessoa = k.chave_pessoa;
 UPDATE _p SET uid_novo = gen_random_uuid() WHERE pessoa_id IS NULL AND uid_novo IS NULL;
 
+-- um valor por coluna e por pessoa: a fonte atual (prioridade 1) primeiro, a histórica só onde a atual nada diz. Vale para a
+-- pessoa nova e para a que já existe, e não depende de qual dos ids dela aparece primeiro (deputado que virou senador).
+CREATE TEMP TABLE _pg ON COMMIT DROP AS
+SELECT p.uid_novo, p.pessoa_id,
+       (array_agg(p.nome_exibicao ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.nome_exibicao IS NOT NULL AND p.prioridade = 1))[1] AS a_nome_exibicao,
+       (array_agg(p.nome_exibicao ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.nome_exibicao IS NOT NULL AND p.prioridade <> 1))[1] AS h_nome_exibicao,
+       (array_agg(p.data_nascimento ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.data_nascimento IS NOT NULL AND p.prioridade = 1))[1] AS a_data_nascimento,
+       (array_agg(p.data_nascimento ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.data_nascimento IS NOT NULL AND p.prioridade <> 1))[1] AS h_data_nascimento,
+       (array_agg(p.data_falecimento ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.data_falecimento IS NOT NULL AND p.prioridade = 1))[1] AS a_data_falecimento,
+       (array_agg(p.data_falecimento ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.data_falecimento IS NOT NULL AND p.prioridade <> 1))[1] AS h_data_falecimento,
+       (array_agg(p.sexo ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.sexo IS NOT NULL AND p.prioridade = 1))[1] AS a_sexo,
+       (array_agg(p.sexo ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.sexo IS NOT NULL AND p.prioridade <> 1))[1] AS h_sexo,
+       (array_agg(p.municipio_nascimento ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.municipio_nascimento IS NOT NULL AND p.prioridade = 1))[1] AS a_municipio_nascimento,
+       (array_agg(p.municipio_nascimento ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.municipio_nascimento IS NOT NULL AND p.prioridade <> 1))[1] AS h_municipio_nascimento,
+       (array_agg(p.uf_nascimento ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.uf_nascimento IS NOT NULL AND p.prioridade = 1))[1] AS a_uf_nascimento,
+       (array_agg(p.uf_nascimento ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.uf_nascimento IS NOT NULL AND p.prioridade <> 1))[1] AS h_uf_nascimento,
+       (array_agg(p.foto_url ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.foto_url IS NOT NULL AND p.prioridade = 1))[1] AS a_foto_url,
+       (array_agg(p.foto_url ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.foto_url IS NOT NULL AND p.prioridade <> 1))[1] AS h_foto_url,
+       (array_agg(p.biografia ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.biografia IS NOT NULL AND p.prioridade = 1))[1] AS a_biografia,
+       (array_agg(p.biografia ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.biografia IS NOT NULL AND p.prioridade <> 1))[1] AS h_biografia,
+       (array_agg(p.email ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.email IS NOT NULL AND p.prioridade = 1))[1] AS a_email,
+       (array_agg(p.email ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.email IS NOT NULL AND p.prioridade <> 1))[1] AS h_email,
+       (array_agg(p.gabinete_sala ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.gabinete_sala IS NOT NULL AND p.prioridade = 1))[1] AS a_gabinete_sala,
+       (array_agg(p.gabinete_sala ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.gabinete_sala IS NOT NULL AND p.prioridade <> 1))[1] AS h_gabinete_sala,
+       (array_agg(p.gabinete_telefone ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.gabinete_telefone IS NOT NULL AND p.prioridade = 1))[1] AS a_gabinete_telefone,
+       (array_agg(p.gabinete_telefone ORDER BY p.id_tipo, p.id_valor) FILTER (WHERE p.gabinete_telefone IS NOT NULL AND p.prioridade <> 1))[1] AS h_gabinete_telefone
+FROM _p p GROUP BY p.uid_novo, p.pessoa_id;
+
 INSERT INTO core.pessoa (uid, nome_exibicao, data_nascimento, data_falecimento, sexo, municipio_nascimento, uf_nascimento,
                          foto_midia_id, biografia, email, gabinete_sala, gabinete_telefone)
-SELECT DISTINCT ON (p.uid_novo)
-       p.uid_novo, p.nome_exibicao, p.data_nascimento, p.data_falecimento, p.sexo, p.municipio_nascimento,
-       (SELECT u.sigla FROM ref.uf u WHERE u.sigla = upper(p.uf_nascimento)),
-       (SELECT m.id FROM core.midia m WHERE m.tipo = 'FOTO_PESSOA' AND m.url_origem = p.foto_url),
-       p.biografia, p.email, p.gabinete_sala, p.gabinete_telefone
-FROM _p p WHERE p.pessoa_id IS NULL
-ORDER BY p.uid_novo, p.prioridade, p.id_tipo, p.id_valor;
+SELECT g.uid_novo, coalesce(g.a_nome_exibicao, g.h_nome_exibicao), coalesce(g.a_data_nascimento, g.h_data_nascimento),
+       coalesce(g.a_data_falecimento, g.h_data_falecimento), coalesce(g.a_sexo, g.h_sexo),
+       coalesce(g.a_municipio_nascimento, g.h_municipio_nascimento),
+       (SELECT u.sigla FROM ref.uf u WHERE u.sigla = upper(coalesce(g.a_uf_nascimento, g.h_uf_nascimento))),
+       (SELECT m.id FROM core.midia m WHERE m.tipo = 'FOTO_PESSOA' AND m.url_origem = coalesce(g.a_foto_url, g.h_foto_url)),
+       coalesce(g.a_biografia, g.h_biografia), coalesce(g.a_email, g.h_email),
+       coalesce(g.a_gabinete_sala, g.h_gabinete_sala), coalesce(g.a_gabinete_telefone, g.h_gabinete_telefone)
+FROM _pg g WHERE g.pessoa_id IS NULL;
 UPDATE _p SET pessoa_id = pe.id FROM core.pessoa pe WHERE _p.pessoa_id IS NULL AND pe.uid = _p.uid_novo;
 
--- quem já existe: a fonte atual (prioridade 1) vale sobre o que está gravado; a histórica só preenche o que está vazio
+-- quem já existe: a fonte atual vale sobre o que está gravado; a histórica só preenche o que está vazio
 UPDATE core.pessoa pe SET
-    nome_exibicao = CASE WHEN p.prioridade = 1 THEN coalesce(p.nome_exibicao, pe.nome_exibicao) ELSE pe.nome_exibicao END,
-    data_nascimento = CASE WHEN p.prioridade = 1 THEN coalesce(p.data_nascimento, pe.data_nascimento) ELSE coalesce(pe.data_nascimento, p.data_nascimento) END,
-    data_falecimento = CASE WHEN p.prioridade = 1 THEN coalesce(p.data_falecimento, pe.data_falecimento) ELSE coalesce(pe.data_falecimento, p.data_falecimento) END,
-    sexo = CASE WHEN p.prioridade = 1 THEN coalesce(p.sexo, pe.sexo) ELSE coalesce(pe.sexo, p.sexo) END,
-    municipio_nascimento = CASE WHEN p.prioridade = 1 THEN coalesce(p.municipio_nascimento, pe.municipio_nascimento) ELSE coalesce(pe.municipio_nascimento, p.municipio_nascimento) END,
-    uf_nascimento = coalesce(pe.uf_nascimento, (SELECT u.sigla FROM ref.uf u WHERE u.sigla = upper(p.uf_nascimento))),
-    foto_midia_id = CASE WHEN p.prioridade = 1 THEN coalesce((SELECT m.id FROM core.midia m WHERE m.tipo = 'FOTO_PESSOA' AND m.url_origem = p.foto_url), pe.foto_midia_id)
-                         ELSE coalesce(pe.foto_midia_id, (SELECT m.id FROM core.midia m WHERE m.tipo = 'FOTO_PESSOA' AND m.url_origem = p.foto_url)) END,
-    biografia = CASE WHEN p.prioridade = 1 THEN coalesce(p.biografia, pe.biografia) ELSE coalesce(pe.biografia, p.biografia) END,
-    email = CASE WHEN p.prioridade = 1 THEN coalesce(p.email, pe.email) ELSE coalesce(pe.email, p.email) END,
-    gabinete_sala = CASE WHEN p.prioridade = 1 THEN coalesce(p.gabinete_sala, pe.gabinete_sala) ELSE coalesce(pe.gabinete_sala, p.gabinete_sala) END,
-    gabinete_telefone = CASE WHEN p.prioridade = 1 THEN coalesce(p.gabinete_telefone, pe.gabinete_telefone) ELSE coalesce(pe.gabinete_telefone, p.gabinete_telefone) END,
+    nome_exibicao = coalesce(g.a_nome_exibicao, pe.nome_exibicao),
+    data_nascimento = coalesce(g.a_data_nascimento, pe.data_nascimento, g.h_data_nascimento),
+    data_falecimento = coalesce(g.a_data_falecimento, pe.data_falecimento, g.h_data_falecimento),
+    sexo = coalesce(g.a_sexo, pe.sexo, g.h_sexo),
+    municipio_nascimento = coalesce(g.a_municipio_nascimento, pe.municipio_nascimento, g.h_municipio_nascimento),
+    uf_nascimento = coalesce(pe.uf_nascimento,
+                             (SELECT u.sigla FROM ref.uf u WHERE u.sigla = upper(coalesce(g.a_uf_nascimento, g.h_uf_nascimento)))),
+    foto_midia_id = coalesce((SELECT m.id FROM core.midia m WHERE m.tipo = 'FOTO_PESSOA' AND m.url_origem = g.a_foto_url),
+                             pe.foto_midia_id,
+                             (SELECT m.id FROM core.midia m WHERE m.tipo = 'FOTO_PESSOA' AND m.url_origem = g.h_foto_url)),
+    biografia = coalesce(g.a_biografia, pe.biografia, g.h_biografia),
+    email = coalesce(g.a_email, pe.email, g.h_email),
+    gabinete_sala = coalesce(g.a_gabinete_sala, pe.gabinete_sala, g.h_gabinete_sala),
+    gabinete_telefone = coalesce(g.a_gabinete_telefone, pe.gabinete_telefone, g.h_gabinete_telefone),
     atualizado_em = now()
-FROM (SELECT DISTINCT ON (x.pessoa_id) x.* FROM _p x WHERE x.uid_novo IS NULL
-      ORDER BY x.pessoa_id, x.prioridade, x.id_tipo, x.id_valor) p
-WHERE pe.id = p.pessoa_id;
+FROM _pg g
+WHERE g.uid_novo IS NULL AND pe.id = g.pessoa_id;
 
 INSERT INTO core.pessoa_identificador (pessoa_id, fonte_id, tipo, valor)
 SELECT p.pessoa_id, f.id, p.id_tipo, p.id_valor FROM _p p JOIN etl.fonte f ON f.codigo = p.fonte
@@ -162,6 +199,29 @@ WITH gravado AS (
     RETURNING id)
 INSERT INTO _toca SELECT id FROM gravado ON CONFLICT DO NOTHING;
 
+-- ── partido do senador ao longo do mandato: as filiações do Senado (`/senador/{codigo}/filiacoes`) cortadas pelo mandato ──
+-- O partido da lista do mandato é o atual (ou o da última legislatura), não vale para o mandato inteiro; o período exato
+-- vem daqui, e `filiacoes.sql` só usa o partido do mandato quando não há período. Períodos que se tocam terminam na véspera do
+-- seguinte (o Senado às vezes repete o dia da troca). Sem filiação conhecida o período fica sem partido (desconhecido).
+CREATE TEMP TABLE _fs ON COMMIT DROP AS
+SELECT y.pessoa_id, y.partido_id, daterange(y.inicio, y.fim_exclusivo, '[)') AS periodo
+FROM (SELECT x.pessoa_id, x.partido_id, x.inicio, least(x.fim + 1, x.prox) AS fim_exclusivo
+      FROM (SELECT i.pessoa_id, (SELECT pt.id FROM _partido pt WHERE pt.k = ref.normalizar_texto(f.partido_sigla)) AS partido_id,
+                   f.inicio, f.fim, lead(f.inicio) OVER (PARTITION BY i.pessoa_id ORDER BY f.inicio, f.fim NULLS LAST) AS prox
+            FROM _in_filiacao_senador f
+            JOIN core.pessoa_identificador i ON i.tipo = 'SENADO_ID' AND i.valor = f.id_valor) x) y
+WHERE y.partido_id IS NOT NULL AND (y.fim_exclusivo IS NULL OR y.fim_exclusivo > y.inicio);
+
+DELETE FROM core.mandato_partido mp USING core.mandato m
+WHERE mp.mandato_id = m.id AND m.cargo_id = (SELECT id FROM ref.cargo WHERE codigo = 'SENADOR')
+  AND m.pessoa_id IN (SELECT pessoa_id FROM _fs);
+INSERT INTO core.mandato_partido (mandato_id, partido_id, periodo, fonte_id)
+SELECT m.id, f.partido_id, x.corte, (SELECT id FROM etl.fonte WHERE codigo = 'SENADO_API')
+FROM _fs f
+JOIN core.mandato m ON m.pessoa_id = f.pessoa_id AND m.cargo_id = (SELECT id FROM ref.cargo WHERE codigo = 'SENADOR')
+CROSS JOIN LATERAL (SELECT f.periodo * daterange(m.inicio, m.fim, '[]') AS corte) x
+WHERE NOT isempty(x.corte);
+
 -- ── ministros: pessoa curada, mandato NOMEADO, ligado ao mandato do presidente que o nomeou ─────────────────────────
 CREATE TEMP TABLE _min ON COMMIT DROP AS
 SELECT g.*, ref.normalizar_texto('ministro:' || g.nome) AS chave,
@@ -234,42 +294,65 @@ FROM (
 WHERE NOT isempty(s.seg);
 
 -- ── mesma pessoa gravada com dois cadastros: o mesmo CPF (HMAC) ou, sem CPF, o mesmo nome civil + nascimento (fica a de menor id) ──
+-- O mesmo HMAC vale mesmo que um dos cadastros ainda não o tenha como identificador (o identificador é único por fonte: quem
+-- já o tem de outra pessoa da mesma fonte não o recebe acima). Nome civil + nascimento só funde quando o CPF não prova o
+-- contrário: dois cadastros com CPF_HMAC diferentes são pessoas diferentes, por mais que o nome e o nascimento coincidam.
+-- Cada fusão recomeça a busca (uma fusão muda os pares que sobram) e leva o `_p.pessoa_id` da pessoa apagada para a que ficou.
 DO $$
 DECLARE par record;
 BEGIN
-    FOR par IN
-        SELECT DISTINCT ON (b.pessoa_id) a.pessoa_id AS manter, b.pessoa_id AS apagar
-        FROM core.pessoa_identificador a
-        JOIN core.pessoa_identificador b ON b.tipo = 'CPF_HMAC' AND b.valor = a.valor AND b.pessoa_id > a.pessoa_id
-        WHERE a.tipo = 'CPF_HMAC' AND (a.pessoa_id IN (SELECT pessoa_id FROM _p) OR b.pessoa_id IN (SELECT pessoa_id FROM _p))
-        ORDER BY b.pessoa_id, a.pessoa_id
     LOOP
+        SELECT x.manter, x.apagar INTO par FROM (
+            SELECT a.pessoa_id AS manter, b.pessoa_id AS apagar
+            FROM core.pessoa_identificador a
+            JOIN core.pessoa_identificador b ON b.tipo = 'CPF_HMAC' AND b.valor = a.valor AND b.pessoa_id > a.pessoa_id
+            WHERE a.tipo = 'CPF_HMAC' AND (a.pessoa_id IN (SELECT pessoa_id FROM _p) OR b.pessoa_id IN (SELECT pessoa_id FROM _p))
+            UNION
+            SELECT least(p.pessoa_id, h.pessoa_id), greatest(p.pessoa_id, h.pessoa_id)
+            FROM _p p JOIN core.pessoa_identificador h ON h.tipo = 'CPF_HMAC' AND h.valor = p.cpf_hmac AND h.pessoa_id <> p.pessoa_id
+            WHERE p.cpf_hmac IS NOT NULL AND p.pessoa_id IS NOT NULL
+        ) x ORDER BY x.apagar, x.manter LIMIT 1;
+        EXIT WHEN NOT FOUND;
         DELETE FROM core.pessoa_candidata_duplicidade WHERE pessoa_a_id = par.apagar OR pessoa_b_id = par.apagar;
         PERFORM core.unificar_pessoas(par.manter, par.apagar);
+        UPDATE _p SET pessoa_id = par.manter WHERE pessoa_id = par.apagar;
     END LOOP;
 END $$;
 
 DO $$
 DECLARE par record;
 BEGIN
-    FOR par IN
-        SELECT DISTINCT ON (b.id) a.id AS manter, b.id AS apagar
+    LOOP
+        SELECT a.id AS manter, b.id AS apagar INTO par
         FROM core.pessoa a
         JOIN core.pessoa_nome na ON na.pessoa_id = a.id AND na.tipo = 'CIVIL'
         JOIN core.pessoa_nome nb ON nb.nome_normalizado = na.nome_normalizado AND nb.tipo = 'CIVIL' AND nb.pessoa_id > a.id
         JOIN core.pessoa b ON b.id = nb.pessoa_id AND b.data_nascimento = a.data_nascimento
-        WHERE a.id IN (SELECT pessoa_id FROM _p) OR b.id IN (SELECT pessoa_id FROM _p)
-        ORDER BY b.id, a.id
-    LOOP
+        WHERE (a.id IN (SELECT pessoa_id FROM _p) OR b.id IN (SELECT pessoa_id FROM _p))
+          AND NOT (EXISTS (SELECT 1 FROM core.pessoa_identificador ha WHERE ha.pessoa_id = a.id AND ha.tipo = 'CPF_HMAC')
+                   AND EXISTS (SELECT 1 FROM core.pessoa_identificador hb WHERE hb.pessoa_id = b.id AND hb.tipo = 'CPF_HMAC')
+                   AND NOT EXISTS (SELECT 1 FROM core.pessoa_identificador ha JOIN core.pessoa_identificador hb
+                                      ON hb.tipo = 'CPF_HMAC' AND hb.valor = ha.valor AND hb.pessoa_id = b.id
+                                    WHERE ha.pessoa_id = a.id AND ha.tipo = 'CPF_HMAC'))
+        ORDER BY b.id, a.id LIMIT 1;
+        EXIT WHEN NOT FOUND;
         DELETE FROM core.pessoa_candidata_duplicidade WHERE pessoa_a_id = par.apagar OR pessoa_b_id = par.apagar;
         PERFORM core.unificar_pessoas(par.manter, par.apagar);
+        UPDATE _p SET pessoa_id = par.manter WHERE pessoa_id = par.apagar;
     END LOOP;
 END $$;
 
--- ── possíveis duplicados: mesmo nome civil sem data de nascimento para confirmar (revisão humana, nunca se funde) ──
+-- ── possíveis duplicados: mesmo nome civil que a data de nascimento não confirma (revisão humana, nunca se funde) ──
+-- Entram o par sem data de um dos lados e o par com datas diferentes (a mesma pessoa pode vir com a data errada em uma
+-- fonte). Não entra o par que o CPF prova serem pessoas diferentes (CPF_HMAC diferentes nos dois lados).
 INSERT INTO core.pessoa_candidata_duplicidade (pessoa_a_id, pessoa_b_id, similaridade, motivo)
 SELECT DISTINCT least(na.pessoa_id, nb.pessoa_id), greatest(na.pessoa_id, nb.pessoa_id), 1.0, 'NOME_NORMALIZADO_IGUAL'
 FROM core.pessoa_nome na JOIN core.pessoa_nome nb
   ON nb.nome_normalizado = na.nome_normalizado AND nb.tipo = na.tipo AND nb.pessoa_id > na.pessoa_id
 WHERE na.tipo = 'CIVIL' AND na.pessoa_id IN (SELECT pessoa_id FROM _p)
+  AND NOT (EXISTS (SELECT 1 FROM core.pessoa_identificador ha WHERE ha.pessoa_id = na.pessoa_id AND ha.tipo = 'CPF_HMAC')
+           AND EXISTS (SELECT 1 FROM core.pessoa_identificador hb WHERE hb.pessoa_id = nb.pessoa_id AND hb.tipo = 'CPF_HMAC')
+           AND NOT EXISTS (SELECT 1 FROM core.pessoa_identificador ha JOIN core.pessoa_identificador hb
+                              ON hb.tipo = 'CPF_HMAC' AND hb.valor = ha.valor AND hb.pessoa_id = nb.pessoa_id
+                            WHERE ha.pessoa_id = na.pessoa_id AND ha.tipo = 'CPF_HMAC'))
 ON CONFLICT (pessoa_a_id, pessoa_b_id) DO NOTHING;

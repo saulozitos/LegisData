@@ -104,8 +104,8 @@ class SenadoExtractor:
             logger.error("Falha ao consultar o Senado: %s", exc)
             return None
 
-    def _dados_basicos(self, senado_id: int) -> Dict[str, Any]:
-        """Nascimento, sexo e naturalidade do detalhe do senador. Falha da API: campos nulos (desconhecido), nunca chute."""
+    def dados_basicos(self, senado_id: int) -> Dict[str, Any]:
+        """Nome completo, nascimento, sexo e naturalidade do detalhe do senador. Falha da API: campos nulos (desconhecido), nunca chute."""
         dados = self._get_json(f"{BASE_SENADO_URL}/senador/{senado_id}.json")
         try:
             parlamentar = dados["DetalheParlamentar"]["Parlamentar"]  # type: ignore[index]
@@ -121,6 +121,31 @@ class SenadoExtractor:
             "municipio_nascimento": basicos.get("Naturalidade") or None,
             "uf_nascimento": basicos.get("UfNaturalidade") or None,
         }
+
+    def filiacoes(self, senado_id: int) -> Optional[List[Dict[str, Any]]]:
+        """
+        Filiações partidárias do senador (`/senador/{codigo}/filiacoes`): `[{sigla, inicio, fim}]`, do mais recente ao mais
+        antigo; `fim` nulo é a filiação em curso. `None` = a API falhou (desconhecido); `[]` = a API não lista filiação.
+        """
+        dados = self._get_json(f"{BASE_SENADO_URL}/senador/{senado_id}/filiacoes.json")
+        if dados is None:
+            return None
+        try:
+            parlamentar = dados["FiliacaoParlamentar"]["Parlamentar"]
+        except (TypeError, KeyError):
+            return None
+        filiacoes: List[Dict[str, Any]] = []
+        for f in _como_lista((parlamentar.get("Filiacoes") or {}).get("Filiacao")):
+            partido = f.get("Partido") or {}
+            if partido.get("SiglaPartido") and f.get("DataFiliacao"):
+                filiacoes.append(
+                    {
+                        "sigla": str(partido["SiglaPartido"]).strip(),
+                        "inicio": f["DataFiliacao"],
+                        "fim": f.get("DataDesfiliacao") or None,
+                    }
+                )
+        return filiacoes
 
     def fetch_senadores_em_exercicio(self) -> List[Dict[str, Any]]:
         """Extrai os senadores em exercício. Lista vazia significa FALHA (quem chama não deve gravar)."""
@@ -157,7 +182,7 @@ class SenadoExtractor:
                 "cargo": "SENADOR",
             }
             registro.update(extrair_mandato(p))
-            registro.update(self._dados_basicos(sid))
+            registro.update(self.dados_basicos(sid))
             senadores[sid] = registro
 
         logger.info(f"Total de {len(senadores)} senadores em exercício extraídos com sucesso.")

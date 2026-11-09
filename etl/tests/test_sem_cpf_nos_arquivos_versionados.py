@@ -342,3 +342,13 @@ def test_a_varredura_nao_acusa_cnpj_conhecido_url_nem_numero_sem_cpf(tmp_path):
         encoding="utf-8",
     )
     assert _achados(codigo) == 0
+
+
+def test_o_hmac_do_cpf_e_a_unica_excecao_e_so_com_64_hexadecimais_minusculos_com_letra():
+    hmac = "a" * 20 + CPF_A + "b" * 33  # 64 hexadecimais que, por acaso, trazem 11 dígitos de um CPF válido
+    assert cpfs_suspeitos_em(hmac) == 0 and cpfs_suspeitos_em(hmac, janelas=False) == 0
+    assert cpfs_suspeitos_em("0" * 53 + CPF_A) >= 1  # 64 dígitos decimais não são HMAC: não valem como exceção
+    assert cpfs_suspeitos_em("1" * 20 + CPF_A + "1" * 33) >= 1
+    assert cpfs_suspeitos_em(hmac.upper()) >= 1  # o HMAC do ETL é em minúsculas
+    assert cpfs_suspeitos_em("a" * 30 + CPF_A + "b" * 24) >= 1  # 65 caracteres: o token é maior que um HMAC
+    assert cpfs_suspeitos_em(f"{hmac} {CPF_A}") >= 1  # um CPF solto ao lado do HMAC continua acusado

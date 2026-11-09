@@ -9,11 +9,27 @@ import zlib
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
-from etl.carga.base import Resultado, contagem_de, criar_rejeitos, executar_sql, ler_rejeitos, tabela_temporaria
-from etl.carga.pessoas import Lote, _data, _texto, parlamentar_da_camara, parlamentar_do_senado
+from etl.carga.base import (
+    Resultado,
+    contagem_de,
+    criar_rejeitos,
+    escalar,
+    executar_sql,
+    ler_rejeitos,
+    tabela_temporaria,
+)
+from etl.carga.pessoas import Lote, parlamentar_da_camara, parlamentar_do_senado
 from etl.extractors.camara_extractor import interpretar_aprovacao
 from etl.extractors.votacoes_extractor import ler_json_gz, listar_arquivos_processados
-from etl.pipelines.loader_helpers import _to_datetime, classify_proposition_impact, inteiro
+from etl.pipelines.loader_helpers import (
+    classify_proposition_impact,
+    data_hora_iso,
+    data_iso,
+    inteiro,
+    opcao_de_voto,
+    texto_ou_none,
+    total_de,
+)
 from etl.utils.datafiles import load_json
 
 logger = logging.getLogger("CargaVotacoes")
@@ -58,21 +74,6 @@ COLUNAS_VOTO = {
     "partido": "text",
 }
 COLUNAS_ORIENTACAO = {"casa": "text", "id_externo": "text", "bancada": "text", "orientacao": "text"}
-
-
-def _opcao(valor: Any) -> Optional[str]:
-    """A opção como a fonte a publica (maiúscula); vazio é desconhecido (nulo), não 'ausente'."""
-    texto = _texto(valor)
-    return texto.upper() if texto else None
-
-
-def _datahora(valor: Any) -> Optional[str]:
-    convertida = _to_datetime(valor)
-    return convertida.replace(tzinfo=None).isoformat() if convertida else None
-
-
-def _totais(totais: Any, chave: str) -> Optional[int]:
-    return inteiro(totais.get(chave)) if isinstance(totais, dict) and totais.get(chave) is not None else None
 
 
 def _ano_do_arquivo(caminho: Path) -> Optional[int]:
@@ -133,7 +134,9 @@ class Coleta:
 
     def voto(self, casa: str, id_externo: str, parlamentar: Any, opcao: Any, partido: Any) -> None:
         self.votos_lidos += 1
-        self.votos.append((self.votos_lidos, casa, id_externo, inteiro(parlamentar), _opcao(opcao), _texto(partido)))
+        self.votos.append(
+            (self.votos_lidos, casa, id_externo, inteiro(parlamentar), opcao_de_voto(opcao), texto_ou_none(partido))
+        )
 
 
 def _eixos(
@@ -159,29 +162,29 @@ def ler_plenario(coleta: Coleta, data_dir: Path) -> None:
             if not isinstance(s, dict) or s.get("sessao_externa_id") is None:
                 continue
             if casa == CAMARA:
-                tipo = (_texto(s.get("proposicao_tipo")) or "").upper()
+                tipo = (texto_ou_none(s.get("proposicao_tipo")) or "").upper()
                 numero, ano = inteiro(s.get("proposicao_numero")), inteiro(s.get("proposicao_ano"))
                 aprovada = s.get("aprovada")
                 if aprovada is None:
                     aprovada = interpretar_aprovacao({"descricao": s.get("descricao")})
                 coleta.sessao(
                     casa=casa, id_externo=str(s["sessao_externa_id"]), prop_camara_id=inteiro(s.get("proposicao_camara_id")),
-                    prop_tipo=tipo, prop_numero=numero, prop_ano=ano, prop_titulo=_texto(s.get("proposicao_titulo")),
-                    data_hora=_datahora(s.get("data_hora")), titulo_pauta=_texto(s.get("titulo_pauta")) or "Votação em Plenário",
-                    descricao=_texto(s.get("descricao")), aprovada=aprovada,
-                    t_sim=_totais(s, "total_sim"), t_nao=_totais(s, "total_nao"), t_abs=_totais(s, "total_abstencao"),
-                    t_obs=_totais(s, "total_obstrucao"),
+                    prop_tipo=tipo, prop_numero=numero, prop_ano=ano, prop_titulo=texto_ou_none(s.get("proposicao_titulo")),
+                    data_hora=data_hora_iso(s.get("data_hora")), titulo_pauta=texto_ou_none(s.get("titulo_pauta")) or "Votação em Plenário",
+                    descricao=texto_ou_none(s.get("descricao")), aprovada=aprovada,
+                    t_sim=total_de(s, "total_sim"), t_nao=total_de(s, "total_nao"), t_abs=total_de(s, "total_abstencao"),
+                    t_obs=total_de(s, "total_obstrucao"),
                 )  # fmt: skip
             else:
-                tipo = (_texto(s.get("materia_sigla")) or "").upper()
+                tipo = (texto_ou_none(s.get("materia_sigla")) or "").upper()
                 coleta.sessao(
                     casa=casa, id_externo=str(s["sessao_externa_id"]), prop_tipo=tipo,
                     prop_numero=inteiro(s.get("materia_numero")), prop_ano=inteiro(s.get("materia_ano")),
-                    prop_titulo=_texto(s.get("materia_titulo")), data_hora=_datahora(s.get("data_hora")),
-                    titulo_pauta=_texto(s.get("titulo_pauta")) or "Votação no Senado Federal",
-                    descricao=_texto(s.get("descricao")), aprovada=s.get("aprovada"),
-                    t_sim=_totais(s, "total_sim"), t_nao=_totais(s, "total_nao"), t_abs=_totais(s, "total_abstencao"),
-                    t_obs=_totais(s, "total_obstrucao"),
+                    prop_titulo=texto_ou_none(s.get("materia_titulo")), data_hora=data_hora_iso(s.get("data_hora")),
+                    titulo_pauta=texto_ou_none(s.get("titulo_pauta")) or "Votação no Senado Federal",
+                    descricao=texto_ou_none(s.get("descricao")), aprovada=s.get("aprovada"),
+                    t_sim=total_de(s, "total_sim"), t_nao=total_de(s, "total_nao"), t_abs=total_de(s, "total_abstencao"),
+                    t_obs=total_de(s, "total_obstrucao"),
                 )  # fmt: skip
         for v in votos or []:
             if isinstance(v, dict) and v.get("sessao_externa_id") is not None:
@@ -198,9 +201,9 @@ def ler_anuais(coleta: Coleta, data_dir: Path, ano_inicio: Optional[int] = None)
             if not isinstance(s, dict) or s.get("id") is None:
                 continue
             prop = s.get("proposicao") or {}
-            tipo = (_texto(prop.get("tipo")) or "").upper()
+            tipo = (texto_ou_none(prop.get("tipo")) or "").upper()
             numero, ano = inteiro(prop.get("numero")), inteiro(prop.get("ano"))
-            titulo, ementa = _texto(prop.get("titulo")), _texto(prop.get("ementa"))
+            titulo, ementa = texto_ou_none(prop.get("titulo")), texto_ou_none(prop.get("ementa"))
             camara_id = inteiro(prop.get("camara_id")) if casa == CAMARA else None
             senado_id = inteiro(prop.get("senado_id")) if casa == SENADO else None
             externo = camara_id or senado_id
@@ -210,20 +213,20 @@ def ler_anuais(coleta: Coleta, data_dir: Path, ano_inicio: Optional[int] = None)
             coleta.sessao(
                 casa=casa, id_externo=id_externo, prop_camara_id=camara_id, prop_senado_id=senado_id, prop_tipo=tipo,
                 prop_numero=numero, prop_ano=ano, prop_titulo=titulo, prop_ementa=ementa,
-                prop_data_apresentacao=_data(prop.get("data_apresentacao")),
-                prop_url=_texto(prop.get("url_oficial")) or ((URL_CAMARA if casa == CAMARA else URL_SENADO).format(externo) if externo else None),
-                prop_url_texto=_texto(prop.get("url_inteiro_teor")),
-                prop_status=_texto(prop.get("status")), prop_eixo=eixo, prop_eixos=eixos,
-                data_hora=_datahora(s.get("data_hora")),
-                titulo_pauta=f"Votação sobre {titulo or 'matéria'}"[:255], descricao=_texto(s.get("descricao")),
+                prop_data_apresentacao=data_iso(prop.get("data_apresentacao")),
+                prop_url=texto_ou_none(prop.get("url_oficial")) or ((URL_CAMARA if casa == CAMARA else URL_SENADO).format(externo) if externo else None),
+                prop_url_texto=texto_ou_none(prop.get("url_inteiro_teor")),
+                prop_status=texto_ou_none(prop.get("status")), prop_eixo=eixo, prop_eixos=eixos,
+                data_hora=data_hora_iso(s.get("data_hora")),
+                titulo_pauta=f"Votação sobre {titulo or 'matéria'}"[:255], descricao=texto_ou_none(s.get("descricao")),
                 aprovada=s.get("aprovada") if s.get("aprovada") is not None else (
                     interpretar_aprovacao({"descricao": s.get("descricao")}) if casa == CAMARA else None),
-                secreta=bool(s.get("secreta", False)), orientacao_governo=_texto(s.get("orientacao_governo")),
-                t_sim=_totais(totais, "SIM"), t_nao=_totais(totais, "NAO"), t_abs=_totais(totais, "ABSTENCAO"),
-                t_obs=_totais(totais, "OBSTRUCAO"),
+                secreta=bool(s.get("secreta", False)), orientacao_governo=texto_ou_none(s.get("orientacao_governo")),
+                t_sim=total_de(totais, "SIM"), t_nao=total_de(totais, "NAO"), t_abs=total_de(totais, "ABSTENCAO"),
+                t_obs=total_de(totais, "OBSTRUCAO"),
             )  # fmt: skip
             for bancada, orientacao in (s.get("orientacoes") or {}).items():
-                coleta.orientacoes.append((casa, id_externo, str(bancada).strip(), _opcao(orientacao)))
+                coleta.orientacoes.append((casa, id_externo, str(bancada).strip(), opcao_de_voto(orientacao)))
             for voto in s.get("votos") or []:
                 try:
                     parlamentar, opcao, posicao = voto
@@ -250,6 +253,10 @@ def carregar_votacoes(cursor: Any, data_dir: Path, ano_inicio: Optional[int] = N
         cursor.execute("SELECT max((data_hora::timestamp)::date) FROM _in_sessao WHERE data_hora IS NOT NULL")
         ate = cursor.fetchone()[0]
     lidas = len(coleta.sessoes) + coleta.votos_lidos
+    # gravadas é medida: as sessões que ficaram e os votos que entraram (um por sessão e parlamentar)
+    gravadas = escalar(cursor, "SELECT (SELECT count(*) FROM _s WHERE rej IS NULL) + (SELECT count(*) FROM _v)")
     return Resultado(
-        contagem_de(lidas, rejeitos), ate=ate, extras={"sessoes": len(coleta.sessoes), "votos": coleta.votos_lidos}
+        contagem_de(lidas, rejeitos, int(gravadas)),
+        ate=ate,
+        extras={"sessoes": len(coleta.sessoes), "votos": coleta.votos_lidos},
     )

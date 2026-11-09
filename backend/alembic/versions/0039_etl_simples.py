@@ -1,31 +1,38 @@
-"""ETL simples: sem staging, sem fusão, com data de corte por fonte.
+"""ETL direto: sem staging nem fusão em SQL, com data de corte por fonte e o CPF só como HMAC.
 
-O carregamento passa a ser direto: o Python baixa e normaliza, e uma transação por recurso grava em `core`/`leg`/`fin` com
-`INSERT ... ON CONFLICT` pela chave natural (identificador oficial da pessoa, número/ano da proposição, id da votação).
-Esta migração tira o que existia para preservar identificadores de um banco em uso e que o banco novo, refeito do zero, não
+O carregamento é direto: o Python baixa e normaliza, e uma transação por recurso grava em `core`/`leg`/`fin` com
+`INSERT ... ON CONFLICT` pela chave natural (identificador oficial da pessoa, número/ano da proposição, id da votação). Esta
+migração tira do banco o que existia para preservar identificadores de um banco em uso e que o banco novo, refeito do zero, não
 precisa:
 
-- as tabelas de `stg` (planas e congeladas do legado) e o schema;
+- o schema `stg` inteiro (planas e congeladas do legado);
 - as funções `etl.preparar_*`, `etl.merge_*` e auxiliares (ficam `aplicar_linhagens`, `resolver_partido_presenca` e
-  `verificar_pesos`, que não dependem de staging);
+  `verificar_pesos`, que não dependem de staging) e `core.unificar_duplicadas` (a carga acha a pessoa pelo identificador oficial
+  antes de criar outra, então a duplicata não nasce; `core.unificar_pessoas`, a união em si, fica);
 - as pontes `core.mandato_legado`, `leg.votacao_legado` e a coluna `leg.autoria.legado_id`;
 - a obrigatoriedade de `leg.votacao.aprovada`: a sessão cujo resultado a fonte não informa fica com `NULL` (antes virava
   "rejeitada", dado inventado, ou perdia os votos).
 
-Entram `etl.corte` (a data até a qual cada recurso já foi baixado), as colunas `sigla` e `nome` em `ref.partido_semente` (os
-nomes e metadados dos partidos saem do código Python e passam a viver no banco) e o tipo de identificador `CURADORIA_ID`
-(presidentes e ministros, que não têm identificador na Câmara nem no Senado e vêm de arquivo curado com fonte registrada).
+Entram a fonte `PIPELINE` (dona da linha de execução da esteira inteira, `etl.execucao` estágio `TUDO`; não é fonte de dados),
+`etl.corte` (a data até a qual cada recurso já foi baixado), as colunas `sigla` e `nome` em `ref.partido_semente` (os nomes e
+metadados dos partidos saem do código Python e passam a viver no banco) e os tipos de identificador `CURADORIA_ID` (presidentes
+e ministros, que vêm de arquivo curado com fonte registrada) e `CPF_HMAC`.
+
+`CPF_HMAC`: o CPF nunca é guardado, só o HMAC-SHA256 dele com uma chave secreta (`CPF_HMAC_KEY`). O CPF das fontes oficiais
+(detalhe do deputado na API da Câmara; `consulta_cand` do TSE) liga a mesma pessoa mesmo quando o nome muda entre as fontes. Sem
+a chave ninguém desfaz o valor gravado (um hash simples seria quebrado por força bruta: são só 10^9 CPFs possíveis). Quem perder
+a chave perde só a capacidade de ligar CPFs novos aos antigos.
 
 Os dados são regeneráveis a partir das fontes oficiais: não há volta (`downgrade` recusa), como na 0035.
 
-Revision ID: 0042
-Revises: 0041
+Revision ID: 0039
+Revises: 0038
 """
 
 from alembic import op
 
-revision = "0042"
-down_revision = "0041"
+revision = "0039"
+down_revision = "0038"
 branch_labels = None
 depends_on = None
 
@@ -106,6 +113,11 @@ ON CONFLICT (sigla_normalizada) DO UPDATE SET
 
 def upgrade() -> None:
     op.execute(
+        "INSERT INTO etl.fonte (codigo, nome, orgao, formato, periodicidade, observacao) VALUES "
+        "('PIPELINE', 'Esteira do ETL (execução completa)', 'LegisData', 'N/A', 'SOB_DEMANDA', "
+        "'Linha de execução da rodada inteira; não é fonte de dados') ON CONFLICT (codigo) DO NOTHING"
+    )
+    op.execute(
         """
         CREATE TABLE etl.corte (
             fonte text NOT NULL,
@@ -130,11 +142,12 @@ def upgrade() -> None:
     op.execute("ALTER TABLE core.pessoa_identificador DROP CONSTRAINT pessoa_identificador_tipo_check")
     op.execute(
         "ALTER TABLE core.pessoa_identificador ADD CONSTRAINT pessoa_identificador_tipo_check "
-        "CHECK (tipo = ANY (ARRAY['CAMARA_ID', 'SENADO_ID', 'TSE_ID', 'DATAJUD_ID', 'CURADORIA_ID']))"
+        "CHECK (tipo = ANY (ARRAY['CAMARA_ID', 'SENADO_ID', 'TSE_ID', 'DATAJUD_ID', 'CURADORIA_ID', 'CPF_HMAC']))"
     )
 
     # resultado da votação que a fonte não informa é desconhecido (NULL), não "rejeitada"
     op.execute("ALTER TABLE leg.votacao ALTER COLUMN aprovada DROP NOT NULL")
+    op.execute("DROP FUNCTION IF EXISTS core.unificar_duplicadas()")
     op.execute("DROP TABLE IF EXISTS core.mandato_legado")
     op.execute("DROP TABLE IF EXISTS leg.votacao_legado")
     op.execute("ALTER TABLE leg.autoria DROP COLUMN IF EXISTS legado_id")

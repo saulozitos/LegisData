@@ -1470,7 +1470,7 @@ export interface DeliberacaoItem {
   data_hora: string;
   local_deliberacao: string;
   resumo_decisao: string;
-  aprovada: boolean;
+  aprovada: boolean | null;
   orientacoes_partidarias?: OrientacaoPartidariaItem[];
   // Se COMISSAO
   nome_comissao?: string;
@@ -1549,7 +1549,7 @@ export interface PropositionNominalVotesSplitResponse {
     descricao?: string;
     data_hora: string;
     casa_legislativa: string;
-    aprovada: boolean;
+    aprovada: boolean | null;
     total_votos: number;
   } | null;
   placar: {
@@ -1779,7 +1779,7 @@ export interface SessaoCalendarioItem {
   hora: string;
   titulo: string;
   descricao: string;
-  aprovada: boolean;
+  aprovada: boolean | null;
   is_votacao_secreta?: boolean;
   placar: {
     sim: number;

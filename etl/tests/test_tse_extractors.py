@@ -17,7 +17,7 @@ from etl.extractors import (
     tse_patrimonio_extractor,
 )
 from etl.extractors.tse_core import Politico, casar_candidatos, escolher_membros, ler_candidatos, parse_brl
-from etl.tests.sinteticos import CPF_B, formatado
+from etl.tests.sinteticos import CPF_A, CPF_B, formatado
 from etl.utils.identidades import IdentidadesParlamentares, parse_date, valid_cpf
 from etl.utils.provenance import is_trusted
 
@@ -516,3 +516,56 @@ def test_carregar_universo_enriquece_e_deduplica_presidentes(tmp_path):
     dep = universo[0]
     assert dep.nome_civil == "FULANO DE TAL" and dep.cpf == CPF_B and dep.uf == "SP"
     assert dep.nascimento == date(1980, 1, 1) and "cpf" not in dep.identificadores()
+
+
+def test_patrimonio_grava_so_o_hmac_do_cpf_e_cpf_mascarado_ou_sem_chave_fica_sem_hmac(tmp_path, monkeypatch):
+    from etl.utils import cpf as cpf_util
+
+    cpf = CPF_A
+    cand = zip_csv(
+        tmp_path / "consulta_cand_2022.zip",
+        {
+            "consulta_cand_2022_BRASIL.csv": (
+                CAND_COLS,
+                [
+                    cand_row(10, "Fulano de Tal", "Fulano", cpf=cpf, nasc="01/01/1980"),
+                    cand_row(11, "Beltrano Qualquer", "Beltrano", cpf="-4", nasc="02/02/1975"),  # CPF mascarado
+                ],
+            )
+        },
+    )
+    bem = zip_csv(
+        tmp_path / "bem_candidato_2022.zip",
+        {
+            "bem_candidato_2022_BRASIL.csv": (
+                BEM_COLS,
+                [["SP", "10", "100,00", "Casa", "x"], ["SP", "11", "200,00", "Casa", "y"]],
+            )
+        },
+    )
+    monkeypatch.setattr(
+        tse_patrimonio_extractor,
+        "baixar",
+        fake_baixar(tmp_path, {"consulta_cand_2022.zip": cand, "bem_candidato_2022.zip": bem}),
+    )
+    universo = [
+        politico("camara:1", "Fulano de Tal", "Fulano", nasc=date(1980, 1, 1), camara_id=1),
+        politico("camara:2", "Beltrano Qualquer", "Beltrano", nasc=date(1975, 2, 2), camara_id=2),
+    ]
+
+    def rodar(chave: bytes):
+        monkeypatch.setattr(cpf_util, "_chave", lambda: chave)
+        saida = tmp_path / f"processed-{len(chave)}"
+        saida.mkdir()
+        registros = tse_patrimonio_extractor.TSEPatrimonioExtractor(processed_dir=saida, raw_dir=tmp_path).run(
+            anos=[2022], universo=universo
+        )
+        return {r["camara_id"]: r for r in registros}, (saida / "declaracoes_patrimonio.json").read_text(
+            encoding="utf-8"
+        )
+
+    com_chave, texto = rodar(b"chave-de-teste")
+    assert len(com_chave[1]["cpf_hmac"]) == 64 and com_chave[2]["cpf_hmac"] is None
+    assert cpf not in texto  # o CPF nunca vai para o arquivo
+    sem_chave, texto = rodar(b"")
+    assert sem_chave[1]["cpf_hmac"] is None and cpf not in texto

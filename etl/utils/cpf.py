@@ -4,16 +4,25 @@ Identificador de pessoa pelo CPF sem guardar o CPF: HMAC-SHA256 do número (só 
 O CPF vem das fontes oficiais (detalhe do deputado na API da Câmara e `consulta_cand` do TSE) e só existe na memória do
 processo e no cache bruto (`etl/data/raw`, ignorado pelo git). Arquivos processados e banco recebem apenas o HMAC. Um hash
 simples não serve: são 10^9 CPFs possíveis, qualquer um os percorre; com a chave ninguém desfaz o valor.
-Sem chave configurada nada é calculado (as pessoas continuam ligadas por id oficial e por nome civil + nascimento).
+Sem chave configurada (ou com chave curta demais) nada é calculado: as pessoas continuam ligadas por id oficial e por
+nome civil + nascimento. A chave não pode mudar sem refazer `cpf_identificadores.json` e `declaracoes_patrimonio.json`, e
+um vazamento dela equivale a publicar os CPFs dos HMACs que já estão no histórico do git.
 """
 
 import hashlib
 import hmac
+import logging
 import re
 from functools import lru_cache
 from typing import Any, Optional
 
 from etl.utils.bootstrap import ensure_backend_on_path
+
+logger = logging.getLogger("CPF")
+
+# `secrets.token_hex(32)` dá 64 caracteres. Os HMACs ficam em arquivo versionado: com uma chave curta, quem tem um CPF
+# conhecido (o TSE publica o dos candidatos) acharia a chave por força bruta e, com ela, todos os outros CPFs.
+TAMANHO_MINIMO_DA_CHAVE = 32
 
 
 def so_digitos(valor: Any) -> str:
@@ -37,7 +46,14 @@ def _chave() -> bytes:
     ensure_backend_on_path()
     from app.core.config import settings
 
-    return settings.CPF_HMAC_KEY.strip().encode("utf-8")
+    chave = settings.CPF_HMAC_KEY.strip()
+    if chave and len(chave) < TAMANHO_MINIMO_DA_CHAVE:
+        logger.warning(
+            "CPF_HMAC_KEY tem menos de %d caracteres: tratada como não configurada (gere com secrets.token_hex(32)).",
+            TAMANHO_MINIMO_DA_CHAVE,
+        )
+        return b""
+    return chave.encode("utf-8")
 
 
 def chave_configurada() -> bool:

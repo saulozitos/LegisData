@@ -105,7 +105,7 @@ A refatoração da branch `fix/analise-completa-correcoes` concluiu **100%** das
 
 ### 2.10 Cadastros duplicados de uma mesma pessoa [CONCLUÍDO]
 
-Os cadastros duplicados dos políticos que existiam no legado foram unidos pela migração 0034, com o `uid` público preservado. A carga resolve a pessoa só pelo identificador oficial (`etl/carga/sql/pessoas.sql`), então a duplicata não nasce mais (a 0041 tirou `core.unificar_duplicadas`); `core.unificar_pessoas` (a união em si) fica para quem precisar unir à mão. Pessoas que só existem no histórico e nunca tiveram cadastro público não têm duplicata e continuam com o `uid` do histórico.
+Os cadastros duplicados dos políticos que existiam no legado foram unidos pela migração 0034, com o `uid` público preservado. A carga resolve a pessoa só pelo identificador oficial (`etl/carga/sql/pessoas.sql`), então a duplicata não nasce mais (a 0039 tirou `core.unificar_duplicadas`); `core.unificar_pessoas` (a união em si) fica para quem precisar unir à mão. Pessoas que só existem no histórico e nunca tiveram cadastro público não têm duplicata e continuam com o `uid` do histórico.
 
 ### 2.11 ETL direto, sem staging [FEITA]
 

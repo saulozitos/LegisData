@@ -89,19 +89,31 @@ JOIN core.pessoa_identificador i ON i.tipo = CASE WHEN v.casa = 'CAMARA' THEN 'C
 WHERE v.opcao IN (SELECT codigo FROM ref.opcao_voto)
 ORDER BY s.votacao_id, i.pessoa_id, v.linha;
 
-INSERT INTO _rej SELECT 'VOTO_COM_OPCAO_INVALIDA', count(*) FROM _in_voto WHERE opcao IS NULL OR opcao NOT IN (SELECT codigo FROM ref.opcao_voto)
- HAVING count(*) > 0;
-INSERT INTO _rej SELECT 'VOTO_SEM_SESSAO_OU_PARLAMENTAR', count(*) - (SELECT count(*) FROM _v)
-  - (SELECT count(*) FROM _in_voto WHERE opcao IS NULL OR opcao NOT IN (SELECT codigo FROM ref.opcao_voto))
-  FROM _in_voto HAVING count(*) - (SELECT count(*) FROM _v)
-  - (SELECT count(*) FROM _in_voto WHERE opcao IS NULL OR opcao NOT IN (SELECT codigo FROM ref.opcao_voto)) > 0;
+-- cada voto que não entrou tem um motivo só, na ordem em que a leitura o descarta
+INSERT INTO _rej SELECT motivo, count(*) FROM (
+    SELECT CASE WHEN v.opcao IS NULL OR v.opcao NOT IN (SELECT codigo FROM ref.opcao_voto) THEN 'VOTO_COM_OPCAO_INVALIDA'
+                WHEN s.id_externo IS NULL THEN 'VOTO_SEM_SESSAO'
+                WHEN s.rej IS NOT NULL THEN 'VOTO_DE_SESSAO_REJEITADA'
+                WHEN NOT EXISTS (SELECT 1 FROM core.pessoa_identificador i
+                                  WHERE i.tipo = CASE WHEN v.casa = 'CAMARA' THEN 'CAMARA_ID' ELSE 'SENADO_ID' END
+                                    AND i.valor = v.parlamentar_ext_id::text) THEN 'VOTO_DE_PARLAMENTAR_SEM_CADASTRO' END AS motivo
+    FROM _in_voto v LEFT JOIN _s s ON s.id_externo = v.id_externo) x
+WHERE motivo IS NOT NULL GROUP BY motivo;
+-- o que sobra e não entrou é o mesmo parlamentar votando duas vezes na mesma sessão (vale o primeiro voto do arquivo)
+INSERT INTO _rej SELECT 'VOTO_REPETIDO_NA_SESSAO', n FROM (
+    SELECT (SELECT count(*) FROM _in_voto v JOIN _s s ON s.id_externo = v.id_externo AND s.rej IS NULL
+             WHERE v.opcao IN (SELECT codigo FROM ref.opcao_voto)
+               AND EXISTS (SELECT 1 FROM core.pessoa_identificador i
+                            WHERE i.tipo = CASE WHEN v.casa = 'CAMARA' THEN 'CAMARA_ID' ELSE 'SENADO_ID' END
+                              AND i.valor = v.parlamentar_ext_id::text)) - (SELECT count(*) FROM _v) AS n) x
+WHERE n > 0;
 
 ANALYZE _v;
 
 -- sem partido no arquivo: o da filiação vigente na data da votação; sem filiação nenhuma, o do mandato
 UPDATE _v v SET partido_id = coalesce(
     (SELECT f.partido_id FROM core.filiacao f JOIN leg.votacao vo ON vo.id = v.votacao_id
-      WHERE f.pessoa_id = v.pessoa_id AND f.periodo @> vo.data_hora::date LIMIT 1),
+      WHERE f.pessoa_id = v.pessoa_id AND f.periodo @> (vo.data_hora AT TIME ZONE 'America/Sao_Paulo')::date LIMIT 1),
     (SELECT m.partido_id FROM core.mandato m
       WHERE m.pessoa_id = v.pessoa_id AND m.partido_id IS NOT NULL
         AND NOT EXISTS (SELECT 1 FROM core.filiacao x WHERE x.pessoa_id = v.pessoa_id)

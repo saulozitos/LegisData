@@ -12,7 +12,8 @@ from typing import Any, Dict, List, Optional
 from etl.config import PROCESSED_DATA_DIR
 from etl.extractors.presenca_extractor import ARQ_RESUMO
 from etl.extractors.senado_extractor import SenadoExtractor
-from etl.extractors.votacoes_extractor import ler_json_gz, listar_arquivos_processados
+from etl.extractors.votacoes_extractor import ARQUIVO_ANTERIORES, ler_json_gz, listar_arquivos_processados
+from etl.pipelines.loader_helpers import inteiro
 from etl.utils.datafiles import load_json
 from etl.utils.http_client import HttpClient
 from etl.utils.io_utils import atomic_write_json
@@ -31,17 +32,23 @@ def ler_senadores_basicos(processed_dir: Path = PROCESSED_DATA_DIR) -> List[Dict
 def _senadores_das_fontes(processed_dir: Path) -> Dict[int, str]:
     """codigo -> nome de quem aparece nos votos, na presença e na lista por legislatura sem nascimento."""
     nomes: Dict[int, str] = {}
+
+    def anotar(codigo: Any, nome: Any) -> None:
+        numero = inteiro(codigo)
+        if numero is not None:  # registro sem código não tem como ser pedido ao Senado
+            nomes.setdefault(numero, str(nome or ""))
+
     for arquivo in listar_arquivos_processados(processed_dir, "senado"):
         for codigo, info in (ler_json_gz(arquivo).get("parlamentares") or {}).items():
-            nomes.setdefault(int(codigo), str(info.get("nome") or ""))
+            anotar(codigo, (info or {}).get("nome"))
     resumo = load_json(Path(processed_dir) / ARQ_RESUMO, {}) or {}
     for r in resumo.get("resumos", []):
         if r.get("casa") == "SENADO":
-            nomes.setdefault(int(r["parlamentar_id"]), str(r.get("nome") or ""))
-    anteriores = load_json(Path(processed_dir) / "parlamentares_legislaturas_anteriores.json", {}) or {}
+            anotar(r.get("parlamentar_id"), r.get("nome"))
+    anteriores = load_json(Path(processed_dir) / ARQUIVO_ANTERIORES, {}) or {}
     for s in anteriores.get("senadores") or []:
-        if s.get("senado_id") and not s.get("data_nascimento"):
-            nomes.setdefault(int(s["senado_id"]), str(s.get("nome_eleitoral") or ""))
+        if not s.get("data_nascimento"):
+            anotar(s.get("senado_id"), s.get("nome_eleitoral"))
     return nomes
 
 
@@ -62,7 +69,7 @@ def gerar(processed_dir: Path = PROCESSED_DATA_DIR, http: Optional[HttpClient] =
             registro = {
                 "senado_id": codigo,
                 "nome": nome,
-                **{k: v for k, v in detalhe._dados_basicos(codigo).items() if v},
+                **{k: v for k, v in detalhe.dados_basicos(codigo).items() if v},
             }
             baixados += 1
         saida.append(registro)

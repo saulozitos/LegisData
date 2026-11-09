@@ -34,7 +34,11 @@ def carregar_historico(cursor: Any, raw_dir: Path) -> Resultado:
     legislaturas = json.loads((raw_dir / "_legislaturas.json").read_text(encoding="utf-8"))
     eventos: List[Dict[str, Any]] = []
     for caminho in sorted(raw_dir.glob("[0-9]*.json")):
-        eventos.extend(json.loads(caminho.read_text(encoding="utf-8")))
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        if not isinstance(dados, list):  # arquivo bruto com null ou objeto: a fonte mudou, não há eventos a ler nele
+            logger.warning("%s não é uma lista de eventos: ignorado.", caminho.name)
+            continue
+        eventos.extend(e for e in dados if isinstance(e, dict))
     return carregar_eventos(cursor, eventos, legislaturas)
 
 

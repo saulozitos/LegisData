@@ -90,17 +90,22 @@
            CASE WHEN max(i.fim_exclusivo) > l.fim THEN l.fim ELSE max(i.fim_exclusivo) - 1 END AS fim,
            (array_agg(i.uf ORDER BY i.inicio))[1] AS uf,
            (array_agg(i.sigla_partido ORDER BY i.inicio))[1] AS sigla_partido,
-           (array_agg(i.prox_descr ORDER BY i.inicio DESC))[1] AS ultima_saida
+           (array_agg(i.prox_descr ORDER BY i.inicio DESC))[1] AS ultima_saida,
+           (SELECT ci.id FROM ref.circunscricao ci
+             WHERE ci.tipo = 'UF' AND ci.uf = upper((array_agg(i.uf ORDER BY i.inicio))[1])) AS circunscricao_id
     FROM _int i
     JOIN _leg l ON l.id = i.leg
     JOIN core.pessoa_identificador ident ON ident.fonte_id = (SELECT id FROM etl.fonte WHERE codigo = 'CAMARA_API') AND ident.tipo = 'CAMARA_ID' AND ident.valor = i.id::text
     GROUP BY ident.pessoa_id, i.id, i.leg, l.inicio, l.fim;
 
+    -- deputado sem UF no evento não tem circunscrição: rejeita com motivo em vez de inventar a nacional
+    INSERT INTO _rej SELECT 'MANDATO_SEM_UF', count(*) FROM _man WHERE circunscricao_id IS NULL HAVING count(*) > 0;
+    DELETE FROM _man WHERE circunscricao_id IS NULL;
+
     INSERT INTO core.mandato (pessoa_id, cargo_id, circunscricao_id, eleicao_id, partido_id, condicao, numero_mandato,
                               inicio, fim, motivo_encerramento, fonte_id)
     SELECT m.pessoa_id, (SELECT id FROM ref.cargo WHERE codigo = 'DEPUTADO_FEDERAL'),
-           coalesce((SELECT ci.id FROM ref.circunscricao ci WHERE ci.tipo = 'UF' AND ci.uf = upper(m.uf)),
-                    (SELECT ci.id FROM ref.circunscricao ci WHERE ci.tipo = 'BR')),
+           m.circunscricao_id,
            m.eleicao_id,
            (SELECT x.id FROM (
                 SELECT p.id FROM core.partido p WHERE p.sigla_normalizada = ref.normalizar_texto(m.sigla_partido)
@@ -115,8 +120,9 @@
            (SELECT id FROM etl.fonte WHERE codigo = 'CAMARA_API')
     FROM _man m
     ON CONFLICT ON CONSTRAINT uq_mandato_natural DO UPDATE SET
-        circunscricao_id = EXCLUDED.circunscricao_id, partido_id = EXCLUDED.partido_id, condicao = EXCLUDED.condicao,
-        inicio = EXCLUDED.inicio, fim = EXCLUDED.fim, motivo_encerramento = EXCLUDED.motivo_encerramento,
+        circunscricao_id = EXCLUDED.circunscricao_id, partido_id = coalesce(EXCLUDED.partido_id, core.mandato.partido_id),
+        condicao = EXCLUDED.condicao, inicio = EXCLUDED.inicio, fim = EXCLUDED.fim,
+        motivo_encerramento = coalesce(EXCLUDED.motivo_encerramento, core.mandato.motivo_encerramento),
         fonte_id = EXCLUDED.fonte_id;
 
     ALTER TABLE _man ADD COLUMN mandato_id bigint;

@@ -28,7 +28,7 @@ FONTES: Dict[str, Fonte] = {
     "partidos": Fonte("Partidos políticos (curadoria e siglas das fontes)", recursos=("partidos",)),
     "politicos": Fonte(
         "Presidentes, deputados e senadores",
-        extrair=("camara", "senado", "votacoes", "cpf"),
+        extrair=("camara", "senado", "votacoes", "senadores_basicos", "senadores_filiacoes", "cpf"),
         recursos=("partidos", "pessoas"),
     ),
     "filiacoes": Fonte(
@@ -36,13 +36,13 @@ FONTES: Dict[str, Fonte] = {
     ),
     "mandatos": Fonte(
         "Mandatos de presidentes, deputados e senadores e gabinete presidencial (saem dos mesmos arquivos dos políticos)",
-        extrair=("camara", "senado"),
+        extrair=("camara", "senado", "senadores_basicos", "senadores_filiacoes"),
         recursos=("partidos", "pessoas"),
     ),
     "proposicoes": Fonte("Proposições da Câmara e do Senado", extrair=("camara", "senado"), recursos=("proposicoes",)),
     "votacoes": Fonte(
         "Votações nominais em plenário e histórico (Câmara e Senado) e ex-parlamentares",
-        extrair=("camara", "senado", "votacoes", "cpf"),
+        extrair=("camara", "senado", "votacoes", "senadores_basicos", "senadores_filiacoes", "cpf"),
         recursos=("partidos", "pessoas", "votacoes"),
     ),
     "camara-bulk": Fonte(

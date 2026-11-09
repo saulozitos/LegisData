@@ -241,11 +241,11 @@ def test_deputado_sem_uf_tem_mandato_rejeitado_com_motivo_e_nao_inventa_circunsc
     resultado = carga(banco, tmp_path).carregar(["partidos", "pessoas"])["pessoas"]
     assert consulta(banco, "SELECT count(*) FROM core.mandato") == [(0,)]
     assert resultado.contagem.motivos == {"MANDATO_SEM_UF": 1}
+    assert (resultado.contagem.lidas, resultado.contagem.gravadas, resultado.contagem.rejeitadas) == (1, 0, 1)
 
 
-def test_presidente_e_ministro_da_fazenda_sao_pessoas_curadas_e_o_ministro_aponta_para_o_mandato_do_presidente(
-    banco, tmp_path
-):
+def _fhc() -> List[Dict[str, Any]]:
+    """Os dois mandatos de FHC no arquivo curado, com o mesmo ministro da Fazenda nos dois."""
     presidente = {
         "id_referencia": "fhc-1995",
         "nome_civil": "Fernando Henrique Cardoso",
@@ -270,7 +270,13 @@ def test_presidente_e_ministro_da_fazenda_sao_pessoas_curadas_e_o_ministro_apont
         "rotulo_mandato": "FHC 2",
         "ministros_fazenda_chave": [{"nome": "Pedro Malan", "inicio": "1999-01-01", "fim": "2002-12-31"}],
     }
-    escrever(tmp_path, "presidentes_historico.json", [presidente, segundo])
+    return [presidente, segundo]
+
+
+def test_presidente_e_ministro_da_fazenda_sao_pessoas_curadas_e_o_ministro_aponta_para_o_mandato_do_presidente(
+    banco, tmp_path
+):
+    escrever(tmp_path, "presidentes_historico.json", _fhc())
     carga(banco, tmp_path).carregar(["partidos", "pessoas"])
     assert consulta(banco, "SELECT count(*) FROM core.pessoa WHERE nome_exibicao = 'Fernando Henrique Cardoso'") == [
         (1,)
@@ -290,6 +296,11 @@ def test_presidente_e_ministro_da_fazenda_sao_pessoas_curadas_e_o_ministro_apont
         ("Pedro Malan", "Ministério da Fazenda", "ECONOMIA", 2),
     ]  # o mesmo ministro nos dois mandatos é uma pessoa só, com dois mandatos NOMEADO, cada um ligado ao seu presidente
     assert consulta(banco, "SELECT count(*) FROM core.pessoa WHERE nome_exibicao = 'Pedro Malan'") == [(1,)]
+
+
+def test_mandato_presidencial_liga_pelo_slug_e_rodar_de_novo_nao_muda_nada(banco, tmp_path):
+    escrever(tmp_path, "presidentes_historico.json", _fhc())
+    carga(banco, tmp_path).carregar(["partidos", "pessoas"])
     # a economia, o território e a composição ligam o mandato do presidente pelo slug
     leitura = (
         "SELECT mp.slug, mp.rotulo, m.numero_mandato FROM core.mandato_presidencial mp "
@@ -297,16 +308,20 @@ def test_presidente_e_ministro_da_fazenda_sao_pessoas_curadas_e_o_ministro_apont
     )
     esperado = [("fhc-1995", "FHC 1", 1), ("fhc-1999", "FHC 2", 2)]
     assert consulta(banco, leitura) == esperado
+    antes = consulta(banco, "SELECT count(*) FROM core.mandato")
     carga(banco, tmp_path).carregar(["partidos", "pessoas"])
     assert consulta(banco, leitura) == esperado
-    # nenhum CPF chega ao banco (decisão D3)
+    assert consulta(banco, "SELECT count(*) FROM core.mandato") == antes
+
+
+def test_o_cpf_do_arquivo_curado_nao_chega_ao_banco_decisao_d3(banco, tmp_path):
+    escrever(tmp_path, "presidentes_historico.json", _fhc())  # o arquivo traz o campo `cpf`
+    carga(banco, tmp_path).carregar(["partidos", "pessoas"])
     assert consulta(
         banco,
         "SELECT count(*) FROM information_schema.columns WHERE column_name ILIKE '%cpf%' AND table_schema IN ('core','leg')",
     ) == [(0,)]
-    antes = consulta(banco, "SELECT count(*) FROM core.mandato")
-    carga(banco, tmp_path).carregar(["partidos", "pessoas"])
-    assert consulta(banco, "SELECT count(*) FROM core.mandato") == antes
+    assert consulta(banco, "SELECT count(*) FROM core.pessoa_identificador WHERE valor = '00000000000'") == [(0,)]
 
 
 def test_situacao_do_mandato_do_titular_exclui_o_periodo_em_que_foi_ministro(banco, tmp_path):
@@ -362,6 +377,9 @@ def test_filiacao_vem_do_partido_do_mandato_e_dos_periodos_exatos_sem_duplicar(b
         ]
     assert resultado.contagem.motivos == {"UNIDO_AO_TRECHO_SEGUIDO_DO_MESMO_PARTIDO": 1}
     assert resultado.contagem.lidas == resultado.contagem.gravadas + resultado.contagem.rejeitadas
+    assert (
+        resultado.contagem.gravadas == consulta(banco, "SELECT count(*) FROM core.filiacao")[0][0]
+    )  # medida, não derivada
 
 
 def test_filiacao_de_quem_foi_deputado_e_senador_fica_numa_pessoa_so_sem_sobrepor(banco, tmp_path):
@@ -523,7 +541,15 @@ def test_votacao_de_plenario_liga_sessao_voto_e_parlamentar_e_rejeita_com_motivo
     ) == [("Ana", "SIM", "PT"), ("Beto", "NAO", "PL")]
     assert resultado.contagem.motivos["SEM_PROPOSICAO"] == 1
     assert resultado.contagem.motivos["VOTO_COM_OPCAO_INVALIDA"] == 1
-    assert resultado.contagem.motivos["VOTO_SEM_SESSAO_OU_PARLAMENTAR"] == 2
+    assert resultado.contagem.motivos["VOTO_DE_PARLAMENTAR_SEM_CADASTRO"] == 1
+    assert resultado.contagem.motivos["VOTO_DE_SESSAO_REJEITADA"] == 1
+    # as gravadas são medidas no banco (sessões que ficaram + votos que entraram), então a conferência é de verdade
+    contagem = resultado.contagem
+    assert contagem.lidas == contagem.gravadas + contagem.rejeitadas
+    assert (
+        contagem.gravadas
+        == consulta(banco, "SELECT (SELECT count(*) FROM leg.votacao) + (SELECT count(*) FROM leg.voto)")[0][0]
+    )
     votos = consulta(banco, "SELECT count(*) FROM leg.voto")
     carga(banco, tmp_path).carregar(["votacoes"])
     assert consulta(banco, "SELECT count(*) FROM leg.voto") == votos
@@ -625,3 +651,386 @@ def test_o_corte_so_avanca_quando_a_carga_confirma_e_nunca_volta(banco):
 def test_recurso_desconhecido_e_recusado(banco, tmp_path):
     with pytest.raises(ValueError, match="recurso desconhecido"):
         carga(banco, tmp_path).carregar(["staging"])
+
+
+# ── identidade: prioridade da fonte atual, CPF diferente nunca une, CPF igual que chega depois funde ──────────────────
+def test_quem_foi_deputado_e_e_senador_fica_com_os_dados_da_fonte_atual_seja_qual_for_o_id_que_vem_primeiro(
+    banco, tmp_path
+):
+    h = "ef" * 32
+    escrever(
+        tmp_path,
+        "parlamentares_legislaturas_anteriores.json",
+        {
+            "fonte": "Câmara — Dados Abertos",
+            "is_synthetic": False,
+            "deputados": [
+                {
+                    "camara_id": 5,
+                    "nome": "Ana Velha",
+                    "nome_civil": "ANA SOUZA",
+                    "partido": "PT",
+                    "uf": "SP",
+                    "legislaturas": [55],
+                }
+            ],
+            "senadores": [],
+        },
+    )
+    escrever(
+        tmp_path,
+        "senadores_senado.json",
+        [senador(9, "Ana Senadora", nome_civil="ANA SOUZA", email="ana@senado.leg.br", gabinete_sala="Ala 2")],
+    )
+    escrever(
+        tmp_path,
+        "cpf_identificadores.json",
+        [
+            {"id_tipo": "CAMARA_ID", "id_valor": "5", "cpf_hmac": h, "origem": "CAMARA_API"},
+            {"id_tipo": "SENADO_ID", "id_valor": "9", "cpf_hmac": h, "origem": "TSE"},
+        ],
+    )
+    for _ in range(2):
+        carga(banco, tmp_path).carregar(["partidos", "pessoas"])
+        # a linha do senador (fonte atual, prioridade 1) vale; a do ex-deputado (prioridade 0) só entra onde nada se sabe
+        assert consulta(banco, "SELECT nome_exibicao, email, gabinete_sala, biografia FROM core.pessoa") == [
+            ("Ana Senadora", "ana@senado.leg.br", "Ala 2", "Senador Federal pela UF MG (PSD).")
+        ]
+
+
+def test_cpf_hmac_diferente_nunca_une_por_nome_civil_e_nascimento_e_nao_vira_candidata(banco, tmp_path):
+    escrever(tmp_path, "deputados_camara.json", [deputado(1, "Ana Souza", data_nascimento="1970-05-01")])
+    escrever(
+        tmp_path,
+        "senadores_senado.json",
+        [senador(9, "Ana Souza", nome_civil="ANA SOUZA", data_nascimento="1970-05-01")],
+    )
+    escrever(
+        tmp_path,
+        "cpf_identificadores.json",
+        [
+            {"id_tipo": "CAMARA_ID", "id_valor": "1", "cpf_hmac": "ab" * 32, "origem": "CAMARA_API"},
+            {"id_tipo": "SENADO_ID", "id_valor": "9", "cpf_hmac": "cd" * 32, "origem": "TSE"},
+        ],
+    )
+    for _ in range(2):
+        carga(banco, tmp_path).carregar(["partidos", "pessoas"])
+        assert consulta(banco, "SELECT count(*) FROM core.pessoa") == [
+            (2,)
+        ]  # homônimos de mesmo nascimento, CPFs distintos
+        assert consulta(banco, "SELECT count(*) FROM core.pessoa_candidata_duplicidade") == [(0,)]
+    # o mesmo vale quando um dos dois já estava gravado com o CPF e o outro chega depois (primeira visita do id)
+    escrever(
+        tmp_path,
+        "cpf_identificadores.json",
+        [{"id_tipo": "CAMARA_ID", "id_valor": "1", "cpf_hmac": "ab" * 32, "origem": "CAMARA_API"}],
+    )
+    with banco.begin() as conn:
+        conn.execute(text(f"TRUNCATE {TABELAS} RESTART IDENTITY CASCADE"))
+    escrever(tmp_path, "senadores_senado.json", [])
+    carga(banco, tmp_path).carregar(["partidos", "pessoas"])
+    escrever(
+        tmp_path,
+        "senadores_senado.json",
+        [senador(9, "Ana Souza", nome_civil="ANA SOUZA", data_nascimento="1970-05-01")],
+    )
+    escrever(
+        tmp_path,
+        "cpf_identificadores.json",
+        [
+            {"id_tipo": "CAMARA_ID", "id_valor": "1", "cpf_hmac": "ab" * 32, "origem": "CAMARA_API"},
+            {"id_tipo": "SENADO_ID", "id_valor": "9", "cpf_hmac": "cd" * 32, "origem": "TSE"},
+        ],
+    )
+    carga(banco, tmp_path).carregar(["partidos", "pessoas"])
+    assert consulta(banco, "SELECT count(*) FROM core.pessoa") == [(2,)]
+
+
+def test_mesmo_cpf_hmac_que_chega_depois_funde_duas_pessoas_ja_gravadas_mesmo_da_mesma_fonte(banco, tmp_path):
+    h = "12" * 32
+    escrever(tmp_path, "deputados_camara.json", [deputado(1, "Ana Souza")])
+    escrever(tmp_path, "senadores_senado.json", [senador(9, "Outro Nome Qualquer")])
+    carga(banco, tmp_path).carregar(["partidos", "pessoas"])  # sem CPF: duas pessoas
+    assert consulta(banco, "SELECT count(*) FROM core.pessoa") == [(2,)]
+    menor = consulta(banco, "SELECT min(id) FROM core.pessoa")[0][0]
+    uid = consulta(banco, f"SELECT uid::text FROM core.pessoa WHERE id = {menor}")[0][0]
+    # o mesmo HMAC, pela mesma fonte, nos dois ids: o identificador é único por fonte, então a segunda pessoa não o recebe
+    escrever(
+        tmp_path,
+        "cpf_identificadores.json",
+        [
+            {"id_tipo": "CAMARA_ID", "id_valor": "1", "cpf_hmac": h, "origem": "TSE"},
+            {"id_tipo": "SENADO_ID", "id_valor": "9", "cpf_hmac": h, "origem": "TSE"},
+        ],
+    )
+    for _ in range(2):
+        carga(banco, tmp_path).carregar(["partidos", "pessoas"])
+        assert consulta(banco, "SELECT count(*) FROM core.pessoa") == [(1,)]
+        assert consulta(banco, "SELECT uid::text FROM core.pessoa") == [(uid,)]  # fica a de menor id
+        assert consulta(banco, "SELECT tipo, valor FROM core.pessoa_identificador ORDER BY tipo") == [
+            ("CAMARA_ID", "1"),
+            ("CPF_HMAC", h),
+            ("SENADO_ID", "9"),
+        ]
+        assert consulta(banco, "SELECT count(*) FROM core.pessoa_candidata_duplicidade") == [(0,)]
+        assert consulta(banco, "SELECT count(*) FROM core.mandato") == [(2,)]
+
+
+# ── senador: o partido de cada período vem das filiações do Senado, não da lista ────────────────────────────────────────
+def test_filiacao_do_senador_segue_os_periodos_do_senado_e_nao_o_partido_atual_da_lista(banco, tmp_path):
+    escrever(
+        tmp_path, "senadores_senado.json", [senador(9, "Carla", partido_sigla="PL")]
+    )  # mandato 2019-02-01..2027-01-31
+    escrever(
+        tmp_path,
+        "senadores_filiacoes.json",
+        {
+            "fonte": "Senado — Dados Abertos",
+            "is_synthetic": False,
+            "senadores": [
+                {
+                    "senado_id": 9,
+                    "filiacoes": [
+                        {"sigla": "PL", "inicio": "2021-04-08", "fim": None},
+                        {"sigla": "PODE", "inicio": "2017-07-04", "fim": "2021-04-08"},  # repete o dia da troca
+                        {
+                            "sigla": "S/Partido",
+                            "inicio": "2013-08-20",
+                            "fim": "2013-10-01",
+                        },  # sem partido não é partido
+                    ],
+                }
+            ],
+        },
+    )
+    consulta_periodos = (
+        "SELECT pa.sigla, lower(mp.periodo)::text, upper(mp.periodo)::text FROM core.mandato_partido mp "
+        "JOIN core.partido pa ON pa.id = mp.partido_id ORDER BY 2"
+    )
+    for _ in range(2):
+        carga(banco, tmp_path).carregar(["partidos", "pessoas", "filiacoes"])
+        assert consulta(banco, consulta_periodos) == [
+            ("PODE", "2019-02-01", "2021-04-08"),
+            ("PL", "2021-04-08", "2027-02-01"),
+        ]
+        assert consulta(
+            banco,
+            "SELECT pa.sigla, lower(f.periodo)::text, upper(f.periodo)::text FROM core.filiacao f "
+            "JOIN core.partido pa ON pa.id = f.partido_id ORDER BY 2",
+        ) == [("PODE", "2019-02-01", "2021-04-08"), ("PL", "2021-04-08", "2027-02-01")]
+    # sem o arquivo de filiações o período do mandato inteiro volta a ser o do partido que a lista informa
+    (tmp_path / "senadores_filiacoes.json").unlink()
+    with banco.begin() as conn:
+        conn.execute(text("DELETE FROM core.mandato_partido"))
+    carga(banco, tmp_path).carregar(["partidos", "pessoas", "filiacoes"])
+    assert consulta(banco, "SELECT pa.sigla FROM core.filiacao f JOIN core.partido pa ON pa.id = f.partido_id") == [
+        ("PL",)
+    ]
+
+
+# ── Câmara: histórico por deputado (eventos) e lote de CSV ──────────────────────────────────────────────────────────────
+def _evento(id_deputado: int, quando: str, status: str, **extra) -> Dict[str, Any]:
+    return {
+        "id": id_deputado,
+        "idLegislatura": 57,
+        "dataHora": quando,
+        "descricaoStatus": status,
+        "nomeEleitoral": f"Dep {id_deputado}",
+        "siglaUf": "SP",
+        "siglaPartido": "PT",
+        "condicaoEleitoral": "Titular",
+        "situacao": "Exercício",
+        **extra,
+    }
+
+
+def test_historico_da_camara_grava_mandato_situacao_e_partido_por_periodo_e_rejeita_sem_uf(banco, tmp_path):
+    pasta = tmp_path / "historico"
+    escrever(pasta, "_legislaturas.json", [{"id": 57, "dataInicio": "2023-02-01", "dataFim": "2027-01-31"}])
+    escrever(
+        pasta,
+        "100.json",
+        [
+            _evento(100, "2023-02-01T10:00:00", "Entrada - Posse"),
+            _evento(100, "2023-09-10T10:00:00", "Alteração de partido", siglaPartido="PSB"),
+            _evento(100, "2024-06-30T10:00:00", "Saída - Renúncia"),
+        ],
+    )
+    escrever(
+        pasta, "101.json", [_evento(101, "2023-02-01T10:00:00", "Entrada - Posse")]
+    )  # segue até o fim da legislatura
+    escrever(pasta, "102.json", [_evento(102, "2023-02-01T10:00:00", "Entrada - Posse", siglaUf="")])  # sem UF
+    for _ in range(2):
+        resultado = carga(banco, tmp_path, historico_dir=pasta).carregar(["partidos", "camara_historico"])[
+            "camara_historico"
+        ]
+        assert consulta(
+            banco,
+            "SELECT i.valor, m.inicio::text, m.fim::text, m.motivo_encerramento, ci.uf FROM core.mandato m "
+            "JOIN core.pessoa_identificador i ON i.pessoa_id = m.pessoa_id AND i.tipo = 'CAMARA_ID' "
+            "JOIN ref.circunscricao ci ON ci.id = m.circunscricao_id ORDER BY i.valor",
+        ) == [
+            ("100", "2023-02-01", "2024-06-29", "RENUNCIA", "SP"),
+            ("101", "2023-02-01", "2027-01-31", None, "SP"),
+        ]
+        assert consulta(
+            banco,
+            "SELECT pa.sigla, lower(mp.periodo)::text, upper(mp.periodo)::text FROM core.mandato_partido mp "
+            "JOIN core.partido pa ON pa.id = mp.partido_id JOIN core.mandato m ON m.id = mp.mandato_id "
+            "JOIN core.pessoa_identificador i ON i.pessoa_id = m.pessoa_id AND i.valor = '100' ORDER BY 2",
+        ) == [("PT", "2023-02-01", "2023-09-10"), ("PSB", "2023-09-10", "2024-06-30")]
+        assert consulta(banco, "SELECT count(*) FROM core.mandato_situacao") == [(2,)]
+        assert resultado.contagem.motivos == {"MANDATO_SEM_UF": 1}  # a circunscrição nacional não é inventada
+
+
+class _ArquivoDoLote:
+    def __init__(self, recurso: str, ano: int, caminho: Path):
+        self.recurso, self.ano, self.caminho = recurso, ano, caminho
+        self.url, self.sha256, self.bytes = (
+            f"https://exemplo/{caminho.name}",
+            f"{recurso}{ano}".ljust(64, "0"),
+            caminho.stat().st_size,
+        )
+
+
+def _csv(pasta: Path, nome: str, cabecalho: List[str], linhas: List[List[str]]) -> Path:
+    pasta.mkdir(parents=True, exist_ok=True)
+    caminho = pasta / nome
+    caminho.write_text("\n".join(";".join(linha) for linha in [cabecalho] + linhas) + "\n", encoding="utf-8")
+    return caminho
+
+
+CABECALHO_PROPOSICAO = [
+    "id", "siglaTipo", "numero", "ano", "ementa", "dataApresentacao", "urlInteiroTeor", "ultimoStatus_descricaoSituacao",
+    "ultimoStatus_dataHora",
+]  # fmt: skip
+CABECALHO_AUTOR = [
+    "idProposicao", "idDeputadoAutor", "tipoAutor", "nomeAutor", "siglaPartidoAutor", "siglaUFAutor", "ordemAssinatura",
+    "proponente",
+]  # fmt: skip
+
+
+def test_lote_de_csv_da_camara_grava_proposicao_e_autoria_rejeita_fora_do_escopo_e_para_se_o_layout_mudar(
+    banco, tmp_path
+):
+    pasta = tmp_path / "csv"
+    proposicoes = _csv(
+        pasta, "proposicoes-2023.csv", CABECALHO_PROPOSICAO,
+        [
+            ["900", "PL", "10", "2023", "Ementa um", "2023-03-01T10:00", "http://x/900", "Arquivada", "2023-05-01T10:00:00"],
+            ["901", "XYZ", "11", "2023", "Tipo sem peso", "2023-03-02T10:00", "", "Arquivada", "2023-05-01T10:00:00"],
+        ],
+    )  # fmt: skip
+    autores = _csv(
+        pasta, "proposicoesAutores-2023.csv", CABECALHO_AUTOR,
+        [
+            ["900", "55", "Deputado(a)", "Beto", "PT", "SP", "1", "1"],
+            ["900", "", "Órgão do Poder Executivo", "Poder Executivo", "", "", "2", "0"],
+        ],
+    )  # fmt: skip
+    arquivos = [_ArquivoDoLote("proposicoes", 2023, proposicoes), _ArquivoDoLote("proposicoesAutores", 2023, autores)]
+    for _ in range(2):
+        resultado = carga(banco, tmp_path, lote_arquivos=arquivos).carregar(["partidos", "camara_lote"])["camara_lote"]
+        assert consulta(banco, "SELECT id_camara, tipo_codigo, status_codigo FROM leg.proposicao") == [
+            (900, "PL", "ARQUIVADA")
+        ]
+        assert consulta(banco, "SELECT tipo_codigo, nome_autor FROM leg.autoria ORDER BY ordem") == [
+            ("AUTOR_PRINCIPAL", "Beto"),
+            ("INSTITUCIONAL", "Poder Executivo"),
+        ]
+        assert resultado.contagem.motivos == {"TIPO_FORA_DO_ESCOPO": 1}
+    quebrado = _csv(pasta, "proposicoes-2024.csv", [c for c in CABECALHO_PROPOSICAO if c != "ementa"], [])
+    with pytest.raises(ValueError, match="layout da fonte mudou"):
+        carga(banco, tmp_path, lote_arquivos=[_ArquivoDoLote("proposicoes", 2024, quebrado)]).carregar(["camara_lote"])
+
+
+# ── texto desconhecido é NULL, registro sem id é rejeitado com motivo, eleição do suplente e janela de 1995 ──────────────
+def test_biografia_so_leva_o_que_a_fonte_informa_e_nunca_o_texto_none(banco, tmp_path):
+    escrever(
+        tmp_path,
+        "deputados_camara.json",
+        [
+            deputado(1, "Ana", uf=None),
+            deputado(2, "Beto", partido_sigla=None),
+            deputado(3, "Caio", uf=None, partido_sigla=None),
+        ],
+    )
+    carga(banco, tmp_path).carregar(["partidos", "pessoas"])
+    assert consulta(banco, "SELECT nome_exibicao, biografia FROM core.pessoa ORDER BY nome_exibicao") == [
+        ("Ana", "Deputado Federal (PT)."),
+        ("Beto", "Deputado Federal pela UF SP."),
+        ("Caio", None),
+    ]
+
+
+def test_registro_sem_identificador_e_rejeitado_com_motivo_e_a_conta_fecha_com_o_que_foi_gravado(banco, tmp_path):
+    sem_id = {"nome_eleitoral": "Sem Id", "uf": "SP", "id_legislatura": 57}
+    escrever(tmp_path, "deputados_camara.json", [deputado(1, "Ana"), sem_id])
+    escrever(
+        tmp_path,
+        "senadores_senado.json",
+        [senador(9, "Carla"), {"nome_eleitoral": "Sem Codigo", "mandato_inicio": "2019-02-01"}],
+    )
+    escrever(
+        tmp_path,
+        "presidentes_historico.json",
+        [{"id_referencia": "x", "ano_eleicao": 2018, "data_inicio": "2019-01-01"}],
+    )
+    contagem = carga(banco, tmp_path).carregar(["partidos", "pessoas"])["pessoas"].contagem
+    assert contagem.motivos == {"SEM_IDENTIFICADOR": 3}  # deputado, senador e presidente sem nome civil
+    assert (contagem.lidas, contagem.gravadas, contagem.rejeitadas) == (5, 2, 3)
+    assert consulta(banco, "SELECT count(*) FROM core.mandato") == [(2,)]
+    # nenhuma verificação da execução reprovou, em particular `contagens` (lidas == gravadas + rejeitadas, com gravadas medida)
+    assert (
+        consulta(
+            banco,
+            "SELECT nome FROM etl.verificacao WHERE NOT passou AND execucao_id = "
+            "(SELECT max(id) FROM etl.execucao WHERE parametros->>'recurso' = 'pessoas')",
+        )
+        == []
+    )
+
+
+def test_suplente_que_assume_no_meio_do_mandato_herda_a_eleicao_do_titular_e_as_suplencias_nao_colidem():
+    from etl.carga.pessoas import Lote, parlamentar_do_senado
+
+    lote = Lote()
+    mandatos = [
+        {"uf": "MG", "inicio": "2021-05-10", "fim": "2021-12-31", "participacao": "Suplente"},
+        {"uf": "MG", "inicio": "2022-03-01", "fim": "2022-08-31", "participacao": "Suplente"},
+    ]
+    parlamentar_do_senado(lote, 77, {"nome": "Suplente", "partido_sigla": "PSD"}, mandatos, "SENADO_API", 0, {77})
+    chaves = sorted((m["ano_eleicao"], m["numero_mandato"]) for m in lote.mandatos.values())
+    assert chaves == [(2018, 1), (2018, 2)]  # a eleição do titular (e não 2020/2021), e as duas suplências não colidem
+    # suplente que nunca votou não tem atuação a registrar
+    vazio = Lote()
+    parlamentar_do_senado(vazio, 77, {"nome": "Suplente"}, mandatos, "SENADO_API", 0, set())
+    assert not vazio.mandatos and not vazio.pessoas
+
+
+def test_mandato_que_chega_a_1995_nao_deixa_a_carga_com_alerta(banco, tmp_path):
+    """A legislatura 49 termina em 1995-01-31: entra (sobrepõe a janela) e a verificação mede o fim, não o início."""
+    escrever(
+        tmp_path,
+        "parlamentares_legislaturas_anteriores.json",
+        {
+            "fonte": "Câmara — Dados Abertos",
+            "is_synthetic": False,
+            "deputados": [
+                {
+                    "camara_id": 5,
+                    "nome": "Ana",
+                    "nome_civil": "ANA",
+                    "partido": "PT",
+                    "uf": "SP",
+                    "legislaturas": [49, 50],
+                }
+            ],
+            "senadores": [],
+        },
+    )
+    carga(banco, tmp_path).carregar(["partidos", "pessoas"])
+    assert consulta(banco, "SELECT min(inicio)::text FROM core.mandato") == [("1991-02-01",)]
+    assert consulta(
+        banco, "SELECT status FROM etl.execucao WHERE parametros->>'recurso' = 'pessoas' ORDER BY id DESC LIMIT 1"
+    ) == [("OK",)]

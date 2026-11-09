@@ -718,25 +718,13 @@ class VotacoesSenadoExtractor:
 
 
 # ---------------------------------------------------------------------------------------------- parlamentares de legislaturas anteriores
+ARQUIVO_ANTERIORES = "parlamentares_legislaturas_anteriores.json"
+
+
 def _como_lista(valor: Any) -> List[Any]:
     if not valor:
         return []
     return valor if isinstance(valor, list) else [valor]
-
-
-def completar_dados_basicos_dos_senadores(senadores: Any, http: HttpClient) -> int:
-    """Nascimento, sexo e naturalidade (detalhe do senador): é o que prova que o ex-senador é o mesmo ex-deputado."""
-    from etl.extractors.senado_extractor import SenadoExtractor
-
-    detalhe = SenadoExtractor(http=http)
-    completados = 0
-    for reg in senadores:
-        if reg.get("data_nascimento"):
-            continue
-        dados = detalhe._dados_basicos(int(reg["senado_id"]))
-        reg.update({k: v for k, v in dados.items() if v})
-        completados += 1 if dados.get("data_nascimento") else 0
-    return completados
 
 
 def extrair_parlamentares_historicos(
@@ -804,16 +792,12 @@ def extrair_parlamentares_historicos(
                 if item["inicio"] and item not in reg["mandatos"]:
                     reg["mandatos"].append(item)
 
-    if senadores:
-        logger.info(
-            "Nascimento de %d senadores obtido do detalhe.",
-            completar_dados_basicos_dos_senadores(senadores.values(), http),
-        )
+    # nome completo e nascimento dos senadores vêm de `senadores_basicos_extractor` (dono único do detalhe `/senador/{codigo}`)
     if not deputados and not senadores:
         logger.error("Nenhum parlamentar histórico extraído — arquivo existente preservado.")
         return {"deputados": 0, "senadores": 0}
     atomic_write_json(
-        Path(processed_dir) / "parlamentares_legislaturas_anteriores.json",
+        Path(processed_dir) / ARQUIVO_ANTERIORES,
         {
             "fonte": "Câmara (/deputados?idLegislatura) e Senado (/senador/lista/legislatura) — Dados Abertos",
             "is_synthetic": False,

@@ -14,6 +14,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 from etl.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
 from etl.extractors.senadores_basicos_extractor import ler_senadores_basicos
 from etl.extractors.tse_core import TSE_RAW_DIR, ler_candidatos
+from etl.extractors.votacoes_extractor import ARQUIVO_ANTERIORES
 from etl.utils.cpf import chave_configurada, identificador_cpf
 from etl.utils.datafiles import load_deputados, load_json, load_senadores
 from etl.utils.identidades import IdentidadesParlamentares, parse_date
@@ -64,7 +65,7 @@ def gerar(
     processed_dir = Path(processed_dir)
     deputados = load_deputados(processed_dir)
     senadores = load_senadores(processed_dir)
-    anteriores = load_json(processed_dir / "parlamentares_legislaturas_anteriores.json", {}) or {}
+    anteriores = load_json(processed_dir / ARQUIVO_ANTERIORES, {}) or {}
     presidentes = load_json(processed_dir / "presidentes_historico.json", []) or []
     ex_deputados = [d for d in anteriores.get("deputados") or [] if isinstance(d, dict)]
     ex_senadores = [s for s in anteriores.get("senadores") or [] if isinstance(s, dict)]

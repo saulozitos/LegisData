@@ -18,7 +18,10 @@ def test_carregar_so_pede_a_carga_e_extrair_so_pede_a_extracao():
         ["load_db"],
         ["partidos", "pessoas", "votacoes"],
     )
-    assert resolver(["votacoes"], "extrair") == (["camara", "senado", "votacoes", "cpf"], [])
+    assert resolver(["votacoes"], "extrair") == (
+        ["camara", "senado", "votacoes", "senadores_basicos", "senadores_filiacoes", "cpf"],
+        [],
+    )
     chaves, recursos = resolver(["filiacoes"], "tudo")
     assert chaves == ["load_db"] and recursos == ["filiacoes"]
 

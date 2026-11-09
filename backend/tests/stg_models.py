@@ -165,7 +165,7 @@ class PartyAffiliation(StagingBase):
     )
     state: Mapped[Optional[str]] = mapped_column("uf", String(2), nullable=True)
     created_at: Mapped[date] = mapped_column(Date, default=date.today)
-    # a que já está em `core.filiacao` ganha o empate de início (ver a migração 0040); o teste semeia sempre sem ela
+    # a que já está em `core.filiacao` ganha o empate de início (ver a fusão do staging, que a migração 0039 removeu); o teste semeia sempre sem ela
     survivor: Mapped[bool] = mapped_column(
         "sobrevivente", Boolean, default=False, server_default="false", nullable=False
     )

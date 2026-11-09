@@ -64,11 +64,21 @@ def _senado():
     return SenadoExtractor().run_full_extraction()
 
 
-def _cpf():
+def _senadores_basicos():
     from etl.extractors import senadores_basicos_extractor
+
+    return senadores_basicos_extractor.gerar()
+
+
+def _senadores_filiacoes():
+    from etl.extractors import senadores_filiacoes_extractor
+
+    return senadores_filiacoes_extractor.gerar()
+
+
+def _cpf():
     from etl.extractors.cpf_extractor import gerar
 
-    senadores_basicos_extractor.gerar()
     return gerar()
 
 
@@ -539,12 +549,15 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
             "Votações nominais e orientação do governo (Câmara e Senado)",
             lambda: _votacoes(args.votacoes_ano_inicio, args.no_cache),
         ),
-        Etapa("cpf", "Identificador do CPF por HMAC (Câmara e TSE)", _cpf),
         Etapa(
             "presenca",
             "Presença em plenário (Câmara e Senado)",
             lambda: _presenca(args.no_cache, args.presenca_max_paginas),
         ),
+        # depois de votações e presença (de onde vêm os senadores a completar) e antes do CPF (que casa por nome e nascimento)
+        Etapa("senadores_basicos", "Nome completo e nascimento dos senadores (Senado)", _senadores_basicos),
+        Etapa("senadores_filiacoes", "Filiações partidárias dos senadores (Senado)", _senadores_filiacoes),
+        Etapa("cpf", "Identificador do CPF por HMAC (Câmara e TSE)", _cpf),
         Etapa("remuneracao", "Remuneração mensal dos deputados", lambda: _remuneracao(args.no_cache)),
         Etapa(
             "camara_bulk",

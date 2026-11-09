@@ -1,8 +1,10 @@
 """
 Resolve, em `core`, a pessoa a que um registro das fontes de finanças se refere.
 
-Ordem: identificador oficial (Câmara ou Senado), depois o HMAC do CPF (`CPF_HMAC`, o registro traz só o HMAC) e, na falta deles, nome normalizado ÚNICO (qualquer nome registrado da
-pessoa: civil, eleitoral, parlamentar, histórico ou grafia da fonte). Nome que casa com mais de uma pessoa nunca é
+Ordem: identificador oficial (Câmara ou Senado), depois o HMAC do CPF (`CPF_HMAC`; o registro traz só o HMAC) e, na falta
+deles, nome normalizado ÚNICO (qualquer nome registrado da pessoa: civil, eleitoral, parlamentar, histórico ou grafia da
+fonte). Um HMAC que casa com mais de uma pessoa é ambíguo e não cai no nome; um HMAC que não casa com ninguém deixa o nome
+valer, mas só entre quem não tem CPF conhecido diferente: CPF diferente prova que o homônimo é outra pessoa. Nome que casa com mais de uma pessoa nunca é
 atribuído por palpite: só se desfaz pelo mandato no ano do registro (regra de intervalo temporal da decisão 2 de
 `docs/DECISOES_E_DUVIDAS_PENDENTES.md`): vale a única pessoa com mandato no ano e, sem nenhuma, a única que não foi
 descartada por ter mandatos conhecidos só em outros anos (pessoa sem mandato cadastrado é "desconhecida", não excluída).
@@ -55,10 +57,12 @@ class ResolvedorDePessoas:
                     indice[chave].add(pessoa_id)
         self._por_nome = nomes
         self._por_cpf_hmac: Dict[str, Set[int]] = defaultdict(set)
+        self._cpfs_da_pessoa: Dict[int, Set[str]] = defaultdict(set)
         for valor, pessoa_id in conn.execute(
             text("SELECT valor, pessoa_id FROM core.pessoa_identificador WHERE tipo = 'CPF_HMAC'")
         ):
             self._por_cpf_hmac[str(valor)].add(pessoa_id)
+            self._cpfs_da_pessoa[pessoa_id].add(str(valor))
         self._por_nome_sem_titulo = nomes_sem_titulo
 
         self._mandatos: Dict[int, List[Tuple[date, Optional[date]]]] = defaultdict(list)
@@ -83,11 +87,15 @@ class ResolvedorDePessoas:
             inicio <= fim_ano and (fim is None or fim >= inicio_ano) for inicio, fim in self._mandatos[pessoa_id]
         )
 
-    def _candidatos(self, nome: Any) -> Set[int]:
+    def _candidatos(self, nome: Any, cpf_hmac: Optional[str] = None) -> Set[int]:
         texto = str(nome) if nome else ""
-        return self._por_nome.get(normalize_plain(texto)) or self._por_nome_sem_titulo.get(
+        achados = self._por_nome.get(normalize_plain(texto)) or self._por_nome_sem_titulo.get(
             normalize_name_tokens(texto), set()
         )
+        if not cpf_hmac:
+            return achados
+        # quem já tem CPF conhecido e nenhum é o do registro é outra pessoa, por mais igual que seja o nome
+        return {c for c in achados if not self._cpfs_da_pessoa.get(c) or cpf_hmac in self._cpfs_da_pessoa[c]}
 
     def _desfazer(self, candidatos: Set[int], ano: int) -> Optional[int]:
         com_mandato = [c for c in candidatos if self._tinha_mandato_em(c, ano)]
@@ -99,11 +107,11 @@ class ResolvedorDePessoas:
         desconhecidos = [c for c in candidatos if not self._mandatos[c]]
         return desconhecidos[0] if len(desconhecidos) == 1 else None
 
-    def por_nome(self, nomes: Iterable[Any], ano: Optional[int] = None) -> Resolucao:
+    def por_nome(self, nomes: Iterable[Any], ano: Optional[int] = None, cpf_hmac: Optional[str] = None) -> Resolucao:
         """Primeiro nome (da lista) com resultado seguro; ambíguo é desfeito pelo mandato do `ano`, se houver."""
         ambiguo = False
         for nome in nomes:
-            candidatos = self._candidatos(nome)
+            candidatos = self._candidatos(nome, cpf_hmac)
             if len(candidatos) == 1:
                 # Nome único vale mesmo que os mandatos cadastrados sejam de outros anos: o cadastro de mandatos do Senado
                 # anterior a 2023 está incompleto, e exigir mandato no ano desligaria cerca de 1.000 emendas de
@@ -122,10 +130,14 @@ class ResolvedorDePessoas:
         achado = self.por_identificador(item.get("camara_id"), item.get("senado_id"))
         if achado is not None:
             return Resolucao(achado, "IDENTIFICADO")
-        achado = self.por_cpf_hmac(item.get("cpf_hmac"))
-        if achado is not None:
-            return Resolucao(achado, "IDENTIFICADO")
+        cpf_hmac = str(item.get("cpf_hmac") or "") or None
+        if cpf_hmac:
+            donos = self._por_cpf_hmac.get(cpf_hmac, set())
+            if len(donos) == 1:
+                return Resolucao(next(iter(donos)), "IDENTIFICADO")
+            if len(donos) > 1:  # o mesmo CPF em dois cadastros: a fusão ainda não veio, e o nome não desempata
+                return Resolucao(None, "HOMONIMO_NAO_DESAMBIGUADO")
         # Identificador que o cadastro não conhece cai no nome, mesmo que o candidato tenha OUTRO identificador do mesmo
         # tipo (comportamento fixado em teste). O risco é o mesmo da regra de nome único, anotado no plano: um parlamentar
         # fora do cadastro com o nome de outro herdaria os dados dele.
-        return self.por_nome([item.get("nome_civil"), item.get("nome_eleitoral"), item.get("nome")], ano)
+        return self.por_nome([item.get("nome_civil"), item.get("nome_eleitoral"), item.get("nome")], ano, cpf_hmac)

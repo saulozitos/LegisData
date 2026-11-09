@@ -550,3 +550,30 @@ def test_cpf_colado_a_4_ou_5_digitos_sai_do_nome_e_a_guarda_em_codigo_acusa(cola
     processo = f"0000{CPF_A}00000"  # um código de 20 dígitos que contém um CPF numa janela de 11
     assert cpfs_suspeitos_em(f"processo {processo}", False) == 0  # em dado, código de processo não é acusado
     assert cpfs_suspeitos_em(f"x = {processo}", True) >= 1  # em código escrito à mão, qualquer janela conta
+
+
+@pytest.mark.parametrize(
+    "inicio, ano",
+    [
+        (date(1995, 2, 1), 1994),
+        (date(2015, 2, 1), 2014),
+        (date(2019, 2, 1), 2018),
+        (date(2021, 5, 10), 2018),  # suplente no meio do mandato: a eleição é a do titular
+        (date(2023, 2, 1), 2022),
+        (date(2027, 2, 1), 2026),
+    ],
+)
+def test_ano_da_eleicao_e_o_da_eleicao_geral_anterior_a_posse(inicio, ano):
+    from etl.pipelines.loader_helpers import ano_da_eleicao
+
+    assert ano_da_eleicao(inicio) == ano
+
+
+def test_conversoes_puras_da_carga_tratam_vazio_nan_e_lixo_como_desconhecido():
+    from etl.pipelines.loader_helpers import data_hora_iso, data_iso, opcao_de_voto, texto_ou_none, total_de
+
+    assert [texto_ou_none(v) for v in (None, float("nan"), "  ", " ok ")] == [None, None, None, "ok"]
+    assert (data_iso("2023-02-01T10:00:00"), data_iso("nan"), data_iso(None)) == ("2023-02-01", None, None)
+    assert (opcao_de_voto(" sim "), opcao_de_voto(""), opcao_de_voto(None)) == ("SIM", None, None)
+    assert data_hora_iso("2023-02-01T10:00:00-03:00") == "2023-02-01T10:00:00" and data_hora_iso("lixo") is None
+    assert (total_de({"SIM": "3"}, "SIM"), total_de({"SIM": None}, "SIM"), total_de(None, "SIM")) == (3, None, None)

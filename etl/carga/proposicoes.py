@@ -4,8 +4,7 @@ from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
 from etl.carga.base import Resultado, contagem_de, criar_rejeitos, executar_sql, ler_rejeitos, tabela_temporaria
-from etl.carga.pessoas import _data, _texto
-from etl.pipelines.loader_helpers import classify_proposition_impact, inteiro
+from etl.pipelines.loader_helpers import classify_proposition_impact, data_iso, inteiro, texto_ou_none
 from etl.utils.datafiles import load_json
 
 URL_CAMARA = "https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao={}"
@@ -43,12 +42,12 @@ def _linhas(
             sem_id += 1
             continue
         ext_id = inteiro(p[chave_id])
-        tipo = (_texto(p.get("tipo")) or "").upper()
+        tipo = (texto_ou_none(p.get("tipo")) or "").upper()
         numero, ano = inteiro(p.get("numero")), inteiro(p.get("ano"))
-        titulo, ementa = _texto(p.get("titulo")), _texto(p.get("ementa"))
+        titulo, ementa = texto_ou_none(p.get("titulo")), texto_ou_none(p.get("ementa"))
         confiavel = bool(p.get("autor_fonte")) or allow_unverified
         executivo = bool(p.get("iniciativa_executivo", False))
-        autor = _texto(p.get("autor_nome")) if confiavel else None
+        autor = texto_ou_none(p.get("autor_nome")) if confiavel else None
         if autor is None and executivo:
             autor = "Poder Executivo"
         eixo, eixos = classify_proposition_impact(tipo, numero or 0, ano or 0, titulo or "", ementa or "")
@@ -62,9 +61,9 @@ def _linhas(
                 ano,
                 titulo,
                 ementa,
-                _texto(p.get("area_tematica")),
-                _data(p.get("data_apresentacao")),
-                _texto(p.get("url_oficial")) or (URL_CAMARA if casa == "CAMARA" else URL_SENADO).format(ext_id),
+                texto_ou_none(p.get("area_tematica")),
+                data_iso(p.get("data_apresentacao")),
+                texto_ou_none(p.get("url_oficial")) or (URL_CAMARA if casa == "CAMARA" else URL_SENADO).format(ext_id),
                 bool(p.get("is_reforma_estrutural", False)),
                 executivo,
                 autor,

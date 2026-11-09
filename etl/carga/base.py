@@ -64,12 +64,17 @@ def escalar(cursor: Any, sql: str, *parametros: Any) -> Any:
     return cursor.fetchone()[0]
 
 
-def contagem_de(lidas: int, rejeitos: Mapping[str, int]) -> Contagem:
-    """`lidas` = o que a fonte trouxe; o que não foi rejeitado com motivo foi gravado (ou já estava gravado)."""
+def contagem_de(lidas: int, rejeitos: Mapping[str, int], gravadas: Optional[int] = None) -> Contagem:
+    """
+    `lidas` = o que a fonte trouxe; `rejeitos` = o que ficou de fora, com motivo. `gravadas` deve ser MEDIDA no banco (as
+    linhas que entraram ou já estavam, como `pessoas` e `votacoes` fazem): aí a verificação `contagens` da execução
+    (`lidas == gravadas + rejeitadas`) é uma conferência de verdade. Sem ela (`None`) vale o que sobrou da subtração, e a
+    conferência é só aritmética (recurso que ainda não mede).
+    """
     contagem = Contagem(lidas=lidas)
     for motivo, quantas in rejeitos.items():
         contagem.rejeitar(motivo, quantas)
-    contagem.gravadas = max(0, lidas - contagem.rejeitadas)
+    contagem.gravadas = max(0, lidas - contagem.rejeitadas) if gravadas is None else gravadas
     return contagem
 
 
