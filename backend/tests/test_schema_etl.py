@@ -191,3 +191,19 @@ def test_migracao_0039_nao_desce(pg_engine, monkeypatch):
             assert conn.execute(text("SELECT to_regclass('etl.corte') IS NOT NULL")).scalar()
     finally:
         command.upgrade(config, "head")
+
+
+def test_situacao_chancela_do_despacho_esta_mapeada_em_tramitacao(pg_engine):
+    """A situação nova da Câmara (2026) não pode cair em SITUACAO_SEM_MAPEAMENTO: segue em tramitação."""
+    with pg_engine.connect() as conn:
+        status = (
+            conn.execute(
+                text(
+                    "SELECT status_codigo FROM ref.situacao_camara "
+                    "WHERE descricao = 'Aguardando Chancela e Publicação do Despacho' AND tipo_codigo IS NULL"
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert status == ["EM_TRAMITACAO"]
