@@ -12,8 +12,10 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from etl.carga import camara as carga_camara  # noqa: E402
+from etl.carga.base import rodar  # noqa: E402
+from etl.carga.orquestra import Carga  # noqa: E402
 from etl.extractors.camara_bulk_extractor import ArquivoBaixado  # noqa: E402
-from etl.pipelines import camara_bulk_loader, camara_historico_loader  # noqa: E402
 
 CABECALHO_PROPOSICOES = [
     "id", "uri", "siglaTipo", "numero", "ano", "codTipo", "descricaoTipo", "ementa", "ementaDetalhada", "keywords",
@@ -54,15 +56,30 @@ def _arquivo(recurso, ano, caminho):
     return ArquivoBaixado(recurso, ano, f"https://exemplo/{recurso}-{ano}.csv", caminho, caminho.stat().st_size, sha)
 
 
+def _carregar_lote(engine, arquivos):
+    """A carga dos CSV anuais da Câmara (proposições e autores) pelo recurso `camara_lote`."""
+    return Carga(engine=engine, lote_arquivos=list(arquivos)).carregar(["camara_lote"])["camara_lote"]
+
+
+def _carregar_historico(engine, eventos, legislaturas):
+    """Os eventos por deputado e as legislaturas pelo recurso `camara_historico`."""
+    return rodar(
+        engine,
+        "CAMARA_API",
+        "camara_historico",
+        lambda cursor, execucao: carga_camara.carregar_eventos(cursor, eventos, legislaturas),
+    )
+
+
 @pytest.fixture()
 def carga_lote(db, pg_engine, tmp_path):
     """Duas proposições de 2024 e uma de 2023 com autores de vários tipos, carregadas pelo caminho real."""
-    from app.models import PoliticalParty
-    from app.services.staging_merge import merge_staging
+    from tests.projecao import merge_staging
+    from tests.stg_models import PoliticalParty
 
     db.add(PoliticalParty(acronym="REPUBLICANOS", full_name="Republicanos"))  # destino do alias "REPUBLIC"
     db.commit()
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     props = _csv(
         tmp_path / "proposicoes-2024.csv",
         CABECALHO_PROPOSICOES,
@@ -233,9 +250,9 @@ def carga_lote(db, pg_engine, tmp_path):
         _arquivo("proposicoesAutores", 2024, autores),
         _arquivo("proposicoesAutores", 2023, autores23),
     ]
-    resumo = camara_bulk_loader.carregar(pg_engine, arquivos)
+    _carregar_lote(pg_engine, arquivos)
     db.expire_all()
-    return resumo
+    return arquivos
 
 
 def test_status_comes_from_the_source_situation_mapping(db, carga_lote):
@@ -337,7 +354,7 @@ def test_reload_is_idempotent(db, carga_lote, pg_engine, tmp_path):
         db,
         "SELECT (SELECT count(*) FROM leg.proposicao), (SELECT count(*) FROM leg.autoria), (SELECT count(*) FROM core.pessoa), (SELECT count(*) FROM core.entidade)",
     )
-    camara_bulk_loader.mesclar(pg_engine)
+    _carregar_lote(pg_engine, carga_lote)
     db.expire_all()
     assert (
         _rows(
@@ -354,33 +371,38 @@ def _ultima_carga(db, fonte):
         text(
             "SELECT e.status, e.linhas_lidas, e.linhas_gravadas, e.linhas_rejeitadas, e.erro FROM etl.execucao e "
             "JOIN etl.fonte f ON f.id = e.fonte_id WHERE f.codigo = :f AND e.estagio = 'CARREGAR' "
-            "AND e.parametros ? 'tabelas' ORDER BY e.id DESC LIMIT 1"
+            "AND e.parametros ? 'recurso' ORDER BY e.id DESC LIMIT 1"
         ),
         {"f": fonte},
     ).one()
 
 
-def test_bulk_staging_registers_the_execution_with_the_staged_counts(db, carga_lote):
+def test_bulk_load_registers_the_execution_with_counts_and_reasons(db, carga_lote):
     status, lidas, gravadas, rejeitadas, erro = _ultima_carga(db, "CAMARA_CSV")
-    staged = _scalar(
-        db, "SELECT (SELECT count(*) FROM stg.camara_proposicao) + (SELECT count(*) FROM stg.camara_autor)"
+    # lidas vem das linhas dos CSV (as 15 de dados dos quatro arquivos); o que ficou de fora tem motivo e as contagens fecham
+    assert lidas == 15 and gravadas + rejeitadas == lidas and erro is None
+    motivos = dict(
+        db.execute(
+            text(
+                "SELECT r.motivo, (r.payload->>'total')::int FROM etl.rejeito r JOIN etl.execucao e ON e.id = r.execucao_id "
+                "WHERE e.parametros->>'recurso' = 'camara_lote' ORDER BY r.motivo"
+            )
+        ).all()
     )
-    # lidas vem das linhas dos CSV, gravadas do staging: as proposições (3 de 2024 e 2023 do fixture, mais o tipo fora de
-    # escopo e a situação sem mapa) e os autores somam as 15 linhas de dados dos quatro arquivos
-    assert (status, lidas, gravadas, rejeitadas, erro) == ("OK", 15, 15, 0, None) and staged == 15
+    assert rejeitadas == sum(motivos.values()) and "TIPO_FORA_DO_ESCOPO" in motivos
     # cada arquivo de origem fica ligado à execução que o trouxe
     vinculo = db.execute(
         text(
             "SELECT count(*), count(*) FILTER (WHERE a.execucao_id = e.id) FROM etl.arquivo_bruto a "
-            "CROSS JOIN (SELECT max(id) AS id FROM etl.execucao WHERE parametros ? 'tabelas') e"
+            "CROSS JOIN (SELECT max(id) AS id FROM etl.execucao WHERE parametros->>'recurso' = 'camara_lote') e"
         )
     ).one()
     assert vinculo == (4, 4)
 
 
-def test_current_legislature_without_end_date_is_staged_as_null_and_merged(db, pg_engine):
-    """A legislatura corrente não tem `dataFim`: o COPY a grava como NULL (antes era texto vazio) e a fusão a aceita."""
-    camara_historico_loader.carregar_staging(
+def test_current_legislature_without_end_date_is_accepted(db, pg_engine):
+    """A legislatura corrente não tem `dataFim`: a carga a aceita (NULL, não texto vazio) e não cria mandato sem evento."""
+    resultado = _carregar_historico(
         pg_engine,
         [],
         [
@@ -388,28 +410,24 @@ def test_current_legislature_without_end_date_is_staged_as_null_and_merged(db, p
             {"id": 56, "dataInicio": "2019-02-01", "dataFim": "2023-01-31"},
         ],
     )
-    with pg_engine.begin() as conexao:
-        conexao.execute(text("SELECT etl.merge_camara_historico()"))
     db.expire_all()
-    assert _rows(db, 'SELECT id, "dataFim" IS NULL FROM stg.camara_legislatura ORDER BY id') == [
-        ("56", False),
-        ("57", True),
-    ]
+    assert (resultado.contagem.lidas, _scalar(db, "SELECT count(*) FROM core.mandato")) == (0, 0)
 
 
 def test_layout_change_in_the_source_is_detected(db, pg_engine, tmp_path):
     ruim = tmp_path / "proposicoes-2024.csv"
     ruim.write_text('"id";"uri"\n"1";"x"\n', encoding="utf-8-sig")
     with pytest.raises(ValueError, match="layout da fonte mudou"):
-        camara_bulk_loader.carregar_staging(pg_engine, [_arquivo("proposicoes", 2024, ruim)])
+        _carregar_lote(pg_engine, [_arquivo("proposicoes", 2024, ruim)])
     db.expire_all()
     status, _, _, _, erro = _ultima_carga(db, "CAMARA_CSV")
     assert (status, erro) == ("ERRO", "ValueError")  # a tentativa fica registrada, só com a classe da exceção
 
 
 def test_bridge_adopts_the_legacy_uid_of_a_proposition_loaded_in_bulk(db, carga_lote):
-    from app.models import Proposition, StatusTramitacaoEnum, TipoProposicaoEnum
-    from app.services.staging_merge import merge_staging
+    from app.models import StatusTramitacaoEnum, TipoProposicaoEnum
+    from tests.projecao import merge_staging
+    from tests.stg_models import Proposition
 
     legado = Proposition(
         proposition_type=TipoProposicaoEnum.PL,
@@ -424,7 +442,7 @@ def test_bridge_adopts_the_legacy_uid_of_a_proposition_loaded_in_bulk(db, carga_
     )
     db.add(legado)
     db.commit()
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     linha = _rows(db, "SELECT uid::text, status_codigo, area_tematica FROM leg.proposicao WHERE id_camara = 100")
     # uid público preservado, status real da fonte mantido, enriquecimento do legado aproveitado
     assert linha == [(str(legado.id), "APROVADA_E_SANCIONADA", "Economia")]
@@ -564,14 +582,11 @@ def test_seat_days_use_the_party_history_of_the_seat(db, pg_engine):
         },
     ]
     legislaturas = [{"id": 54, "dataInicio": "2011-02-01", "dataFim": "2015-01-31"}]
-    camara_historico_loader.carregar_staging(pg_engine, eventos, legislaturas)
-    with pg_engine.begin() as conexao:
-        conexao.execute(text("SELECT etl.merge_camara_historico()"))
+    _carregar_historico(pg_engine, eventos, legislaturas)
     db.expire_all()
 
-    total = len(eventos) + len(legislaturas)
     status, lidas, gravadas, rejeitadas, erro = _ultima_carga(db, "CAMARA_API")
-    assert (status, lidas, gravadas, rejeitadas, erro) == ("OK", total, total, 0, None)
+    assert (status, lidas, gravadas, rejeitadas, erro) == ("OK", len(eventos), len(eventos), 0, None)
 
     assert _rows(
         db, "SELECT situacao, lower(periodo), upper(periodo) FROM core.mandato_situacao ORDER BY lower(periodo)"

@@ -1,25 +1,12 @@
-"""Extração e carga das votações nominais (Câmara/Senado) com orientação do governo."""
+"""Extração das votações nominais (Câmara/Senado) com orientação do governo; a carga está em `test_planas` e `test_preparar_sql`."""
 
 import json
 import os
 from datetime import date
 
 import pytest
-from app.models import (  # noqa: E402
-    CargoPoliticoEnum,
-    Mandate,
-    ParliamentaryVote,
-    PoliticalParty,
-    Politician,
-    Proposition,
-    StatusMandatoEnum,
-    VotingSession,
-)
-from sqlalchemy import text
-from sqlalchemy.orm import sessionmaker
 
 from etl.extractors import votacoes_extractor as ve  # noqa: E402
-from etl.pipelines import votacoes_loader as vl  # noqa: E402
 
 
 # ---------------------------------------------------------------------------------------------- utilidades de parsing
@@ -520,381 +507,6 @@ def test_run_votacoes_exige_alguma_casa(monkeypatch, tmp_path):
     assert ve.run_votacoes([2023], processed_dir=tmp_path)["senado"]["anos"] == {2023: {}}
 
 
-# ---------------------------------------------------------------------------------------------- carga
-@pytest.fixture
-def banco(pg_engine):
-    """Sessão sobre o Postgres de teste (o COPY dos votos exige Postgres), com o staging limpo antes e depois."""
-    limpar = "TRUNCATE stg.votos_parlamentares, stg.sessoes_votacao, stg.mandatos, stg.proposicoes, stg.politicos, stg.partidos_politicos CASCADE"
-    with pg_engine.begin() as conn:
-        conn.execute(text(limpar))
-    sessao = sessionmaker(bind=pg_engine, expire_on_commit=False)()
-    yield sessao
-    sessao.rollback()
-    sessao.close()
-    with pg_engine.begin() as conn:
-        conn.execute(text(limpar))
-
-
-@pytest.fixture
-def partidos(banco):
-    mapa = {}
-
-    def garantir(session, party_map, sigla):
-        existente = party_map.get(sigla)
-        if existente:
-            return existente
-        p = PoliticalParty(acronym=sigla, full_name=f"Partido {sigla}")
-        session.add(p)
-        session.flush()
-        party_map[sigla] = p.id
-        return p.id
-
-    for sigla in ("PT", "PL", "S.PART."):
-        garantir(banco, mapa, sigla)
-    return mapa, garantir
-
-
-def _prop(**kw):
-    base = {
-        "camara_id": 1000,
-        "tipo": "PL",
-        "numero": 100,
-        "ano": 2023,
-        "titulo": "PL 100/2023",
-        "ementa": "Altera o imposto sobre a renda.",
-        "data_apresentacao": "2023-03-01",
-        "status": "ARQUIVADA",
-        "autor_nome": "Ana",
-        "autor_camara_id": 1,
-        "url_inteiro_teor": "http://t",
-    }
-    base.update(kw)
-    return base
-
-
-def _arquivo_camara(**sobre):
-    dados = {
-        "casa": "CAMARA",
-        "ano": 2023,
-        "fonte": "Câmara — Dados Abertos",
-        "is_synthetic": False,
-        "partidos": ["PT", "PL"],
-        "parlamentares": {
-            "1": {"nome": "Ana Dep", "partido": "PT", "uf": "SP", "foto_url": None, "legislaturas": [56, 57]},
-            "2": {"nome": "Beto Dep", "partido": "PL", "uf": "RJ", "foto_url": None, "legislaturas": [57]},
-        },
-        "sessoes": [
-            {
-                "id": "V1",
-                "data_hora": "2023-03-01T19:00:00",
-                "descricao": "Aprovado.",
-                "aprovada": True,
-                "proposicao": _prop(),
-                "orientacao_governo": "SIM",
-                "orientacoes": {"Governo": "SIM", "PL": "NAO"},
-                "totais": {"SIM": 1, "NAO": 1, "ABSTENCAO": 0, "OBSTRUCAO": 0},
-                "votos": [[1, "SIM", 0], [2, "NAO", 1], [99, "SIM", 0]],  # 99 não existe na base e não tem cadastro
-            },
-            {
-                "id": "V2",
-                "data_hora": "2023-03-02T19:00:00",
-                "descricao": "Rejeitada a matéria.",
-                "aprovada": None,
-                "proposicao": _prop(camara_id=2000, tipo="REQ", numero=5),  # tipo não suportado
-                "orientacao_governo": None,
-                "orientacoes": {},
-                "totais": {},
-                "votos": [[1, "SIM", 0]],
-            },
-        ],
-    }
-    dados.update(sobre)
-    return dados
-
-
-def _carregar(banco, tmp_path, partidos, deputy_map=None, senator_map=None):
-    mapa, garantir = partidos
-    return vl.carregar_votacoes(
-        banco,
-        tmp_path,
-        deputy_map if deputy_map is not None else {},
-        senator_map if senator_map is not None else {},
-        mapa,
-        garantir,
-    )
-
-
-def test_carga_cria_parlamentares_proposicao_sessao_votos_e_mandatos(banco, partidos, tmp_path):
-    ve.gravar_json_gz(tmp_path / "votacoes" / "camara_2023.json.gz", _arquivo_camara())
-    deputados = {}
-    c = _carregar(banco, tmp_path, partidos, deputados)
-    banco.commit()
-
-    assert (c["sessoes_novas"], c["sessoes_descartadas"], c["proposicoes_criadas"]) == (1, 1, 1)
-    assert c["politicos_criados"] == 2 and c["mandatos_criados"] == 3  # Ana: 56 e 57; Beto: 57
-    # Contagem de votos para o registro da execução: V1 traz 3 (o 99 sem cadastro é descartado) e a V2, descartada, traz 1
-    assert (c["votos_lidos"], c["votos_processados"], c["votos_gravados"], c["votos_descartados"]) == (4, 2, 2, 2)
-    sessao = banco.query(VotingSession).one()
-    assert sessao.external_id == "V1" and sessao.is_approved is True
-    assert sessao.government_orientation == "SIM"
-    assert json.loads(sessao.party_orientations) == {"Governo": "SIM", "PL": "NAO"}
-    assert (sessao.votes_yes_count, sessao.votes_no_count) == (1, 1)
-    assert banco.query(ParliamentaryVote).count() == 2  # deputado 99 sem cadastro é ignorado
-    prop = banco.query(Proposition).one()
-    assert prop.external_camara_id == 1000 and prop.status.value == "ARQUIVADA" and prop.impact_axis != "(numero+ano)%5"
-    assert str(prop.presentation_date) == "2023-03-01" and prop.official_url.endswith("idProposicao=1000")
-    ana = banco.query(Politician).filter_by(camara_id=1).one()
-    assert prop.author_politician_id == ana.id
-    anos = {m.election_year: m for m in banco.query(Mandate).filter_by(politician_id=ana.id)}
-    assert set(anos) == {2018, 2022}
-    assert anos[2018].end_date == date(2023, 1, 31) and anos[2018].status == StatusMandatoEnum.CONCLUIDO
-    assert anos[2018].office == CargoPoliticoEnum.DEPUTADO_FEDERAL
-
-
-def test_carga_e_idempotente_e_atualiza_orientacao(banco, partidos, tmp_path):
-    caminho = tmp_path / "votacoes" / "camara_2023.json.gz"
-    ve.gravar_json_gz(caminho, _arquivo_camara())
-    deputados = {}
-    _carregar(banco, tmp_path, partidos, deputados)
-    banco.commit()
-    antes = (
-        banco.query(VotingSession).count(),
-        banco.query(ParliamentaryVote).count(),
-        banco.query(Politician).count(),
-        banco.query(Mandate).count(),
-        banco.query(Proposition).count(),
-    )
-
-    dados = _arquivo_camara()
-    dados["sessoes"][0]["orientacao_governo"] = "NAO"
-    ve.gravar_json_gz(caminho, dados)
-    c = _carregar(banco, tmp_path, partidos, deputados)
-    banco.commit()
-    depois = (
-        banco.query(VotingSession).count(),
-        banco.query(ParliamentaryVote).count(),
-        banco.query(Politician).count(),
-        banco.query(Mandate).count(),
-        banco.query(Proposition).count(),
-    )
-    assert antes == depois and c["sessoes_novas"] == 0 and c["sessoes_atualizadas"] == 1
-    # a recarga não duplica voto, mas os já gravados contam como gravados e a contagem continua fechando
-    assert (c["votos_lidos"], c["votos_gravados"], c["votos_descartados"]) == (4, 2, 2)
-    assert c["votos_lidos"] == c["votos_gravados"] + c["votos_descartados"]
-    assert banco.query(VotingSession).one().government_orientation == "NAO"
-
-
-def test_carga_reaproveita_proposicao_e_politico_existentes(banco, partidos, tmp_path):
-    existente = Politician(civil_name="Ana Dep", electoral_name="Ana Dep", camara_id=1)
-    prop = Proposition(
-        external_camara_id=1000,
-        proposition_type=vl.TipoProposicaoEnum.PL,
-        number=100,
-        year=2023,
-        title="PL 100/2023",
-        summary="x",
-        presentation_date=date(2023, 3, 1),
-    )
-    banco.add_all([existente, prop])
-    banco.flush()
-    ve.gravar_json_gz(tmp_path / "votacoes" / "camara_2023.json.gz", _arquivo_camara())
-    c = _carregar(banco, tmp_path, partidos, {1: existente.id})
-    assert c["proposicoes_criadas"] == 0 and c["politicos_criados"] == 1  # só Beto
-    assert banco.query(Proposition).count() == 1
-
-
-def test_carga_vincula_politico_existente_por_nome_unico(banco, partidos, tmp_path):
-    senador = Politician(civil_name="Beto Dep", electoral_name="Beto Dep", senado_id=50)
-    banco.add(senador)
-    banco.flush()
-    ve.gravar_json_gz(tmp_path / "votacoes" / "camara_2023.json.gz", _arquivo_camara())
-    deputados = {}
-    c = _carregar(banco, tmp_path, partidos, deputados)
-    assert c["politicos_vinculados"] == 1 and deputados[2] == senador.id
-    assert banco.get(Politician, senador.id).camara_id == 2 and banco.query(Politician).count() == 2
-
-
-def test_carga_senado_liga_proposicao_da_camara_por_numeracao_unica(banco, partidos, tmp_path):
-    ve.gravar_json_gz(tmp_path / "votacoes" / "camara_2023.json.gz", _arquivo_camara())
-    senado = {
-        "casa": "SENADO",
-        "ano": 2023,
-        "fonte": "Senado — Dados Abertos",
-        "is_synthetic": False,
-        "partidos": ["PT"],
-        "parlamentares": {"7": {"nome": "Sen Sete", "partido": "PT", "uf": "BA"}},
-        "sessoes": [
-            {
-                "id": "SEN-10",
-                "data_hora": "2023-06-06T17:01:19",
-                "descricao": "Votação nominal",
-                "aprovada": True,
-                "secreta": False,
-                "proposicao": {
-                    "senado_id": 777,
-                    "tipo": "PL",
-                    "numero": 100,
-                    "ano": 2023,
-                    "titulo": "PL 100/2023",
-                    "ementa": "x",
-                    "data_apresentacao": "2023-03-01",
-                },
-                "orientacao_governo": "SIM",
-                "orientacoes": {"Governo": "SIM"},
-                "totais": {"SIM": 1, "NAO": 0, "ABSTENCAO": 0, "OBSTRUCAO": 0},
-                "votos": [[7, "SIM", 0]],
-            },
-            {
-                "id": "SEN-11",
-                "data_hora": "2015-06-06T17:01:19",
-                "descricao": "Votação antiga",
-                "aprovada": False,
-                "secreta": True,
-                "proposicao": {
-                    "senado_id": 888,
-                    "tipo": "PL",
-                    "numero": 100,
-                    "ano": 2015,
-                    "titulo": "PL 100/2015",
-                    "ementa": "y",
-                },
-                "orientacao_governo": None,
-                "orientacoes": {},
-                "totais": {"SIM": 40, "NAO": 30, "ABSTENCAO": 1},
-                "votos": [],
-            },
-        ],
-    }
-    ve.gravar_json_gz(tmp_path / "votacoes" / "senado_2023.json.gz", senado)
-    senadores = {}
-    c = _carregar(banco, tmp_path, partidos, {}, senadores)
-    banco.commit()
-    prop = banco.query(Proposition).filter_by(external_camara_id=1000).one()
-    assert prop.external_senado_id == 777  # numeração única (>= 2019): mesma proposição
-    sen11 = banco.query(VotingSession).filter_by(external_id="SEN-11").one()
-    assert sen11.is_secret_vote is True and sen11.votes_yes_count == 40 and sen11.proposition_id != prop.id
-    assert banco.query(Proposition).count() == 2  # a de 2015 NÃO foi fundida com outra de mesmo número
-    assert c["sessoes_novas"] == 3 and 7 in senadores
-
-
-def test_carga_ignora_arquivo_sem_proveniencia(banco, partidos, tmp_path):
-    ve.gravar_json_gz(tmp_path / "votacoes" / "camara_2023.json.gz", _arquivo_camara(fonte=None))
-    ve.gravar_json_gz(tmp_path / "votacoes" / "camara_2024.json.gz", _arquivo_camara(is_synthetic=True))
-    c = _carregar(banco, tmp_path, partidos)
-    assert c["sessoes_novas"] == 0 and banco.query(VotingSession).count() == 0
-    assert c["arquivos_ignorados"] == 2  # os dois arquivos pulados inteiros ficam registrados, para a execução avisar
-
-
-def test_carga_ignora_arquivo_ilegivel_e_conta_o_arquivo_ignorado(banco, partidos, tmp_path):
-    (tmp_path / "votacoes").mkdir()
-    (tmp_path / "votacoes" / "camara_2023.json.gz").write_bytes(b"isto nao e gzip")
-    c = _carregar(banco, tmp_path, partidos)
-    assert c["arquivos_ignorados"] == 1 and c["votos_lidos"] == 0 and banco.query(VotingSession).count() == 0
-
-
-def test_sessao_ja_gravada_por_outra_casa_e_descartada_e_seus_votos_contam_como_descartados(banco, partidos, tmp_path):
-    ve.gravar_json_gz(tmp_path / "votacoes" / "camara_2023.json.gz", _arquivo_camara())
-    deputados = {}
-    _carregar(banco, tmp_path, partidos, deputados)
-    banco.commit()
-    assert banco.query(VotingSession).one().external_id == "V1"
-
-    # o Senado traz uma sessão com o mesmo código "V1", que a Câmara já gravou: não pode virar a mesma sessão
-    (tmp_path / "votacoes" / "camara_2023.json.gz").unlink()
-    ve.gravar_json_gz(tmp_path / "votacoes" / "senado_2023.json.gz", _arquivo_camara(casa="SENADO"))
-    c = _carregar(banco, tmp_path, partidos, deputados)
-    banco.commit()
-    assert banco.query(VotingSession).count() == 1  # nenhuma sessão nova nem sobrescrita
-    assert c["sessoes_novas"] == 0 and c["sessoes_descartadas"] == 2  # V1 (outra casa) e V2 (tipo não suportado)
-    assert (c["votos_lidos"], c["votos_descartados"], c["votos_gravados"]) == (4, 4, 0)  # 3 votos de V1 + 1 de V2
-
-
-def test_carga_sem_arquivos_nao_faz_nada(banco, partidos, tmp_path):
-    assert _carregar(banco, tmp_path, partidos)["sessoes_novas"] == 0
-
-
-def test_parlamentares_historicos_criam_ex_deputados_e_senadores_titulares(banco, partidos, tmp_path):
-    (tmp_path / vl.ARQUIVO_HISTORICOS).write_text(
-        json.dumps(
-            {
-                "fonte": "oficial",
-                "is_synthetic": False,
-                "deputados": [
-                    {
-                        "camara_id": 7,
-                        "nome_eleitoral": "Ex Dep",
-                        "partido_sigla": "PSL",
-                        "uf": "RJ",
-                        "legislaturas": [56],
-                    }
-                ],
-                "senadores": [
-                    {
-                        "senado_id": 9,
-                        "nome_eleitoral": "Sen Titular",
-                        "partido_sigla": "PT",
-                        "mandatos": [
-                            {"uf": "BA", "inicio": "2019-02-01", "fim": "2027-01-31", "participacao": "Titular"}
-                        ],
-                    },
-                    {
-                        "senado_id": 10,
-                        "nome_eleitoral": "Suplente Que Nunca Votou",
-                        "partido_sigla": "PT",
-                        "mandatos": [
-                            {"uf": "BA", "inicio": "2019-02-01", "fim": "2023-01-31", "participacao": "1º Suplente"}
-                        ],
-                    },
-                    {
-                        "senado_id": 11,
-                        "nome_eleitoral": "Suplente Votante",
-                        "partido_sigla": "PT",
-                        "mandatos": [
-                            {"uf": "SP", "inicio": "2019-02-01", "fim": "2023-01-31", "participacao": "1º Suplente"}
-                        ],
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-    ve.gravar_json_gz(
-        tmp_path / "votacoes" / "senado_2021.json.gz",
-        {"fonte": "x", "is_synthetic": False, "parlamentares": {"11": {"nome": "Suplente Votante"}}, "sessoes": []},
-    )
-    mapa, garantir = partidos
-    deputados, senadores = {}, {}
-    r = vl.carregar_parlamentares_historicos(banco, tmp_path, deputados, senadores, mapa, garantir)
-    banco.commit()
-
-    assert r == {"politicos_criados": 3, "politicos_vinculados": 0, "mandatos_criados": 3}
-    assert 7 in deputados and 9 in senadores and 11 in senadores and 10 not in senadores
-    assert banco.query(Politician).filter_by(electoral_name="Suplente Que Nunca Votou").count() == 0
-    sup = banco.query(Mandate).filter_by(politician_id=senadores[11]).one()
-    assert sup.status == StatusMandatoEnum.SUPLENTE_EM_EXERCICIO and sup.jurisdiction_state == "SP"
-    tit = banco.query(Mandate).filter_by(politician_id=senadores[9]).one()
-    assert tit.office == CargoPoliticoEnum.SENADOR and tit.election_year == 2018
-
-    # idempotência
-    r2 = vl.carregar_parlamentares_historicos(banco, tmp_path, deputados, senadores, mapa, garantir)
-    assert r2 == {"politicos_criados": 0, "politicos_vinculados": 0, "mandatos_criados": 0}
-
-
-def test_parlamentares_historicos_sem_arquivo_confiavel(banco, partidos, tmp_path):
-    mapa, garantir = partidos
-    assert vl.carregar_parlamentares_historicos(banco, tmp_path, {}, {}, mapa, garantir) == {}
-    (tmp_path / vl.ARQUIVO_HISTORICOS).write_text(json.dumps({"deputados": []}), encoding="utf-8")
-    assert vl.carregar_parlamentares_historicos(banco, tmp_path, {}, {}, mapa, garantir) == {}
-
-
-def test_helpers_de_data_e_status():
-    assert vl._date("2023-02-01T10:00") == date(2023, 2, 1) and vl._date("xx") is None and vl._date(None) is None
-    assert vl._datetime("2023-02-01T10:00:00").hour == 10 and vl._datetime("x") is None and vl._datetime("") is None
-    assert vl._status_mandato(date(2000, 1, 1)) == StatusMandatoEnum.CONCLUIDO
-    assert vl._status_mandato(date(2999, 1, 1)) == StatusMandatoEnum.TITULAR_ATIVO
-    assert vl._status_mandato(None) == StatusMandatoEnum.TITULAR_ATIVO
-
-
 def test_orientacao_do_governo_aceita_grafias_da_camara_e_recusa_conflito():
     f = ve.orientacao_do_governo
     assert f({"Governo": "Sim"}) == "SIM"
@@ -1027,28 +639,39 @@ def test_cache_do_ano_anterior_expirado_e_refeito_antes_de_marco(tmp_path):
     assert ext_depois._json_com_cache("u", "votacao", 2025, False) == [{"x": 2}]  # depois de março, cache eterno
 
 
-def _atualizar_com_dublês(monkeypatch, sincronizar):
-    from contextlib import nullcontext
+def _atualizar_com_dublês(monkeypatch, derivados):
+    from types import SimpleNamespace
     from unittest.mock import MagicMock
 
     from etl.pipelines import votacoes_atualizacao as va
 
     chamadas = []
     monkeypatch.setattr(va, "run_votacoes", lambda anos, force: {})
-    carregador = MagicMock()
-    carregador._load_politicians.return_value = (0, {}, {})
-    monkeypatch.setattr(va, "DatabaseLoader", lambda data_dir: carregador)
-    monkeypatch.setattr(va, "carregar_votacoes", lambda *args: {})
-    monkeypatch.setattr(va, "SessionLocal", lambda: nullcontext(MagicMock()))
-    monkeypatch.setattr(va, "merge_staging", lambda sessao: chamadas.append("merge") or {})
+    monkeypatch.setattr(va, "data_de_corte", lambda motor, fonte, recurso: None)
+
+    class CargaFalsa:
+        def __init__(self, data_dir, engine, votacoes_ano_inicio):
+            chamadas.append(f"ano_inicio={votacoes_ano_inicio}")
+
+        def carregar(self, recursos):
+            # as pessoas que votam entram antes das votações (partidos primeiro, para a sigla existir)
+            assert recursos == ["partidos", "pessoas", "votacoes"]
+            chamadas.append("carga")
+            return {
+                r: SimpleNamespace(contagem=SimpleNamespace(lidas=1, gravadas=1, rejeitadas=0, motivos={}))
+                for r in recursos
+            }
+
+    monkeypatch.setattr(va, "Carga", CargaFalsa)
     monkeypatch.setattr(va, "posprocessar_carga", lambda motor: chamadas.append("pos") if motor is va.engine else None)
-    va.atualizar(sincronizar=sincronizar)
+    va.engine = MagicMock() if va.engine is None else va.engine
+    va.atualizar(derivados=derivados)
     return chamadas
 
 
-def test_atualizacao_de_votacoes_funde_e_depois_posprocessa(monkeypatch):
-    assert _atualizar_com_dublês(monkeypatch, sincronizar=True) == ["merge", "pos"]
+def test_atualizacao_de_votacoes_carrega_e_posprocessa_quando_pedido(monkeypatch):
+    assert _atualizar_com_dublês(monkeypatch, derivados=True) == [f"ano_inicio={date.today().year - 1}", "carga", "pos"]
 
 
-def test_atualizacao_sem_fusao_deixa_o_posprocessamento_a_quem_chamou(monkeypatch):
-    assert _atualizar_com_dublês(monkeypatch, sincronizar=False) == []
+def test_atualizacao_sem_derivados_deixa_o_posprocessamento_a_quem_chamou(monkeypatch):
+    assert _atualizar_com_dublês(monkeypatch, derivados=False) == [f"ano_inicio={date.today().year - 1}", "carga"]

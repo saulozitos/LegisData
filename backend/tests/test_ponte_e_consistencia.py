@@ -1,24 +1,19 @@
 """Ponte do legado (migrações 0017 a 0022), pontuação única de autoria e consistência entre as telas."""
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date
 
-from app.models import AttendanceRecord, CasaLegislativaEnum, PoliticalParty
-from app.models.legislative import (
-    Proposition,
-    PropositionAuthor,
-    TipoAutoriaEnum,
-    TipoProposicaoEnum,
-    VotacaoProposicao,
-)
-from app.services.staging_merge import merge_staging
+from app.models import CasaLegislativaEnum
+from app.models.enums import TipoAutoriaEnum, TipoProposicaoEnum
 from sqlalchemy import text
+from tests.projecao import merge_staging
+from tests.stg_models import AttendanceRecord, PoliticalParty, Proposition, PropositionAuthor
 
 BASE = "/api/v1"
 
 
 def _ponte(db):
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     db.commit()
 
 
@@ -204,25 +199,6 @@ def test_roi_pontos_usam_a_base_inteira_alem_da_lista_truncada(client, db, seed,
     ranking = client.get(f"{BASE}/legislative/ranking/authors", params={"limit": 50}).json()
     fulano = next(r for r in ranking if r["nome_eleitoral"] == "Fulano")
     assert dossie["indices_inteligencia"]["roi_cidadao"]["pontos_ialp"] == round(fulano["score_ialp"], 1)
-
-
-def test_link_antigo_de_sessao_ainda_resolve_pelo_legado(client, db, seed):
-    """Quando a votação tem registro em `votacoes_proposicao`, o id público passa a ser o dele e o antigo ainda vale."""
-    deliberacao = VotacaoProposicao(
-        proposicao_id=seed.proposition.id,
-        data_hora=datetime(2023, 5, 2, 15, 0, tzinfo=timezone.utc),  # a mesma sessão de mérito do seed
-        local_deliberacao="Plenário da Câmara dos Deputados",
-        tipo_deliberacao="NOMINAL",
-        resumo_decisao="Aprovada",
-    )
-    db.add(deliberacao)
-    db.commit()
-    url = f"{BASE}/legislative/propositions/{seed.proposition.id}/votes"
-    atual = client.get(url, params={"session_id": str(deliberacao.id)})
-    assert atual.status_code == 200 and atual.json()["sessao_ativa"]["id"] == str(deliberacao.id)
-    antigo = client.get(url, params={"session_id": str(seed.merito.id)})  # link salvo antes da unificação
-    assert antigo.status_code == 200 and antigo.json()["sessao_ativa"]["id"] == str(deliberacao.id)
-    assert client.get(url, params={"session_id": str(uuid.uuid4())}).status_code == 404  # id que nunca existiu
 
 
 def test_placar_e_o_mesmo_no_explorer_e_na_deliberacao(client, seed):

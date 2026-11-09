@@ -19,7 +19,9 @@ import argparse
 import logging
 import sys
 import time
+from contextlib import ExitStack
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
@@ -29,6 +31,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from etl.config import ensure_data_dirs  # noqa: E402
+from etl.fontes import ESTAGIOS, FONTES, resolver  # noqa: E402
 
 logger = logging.getLogger("run_etl")
 
@@ -61,10 +64,22 @@ def _senado():
     return SenadoExtractor().run_full_extraction()
 
 
-def _filiacoes():
-    from etl.extractors.tse_extractor import TSEExtractor
+def _senadores_basicos():
+    from etl.extractors import senadores_basicos_extractor
 
-    return TSEExtractor().run()
+    return senadores_basicos_extractor.gerar()
+
+
+def _senadores_filiacoes():
+    from etl.extractors import senadores_filiacoes_extractor
+
+    return senadores_filiacoes_extractor.gerar()
+
+
+def _cpf():
+    from etl.extractors.cpf_extractor import gerar
+
+    return gerar()
 
 
 def _patrimonio(force: bool):
@@ -109,12 +124,13 @@ def _pnad(force: bool):
     return PNADExtractor().run(force=force)
 
 
-def _votacoes(ano_inicio: int, force: bool):
+def _votacoes(ano_inicio: Optional[int], force: bool):
     from datetime import date
 
     from etl.extractors.votacoes_extractor import run_votacoes
 
-    return run_votacoes(anos=list(range(ano_inicio, date.today().year + 1)), force=force)
+    inicio = _ano_a_partir_do_corte("CAMARA_API", "votacoes", ano_inicio, 2019)
+    return run_votacoes(anos=list(range(inicio, date.today().year + 1)), force=force)
 
 
 def _composicao():
@@ -171,10 +187,18 @@ def _ceap_emendas(ano_inicio: int, usar_cache: bool = True):
     return resumo
 
 
-def _load_db(allow_synthetic: bool, allow_unverified: bool):
-    from etl.pipelines.db_loader import DatabaseLoader
+def _load_db(allow_synthetic: bool, allow_unverified: bool, recursos: Optional[List[str]] = None):
+    from etl.carga.orquestra import RECURSOS, Carga
+    from etl.utils.bootstrap import ensure_backend_on_path
 
-    return DatabaseLoader(allow_synthetic=allow_synthetic, allow_unverified=allow_unverified).load_all()
+    ensure_backend_on_path()
+    from app.core.migrations import upgrade_schema
+
+    upgrade_schema()
+    # camara_historico e camara_lote têm etapa própria (baixam e carregam juntos): aqui só o que vem dos arquivos processados
+    pedidos = [r for r in (recursos or RECURSOS) if r not in ("camara_historico", "camara_lote")]
+    resultados = Carga(allow_synthetic=allow_synthetic, allow_unverified=allow_unverified).carregar(pedidos)
+    return {recurso: vars(r.contagem) for recurso, r in resultados.items()}
 
 
 def _processos():
@@ -183,7 +207,24 @@ def _processos():
     return extrair()
 
 
-def _camara_bulk(force: bool, ano_inicio: int):
+def _ano_a_partir_do_corte(fonte: str, recurso: str, explicito: Optional[int], padrao: int) -> int:
+    """
+    O primeiro ano a baixar: o que o usuário pediu; sem pedido, o ano do corte da última carga (os arquivos do ano
+    corrente mudam todo dia, então o ano anterior ao corte é refeito por segurança); sem corte, o início da janela.
+    """
+    if explicito is not None:
+        return explicito
+    from etl.carga.base import data_de_corte
+    from etl.utils.bootstrap import ensure_backend_on_path
+
+    ensure_backend_on_path()
+    from app.core.database import engine
+
+    corte = data_de_corte(engine, fonte, recurso)
+    return max(padrao, corte.year - 1) if corte else padrao
+
+
+def _camara_bulk(force: bool, ano_inicio: Optional[int]):
     from datetime import date
 
     from etl.utils.bootstrap import ensure_backend_on_path
@@ -192,14 +233,15 @@ def _camara_bulk(force: bool, ano_inicio: int):
     from app.core.database import engine
     from app.core.migrations import upgrade_schema
 
+    from etl.carga.orquestra import Carga
     from etl.extractors.camara_bulk_extractor import CamaraBulkExtractor
-    from etl.pipelines.camara_bulk_loader import carregar
 
     upgrade_schema()
-    arquivos = CamaraBulkExtractor(anos=range(ano_inicio, date.today().year + 1)).run(force=force)
-    resumo = carregar(engine, arquivos)
-    print(f"    {resumo['merge']}")
-    return resumo
+    inicio = _ano_a_partir_do_corte("CAMARA_CSV", "camara_lote", ano_inicio, 1995)
+    arquivos = CamaraBulkExtractor(anos=range(inicio, date.today().year + 1)).run(force=force)
+    resultados = Carga(engine=engine, lote_arquivos=arquivos).carregar(["camara_lote"])
+    print(f"    {resultados['camara_lote'].contagem}")
+    return {"camara_lote": resultados["camara_lote"].extras}
 
 
 def _camara_historico(force: bool):
@@ -209,17 +251,17 @@ def _camara_historico(force: bool):
     from app.core.database import engine
     from app.core.migrations import upgrade_schema
 
+    from etl.carga.orquestra import Carga
     from etl.extractors.camara_historico_extractor import CamaraHistoricoExtractor
-    from etl.pipelines.camara_historico_loader import carregar
 
     upgrade_schema()
     extrator = CamaraHistoricoExtractor()
     baixado = extrator.run(force=force)
     if baixado["falhas"]:
         raise RuntimeError(f"{len(baixado['falhas'])} históricos não baixados (ex.: {baixado['falhas'][0]})")
-    resumo = carregar(engine, extrator.raw_dir)
-    print(f"    {resumo['merge']}")
-    return resumo
+    resultados = Carga(engine=engine, historico_dir=extrator.raw_dir).carregar(["camara_historico"])
+    print(f"    {resultados['camara_historico'].contagem}")
+    return {"camara_historico": resultados["camara_historico"].extras}
 
 
 def _presenca(no_cache: bool, max_paginas: Optional[int]):
@@ -285,6 +327,60 @@ def _load_presenca():
     print("    Presença (leg.presenca):", carregar_presenca(engine))
 
 
+def _engine_ou_none():
+    """O engine do backend, ou None quando o banco não está configurado (extração e relatório não exigem banco)."""
+    try:
+        from etl.utils.bootstrap import ensure_backend_on_path
+
+        ensure_backend_on_path()
+        from app.core.database import engine
+
+        return engine
+    except Exception as exc:  # noqa: BLE001 - sem banco a esteira de extração segue
+        logger.warning("Sem acesso ao banco para registrar a esteira: %s", type(exc).__name__)
+        return None
+
+
+def executar_registrando(etapas: List[Etapa], modo_completo: bool) -> Dict[str, str]:
+    """
+    Roda a esteira e, quando alguma etapa grava no banco, registra a rodada inteira em `etl.execucao` (fonte `PIPELINE`,
+    estágio `TUDO`): `lidas` = etapas, `gravadas` = etapas que terminaram bem, `rejeitadas` = as que falharam ou foram
+    puladas. Registrar a rodada nunca derruba a esteira.
+    """
+    engine = _engine_ou_none() if any(e.grava_banco for e in etapas) else None
+    with ExitStack() as pilha:
+        execucao = None
+        if engine is not None:
+            try:
+                from etl.utils.execucao import registrar_execucao
+
+                # o registro abre aqui dentro: banco fora do ar ou migração 0039 ainda não aplicada falham ao ENTRAR
+                execucao = pilha.enter_context(
+                    registrar_execucao(engine, "PIPELINE", "TUDO", {"etapas": [e.chave for e in etapas]})
+                )
+            except Exception as exc:  # noqa: BLE001 - registrar a rodada nunca derruba a esteira
+                logger.warning("Rodada não registrada em etl.execucao: %s", type(exc).__name__)
+        resultados = executar(etapas, modo_completo)
+        if execucao is not None:
+            falhas = sum(1 for v in resultados.values() if not v.startswith("OK"))
+            execucao.lidas, execucao.rejeitadas = len(resultados), falhas
+            execucao.gravadas = len(resultados) - falhas
+    return resultados
+
+
+def imprimir_relatorio(desde: datetime) -> None:
+    """O relatório das execuções registradas desde `desde`; sem banco ou sem execuções, não imprime nada de errado."""
+    engine = _engine_ou_none()
+    if engine is None:
+        return
+    try:
+        from etl.utils.relatorio import montar_relatorio
+
+        print("\n" + montar_relatorio(engine, desde))
+    except Exception as exc:  # noqa: BLE001 - o relatório é um extra: a esteira já terminou
+        logger.warning("Relatório não gerado: %s", type(exc).__name__)
+
+
 def montar_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Pipeline Integrado: Política e Economia Brasileira (ETL & Carga no PostgreSQL)"
@@ -294,7 +390,7 @@ def montar_parser() -> argparse.ArgumentParser:
         ("economic", "Extração econômica e de presidentes (BCB/INPE/indicadores)"),
         ("camara", "Dados abertos da Câmara dos Deputados"),
         ("senado", "Dados abertos do Senado Federal"),
-        ("tse", "Filiações partidárias"),
+        ("cpf", "Identificador do CPF por HMAC (Câmara e TSE; o CPF nunca é gravado)"),
         ("patrimonio", "Declarações de patrimônio (TSE, bem_candidato)"),
         ("doacoes", "Financiamento de campanha (TSE, prestação de contas de candidatos)"),
         ("eleicoes", "Eleições presidenciais por UF (TSE, votação por candidato/município/zona)"),
@@ -322,6 +418,24 @@ def montar_parser() -> argparse.ArgumentParser:
     ]:
         p.add_argument(f"--{flag}", action="store_true", help=ajuda)
     p.add_argument(
+        "--fonte",
+        action="append",
+        choices=sorted(FONTES),
+        help="Só esta fonte (repetível); com --estagio escolhe extrair, carregar ou tudo. Reexecuta a fonte sem tocar nas outras",
+    )
+    p.add_argument(
+        "--estagio",
+        choices=ESTAGIOS,
+        default="tudo",
+        help="Com --fonte: extrair (baixa os arquivos), carregar (grava no banco) ou tudo (padrão)",
+    )
+    p.add_argument("--listar-fontes", action="store_true", help="Lista as fontes de --fonte e sai")
+    p.add_argument(
+        "--relatorio",
+        action="store_true",
+        help="Só imprime o relatório das execuções das últimas 24 horas (fontes, linhas, rejeitos e verificações) e sai",
+    )
+    p.add_argument(
         "--recarregar-ceap-emendas",
         action="store_true",
         help="Com --load-economia: recarrega CEAP e emendas dos arquivos mesmo com o fin já carregado (padrão: só as "
@@ -347,9 +461,17 @@ def montar_parser() -> argparse.ArgumentParser:
         help="Máximo de páginas novas do portal da Câmara por execução (o portal limita a taxa; a extração é retomável)",
     )
     p.add_argument(
-        "--bulk-ano-inicio", type=int, default=1995, help="Ano inicial das proposições em lote (padrão: 1995)"
+        "--bulk-ano-inicio",
+        type=int,
+        default=None,
+        help="Ano inicial das proposições em lote (padrão: o ano anterior ao corte da última carga; sem corte, 1995)",
     )
-    p.add_argument("--votacoes-ano-inicio", type=int, default=2019, help="Ano inicial das votações (padrão: 2019)")
+    p.add_argument(
+        "--votacoes-ano-inicio",
+        type=int,
+        default=None,
+        help="Ano inicial das votações (padrão: o ano anterior ao corte da última carga; sem corte, 2019)",
+    )
     p.add_argument(
         "--allow-synthetic", action="store_true", help="Gera/carrega dados SINTÉTICOS marcados (demonstração)"
     )
@@ -366,7 +488,6 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         "economic",
         "camara",
         "senado",
-        "tse",
         "patrimonio",
         "doacoes",
         "eleicoes",
@@ -377,6 +498,7 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         "pnad",
         "ceap",
         "votacoes",
+        "cpf",
         "presenca",
         "remuneracao",
         "camara_bulk",
@@ -387,6 +509,10 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         "processos",
     ]
     selecionadas = {k for k in chaves if getattr(args, k)}
+    recursos_load_db: Optional[List[str]] = None
+    if args.fonte:
+        chaves_da_fonte, recursos_load_db = resolver(args.fonte, args.estagio)
+        selecionadas |= set(chaves_da_fonte)
     modo_completo = not selecionadas
 
     def quer(chave: str) -> bool:
@@ -407,7 +533,6 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         Etapa("economic", "Extração econômica e presidentes (BCB / INPE)", lambda: _economic(cache)),
         Etapa("camara", "Dados abertos da Câmara dos Deputados", lambda: _camara(args.no_cache)),
         Etapa("senado", "Dados abertos do Senado Federal", _senado),
-        Etapa("tse", "Filiações partidárias", _filiacoes),
         Etapa("patrimonio", "Declarações de patrimônio (TSE)", lambda: _patrimonio(args.no_cache)),
         Etapa("doacoes", "Financiamento de campanha (TSE)", lambda: _doacoes(args.no_cache)),
         Etapa("eleicoes", "Eleições presidenciais por UF (TSE)", lambda: _eleicoes(args.no_cache)),
@@ -429,6 +554,10 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
             "Presença em plenário (Câmara e Senado)",
             lambda: _presenca(args.no_cache, args.presenca_max_paginas),
         ),
+        # depois de votações e presença (de onde vêm os senadores a completar) e antes do CPF (que casa por nome e nascimento)
+        Etapa("senadores_basicos", "Nome completo e nascimento dos senadores (Senado)", _senadores_basicos),
+        Etapa("senadores_filiacoes", "Filiações partidárias dos senadores (Senado)", _senadores_filiacoes),
+        Etapa("cpf", "Identificador do CPF por HMAC (Câmara e TSE)", _cpf),
         Etapa("remuneracao", "Remuneração mensal dos deputados", lambda: _remuneracao(args.no_cache)),
         Etapa(
             "camara_bulk",
@@ -445,7 +574,7 @@ def construir_etapas(args: argparse.Namespace) -> List[Etapa]:
         Etapa(
             "load_db",
             "Carga e upsert relacional no PostgreSQL",
-            lambda: _load_db(args.allow_synthetic, args.allow_unverified),
+            lambda: _load_db(args.allow_synthetic, args.allow_unverified, recursos_load_db or None),
             depende_de_extracao=True,
             grava_banco=True,
         ),
@@ -545,18 +674,24 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.arquivos_frescos and not (args.load_economia and args.recarregar_ceap_emendas):
         parser.error("--arquivos-frescos só vale com --load-economia --recarregar-ceap-emendas")
     ensure_data_dirs()
+    if args.listar_fontes:
+        for slug, fonte in sorted(FONTES.items()):
+            print(f"  {slug:<18} {fonte.descricao}")
+        return 0
+    if args.relatorio:
+        imprimir_relatorio(datetime.now(timezone.utc) - timedelta(hours=24))
+        return 0
 
     etapas = construir_etapas(args)
     if not etapas:
         print("Nenhuma etapa selecionada.")
         return 0
-    modo_completo = not any(
+    modo_completo = not args.fonte and not any(
         getattr(args, k)
         for k in [
             "economic",
             "camara",
             "senado",
-            "tse",
             "patrimonio",
             "social",
             "orcamento",
@@ -564,6 +699,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             "pnad",
             "ceap",
             "votacoes",
+            "cpf",
             "presenca",
             "remuneracao",
             "camara_bulk",
@@ -574,8 +710,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             "processos",
         ]
     )
-    resultados = executar(etapas, modo_completo)
-    return 0 if imprimir_resumo(resultados) else 1
+    inicio = datetime.now(timezone.utc)
+    resultados = executar_registrando(etapas, modo_completo)
+    ok = imprimir_resumo(resultados)
+    if any(e.grava_banco for e in etapas):
+        imprimir_relatorio(inicio)
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

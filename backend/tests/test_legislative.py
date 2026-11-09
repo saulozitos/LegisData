@@ -3,20 +3,13 @@ from datetime import date, datetime, timezone
 
 import pytest
 from app.core.errors import ErroDeDominio
-from app.models import (
-    CasaLegislativaEnum,
-    ParliamentaryVote,
-    Politician,
-    Proposition,
-    TipoProposicaoEnum,
-    VotingSession,
-    VotoOpcaoEnum,
-)
+from app.models import CasaLegislativaEnum, TipoProposicaoEnum, VotoOpcaoEnum
 from app.services.explorer_service import resumo_da_casa
 from app.services.placar import placar_de_contagens, placar_para_tela
 from app.services.votos_proposicao_service import parse_casa, parse_enum
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
+from tests.stg_models import ParliamentaryVote, Politician, Proposition, VotingSession
 
 BASE = "/api/v1/legislative"
 
@@ -254,7 +247,7 @@ def test_explorer_filters(client, seed):
 def test_explorer_search_is_literal_and_injection_safe(client, db, seed, term):
     response = client.get(f"{BASE}/explorer", params={"search": term})
     assert response.status_code == 200 and response.json()["total"] == 0
-    assert db.execute(text("SELECT COUNT(*) FROM stg.proposicoes")).scalar() == 3
+    assert db.execute(text("SELECT COUNT(*) FROM w_proposicoes")).scalar() == 3
 
 
 @pytest.mark.parametrize("params", [{"tipo": "XYZ"}, {"status": "NADA"}, {"page": 0}, {"limit": 101}])
@@ -409,7 +402,7 @@ def test_ranking_authors_weighted_indicators_and_new_criteria(client, seed):
 
 
 def test_calculate_proposition_score_ialp_formula(db):
-    from app.models.legislative import StatusTramitacaoEnum, TipoAutoriaEnum, TipoProposicaoEnum
+    from app.models.enums import StatusTramitacaoEnum, TipoAutoriaEnum, TipoProposicaoEnum
     from app.services.ialp_pesos import carregar_pesos_ialp
     from app.services.legislative_scoring import calculate_proposition_score
 
@@ -465,7 +458,8 @@ def test_calculate_proposition_score_ialp_formula(db):
 
 
 def test_coauthorship_network_endpoint_and_louvain_metrics(client, seed, db):
-    from app.models.legislative import PropositionAuthor, TipoAutoriaEnum
+    from app.models.enums import TipoAutoriaEnum
+    from tests.stg_models import PropositionAuthor
 
     # Seed proposition authors connecting fulano and lula_fonte
     pa1 = PropositionAuthor(
@@ -588,11 +582,7 @@ def test_deliberacoes_history_and_module_3_specification(client, seed, db):
     import uuid
     from datetime import datetime, timezone
 
-    from app.models.legislative import (
-        OrientacaoPartidaria,
-        VotacaoProposicao,
-        VotoNominal,
-    )
+    from tests.stg_models import OrientacaoPartidaria, VotacaoProposicao, VotoNominal
 
     prop = seed.proposition
     prop_id = str(prop.id)

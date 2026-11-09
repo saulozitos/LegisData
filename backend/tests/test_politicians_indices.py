@@ -3,7 +3,8 @@
 from datetime import date
 
 import pytest
-from app.models import AttendanceRecord, CasaLegislativaEnum, TipoPresencaEnum
+from app.models import CasaLegislativaEnum, TipoPresencaEnum
+from tests.stg_models import AttendanceRecord
 
 from .conftest import fonte_id, inserir_fin, pessoa_do
 
@@ -313,7 +314,8 @@ def test_emendas_endpoint_without_any_data_is_empty(client, seed):
 
 def test_dossier_flags_truncated_proposition_list(client, db, seed, monkeypatch):
     from app.api.v1 import politicians as pol_module
-    from app.models import Proposition, TipoProposicaoEnum
+    from app.models import TipoProposicaoEnum
+    from tests.stg_models import Proposition
 
     monkeypatch.setattr(pol_module, "MAX_PROPOSITIONS_LISTED", 1)
     db.add(
@@ -416,7 +418,8 @@ def test_attendance_without_records_has_no_source_and_no_rate(client, seed):
 
 def test_dossier_weighted_legislative_indicators(client, db, seed):
 
-    from app.models.legislative import Proposition, PropositionAuthor, TipoAutoriaEnum, TipoProposicaoEnum
+    from app.models.enums import TipoAutoriaEnum, TipoProposicaoEnum
+    from tests.stg_models import Proposition, PropositionAuthor
 
     # Add a co-authored proposition for fulano
     prop_co = Proposition(
@@ -481,7 +484,8 @@ def test_dossier_weighted_legislative_indicators(client, db, seed):
 
 def test_roi_rewards_ialp_delivery_not_proposition_count(client, db, seed):
     """Muitas assinaturas de apoio e requerimentos não levam à nota máxima: a entrega é medida em pontos IALP."""
-    from app.models.legislative import Proposition, PropositionAuthor, TipoAutoriaEnum, TipoProposicaoEnum
+    from app.models.enums import TipoAutoriaEnum, TipoProposicaoEnum
+    from tests.stg_models import Proposition, PropositionAuthor
 
     _add_remuneration(db, seed)
     _add_attendance(db, seed)

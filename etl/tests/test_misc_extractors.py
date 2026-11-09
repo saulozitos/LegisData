@@ -1,14 +1,10 @@
 """Salário vs inflação, filiações, composição do Congresso, segurança/INPE e extractors que não podem apagar dados."""
 
-import json
-
 import pandas as pd
-import pytest
 
 from etl.extractors.composicao_extractor import COMPOSICAO_CONGRESSO_HISTORICO as COMPOSICOES
 from etl.extractors.presidents_extractor import PresidentsExtractor
 from etl.extractors.senado_extractor import SenadoExtractor
-from etl.extractors.tse_extractor import NOMADES_HISTORICO, TSEExtractor
 
 
 def test_get_mandate_by_date_fim_exclusivo():
@@ -30,67 +26,6 @@ def resumo_csv(tmp_path, anos):
         for a in anos
     ]
     pd.DataFrame(linhas).to_csv(tmp_path / "resumo_macroeconomico_anual.csv", index=False)
-
-
-def test_filiacoes_sem_origem_inventada(tmp_path):
-    (tmp_path / "deputados_camara.json").write_text(
-        json.dumps(
-            [
-                {"camara_id": 1, "nome_eleitoral": "Fulano", "partido_sigla": "UNIÃO", "uf": "SP"},
-                {"camara_id": 1, "nome_eleitoral": "Fulano", "partido_sigla": "UNIÃO", "uf": "SP"},  # duplicado
-                {"camara_id": 2, "nome_eleitoral": "Kim Kataguiri", "partido_sigla": "UNIÃO", "uf": "SP"},
-            ]
-        ),
-        encoding="utf-8",
-    )
-    (tmp_path / "senadores_senado.json").write_text(
-        json.dumps(
-            [
-                {"senado_id": 9, "nome_eleitoral": "Sicrano", "partido_sigla": "PODE", "uf": "AC"},
-            ]
-        ),
-        encoding="utf-8",
-    )
-    df = TSEExtractor(tmp_path).extract_affiliations()
-
-    fulano = df[df["politico_nome"] == "Fulano"]
-    assert len(fulano) == 1  # só a filiação atual: sem "DEM"/"PSL" sorteados por idx % 2
-    assert (fulano.iloc[0]["data_filiacao"] is None or pd.isna(fulano.iloc[0]["data_filiacao"])) and bool(
-        fulano.iloc[0]["data_filiacao_desconhecida"]
-    )
-    assert fulano.iloc[0]["partido_sigla"] == "UNIÃO"
-
-    kim = df[df["politico_nome"] == "Kim Kataguiri"]
-    assert len(kim) == len(NOMADES_HISTORICO["Kim Kataguiri"])
-    assert set(kim["fonte"]) == {kim.iloc[0]["fonte"]} and "Curadoria" in kim.iloc[0]["fonte"]
-    assert (df["is_synthetic"] == False).all()  # noqa: E712
-
-
-def test_filiacoes_vazia_nao_sobrescreve_arquivo_existente(tmp_path):
-    (tmp_path / "filiacoes_partidarias.json").write_text("[1]", encoding="utf-8")
-    ext = TSEExtractor(tmp_path)
-    with pytest.raises(RuntimeError):
-        ext.save_data(ext.extract_affiliations())
-    assert (tmp_path / "filiacoes_partidarias.json").read_text(encoding="utf-8") == "[1]"
-
-
-def test_save_data_grava_ids_como_inteiros(tmp_path):
-    (tmp_path / "deputados_camara.json").write_text(
-        json.dumps([{"camara_id": 7, "nome_eleitoral": "A", "partido_sigla": "PT", "uf": "BA"}]), encoding="utf-8"
-    )
-    (tmp_path / "senadores_senado.json").write_text(
-        json.dumps([{"senado_id": 8, "nome_eleitoral": "B", "partido_sigla": "PT", "uf": "BA"}]), encoding="utf-8"
-    )
-    ext = TSEExtractor(tmp_path)
-    ext.save_data(ext.extract_affiliations())
-    registros = json.loads((tmp_path / "filiacoes_partidarias.json").read_text(encoding="utf-8"))
-    por_nome = {r["politico_nome"]: r for r in registros}
-    assert (
-        por_nome["A"]["camara_id"] == 7
-        and isinstance(por_nome["A"]["camara_id"], int)
-        and por_nome["A"]["senado_id"] is None
-    )
-    assert por_nome["B"]["senado_id"] == 8 and isinstance(por_nome["B"]["senado_id"], int)
 
 
 def test_composicao_nao_copia_bancadas_de_outro_mandato():

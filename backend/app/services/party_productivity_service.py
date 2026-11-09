@@ -11,7 +11,7 @@ Implementa integralmente a Especificação do Módulo 4 e Módulo 8:
 3. Histórico Dinâmico de Mandatos (Cadeiras-Dia com rastreamento temporal de licenças e suplências)
 4. Gráfico de Quadrantes de Eficiência (Volume vs. Aprovação)
 5. Rotina de Ingestão e Processamento em Lote: vive em `etl/pipelines/cron_daily_consolidation.py` (este módulo fornece
-   `calculate_party_ippm_ranking` a ela; a fusão do staging é de `app.services.staging_merge`)
+   `calculate_party_ippm_ranking` a ela)
 """
 
 import logging

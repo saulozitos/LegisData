@@ -233,7 +233,8 @@ def ler_candidatos(zip_path: Path) -> pd.DataFrame:
     df = df.drop_duplicates("cand_key", keep="first").reset_index(drop=True)
     df["_civil"] = df["NM_CANDIDATO"].map(normalize_plain)
     df["_urna"] = df["NM_URNA_CANDIDATO"].map(normalize_plain)
-    df["_cpf"] = df["NR_CPF_CANDIDATO"].map(valid_cpf)
+    # CPF mascarado ou inválido vira "" (falso); None viraria NaN, que é verdadeiro e quebraria o casamento por CPF
+    df["_cpf"] = df["NR_CPF_CANDIDATO"].map(lambda valor: valid_cpf(valor) or "")
     df["_nasc"] = df["DT_NASCIMENTO"].map(parse_date)
     return df
 

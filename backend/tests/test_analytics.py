@@ -10,7 +10,7 @@ from app.api.v1.analytics import (
     _num,
     _relative,
 )
-from app.models import PartyAffiliation
+from tests.stg_models import PartyAffiliation
 
 from .conftest import criar_mandato_presidencial, observar_serie, registrar_repasse, registrar_resultado_eleitoral
 

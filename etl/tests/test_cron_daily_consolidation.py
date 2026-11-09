@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 
 from etl.pipelines.cron_daily_consolidation import execute_cron_pipeline
 
-ETAPAS_EXTERNAS = ("votacoes", "ponte", "derivados", "presenca", "economia", "financas", "pos", "ranking", "grafo")
-ORDEM = ["votacoes", "ponte", "derivados", "presenca", "economia", "financas", "pos", "ranking", "grafo"]
+ETAPAS_EXTERNAS = ("votacoes", "presenca", "economia", "financas", "pos", "ranking", "grafo")
+ORDEM = ["votacoes", "presenca", "economia", "financas", "pos", "ranking", "grafo"]
 
 
 ARGUMENTOS: dict = {}  # etapa -> argumentos posicionais da última chamada (zerado a cada `_executar`)
@@ -20,9 +20,7 @@ def _executar(efeitos=None, retornos=None, autorias=5):
     efeitos, retornos, ordem = efeitos or {}, retornos or {}, []
     ARGUMENTOS.clear()
     padrao = {
-        "votacoes": {"carga": {}},
-        "ponte": {"situacoes": 10},
-        "derivados": "refeito",
+        "votacoes": {"carga": {"votacoes": {"gravadas": 10}}},
         "presenca": {},
         "economia": {"series": 28},
         "financas": {"carga": {}},
@@ -32,8 +30,6 @@ def _executar(efeitos=None, retornos=None, autorias=5):
     }
     alvos = {
         "votacoes": "etl.pipelines.votacoes_atualizacao.atualizar",
-        "ponte": "etl.pipelines.cron_daily_consolidation.merge_staging",
-        "derivados": "etl.pipelines.cron_daily_consolidation.refazer_derivados_apos_carga",  # nunca o refresh de verdade
         "presenca": "etl.pipelines.presenca_atualizacao.atualizar",
         "economia": "etl.pipelines.economia_atualizacao.atualizar",
         "financas": "etl.pipelines.financas_atualizacao.atualizar",
@@ -72,7 +68,7 @@ def test_execute_cron_pipeline():
     )
     assert resultado["status"] == "SUCESSO" and resultado["erro_mensagem"] is None
     assert resultado["tempo_processamento_segundos"] >= 0 and "data_execucao" in resultado
-    # mandatos sincronizados + vínculos de autoria + partidos no ranking + arestas do grafo
+    # registros gravados pelas votações + vínculos de autoria + partidos no ranking + arestas do grafo
     assert resultado["registros_atualizados"] == 10 + 50 + 3 + 2
     assert {nome for nome, _ in ordem} == set(ETAPAS_EXTERNAS)  # a 1c (séries) e a 1d (CEAP e emendas) rodaram
     assert mock_db.add.called and mock_db.commit.called and mock_db.close.called
@@ -93,12 +89,12 @@ def test_falha_do_posprocessamento_vira_falha_critica_registrada_sem_texto_da_ex
     assert mock_db.add.call_args.args[0].erro_mensagem == "RuntimeError"  # e não à tabela pública
 
 
-def test_votacoes_carregam_antes_da_ponte_sem_sincronizar_e_as_financas_vem_antes_das_etapas_2_a_4():
+def test_votacoes_abrem_a_consolidacao_e_as_financas_vem_antes_das_etapas_2_a_4():
     resultado, ordem, _ = _executar()
 
-    # a ponte roda uma única vez (as votações não sincronizam), a presença vem depois dela e as finanças (1d) antes do IPPM
+    # a carga direta das votações (e de quem votou) é a etapa 1; a presença vem depois e as finanças (1d) antes do IPPM
     assert [nome for nome, _ in ordem] == ORDEM
-    assert ordem[0][1] == {"sincronizar": False}
+    assert ordem[0][1] == {}  # sem argumentos: o corte da última carga decide de que ano partir
     assert resultado["status"] == "SUCESSO"
 
 
@@ -117,7 +113,7 @@ def test_falha_na_etapa_de_votacoes_marca_falha_mas_as_demais_rodam():
     assert resultado["status"] == "FALHA"
     assert "votações: senado fora do ar" in resultado["erro_mensagem"]
     assert [nome for nome, _ in ordem] == ORDEM
-    assert resultado["registros_atualizados"] == 10 + 5 + 1  # mandatos + autorias + partidos (+0 arestas)
+    assert resultado["registros_atualizados"] == 5 + 1  # autorias + partidos (+0 arestas); a etapa que falhou não soma
     registrado = mock_db.add.call_args.args[0]
     assert registrado.status_execucao == "FALHA"
     assert registrado.erro_mensagem == "votações: RuntimeError"  # só etapa e classe: o texto da exceção fica no log
@@ -180,7 +176,6 @@ def _executar_so_financas():
     """Roda o cron com as demais etapas simuladas, deixando passar a chamada real à etapa de finanças."""
     alvos = {
         "etl.pipelines.votacoes_atualizacao.atualizar": {"carga": {}},
-        "etl.pipelines.cron_daily_consolidation.merge_staging": {"situacoes": 0},
         "etl.pipelines.presenca_atualizacao.atualizar": {},
         "etl.pipelines.economia_atualizacao.atualizar": {},
         "etl.pipelines.cron_daily_consolidation.calculate_party_ippm_ranking": {"ranking": []},
@@ -203,33 +198,33 @@ def test_estado_dos_derivados_aparece_no_resultado_sem_mudar_o_status():
     assert resultado["status"] == "SUCESSO" and resultado["derivados"] == "ocupado"
 
 
-def test_derivados_e_pos_processamento_recebem_o_engine_do_app():
+def test_pos_processamento_recebe_o_engine_do_app():
     """Se o cron passasse a sessão em vez do engine, as duas chamadas cairiam no `except` e o cron seguiria SUCESSO."""
     from app.core.database import engine
 
     resultado, _, _ = _executar()
     assert resultado["status"] == "SUCESSO"
-    assert ARGUMENTOS["derivados"] == (engine,) and ARGUMENTOS["pos"] == (engine,)
+    assert ARGUMENTOS["pos"] == (engine,)
 
 
 def test_falha_critica_nao_esconde_a_falha_de_etapa_anterior():
-    """Votações falham e depois a fusão também: as duas ficam no log do servidor e na tabela pública, na ordem."""
-    resultado, _, mock_db = _executar(efeitos={"votacoes": RuntimeError("a"), "ponte": RuntimeError("b")})
+    """Votações falham e depois o IPPM também: as duas ficam no log do servidor e na tabela pública, na ordem."""
+    resultado, _, mock_db = _executar(efeitos={"votacoes": RuntimeError("a"), "ranking": RuntimeError("b")})
 
     assert resultado["status"] == "FALHA" and resultado["erro_mensagem"] == "votações: a; b"
     assert mock_db.add.call_args.args[0].erro_mensagem == "votações: RuntimeError; RuntimeError"
 
 
-def test_fusao_que_falha_com_sessao_real_registra_o_log_e_solta_a_trava_de_reserva(pg_engine):
+def test_falha_critica_com_sessao_real_registra_o_log_e_solta_a_trava_de_reserva(pg_engine):
     """
-    Com uma sessão de verdade (e não um `MagicMock`): a fusão reserva a trava de controle e falha; o cron desfaz a
+    Com uma sessão de verdade (e não um `MagicMock`): o IPPM reserva a trava de controle e falha; o cron desfaz a
     transação abortada, grava a FALHA em `etl.log_execucao_cron` e a linha de controle fica livre para a próxima carga.
     """
     from app.services.derivados_service import reservar_derivados
     from sqlalchemy import text
     from sqlalchemy.orm import sessionmaker
 
-    def fusao_que_reserva_e_quebra(db):
+    def ranking_que_reserva_e_quebra(db):
         reservar_derivados(db)
         db.execute(text("SELECT 1/0"))  # a sessão sai desta chamada com a transação abortada
 
@@ -237,7 +232,14 @@ def test_fusao_que_falha_com_sessao_real_registra_o_log_e_solta_a_trava_de_reser
         patch("etl.pipelines.cron_daily_consolidation.SessionLocal", sessionmaker(bind=pg_engine)),
         patch("etl.pipelines.cron_daily_consolidation.engine", pg_engine),
         patch("etl.pipelines.votacoes_atualizacao.atualizar", return_value={"carga": {}}),
-        patch("etl.pipelines.cron_daily_consolidation.merge_staging", side_effect=fusao_que_reserva_e_quebra),
+        patch("etl.pipelines.presenca_atualizacao.atualizar", return_value={}),
+        patch("etl.pipelines.economia_atualizacao.atualizar", return_value={}),
+        patch("etl.pipelines.financas_atualizacao.atualizar", return_value={}),
+        patch("etl.pipelines.cron_daily_consolidation.posprocessar_carga", return_value="em_dia"),
+        patch(
+            "etl.pipelines.cron_daily_consolidation.calculate_party_ippm_ranking",
+            side_effect=ranking_que_reserva_e_quebra,
+        ),
     ):
         resultado = execute_cron_pipeline()
 
@@ -255,11 +257,11 @@ def test_fusao_que_falha_com_sessao_real_registra_o_log_e_solta_a_trava_de_reser
         outra.execute(text("SELECT 1 FROM leg.pontuacao_controle FOR UPDATE NOWAIT"))
 
 
-def test_fusao_que_falha_desfaz_a_sessao_e_ainda_registra_a_execucao():
+def test_falha_critica_desfaz_a_sessao_e_ainda_registra_a_execucao():
     """Sem o rollback, o commit do log levantaria PendingRollbackError e a FALHA ficaria sem registro na tabela pública."""
-    resultado, ordem, mock_db = _executar(efeitos={"ponte": RuntimeError("fusão quebrou")})
-    assert resultado["status"] == "FALHA" and "fusão quebrou" in resultado["erro_mensagem"]
+    resultado, ordem, mock_db = _executar(efeitos={"ranking": RuntimeError("ranking quebrou")})
+    assert resultado["status"] == "FALHA" and "ranking quebrou" in resultado["erro_mensagem"]
     chamadas = [chamada[0] for chamada in mock_db.mock_calls]
     assert chamadas.index("rollback") < chamadas.index("add") < chamadas.index("commit")
     assert mock_db.add.call_args.args[0].erro_mensagem == "RuntimeError"  # só a classe, nunca o texto
-    assert [nome for nome, _ in ordem] == ["votacoes", "ponte"]  # a falha da fusão interrompe as etapas seguintes
+    assert [nome for nome, _ in ordem] == ORDEM[: ORDEM.index("ranking") + 1]  # a falha crítica interrompe o grafo

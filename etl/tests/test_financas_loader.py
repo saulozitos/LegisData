@@ -219,6 +219,50 @@ def _contar(engine, tabela):
         return conn.execute(text(f"SELECT count(*) FROM fin.{tabela}")).scalar()
 
 
+def _gravar_cpf(conn, pessoa_id, valor, fonte="CAMARA_API"):
+    conn.execute(
+        text(
+            "INSERT INTO core.pessoa_identificador (pessoa_id, fonte_id, tipo, valor) VALUES (:p, "
+            "(SELECT id FROM etl.fonte WHERE codigo = :f), 'CPF_HMAC', :v)"
+        ),
+        {"p": pessoa_id, "v": valor, "f": fonte},
+    )
+
+
+def test_resolvedor_liga_pelo_hmac_do_cpf_antes_do_nome(pg_engine, banco):
+    hmac_ana = "a" * 64
+    with pg_engine.begin() as conn:
+        _gravar_cpf(conn, banco["ana"], hmac_ana)
+    with pg_engine.connect() as conn:
+        resolvedor = ResolvedorDePessoas(conn)
+        # sem id oficial e com nome diferente, o HMAC do CPF acha a pessoa
+        assert resolvedor.resolver({"cpf_hmac": hmac_ana, "nome_civil": "Nome Diferente"}).pessoa_id == banco["ana"]
+        # o id oficial vale antes do HMAC, mesmo que o HMAC seja de outra pessoa
+        assert resolvedor.resolver({"camara_id": 100, "cpf_hmac": hmac_ana}).pessoa_id == banco["ana"]
+        assert resolvedor.resolver({"senado_id": 200, "cpf_hmac": hmac_ana}).pessoa_id == banco["beto"]
+        # HMAC desconhecido cai no nome, mas só entre quem não tem CPF conhecido diferente: o da Ana é outro, então ela
+        # (homônima por nome) NÃO é candidata; quem não tem CPF cadastrado continua sendo
+        assert resolvedor.resolver({"cpf_hmac": "c" * 64, "nome": "Ana Souza"}).situacao == "NAO_CADASTRADO"
+        assert resolvedor.resolver({"cpf_hmac": "c" * 64, "nome": "Beto Lima"}).pessoa_id == banco["beto"]
+        # sem HMAC no registro vale o nome como antes
+        assert resolvedor.resolver({"cpf_hmac": None, "nome": "Ana Souza"}).pessoa_id == banco["ana"]
+        assert resolvedor.resolver({"cpf_hmac": None, "nome": "Ninguem"}).situacao == "NAO_CADASTRADO"
+
+
+def test_hmac_que_casa_com_duas_pessoas_e_ambiguo_e_nao_cai_no_nome(pg_engine, banco):
+    repetido = "d" * 64
+    with pg_engine.begin() as conn:
+        _gravar_cpf(conn, banco["ana"], repetido, "CAMARA_API")
+        _gravar_cpf(
+            conn, banco["beto"], repetido, "SENADO_API"
+        )  # a fusão ainda não veio: o mesmo CPF em dois cadastros
+    with pg_engine.connect() as conn:
+        resolvedor = ResolvedorDePessoas(conn)
+        achado = resolvedor.resolver({"cpf_hmac": repetido, "nome": "Ana Souza"})
+        assert (achado.pessoa_id, achado.situacao) == (None, "HOMONIMO_NAO_DESAMBIGUADO")
+        assert resolvedor.por_cpf_hmac(repetido) is None
+
+
 def test_resolvedor_usa_id_depois_nome_unico_e_desfaz_homonimo_pelo_mandato(pg_engine, banco):
     with pg_engine.connect() as conn:
         resolvedor = ResolvedorDePessoas(conn)
@@ -1137,29 +1181,6 @@ def test_fronteiras_do_mandato_dentro_do_ano(pg_engine, banco):
         resolvedor = ResolvedorDePessoas(conn)
         assert resolvedor.por_nome(["Eva Fim"], 2020).pessoa_id == a  # termina em 31/12: ainda conta
         assert resolvedor.por_nome(["Eva Fim"], 2021).pessoa_id == b  # começa em 01/01 do outro
-
-
-def test_resolvedor_junta_o_cadastro_do_legado_ao_que_tem_identificador(pg_engine, banco):
-    with pg_engine.begin() as conn:
-        legado = _pessoa(conn, "Gemeo Legado")
-        canonica = _pessoa(conn, "Gemeo Legado", camara_id=600, mandato=("2023-02-01", None))
-        uid = conn.execute(text("SELECT uid FROM core.pessoa WHERE id = :p"), {"p": legado}).scalar()
-        conn.execute(
-            text(
-                'INSERT INTO stg.politicos (id, "nomeCivil", "nomeEleitoral", "camaraId") '
-                "VALUES (:u, 'Gemeo Legado', 'Gemeo Legado', 600)"
-            ),
-            {"u": uid},
-        )
-    try:
-        with pg_engine.connect() as conn:
-            resolvedor = ResolvedorDePessoas(conn)
-            # os dois cadastros contam como uma pessoa: sem homônimo, e o dado vai para o que tem identificador
-            assert resolvedor.por_nome(["Gemeo Legado"], 2024).pessoa_id == canonica
-            assert resolvedor.por_nome(["Gemeo Legado"]).situacao == "IDENTIFICADO"
-    finally:
-        with pg_engine.begin() as conn:
-            conn.execute(text("DELETE FROM stg.politicos WHERE id = :u"), {"u": uid})
 
 
 def test_cada_carga_grava_a_fonte_certa(pg_engine, banco, tmp_path):

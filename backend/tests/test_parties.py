@@ -1,14 +1,15 @@
 from datetime import date
 
-from app.models import CargoPoliticoEnum, Mandate, PartyAffiliation, Politician, StatusMandatoEnum
-from app.services.staging_merge import merge_staging
+from app.models import CargoPoliticoEnum, StatusMandatoEnum
+from tests.projecao import merge_staging
+from tests.stg_models import Mandate, PartyAffiliation, Politician
 
 from .conftest import criar_mandato_presidencial
 from .test_composicao import _composicao
 
 
 def test_list_parties_counts_only_current_mandates(client, db, seed):
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     response = client.get("/api/v1/parties")
     assert response.status_code == 200
     by_sigla = {p["sigla"]: p for p in response.json()}
@@ -26,18 +27,18 @@ def test_list_parties_counts_only_current_mandates(client, db, seed):
 
 
 def test_list_parties_excludes_placeholder_party_and_sorts_by_caucus(client, db, seed):
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     siglas = [p["sigla"] for p in client.get("/api/v1/parties").json()]
     assert "S.PART." not in siglas
     assert siglas == ["PTB", "PT"]  # maior bancada primeiro
 
 
 def test_list_parties_does_not_invent_ideology_motto_or_spectrum(client, db, seed):
-    from app.models import PoliticalParty
+    from tests.stg_models import PoliticalParty
 
     db.add(PoliticalParty(acronym="SEMDADOS", full_name="Partido Sem Dados"))
     db.commit()
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     parties = {p["sigla"]: p for p in client.get("/api/v1/parties").json()}
     sem_dados = parties["SEMDADOS"]
     # Sigla fora da tabela de sementes e sem dado no legado: tudo permanece nulo, nada é inventado
@@ -64,7 +65,7 @@ def test_same_politician_is_counted_once_per_party(client, db, seed):
         )
     )
     db.commit()
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     pt = next(p for p in client.get("/api/v1/parties").json() if p["sigla"] == "PT")
     assert pt["total_deputados"] == 2
 
@@ -85,7 +86,7 @@ def test_inactive_status_is_not_part_of_the_current_caucus(client, db, seed):
         )
     )
     db.commit()
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     pt = next(p for p in client.get("/api/v1/parties").json() if p["sigla"] == "PT")
     assert pt["total_deputados"] == 2
 
@@ -109,7 +110,7 @@ def test_senators_are_counted_separately(client, db, seed):
         PartyAffiliation(politician_id=senador.id, party_id=seed.pt.id, start_date=date(2020, 1, 1), is_current=True)
     )
     db.commit()
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     pt = next(p for p in client.get("/api/v1/parties").json() if p["sigla"] == "PT")
     assert (pt["total_deputados"], pt["total_senadores"], pt["total_parlamentares"]) == (2, 1, 3)
 
@@ -246,9 +247,9 @@ def test_service_merge_staging_and_active_seats(db, seed):
     from datetime import date
 
     from app.services.party_productivity_service import calculate_party_active_seats
-    from app.services.staging_merge import merge_staging
+    from tests.projecao import merge_staging
 
-    synced = int(merge_staging(db)["situacoes"])
+    synced = int(merge_staging(db, preparar=False)["situacoes"])
     assert synced >= 0
 
     seats_pt = calculate_party_active_seats(
@@ -266,7 +267,7 @@ def test_service_merge_staging_and_active_seats(db, seed):
 def test_list_parties_resolves_official_party_logos(client, db, seed):
     from urllib.parse import urlparse
 
-    merge_staging(db)
+    merge_staging(db, preparar=False)
 
     parties = {p["sigla"]: p for p in client.get("/api/v1/parties").json()}
     assert parties["PT"]["logo_url"] is not None

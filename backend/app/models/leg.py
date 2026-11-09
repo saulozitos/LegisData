@@ -86,7 +86,7 @@ class Votacao(MigratedBase):
     descricao: Mapped[Optional[str]] = mapped_column(Text)
     tipo_deliberacao: Mapped[str] = mapped_column(Text)
     secreta: Mapped[bool] = mapped_column(Boolean)
-    aprovada: Mapped[bool] = mapped_column(Boolean)
+    aprovada: Mapped[Optional[bool]] = mapped_column(Boolean)  # NULL: a fonte não informa o resultado
     local_deliberacao: Mapped[Optional[str]] = mapped_column(Text)
     nome_comissao: Mapped[Optional[str]] = mapped_column(Text)
     link_ata: Mapped[Optional[str]] = mapped_column(Text)

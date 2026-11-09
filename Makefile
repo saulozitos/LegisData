@@ -1,4 +1,4 @@
-.PHONY: help daily ci test-db-up test-db-down db-migrate db-revision lint format typecheck security test run-all run-etl run-camara run-senado run-tse run-load-db up-db down-db backend-dev run-frontend build-frontend docker-up docker-down
+.PHONY: help daily ci test-db-up test-db-down db-migrate db-revision lint format typecheck security test run-all run-etl run-camara run-senado run-load-db up-db down-db backend-dev run-frontend build-frontend docker-up docker-down
 
 # Identificação de ambiente Python
 PYTHON_BIN := $(shell if [ -d "backend/venv/bin" ]; then echo "backend/venv/bin"; elif [ -d ".venv/bin" ]; then echo ".venv/bin"; else echo ""; fi)
@@ -52,7 +52,6 @@ help:
 	@echo "  make run-etl          - Executa apenas a extração macroeconômica (BCB/IBGE)"
 	@echo "  make run-camara       - Executa extração da Câmara dos Deputados"
 	@echo "  make run-senado       - Executa extração do Senado Federal"
-	@echo "  make run-tse          - Executa extração de filiação partidária (TSE)"
 	@echo "  make run-orcamento    - Executa modelagem de repasses orçamentários por UF"
 	@echo "  make run-composicao   - Executa curadoria da composição do Congresso"
 	@echo "  make run-load-db      - Carrega e efetua upsert relacional no PostgreSQL"
@@ -122,9 +121,6 @@ run-camara:
 
 run-senado:
 	PYTHONPATH=. $(PY) etl/run_etl.py --senado
-
-run-tse:
-	PYTHONPATH=. $(PY) etl/run_etl.py --tse
 
 run-orcamento:
 	PYTHONPATH=. $(PY) etl/run_etl.py --orcamento

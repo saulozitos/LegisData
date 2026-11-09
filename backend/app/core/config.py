@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "LegisData API"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
+    # chave do HMAC do CPF (identificador `CPF_HMAC`); vazia = o ETL não liga pessoas por CPF. Guarde uma cópia: sem ela os
+    # CPFs novos não casam com os já gravados.
+    CPF_HMAC_KEY: str = ""
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "politica_user")

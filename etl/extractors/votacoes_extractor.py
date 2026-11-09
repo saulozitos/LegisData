@@ -718,6 +718,9 @@ class VotacoesSenadoExtractor:
 
 
 # ---------------------------------------------------------------------------------------------- parlamentares de legislaturas anteriores
+ARQUIVO_ANTERIORES = "parlamentares_legislaturas_anteriores.json"
+
+
 def _como_lista(valor: Any) -> List[Any]:
     if not valor:
         return []
@@ -789,11 +792,12 @@ def extrair_parlamentares_historicos(
                 if item["inicio"] and item not in reg["mandatos"]:
                     reg["mandatos"].append(item)
 
+    # nome completo e nascimento dos senadores vêm de `senadores_basicos_extractor` (dono único do detalhe `/senador/{codigo}`)
     if not deputados and not senadores:
         logger.error("Nenhum parlamentar histórico extraído — arquivo existente preservado.")
         return {"deputados": 0, "senadores": 0}
     atomic_write_json(
-        Path(processed_dir) / "parlamentares_legislaturas_anteriores.json",
+        Path(processed_dir) / ARQUIVO_ANTERIORES,
         {
             "fonte": "Câmara (/deputados?idLegislatura) e Senado (/senador/lista/legislatura) — Dados Abertos",
             "is_synthetic": False,

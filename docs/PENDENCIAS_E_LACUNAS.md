@@ -103,13 +103,13 @@ A refatoração da branch `fix/analise-completa-correcoes` concluiu **100%** das
 
 ---
 
-### 2.10 Cadastros duplicados de uma mesma pessoa [CONCLUÍDO PARA O LEGADO]
+### 2.10 Cadastros duplicados de uma mesma pessoa [CONCLUÍDO]
 
-Os cadastros duplicados dos políticos que existem no legado são unidos pela migração 0034 e a cada sincronização do legado (`core.unificar_duplicadas`), com o `uid` público preservado. Fica uma regra para a Fase 7: o novo ETL tem de resolver a pessoa pelo identificador oficial antes de criar uma, senão a duplicata volta. Pessoas que só existem no histórico e nunca tiveram cadastro público não têm duplicata e continuam com o `uid` do histórico.
+Os cadastros duplicados dos políticos que existiam no legado foram unidos pela migração 0034, com o `uid` público preservado. A carga resolve a pessoa só pelo identificador oficial (`etl/carga/sql/pessoas.sql`), então a duplicata não nasce mais (a 0039 tirou `core.unificar_duplicadas`); `core.unificar_pessoas` (a união em si) fica para quem precisar unir à mão. Pessoas que só existem no histórico e nunca tiveram cadastro público não têm duplicata e continuam com o `uid` do histórico.
 
-### 2.11 Novo ETL direto em `stg` [PRÓXIMA ENTREGA]
+### 2.11 ETL direto, sem staging [FEITA]
 
-O ETL ainda preenche as tabelas de `stg` por ORM (`db_loader.py`) e as funções `etl.merge_*` as projetam em `core` e `leg`. A entrega que fecha a Fase 7 troca isso por `COPY`, registro de execução, arquivo de origem e verificações por fonte, e aposenta o `db_loader`. O roteiro, os pontos de atenção e a prova de que nada se perdeu estão em [`PROXIMA_ENTREGA_NOVO_ETL.md`](PROXIMA_ENTREGA_NOVO_ETL.md).
+A carga do cadastro e do legislativo lê o arquivo, despeja numa tabela temporária da própria transação e grava em `core`/`leg` com `INSERT ... ON CONFLICT` pela chave natural (identificador oficial da pessoa, número e ano da proposição, id da votação), numa execução própria por recurso em `etl.execucao` (`etl/carga`; o desenho está em `docs/ETL_SIMPLES.md`). Não há tabela `stg`, tabela de trabalho nem função de fusão; `etl.corte` guarda até que data cada fonte foi baixada. O nome nunca cria nem une pessoa: a mesma pessoa com ids diferentes vira linha em `core.pessoa_candidata_duplicidade`.
 
 ## 3. Resolução das Dívidas Técnicas
 
@@ -139,7 +139,7 @@ O ETL ainda preenche as tabelas de `stg` por ORM (`db_loader.py`) e as funções
 A API apagava, a cada subida, mandatos de legendas sem registro no TSE e tratava a MISSÃO assim. A 0036 tirou essa
 limpeza: o Partido Missão tem registro no TSE, o banco de desenvolvimento não tem mandato nem filiação dessa sigla e o ETL
 a carrega como qualquer outra legenda. A premissa vale para o banco de hoje. Se uma fonte voltar a atribuir a sigla por
-engano, o mandato entra em `stg.mandatos` e segue para `core.mandato`; confira `core.mandato` por partido depois da
+engano, o mandato entra pela carga das pessoas em `core.mandato`; confira `core.mandato` por partido depois da
 primeira carga completa e, se aparecer, a regra volta como validação do ETL (não como limpeza na subida da API).
 
 ## Funções `SECURITY DEFINER` dos derivados
@@ -166,7 +166,7 @@ para o derivado fecha a divergência e fica para a entrega do novo ETL.
 ## Gatilhos dos derivados disparam por comando, não por linha alterada
 
 Os gatilhos `BEFORE ... FOR EACH STATEMENT` da migração 0037 ligam o sinalizador `sujo` em todo `INSERT`, `UPDATE` ou `DELETE`
-nas dependências, mesmo que o comando não altere linha nenhuma. Como toda fusão `etl.merge_*` executa esses comandos, o estado
+nas dependências, mesmo que o comando não altere linha nenhuma. Como toda carga em `etl/carga` executa esses comandos, o estado
 `'em_dia'` quase nunca aparece logo depois de uma carga e o cron paga dois refreshes por dia (cerca de 10 s cada). O resultado
 é correto; só há trabalho a mais. Um gatilho com tabela de transição (`REFERENCING NEW TABLE`) marcaria só quando houvesse
 linhas, mas teria de ser `AFTER` e mudaria a ordem das travas que evita o deadlock entre cargas (ver a docstring da 0037), então

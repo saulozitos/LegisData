@@ -3,16 +3,12 @@ from datetime import date
 import pytest
 from app.api.v1.politicians import _normalize_name
 from app.core.query_utils import escape_like as _escape_like
-from app.models import (
-    AttendanceRecord,
-    CasaLegislativaEnum,
-    Politician,
-    TipoPresencaEnum,
-)
+from app.models import CasaLegislativaEnum, TipoPresencaEnum
 from app.services import financas_service
 from app.services.financas_service import Processo
 from app.services.judicial_service import classe_e_assuntos, processo_detalhado
 from sqlalchemy import text
+from tests.stg_models import AttendanceRecord, Politician
 
 from .conftest import criar_mandato_presidencial, fonte_id, inserir_fin, pessoa_do
 
@@ -92,7 +88,7 @@ def test_search_treats_special_characters_literally(client, db, seed, term):
     response = client.get(BASE, params={"search": term})
     assert response.status_code == 200
     assert response.json()["total"] == 0  # '%' e '_' não são curingas
-    assert db.execute(text("SELECT COUNT(*) FROM stg.politicos")).scalar() == 6  # a tabela continua intacta
+    assert db.execute(text("SELECT COUNT(*) FROM w_politicos")).scalar() == 6  # a tabela continua intacta
 
 
 def test_search_party_filter_is_exact_and_current_only(client, seed):
@@ -131,7 +127,7 @@ def test_search_row_uses_current_party_and_real_photo_fallbacks(client, seed):
 
 
 def test_senator_photo_url_is_canonical_https(client, db):
-    from app.models.politician import Politician
+    from tests.stg_models import Politician
 
     senador = Politician(
         civil_name="Izalci Lucas",
@@ -297,7 +293,8 @@ def test_executive_initiatives_only_for_who_held_the_presidency(client, seed):
 
 def test_executive_initiatives_respect_the_presidential_term_window(client, db, seed):
     # Iniciativa anterior à posse não pertence ao mandato
-    from app.models import Proposition, TipoProposicaoEnum
+    from app.models import TipoProposicaoEnum
+    from tests.stg_models import Proposition
 
     db.add(
         Proposition(

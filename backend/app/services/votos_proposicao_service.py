@@ -117,14 +117,8 @@ def contexto_mandato(db: Session, pessoa_ids: List[int], data_ref: Optional[date
 
 
 def _sessao_pelo_id(db: Session, sessoes: List[Votacao], sessao_uid: uuid.UUID) -> Optional[Votacao]:
-    """A sessão pelo id público; links antigos (ids do legado) ainda resolvem pela tabela de correspondência."""
-    achada = next((s for s in sessoes if s.uid == sessao_uid), None)
-    if achada is not None:
-        return achada
-    votacao_id = db.execute(
-        text("SELECT votacao_id FROM leg.votacao_legado WHERE legado_id = :id LIMIT 1"), {"id": sessao_uid}
-    ).scalar()
-    return next((s for s in sessoes if s.id == votacao_id), None) if votacao_id is not None else None
+    """A sessão pelo id público (`uid`)."""
+    return next((s for s in sessoes if s.uid == sessao_uid), None)
 
 
 def _consulta_votos(db: Session, sessao: Votacao, busca: Optional[str] = None) -> Tuple[Any, Any]:

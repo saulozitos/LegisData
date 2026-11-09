@@ -17,6 +17,18 @@ from app.core.migrations import upgrade_schema  # noqa: E402
 from app.models import (  # noqa: E402
     CargoPoliticoEnum,
     CasaLegislativaEnum,
+    StatusMandatoEnum,
+    TipoProposicaoEnum,
+    VotoOpcaoEnum,
+)
+from app.services import cidadania_service  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine, text  # noqa: E402
+from sqlalchemy.exc import OperationalError  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+from tests.projecao import instalar as instalar_projecao  # noqa: E402
+from tests.projecao import merge_staging  # noqa: E402
+from tests.stg_models import (  # noqa: E402
     Mandate,
     ParliamentaryVote,
     PartyAffiliation,
@@ -24,17 +36,8 @@ from app.models import (  # noqa: E402
     Politician,
     Proposition,
     StagingBase,
-    StatusMandatoEnum,
-    TipoProposicaoEnum,
     VotingSession,
-    VotoOpcaoEnum,
 )
-from app.services import cidadania_service  # noqa: E402
-from app.services.staging_merge import merge_staging  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import create_engine, text  # noqa: E402
-from sqlalchemy.exc import OperationalError  # noqa: E402
-from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 FAR_FUTURE = date(2999, 1, 31)
 
@@ -93,6 +96,8 @@ def pg_engine():
             os.environ.pop("ALEMBIC_DATABASE_URL", None)
         else:
             os.environ["ALEMBIC_DATABASE_URL"] = previous
+    # tabelas de entrada da projeção de teste (`w_*` e as do legado em `stg`) e as funções que as levam a core/leg
+    instalar_projecao(engine)
     yield engine
     engine.dispose()
 
@@ -111,7 +116,7 @@ def _truncate_sql(pg_engine):
                 )
             )
         ]
-    legacy = [f'stg."{t.name}"' for t in StagingBase.metadata.sorted_tables if t.schema == "stg"]
+    legacy = [f'{t.schema or "public"}."{t.name}"' for t in StagingBase.metadata.sorted_tables]
     return "TRUNCATE " + ", ".join(legacy + core + list(_ETL_DATA_TABLES)) + " RESTART IDENTITY CASCADE"
 
 
@@ -141,9 +146,9 @@ def client(session_factory):
             # Os testes semeiam o schema legado; os endpoints leem o schema novo. A ponte projeta o legado antes de
             # cada requisição (só quando há dados legados, para não apagar dados escritos direto nos schemas novos).
             if session.execute(
-                text("SELECT EXISTS (SELECT 1 FROM stg.politicos) OR EXISTS (SELECT 1 FROM stg.proposicoes)")
+                text("SELECT EXISTS (SELECT 1 FROM w_politicos) OR EXISTS (SELECT 1 FROM w_proposicoes)")
             ).scalar():
-                merge_staging(session)
+                merge_staging(session, preparar=False)
             yield session
         finally:
             session.close()
@@ -252,7 +257,7 @@ def pessoa(db):
 
 def pessoa_do(db, politico):
     """`core.pessoa` do político do legado (a ponte cria o cadastro com o mesmo `uid`)."""
-    merge_staging(db)
+    merge_staging(db, preparar=False)
     return db.execute(text("SELECT id FROM core.pessoa WHERE uid = :uid"), {"uid": politico.id}).scalar_one()
 
 

@@ -22,19 +22,11 @@ def test_modulo_importa(nome):
     importlib.import_module(nome)
 
 
-def test_db_loader_importa_e_expoe_api_publica():
-    db_loader = importlib.import_module("etl.pipelines.db_loader")
-    assert hasattr(db_loader, "DatabaseLoader")
-    for metodo in (
-        "load_all",
-        "_load_political_parties",
-        "_load_politicians",
-        "_load_party_affiliations",
-        "_load_mandates",
-        "_load_propositions",
-        "_load_voting_sessions_and_votes",
-    ):
-        assert callable(getattr(db_loader.DatabaseLoader, metodo))
+def test_carga_direta_importa_e_expoe_api_publica():
+    carga = importlib.import_module("etl.carga.orquestra")
+    assert hasattr(carga, "Carga") and carga.RECURSOS
+    for metodo in ("carregar", "lote", *(f"_{r}" for r in carga.RECURSOS)):
+        assert callable(getattr(carga.Carga, metodo)), metodo
 
 
 def test_nenhum_nome_indefinido_nos_fontes():

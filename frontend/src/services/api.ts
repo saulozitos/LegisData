@@ -154,7 +154,7 @@ export interface SessaoVotacaoDetalhes {
   data_hora: string;
   titulo?: string;
   descricao: string;
-  aprovada: boolean;
+  aprovada: boolean | null;
   external_id?: string;
   placar?: PlacarVotos;
 }
@@ -726,7 +726,7 @@ export interface PropositionVotesResponse {
     descricao?: string;
     data_hora: string;
     casa: string;
-    aprovada: boolean;
+    aprovada: boolean | null;
     is_votacao_secreta?: boolean;
     placar?: { SIM: number; NAO: number; ABSTENCAO: number; TOTAL: number };
   } | null;
@@ -735,7 +735,7 @@ export interface PropositionVotesResponse {
     titulo: string;
     data_hora: string;
     casa: string;
-    aprovada: boolean;
+    aprovada: boolean | null;
     is_votacao_secreta?: boolean;
   }>;
   is_votacao_secreta?: boolean;
@@ -863,7 +863,7 @@ export interface VotoHistoricoItem {
   decisao: string;
   sessao_titulo: string;
   sessao_data: string;
-  sessao_aprovada: boolean;
+  sessao_aprovada: boolean | null;
   casa_legislativa: string;
 }
 
@@ -887,7 +887,7 @@ export interface VotoHistoricoDetalhadoItem {
   voto: string;
   decisao: string;
   sessao_titulo: string;
-  sessao_aprovada: boolean;
+  sessao_aprovada: boolean | null;
   casa_legislativa: string;
   url_oficial?: string | null;
 }
@@ -1470,7 +1470,7 @@ export interface DeliberacaoItem {
   data_hora: string;
   local_deliberacao: string;
   resumo_decisao: string;
-  aprovada: boolean;
+  aprovada: boolean | null;
   orientacoes_partidarias?: OrientacaoPartidariaItem[];
   // Se COMISSAO
   nome_comissao?: string;
@@ -1549,7 +1549,7 @@ export interface PropositionNominalVotesSplitResponse {
     descricao?: string;
     data_hora: string;
     casa_legislativa: string;
-    aprovada: boolean;
+    aprovada: boolean | null;
     total_votos: number;
   } | null;
   placar: {
@@ -1779,7 +1779,7 @@ export interface SessaoCalendarioItem {
   hora: string;
   titulo: string;
   descricao: string;
-  aprovada: boolean;
+  aprovada: boolean | null;
   is_votacao_secreta?: boolean;
   placar: {
     sim: number;
