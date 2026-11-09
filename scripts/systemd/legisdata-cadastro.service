@@ -1,0 +1,13 @@
+[Unit]
+Description=LegisData - atualização diária do cadastro e do legislativo (políticos, mandatos, proposições, votações, filiações)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+# Serviço do USUÁRIO (systemctl --user), sem sudo. O caminho do projeto vem de ~/.legisdata-deploy/ambiente (LEGISDATA_DIR=...),
+# criado na instalação (docs/DEPLOY_AUTOMATICO.md), como no legisdata-financas.service.
+Type=oneshot
+EnvironmentFile=%h/.legisdata-deploy/ambiente
+# Executa a cópia instalada (o deploy a mantém igual à do commit implantado)
+ExecStart=%h/.legisdata-deploy/atualizar_cadastro.sh
+TimeoutStartSec=4h

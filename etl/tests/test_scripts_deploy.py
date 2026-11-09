@@ -142,6 +142,7 @@ def test_senha_do_banco_vai_por_arquivo_de_ambiente_e_nao_pela_linha_de_comando(
 
 DEPLOY_SH = RAIZ / "scripts" / "deploy" / "deploy.sh"
 FINANCAS_SH = RAIZ / "scripts" / "deploy" / "atualizar_financas.sh"
+CADASTRO_SH = RAIZ / "scripts" / "deploy" / "atualizar_cadastro.sh"
 INSTALAR_SH = RAIZ / "scripts" / "deploy" / "instalar.sh"
 SYSTEMD = RAIZ / "scripts" / "systemd"
 SEM_FLOCK = pytest.mark.skipif(shutil.which("flock") is None, reason="flock (util-linux) indisponível")
@@ -1315,6 +1316,7 @@ def _instalacao(tmp_path, *, tag=None, env_rc="0", timer_rc="0", previo=None, dr
         + "# <<< pendencias\n"
     )
     shutil.copy(FINANCAS_SH, repo / "scripts" / "deploy" / "atualizar_financas.sh")
+    shutil.copy(CADASTRO_SH, repo / "scripts" / "deploy" / "atualizar_cadastro.sh")
     shutil.copy(INSTALAR_SH, repo / "scripts" / "deploy" / "instalar.sh")
     for unit in SYSTEMD.glob("legisdata-*"):
         shutil.copy(unit, repo / "scripts" / "systemd" / unit.name)
@@ -1365,7 +1367,7 @@ def _instalacao(tmp_path, *, tag=None, env_rc="0", timer_rc="0", previo=None, dr
 
 
 @SEM_BASH
-def test_primeira_instalacao_marca_o_commit_que_esta_no_ar_instala_tudo_e_liga_os_dois_timers(tmp_path):
+def test_primeira_instalacao_marca_o_commit_que_esta_no_ar_instala_tudo_e_liga_os_tres_timers(tmp_path):
     repo, casa, registro, sha, executar = _instalacao(tmp_path)
     resposta = executar()
     assert resposta.returncode == 0, resposta.stdout + resposta.stderr
@@ -1373,7 +1375,7 @@ def test_primeira_instalacao_marca_o_commit_que_esta_no_ar_instala_tudo_e_liga_o
     assert (destino / "ultimo_sha").read_text().strip() == sha and (destino / "ultima_tag").read_text().strip() == sha[
         :7
     ]
-    for script in ("deploy.sh", "atualizar_financas.sh"):
+    for script in ("deploy.sh", "atualizar_financas.sh", "atualizar_cadastro.sh"):
         assert (destino / script).stat().st_mode & stat.S_IXUSR
     unidades = {p.name for p in (casa / ".config" / "systemd" / "user").iterdir()}
     assert unidades == {
@@ -1381,10 +1383,13 @@ def test_primeira_instalacao_marca_o_commit_que_esta_no_ar_instala_tudo_e_liga_o
         "legisdata-deploy.timer",
         "legisdata-financas.service",
         "legisdata-financas.timer",
+        "legisdata-cadastro.service",
+        "legisdata-cadastro.timer",
     }
     chamadas = (registro / "chamadas.log").read_text()
     assert "systemctl --user enable --now legisdata-deploy.timer" in chamadas
     assert "systemctl --user enable --now legisdata-financas.timer" in chamadas
+    assert "systemctl --user enable --now legisdata-cadastro.timer" in chamadas
     assert "dry-run ok" in resposta.stdout and "deploy-falso --dry-run" in resposta.stdout
 
 
@@ -1742,3 +1747,10 @@ def test_o_script_das_financas_deixa_o_diretorio_de_estado_700(tmp_path):
     resposta, *_ = _ambiente_do_script_das_financas(tmp_path)
     assert resposta.returncode == 0, resposta.stderr
     assert stat.S_IMODE((tmp_path / "estado").stat().st_mode) == 0o700
+
+
+def test_o_script_do_cadastro_roda_so_as_cargas_diretas_e_nunca_a_etapa_de_cpf_com_a_chave():
+    texto = CADASTRO_SH.read_text()
+    assert "python -m etl.run_etl --fonte politicos --fonte camara-historico --fonte camara-bulk" in texto
+    assert "CPF_HMAC_KEY" not in texto.replace("# ", "").split("set -Eeuo pipefail", 1)[1]  # a chave não passa pelo script
+    assert "-v /dev/null:/repo/.env:ro" in texto  # o .env (segredos) fica escondido do contêiner
