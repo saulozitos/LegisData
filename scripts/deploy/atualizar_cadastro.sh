@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Atualização diária do cadastro e do legislativo no servidor (timer do systemd do usuário): baixa o que mudou nas fontes
+# Atualização diária do Participe (consultas públicas abertas) e do cadastro e legislativo no servidor (timer do systemd do
+# usuário). O Participe grava a foto do dia em `leg.consulta_publica` (`etl.pipelines.cidadania_atualizacao`). O resto baixa o que mudou nas fontes
 # oficiais (Câmara, Senado) e roda a carga direta de políticos, histórico de mandatos, proposições em lote, votações e
 # filiações (`python -m etl.run_etl --fonte ...`). Roda no contêiner da imagem da API que está no ar, com o checkout
 # montado só para leitura e apenas `etl/data` gravável. A carga é idempotente (INSERT ... ON CONFLICT pela chave natural) e
@@ -60,15 +61,27 @@ printf 'POSTGRES_USER=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_SERVER=postgres\nPOSTGR
 # O .git/config pode guardar credencial de remote: some do contêiner (num worktree o .git é arquivo e não há o que esconder).
 ESCONDER_GIT=()
 [[ -f "$RAIZ/.git/config" ]] && ESCONDER_GIT=(-v /dev/null:/repo/.git/config:ro)
-log "atualizando cadastro e legislativo ($IMAGEM)"
+# Cada etapa roda no contêiner da imagem no ar; uma falha não impede a outra, e o script termina com erro se alguma falhou.
 # --user: os arquivos gravados em etl/data ficam do dono do checkout. O lock (descritor 9) não passa para o contêiner. O
 # contêiner só precisa do banco: sem capacidades, sem privilégios novos e com o .env e o .git/config (outros segredos)
 # escondidos. LEGISDATA_ACEITAR_ENCOLHIMENTO=1 na linha de comando libera uma redução legítima só nesta execução.
-docker run --rm --network "$REDE" --env-file "$ENV_BANCO" --user "$(id -u):$(id -g)" \
-  --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 \
-  -e ENVIRONMENT=production -e DB_SSLMODE=disable -e HOME=/tmp \
-  -e LEGISDATA_ACEITAR_ENCOLHIMENTO="${LEGISDATA_ACEITAR_ENCOLHIMENTO:-}" \
-  -e PYTHONPATH=/repo/backend:/repo --memory 2g --cpus 2 \
-  -v "$RAIZ:/repo:ro" -v "$RAIZ/etl/data:/repo/etl/data" -v /dev/null:/repo/.env:ro ${ESCONDER_GIT[@]+"${ESCONDER_GIT[@]}"} -w /app \
-  "$IMAGEM" python -m etl.run_etl --fonte politicos --fonte camara-historico --fonte camara-bulk --fonte votacoes --fonte filiacoes --fonte proposicoes 9>&-
+no_conteiner() {
+  docker run --rm --network "$REDE" --env-file "$ENV_BANCO" --user "$(id -u):$(id -g)" \
+    --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 \
+    -e ENVIRONMENT=production -e DB_SSLMODE=disable -e HOME=/tmp \
+    -e LEGISDATA_ACEITAR_ENCOLHIMENTO="${LEGISDATA_ACEITAR_ENCOLHIMENTO:-}" \
+    -e PYTHONPATH=/repo/backend:/repo --memory 2g --cpus 2 \
+    -v "$RAIZ:/repo:ro" -v "$RAIZ/etl/data:/repo/etl/data" -v /dev/null:/repo/.env:ro ${ESCONDER_GIT[@]+"${ESCONDER_GIT[@]}"} -w /app \
+    "$IMAGEM" "$@" 9>&-
+}
+FALHAS=0
+log "atualizando o Participe (consultas públicas abertas) ($IMAGEM)"
+no_conteiner python -m etl.pipelines.cidadania_atualizacao || { log "ERRO: a atualização do Participe falhou"; FALHAS=$((FALHAS + 1)); }
+log "atualizando cadastro e legislativo ($IMAGEM)"
+no_conteiner python -m etl.run_etl --fonte politicos --fonte camara-historico --fonte camara-bulk --fonte votacoes --fonte filiacoes --fonte proposicoes ||
+  { log "ERRO: a carga do cadastro e do legislativo falhou"; FALHAS=$((FALHAS + 1)); }
+if ((FALHAS > 0)); then
+  log "concluído com $FALHAS etapa(s) com erro"
+  exit 1
+fi
 log "concluído"

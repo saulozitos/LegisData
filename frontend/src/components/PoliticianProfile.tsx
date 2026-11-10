@@ -31,19 +31,22 @@ interface PoliticianProfileProps {
   onSelectParty?: (sigla: string) => void;
   /** Notifica o contêiner quando a seleção muda localmente (busca, catálogo ou "voltar"). */
   onSelectionChange?: (id: string | null) => void;
+  /** Seção da ficha que abre primeiro (atalhos como "Quem financiou a campanha?" e links diretos). */
+  initialTab?: DossierTab;
 }
 
 export default function PoliticianProfile({
   selectedPoliticianId: initialPoliticianId,
   onSelectParty,
   onSelectionChange,
+  initialTab = "visao_geral",
 }: PoliticianProfileProps = {}) {
   const [searchTerm, setSearchTerm] = useState("");
   const [officeFilter, setOfficeFilter] = useState<string>("TODOS");
   const [selectedPoliticianId, setSelectedPoliticianId] = useState<string | null>(initialPoliticianId || null);
   const [tabState, setTabState] = useState<{ id: string | null; tab: DossierTab }>({
     id: initialPoliticianId || null,
-    tab: "visao_geral",
+    tab: initialTab,
   });
 
   // Sincroniza quando a seleção externa muda (ex.: drill-down do painel de bancadas).
@@ -54,7 +57,7 @@ export default function PoliticianProfile({
   }
 
   // A aba volta para "Visão Geral" sempre que o político muda.
-  const activeTab: DossierTab = tabState.id === selectedPoliticianId ? tabState.tab : "visao_geral";
+  const activeTab: DossierTab = tabState.id === selectedPoliticianId ? tabState.tab : initialTab;
   const setActiveTab = (tab: DossierTab) => setTabState({ id: selectedPoliticianId, tab });
 
   // Autocomplete: a resposta só vale para o termo/cargo atuais (sem respostas fora de ordem).

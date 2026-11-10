@@ -51,3 +51,15 @@ def test_piso_de_um_ponto_no_custo_por_ponto():
 def test_pesos_somam_cem():
     assert roi_cidadao.PESO_ASSIDUIDADE + roi_cidadao.PESO_ENTREGA + roi_cidadao.PESO_CUSTO == pytest.approx(1.0)
     assert "30% assiduidade" in roi_cidadao.METODOLOGIA and "R$ 100.000" in roi_cidadao.METODOLOGIA
+
+
+def test_a_escala_inteira_e_publica_e_cobre_de_zero_a_cem():
+    faixas = roi_cidadao.FAIXAS_PUBLICAS
+    assert [f["faixa"] for f in faixas] == ["A+", "A", "B", "C", "D"]
+    assert faixas[-1]["nota_minima"] == 0.0 and all(f["descricao"] for f in faixas)
+
+
+def test_nota_baixa_descreve_a_faixa_sem_julgar_o_politico():
+    r = calcular_roi(custo_total=5_000_000, pontos_ialp=0.0, taxa_presenca=10.0, dados_suficientes=True)
+    assert r["score"] == "D" and "abaixo de 40 de 100" in r["diagnostico"]
+    assert "Baixo retorno" not in r["diagnostico"]

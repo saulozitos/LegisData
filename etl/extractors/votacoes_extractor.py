@@ -38,7 +38,7 @@ SENADO_API_URL = "https://legis.senado.leg.br/dadosabertos"
 FONTE_CAMARA = "Câmara dos Deputados — Dados Abertos (arquivos anuais de votações, votos e orientações)"
 FONTE_SENADO = "Senado Federal — Dados Abertos (/votacao e /plenario/votacao/orientacaoBancada)"
 
-ANO_INICIAL_PADRAO = 2019
+ANO_INICIAL_PADRAO = 2003  # a Câmara publica a orientação das bancadas a partir de 2003
 # Só proposições dos tipos que o modelo (TipoProposicaoEnum) representa. Requerimentos, destaques e
 # mensagens (autoridades) ficam de fora: não são "matérias" do dossiê.
 TIPOS_SUPORTADOS = frozenset({"PEC", "PL", "PLP", "MPV", "PDL"})

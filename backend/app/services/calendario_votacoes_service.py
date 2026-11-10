@@ -7,6 +7,7 @@ from app.core.errors import ErroDeDominio
 from app.core.links import url_oficial_proposicao
 from app.core.query_utils import BRT, to_brt
 from app.models.leg import Proposicao, Votacao
+from app.services.objeto_votacao_service import objetos_das_votacoes
 from app.services.placar import contagens_por_votacao, placar_para_tela, placares_das_votacoes
 from app.services.votos_proposicao_service import TIPOS_SESSAO, casa_codigo, titulo_votacao
 from sqlalchemy import desc, extract
@@ -62,7 +63,8 @@ def calendario_de_votacoes(db: Session, ano: Optional[int]) -> Dict[str, Any]:
                 "percentual_dias_ativos": 0.0,
                 "total_sessoes_ano": 0,
                 "texto_estatistica": (
-                    f"Em {ano_vazio}, de {total_dias} dias, o Congresso realizou sessões de votação nominal em 0 dias."
+                    f"A base não tem nenhum dia com votação nominal cadastrado em {ano_vazio}. "
+                    "Isto descreve a cobertura da base, não toda a atividade do Congresso."
                 ),
             },
             "dias": [],
@@ -87,6 +89,7 @@ def calendario_de_votacoes(db: Session, ano: Optional[int]) -> Dict[str, Any]:
     )
     placares = placares_das_votacoes([s for s, _ in sessoes_ano], contagens_por_votacao(db, *filtro_ano))
 
+    objetos = objetos_das_votacoes(db, [s.id for s, _ in sessoes_ano])
     dias: Dict[str, Dict[str, Any]] = {}
     for sessao, prop in sessoes_ano:
         local = to_brt(sessao.data_hora)
@@ -112,6 +115,7 @@ def calendario_de_votacoes(db: Session, ano: Optional[int]) -> Dict[str, Any]:
         dias[chave]["total_votacoes"] += 1
         dias[chave]["sessoes"].append(
             {
+                "objeto": objetos[sessao.id],
                 "sessao_id": str(sessao.uid),
                 "casa": casa,
                 "casa_nome": "Câmara dos Deputados" if casa == "CAMARA_DOS_DEPUTADOS" else "Senado Federal",
@@ -155,8 +159,11 @@ def calendario_de_votacoes(db: Session, ano: Optional[int]) -> Dict[str, Any]:
             "percentual_dias_ativos": percentual,
             "total_sessoes_ano": len(sessoes_ano),
             "texto_estatistica": (
-                f"Em {selecionado}, de {total_dias_ano} dias, o Congresso realizou "
-                f"sessões de votação nominal em apenas {dias_com_votacao} dias ({percentual}% do ano)."
+                f"Em {selecionado}, a base tem {dias_com_votacao} "
+                f"{'dia' if dias_com_votacao == 1 else 'dias'} com votação nominal cadastrado "
+                f"({len(sessoes_ano)} {'votação' if len(sessoes_ano) == 1 else 'votações'}), de {total_dias_ano} dias do ano. "
+                "Isto descreve a cobertura da base, não toda a atividade do Congresso: "
+                "sessões sem votação nominal e dias ainda não carregados não aparecem aqui."
             ),
         },
         "dias": lista,
