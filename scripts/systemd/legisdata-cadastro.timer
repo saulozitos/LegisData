@@ -1,0 +1,12 @@
+[Unit]
+Description=LegisData - agenda a atualização do cadastro e do legislativo todo dia de madrugada
+
+[Timer]
+# 06:23 UTC são 03:23 em Brasília, depois das finanças (05:37 UTC). Horário não redondo de propósito: a documentação da API do
+# Senado pede para evitar rotinas em horários arredondados (picos simultâneos geram HTTP 429)
+OnCalendar=*-*-* 06:23:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

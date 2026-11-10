@@ -191,6 +191,19 @@ Depois, o `deploy.sh` mantém a cópia do script igual à do commit implantado. 
 `systemctl --user start legisdata-financas.service` e acompanhar com `journalctl --user -u legisdata-financas.service -f`.
 Para pausar: `systemctl --user stop legisdata-financas.timer`.
 
+## Atualização diária do cadastro e do legislativo (`legisdata-cadastro.timer`)
+
+Um terceiro timer do usuário roda todo dia às 06:23 UTC (03:23 em Brasília, depois das finanças; horário não redondo) o script
+`~/.legisdata-deploy/atualizar_cadastro.sh`, com o mesmo contêiner restrito das finanças (checkout somente leitura, só
+`etl/data` gravável, sem capacidades, `.env` escondido, lock compartilhado com o deploy). Ele executa
+`python -m etl.run_etl --fonte politicos --fonte camara-historico --fonte camara-bulk --fonte votacoes --fonte filiacoes --fonte proposicoes`:
+baixa o que mudou na Câmara e no Senado (os extratores incrementais partem do ano do corte em `etl.corte`) e roda a carga
+direta (`docs/ETL_SIMPLES.md`), que é idempotente. Sem `CPF_HMAC_KEY` no servidor a etapa de CPF é pulada e o
+`cpf_identificadores.json` do git é preservado. Rejeições da fonte (ano 0, data anterior a 1995) continuam com motivo em `etl.rejeito`
+e deixam a verificação `camara_bulk_cobertura` em alerta, sem falhar a carga. O deploy mantém a cópia do script igual à do commit
+implantado; as units entram pelo `instalar.sh` (rode de novo depois de um deploy que mude as units). Acompanhe com
+`journalctl --user -u legisdata-cadastro.service -f`; para pausar: `systemctl --user stop legisdata-cadastro.timer`.
+
 O `make daily` (presença, votações, séries, IPPM e grafo) é outro agendador, ainda sem timer no servidor atual. Se um dia
 ele for instalado, a etapa 1d dele já inclui esta atualização (o lock do pipeline impede a execução dupla e, no host do
 deploy, ela é pulada quando enxerga o `deploy.lock` ocupado; o `legisdata-diario.service` roda como outro usuário, e para ele respeitar o deploy a unit precisa exportar `LEGISDATA_DEPLOY_LOCK` com um caminho que os dois usuários alcancem, o MESMO que o `deploy.sh` e o `atualizar_financas.sh` usam: os dois scripts leem a variável, com `$ESTADO_DIR/deploy.lock` como padrão, e o `chmod 700` do diretório de estado não vale para um arquivo fora dele) e o

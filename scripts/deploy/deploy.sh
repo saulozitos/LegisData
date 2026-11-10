@@ -396,6 +396,12 @@ if [[ -f "$RAIZ/scripts/deploy/atualizar_financas.sh" ]] && bash -n "$RAIZ/scrip
   install -m 755 "$RAIZ/scripts/deploy/atualizar_financas.sh" "$ESTADO_DIR/atualizar_financas.sh.novo" &&
     mv "$ESTADO_DIR/atualizar_financas.sh.novo" "$ESTADO_DIR/atualizar_financas.sh"
 fi
+# O timer do cadastro e do legislativo executa a cópia em $ESTADO_DIR/atualizar_cadastro.sh; a mantém igual à do commit implantado.
+if [[ -f "$RAIZ/scripts/deploy/atualizar_cadastro.sh" ]] && bash -n "$RAIZ/scripts/deploy/atualizar_cadastro.sh" &&
+  ! cmp -s "$RAIZ/scripts/deploy/atualizar_cadastro.sh" "$ESTADO_DIR/atualizar_cadastro.sh"; then
+  install -m 755 "$RAIZ/scripts/deploy/atualizar_cadastro.sh" "$ESTADO_DIR/atualizar_cadastro.sh.novo" &&
+    mv "$ESTADO_DIR/atualizar_cadastro.sh.novo" "$ESTADO_DIR/atualizar_cadastro.sh"
+fi
 echo "$TAG" >"$ESTADO_DIR/ultima_tag"
 echo "$ALVO" >"$ESTADO_DIR/ultimo_sha"
 # Atualização diária das finanças: se o commit mudou a extração ou a carga (ou o fin acabou de ser semeado do git), roda já.

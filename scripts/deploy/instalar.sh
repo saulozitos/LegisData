@@ -40,7 +40,9 @@ mkdir -p "$DEST" "$UNITS" "$HOME/backups"
 printf 'LEGISDATA_DIR=%q\n' "$RAIZ" >"$DEST/ambiente" && chmod 600 "$DEST/ambiente"
 git -C "$RAIZ" show "$REF:scripts/deploy/deploy.sh" >"$DEST/deploy.sh" && chmod 755 "$DEST/deploy.sh"
 git -C "$RAIZ" show "$REF:scripts/deploy/atualizar_financas.sh" >"$DEST/atualizar_financas.sh" && chmod 755 "$DEST/atualizar_financas.sh"
-for u in legisdata-deploy.service legisdata-deploy.timer legisdata-financas.service legisdata-financas.timer; do
+git -C "$RAIZ" show "$REF:scripts/deploy/atualizar_cadastro.sh" >"$DEST/atualizar_cadastro.sh" && chmod 755 "$DEST/atualizar_cadastro.sh"
+for u in legisdata-deploy.service legisdata-deploy.timer legisdata-financas.service legisdata-financas.timer \
+  legisdata-cadastro.service legisdata-cadastro.timer; do
   git -C "$RAIZ" show "$REF:scripts/systemd/$u" >"$UNITS/$u"
 done
 
@@ -74,14 +76,15 @@ echo "==> ligando o timer"
 systemctl --user daemon-reload
 systemctl --user enable --now legisdata-deploy.timer
 systemctl --user enable --now legisdata-financas.timer
+systemctl --user enable --now legisdata-cadastro.timer
 loginctl enable-linger "$USER" 2>/dev/null || echo "AVISO: enable-linger precisa de permissão; o timer só roda com sessão aberta"
-for timer in legisdata-deploy.timer legisdata-financas.timer; do
+for timer in legisdata-deploy.timer legisdata-financas.timer legisdata-cadastro.timer; do
   systemctl --user is-enabled --quiet "$timer" && systemctl --user is-active --quiet "$timer" || {
     echo "ERRO: $timer não ficou ativo (veja: systemctl --user status $timer)"
     exit 1
   }
 done
-systemctl --user list-timers legisdata-deploy.timer legisdata-financas.timer --no-pager
+systemctl --user list-timers legisdata-deploy.timer legisdata-financas.timer legisdata-cadastro.timer --no-pager
 # Um deploy anterior pediu a atualização diária das finanças quando a unit ainda não existia: cumpre agora. As funções de
 # pendência são as do próprio deploy.sh instalado (um formato só para `financas_pendente`).
 ESTADO_DIR="$DEST"
@@ -98,4 +101,5 @@ elif pendente_tem refrescar; then
   fi
 fi
 echo "==> pronto. Acompanhe com: journalctl --user -u legisdata-deploy.service -f"
-echo "    e a atualização diária das finanças com: journalctl --user -u legisdata-financas.service -f"
+echo "    a atualização diária das finanças com: journalctl --user -u legisdata-financas.service -f"
+echo "    e a do cadastro e legislativo com: journalctl --user -u legisdata-cadastro.service -f"
