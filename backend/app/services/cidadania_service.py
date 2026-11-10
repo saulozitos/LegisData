@@ -446,12 +446,6 @@ def get_consultas_publicas(force_refresh: bool = False) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Foto diária no banco: o job diário coleta nas fontes oficiais e grava; a API só lê o banco.
 # ---------------------------------------------------------------------------
-_COLUNAS = (
-    "id_externo, casa, sigla_projeto, ementa, link_oficial_votacao, link_tramitacao_oficial, em_votacao_aberta, "
-    "votos_sim, votos_nao, tema, status, autor, data_apresentacao, destaque, fonte_dados, coletado_em, "
-    "primeira_coleta_em, encerrada_em"
-)
-
 STATUS_FORA_DO_PORTAL = "Consulta encerrada ou fora do portal na última coleta"
 
 
@@ -542,7 +536,9 @@ def consultas_do_banco(db: Session) -> List[Dict[str, Any]]:
     linhas = (
         db.execute(
             text(
-                f"SELECT {_COLUNAS} FROM leg.consulta_publica "  # noqa: S608 - colunas fixas, sem entrada do usuário
+                "SELECT id_externo, casa, sigla_projeto, ementa, link_oficial_votacao, link_tramitacao_oficial, "
+                "em_votacao_aberta, votos_sim, votos_nao, tema, status, autor, data_apresentacao, destaque, "
+                "fonte_dados, coletado_em, primeira_coleta_em, encerrada_em FROM leg.consulta_publica "
                 "ORDER BY em_votacao_aberta DESC, destaque DESC, coletado_em DESC, sigla_projeto"
             )
         )
