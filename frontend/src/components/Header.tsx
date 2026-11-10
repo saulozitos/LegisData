@@ -10,6 +10,7 @@ import {
   Database,
   LayoutDashboard,
   ArrowLeftRight,
+  Users,
   Vote,
 } from "lucide-react";
 
@@ -97,6 +98,19 @@ export default function Header() {
 
 
           <Link
+            href="/comparar-politicos"
+            aria-current={pathname === "/comparar-politicos" ? "page" : undefined}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              pathname === "/comparar-politicos"
+                ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-sm shadow-cyan-500/10"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+            }`}
+          >
+            <Users className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Comparar parlamentares</span>
+          </Link>
+
+          <Link
             href="/cidadania"
             aria-current={pathname === "/cidadania" ? "page" : undefined}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
@@ -107,9 +121,6 @@ export default function Header() {
           >
             <Vote className="w-3.5 h-3.5 text-amber-400" />
             <span>Participe (Votações)</span>
-            <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300">
-              Ao Vivo
-            </span>
           </Link>
         </nav>
 

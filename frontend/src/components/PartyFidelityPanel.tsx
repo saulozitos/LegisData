@@ -1,8 +1,10 @@
 "use client";
 
+import CoberturaDoPainel from "@/components/CoberturaDoPainel";
 import React, { useState, useMemo } from "react";
 import { PartyFidelityResponse, PartyBalanceItem } from "@/services/api";
 import PartyLink from "@/components/PartyLink";
+import MudancaDePartido from "@/components/MudancaDePartido";
 import { safeExternalUrl } from "@/lib/safeUrl";
 import { EmptyState } from "@/components/StateViews";
 import { fmtPct, isNum } from "@/lib/format";
@@ -107,8 +109,12 @@ export default function PartyFidelityPanel({
             </h2>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Mapeamento de trocas de legenda, fusões partidárias (PSL + DEM, PTB + PATRIOTA) e migrações no Congresso Nacional
+            Mapeamento de trocas de partido no Congresso Nacional. Mudança de nome e sigla (como PMDB para MDB), fusões e
+            incorporações aparecem à parte e não contam como troca.
           </p>
+          <div className="mt-2">
+            <CoberturaDoPainel painel="parlamentares" />
+          </div>
         </div>
 
         {/* Badges de Resumo */}
@@ -417,6 +423,7 @@ export default function PartyFidelityPanel({
                                   {h.data_filiacao} → {h.data_desfiliacao || "Ativo (Atual)"}
                                 </span>
                               </div>
+                              <MudancaDePartido tipo={h.tipo_mudanca} rotulo={h.tipo_mudanca_rotulo} />
                               {h.motivo && (
                                 <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-medium">
                                   {h.motivo.replace(/_/g, " ")}

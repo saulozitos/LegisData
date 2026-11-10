@@ -1,5 +1,6 @@
 "use client";
 
+import CoberturaDoPainel from "@/components/CoberturaDoPainel";
 import React, { useState } from "react";
 import {
   Coins,
@@ -130,6 +131,7 @@ export default function EmendasExplorerPanel({ onSelectPolitician }: EmendasExpl
               <strong className="text-slate-200">Comissões Temáticas</strong> e{" "}
               <strong className="text-slate-200">Relator-Geral</strong>.
             </p>
+            <CoberturaDoPainel painel="gastos" />
           </div>
 
           <div className="flex flex-wrap items-center gap-2 self-stretch md:self-auto">

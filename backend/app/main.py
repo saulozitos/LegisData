@@ -65,7 +65,7 @@ app.add_middleware(
     allow_origins=settings.all_cors_origins,
     allow_origin_regex=settings.CORS_ORIGIN_REGEX or None,
     allow_credentials=False,
-    allow_methods=["GET", "HEAD", "OPTIONS"],
+    allow_methods=["GET", "HEAD", "POST", "OPTIONS"],  # POST só para /feedback/erros
     allow_headers=["Accept", "Accept-Language", "Content-Type"],
 )
 

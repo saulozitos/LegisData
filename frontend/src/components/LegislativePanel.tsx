@@ -1,5 +1,7 @@
 "use client";
 
+import CoberturaDoPainel from "@/components/CoberturaDoPainel";
+import ObjetoDaVotacao from "@/components/ObjetoDaVotacao";
 import React, { useState, useMemo } from "react";
 import {
   ProposicaoLegislativa,
@@ -159,6 +161,9 @@ export default function LegislativePanel({
           <p className="text-xs text-slate-400 mt-0.5">
             Mapeamento nominal auditável de votos (Sim, Não, Abstenção) em matérias estruturantes com quórum registrado
           </p>
+          <div className="mt-2">
+            <CoberturaDoPainel painel="votacoes" />
+          </div>
         </div>
 
         {/* Seletor de Casa Legislativa */}
@@ -386,6 +391,9 @@ export default function LegislativePanel({
                       )}
                     </span>
                   </div>
+
+                  {/* O que foi votado: urgência, destaque ou emenda não são a aprovação do projeto */}
+                  {total > 0 && <ObjetoDaVotacao objeto={sessao?.objeto} />}
 
                   {/* Barra Tripla de Votos */}
                   <div className="w-full h-2.5 rounded-full bg-slate-800 flex overflow-hidden">

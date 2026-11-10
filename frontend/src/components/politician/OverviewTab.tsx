@@ -34,6 +34,7 @@ import PartyLink from "@/components/PartyLink";
 import { safeExternalUrl } from "@/lib/safeUrl";
 import { formatCpfCnpj, gradeBadgeClass, riskBadgeClass, compatBadgeClass, orUnavailable } from "./format";
 import type { DossierTab } from "./types";
+import MudancaDePartido from "@/components/MudancaDePartido";
 
 interface OverviewTabProps {
   dossier: PoliticoDossier;
@@ -504,6 +505,7 @@ export default function OverviewTab({ dossier, onChangeTab, onSelectParty }: Ove
                         </div>
                       </div>
 
+                      <MudancaDePartido tipo={f.tipo_mudanca} rotulo={f.tipo_mudanca_rotulo} />
                       {f.is_atual ? (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                           Atual
@@ -667,14 +669,14 @@ export default function OverviewTab({ dossier, onChangeTab, onSelectParty }: Ove
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wide">
-                          Detector de Leis Inúteis (Taxa de Relevância)
+                          Propostas simbólicas ou comemorativas
                         </h3>
                         <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-bold">
-                          Arsenal Antidesinformação
+                          Classificação por palavra-chave
                         </span>
                       </div>
                       <p className="text-xs text-slate-400">
-                        Classificação semântica de ementas: Projetos Estruturais vs Homenagens Simbólicas
+                        Classificação automática por palavras-chave na ementa: homenagens, datas comemorativas e títulos honoríficos
                       </p>
                     </div>
                   </div>
@@ -694,7 +696,7 @@ export default function OverviewTab({ dossier, onChangeTab, onSelectParty }: Ove
                   {/* Gráfico de Pizza (Recharts PieChart) */}
                   <div className="bg-slate-950/70 border border-slate-800/90 rounded-xl p-3 flex flex-col items-center justify-center">
                     <span className="text-[11px] font-bold text-slate-300 mb-1">
-                      Projetos de Impacto vs Simbólicos
+                      Demais propostas e simbólicas ou comemorativas
                     </span>
                     <div className="w-full h-44">
                       <ResponsiveContainer width="100%" height="100%">
@@ -702,13 +704,13 @@ export default function OverviewTab({ dossier, onChangeTab, onSelectParty }: Ove
                           <Pie
                             data={[
                               {
-                                name: "Projetos de Impacto",
+                                name: "Demais propostas",
                                 value: dossier?.relevancia_legislativa?.projetos_impacto || 0,
                                 color: "#10b981",
                                 pct: dossier?.relevancia_legislativa?.percentual_impacto || 0,
                               },
                               {
-                                name: "Projetos Simbólicos",
+                                name: "Simbólicas ou comemorativas",
                                 value: dossier?.relevancia_legislativa?.projetos_simbolicos || 0,
                                 color: "#f59e0b",
                                 pct: dossier?.relevancia_legislativa?.percentual_simbolico || 0,

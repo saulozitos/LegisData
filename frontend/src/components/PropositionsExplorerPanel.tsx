@@ -68,14 +68,19 @@ function getSectorStyle(sector: string) {
 interface PropositionsExplorerPanelProps {
   onSelectPolitician?: (id: string) => void;
   onSelectParty?: (sigla: string) => void;
+  /** Busca por assunto vinda de um atalho ou de um link: abre o mural de votações já filtrado. */
+  initialSearch?: string;
 }
 
 export default function PropositionsExplorerPanel({
   onSelectPolitician,
   onSelectParty,
+  initialSearch,
 }: PropositionsExplorerPanelProps = {}) {
   // 0. Seletor de Visão (Visão Integrada, Ranking IALP, Grafo de Redes, Mural de Votações)
-  const [viewTab, setViewTab] = useState<"INTEGRADA" | "RANKING" | "NETWORK" | "PROPOSITIONS">("INTEGRADA");
+  const [viewTab, setViewTab] = useState<"INTEGRADA" | "RANKING" | "NETWORK" | "PROPOSITIONS">(
+    initialSearch ? "PROPOSITIONS" : "INTEGRADA"
+  );
 
   // 1. Estados do Ranking de Produtividade (Filtros por Partido, Setor e Critério IPLE)
   const [rankingParty, setRankingParty] = useState<string>("Todos");
@@ -84,7 +89,7 @@ export default function PropositionsExplorerPanel({
   const [showMetodologia, setShowMetodologia] = useState<boolean>(false);
 
   // 2. Estados do Mural Geral de Votações
-  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState<string>(initialSearch ?? "");
   const [selectedSetor, setSelectedSetor] = useState<string>("Todos");
   const [selectedParty, setSelectedParty] = useState<string>("Todos");
   const [selectedTipo, setSelectedTipo] = useState<string>("Todos");

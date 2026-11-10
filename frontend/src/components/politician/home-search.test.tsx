@@ -45,6 +45,16 @@ describe('PoliticianHome', () => {
     expect(onSelect).toHaveBeenCalledWith('1');
   });
 
+  it('"Quem me representa" filtra pelo estado na API', async () => {
+    render(<PoliticianHome onSelectPolitician={() => {}} />);
+    await screen.findByText('Ana');
+    fireEvent.change(screen.getByLabelText(/Quem me representa/), { target: { value: 'SP' } });
+    await waitFor(() => expect(search).toHaveBeenLastCalledWith(undefined, undefined, undefined, 'SP', 300, expect.any(AbortSignal)));
+    expect(screen.getByText(/Parlamentares com mandato por SP/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Quem me representa/), { target: { value: 'TODOS' } });
+    await waitFor(() => expect(search).toHaveBeenLastCalledWith(undefined, undefined, undefined, undefined, 500, expect.any(AbortSignal)));
+  });
+
   it('filtra por casa e por partido chamando a API com os parâmetros certos', async () => {
     render(<PoliticianHome onSelectPolitician={() => {}} />);
     await screen.findByText('Ana');

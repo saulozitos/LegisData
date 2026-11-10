@@ -149,7 +149,17 @@ export interface PlacarVotos {
   TOTAL: number;
 }
 
+/** O que uma votação decidiu (texto principal, urgência, destaque, emenda...). Ausente quando a fonte não informa. */
+export interface ObjetoVotacao {
+  codigo: string;
+  rotulo: string;
+  explicacao: string;
+  /** false: o resultado NÃO é a aprovação ou rejeição do projeto em si */
+  decide_merito: boolean;
+}
+
 export interface SessaoVotacaoDetalhes {
+  objeto?: ObjetoVotacao | null;
   sessao_id: string;
   data_hora: string;
   titulo?: string;
@@ -407,7 +417,12 @@ export interface PartyBalanceItem {
   saldo_liquido: number;
 }
 
+/** Como uma filiação começou em relação à anterior: só `TROCA` conta como troca de partido. */
+export type TipoMudancaPartido = 'INICIAL' | 'TROCA' | 'RENOMEACAO' | 'FUSAO' | 'INCORPORACAO' | 'SUCESSAO';
+
 export interface NomadHistoryItem {
+  tipo_mudanca: TipoMudancaPartido;
+  tipo_mudanca_rotulo: string;
   partido: string;
   data_filiacao: string;
   data_desfiliacao: string | null;
@@ -721,6 +736,7 @@ export interface PropositionVotesResponse {
     area_tematica?: string;
   } | null;
   sessao_ativa?: {
+    objeto?: ObjetoVotacao | null;
     id: string;
     titulo: string;
     descricao?: string;
@@ -731,6 +747,7 @@ export interface PropositionVotesResponse {
     placar?: { SIM: number; NAO: number; ABSTENCAO: number; TOTAL: number };
   } | null;
   sessoes_disponiveis?: Array<{
+    objeto?: ObjetoVotacao | null;
     id: string;
     titulo: string;
     data_hora: string;
@@ -818,6 +835,8 @@ export interface FiliacaoHistorico {
   data_desfiliacao: string | null;
   is_atual: boolean;
   motivo_desfiliacao: string | null;
+  tipo_mudanca: TipoMudancaPartido;
+  tipo_mudanca_rotulo: string;
   uf?: string | null;
 }
 
@@ -847,6 +866,8 @@ export interface ProposicaoAutorItem {
   url_oficial?: string | null;
   classificacao_relevancia?: "IMPACTO" | "SIMBOLICO" | string;
   justificativa_relevancia?: string;
+  /** Palavras da ementa que levaram à classificação "simbólica", para conferir. */
+  palavras_encontradas?: string[];
   papel_autoria?: "AUTOR_PRINCIPAL" | "COAUTOR" | string;
   peso_participacao?: number;
   peso_complexidade?: number;
@@ -1067,6 +1088,15 @@ export interface BasometroData {
   dados_suficientes?: boolean;
   amostra_minima?: number;
   metodologia?: string;
+  /** Por que não há índice (`AMOSTRA_INSUFICIENTE`, `SEM_ORIENTACAO`, `MANDATO_ANTERIOR_A_BASE`, `SEM_VOTOS_NOMINAIS`, `SEM_MANDATO`). */
+  motivo_indisponivel?: string | null;
+  explicacao_indisponivel?: string | null;
+  /** Votos com posição (sim, não, abstenção, obstrução) em qualquer votação nominal carregada. */
+  votos_registrados?: number;
+  primeiro_voto?: string | null;
+  ultimo_voto?: string | null;
+  /** Data da votação nominal mais antiga carregada na base. */
+  base_desde?: string | null;
 }
 
 export interface RelevanciaLegislativaData {
@@ -1078,6 +1108,8 @@ export interface RelevanciaLegislativaData {
   percentual_impacto: number;
   percentual_simbolico: number;
   diagnostico: string;
+  /** Regra da classificação por palavra-chave, mostrada junto do resultado. */
+  criterio?: { descricao: string; palavras: string[] };
   lideranca_legislativa_count?: number;
   apoio_politico_count?: number;
   taxa_eficiencia_pct?: number;
@@ -1104,6 +1136,8 @@ export interface RoiCidadaoData {
   pontos_ialp: number | null;
   custo_por_ponto_ialp: number | null;
   metodologia?: string | null;
+  /** A escala inteira da nota, para mostrar o critério junto dela. */
+  faixas?: Array<{ nota_minima: number; faixa: string; descricao: string }>;
   projetos_estruturantes: number;
   diagnostico: string;
 }
@@ -1544,6 +1578,7 @@ export interface PropositionNominalVotesSplitResponse {
     url_oficial?: string | null;
   } | null;
   sessao: {
+    objeto?: ObjetoVotacao | null;
     id: string;
     titulo: string;
     descricao?: string;
@@ -1773,6 +1808,7 @@ export async function getDeliberacaoDetalhe(
 // ==========================================
 
 export interface SessaoCalendarioItem {
+  objeto?: ObjetoVotacao | null;
   sessao_id: string;
   casa: string;
   casa_nome: string;
@@ -1848,7 +1884,7 @@ export async function getVotingCalendar(
           dias_com_votacao: 0,
           percentual_dias_ativos: 0.0,
           total_sessoes_ano: 0,
-          texto_estatistica: `Em ${year}, de ${totalDias} dias, o Congresso realizou sessões de votação nominal em 0 dias.`,
+          texto_estatistica: `A base não tem nenhum dia com votação nominal cadastrado em ${year}. Isto descreve a cobertura da base, não toda a atividade do Congresso.`,
         },
         dias: [],
       };
@@ -1879,6 +1915,12 @@ export interface ConsultaPublicaItem {
   autor?: string | null;
   data_apresentacao?: string | null;
   destaque?: boolean;
+  /** Data e hora da última coleta diária que viu esta matéria. */
+  atualizado_em?: string | null;
+  /** Quando a coleta diária viu a consulta pela primeira vez (os portais não publicam o início da votação). */
+  primeira_coleta_em?: string | null;
+  /** Quando a coleta diária viu que a consulta deixou de estar aberta (os portais não publicam o fim). */
+  encerrada_em?: string | null;
 }
 
 export async function getConsultasPublicas(
@@ -2320,4 +2362,75 @@ export async function getAttendancePartyRanking(
   signal?: AbortSignal
 ): Promise<AttendancePartyResponse> {
   return fetchJson<AttendancePartyResponse>(`/attendance/ranking/parties?${attendanceQuery(casa, anoInicio, anoFim).toString()}`, signal);
+}
+
+// ==========================================
+// COBERTURA DOS PAINÉIS
+// ==========================================
+
+export type SituacaoCobertura = 'COMPLETA' | 'PARCIAL' | 'SEM_DADOS';
+
+export interface CoberturaPainel {
+  painel: string;
+  titulo: string;
+  fonte: string;
+  periodo_inicio: string | null;
+  periodo_fim: string | null;
+  registros: number;
+  unidade: string;
+  atualizado_em: string | null;
+  situacao: SituacaoCobertura;
+  nota: string;
+}
+
+export async function fetchCobertura(signal?: AbortSignal): Promise<CoberturaPainel[]> {
+  return fetchJson<CoberturaPainel[]>('/cobertura', signal);
+}
+
+// ==========================================
+// RELATO DE INFORMAÇÃO INCORRETA
+// ==========================================
+
+export type AlvoDoRelato = 'POLITICO' | 'VOTACAO' | 'PROPOSICAO' | 'PARTIDO' | 'PAINEL' | 'CLASSIFICACAO' | 'OUTRO';
+
+export interface RelatoDeErro {
+  alvo_tipo: AlvoDoRelato;
+  alvo_id?: string | null;
+  alvo_rotulo?: string | null;
+  secao?: string | null;
+  descricao: string;
+  contato?: string | null;
+  pagina?: string | null;
+  /** Campo-isca: nunca preencha; só robôs o preenchem. */
+  website?: string | null;
+}
+
+/** Envia o relato; devolve a mensagem de agradecimento. Falhas viram `ApiError` com o texto que a API deu (ex.: CPF no texto). */
+export async function enviarRelatoDeErro(relato: RelatoDeErro, signal?: AbortSignal): Promise<{ mensagem: string }> {
+  const endpoint = '/feedback/erros';
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(relato),
+      signal,
+    });
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    throw new ApiError('Não foi possível conectar à API.', endpoint);
+  }
+  if (!res.ok) {
+    let detail: string | null = null;
+    if (res.status === 422 || res.status === 429) {
+      try {
+        const corpo = (await res.json()) as { detail?: unknown };
+        detail = typeof corpo.detail === 'string' ? corpo.detail : null;
+      } catch {
+        detail = null;
+      }
+    }
+    throw new ApiError(detail ?? 'Não foi possível enviar o relato agora. Tente novamente em instantes.', endpoint, res.status);
+  }
+  return (await res.json()) as { mensagem: string };
 }
