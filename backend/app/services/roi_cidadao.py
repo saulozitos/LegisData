@@ -23,9 +23,17 @@ _FAIXAS = (
     ),
     (70.0, "A", "Bom custo-benefício para o cidadão, com produção legislativa consistente."),
     (55.0, "B", "Produção legislativa e assiduidade em nível regular."),
-    (40.0, "C", "Custo operacional elevado em relação à entrega legislativa medida em pontos IALP."),
-    (0.0, "D", "Baixo retorno legislativo em proporção ao custo operacional do mandato."),
+    (40.0, "C", "Custo registrado alto em relação à entrega legislativa medida em pontos IALP."),
+    (
+        0.0,
+        "D",
+        "Faixa mais baixa da escala: a combinação de assiduidade, pontos legislativos e custo por ponto ficou abaixo de 40 de 100.",
+    ),
 )
+# a escala inteira, para a tela mostrar o critério junto da nota
+FAIXAS_PUBLICAS = [
+    {"nota_minima": minimo, "faixa": faixa, "descricao": descricao} for minimo, faixa, descricao in _FAIXAS
+]
 DIAGNOSTICO_SEM_DADOS = "Dados insuficientes (CEAP, remuneração e presenças são necessários para calcular o indicador)."
 
 METODOLOGIA = (

@@ -29,6 +29,13 @@ import {
   FileCheck2,
 } from "lucide-react";
 
+/** Data (dd/mm/aaaa) de uma data ISO, com ou sem hora; vazio se não houver. */
+function formatarData(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const [ano, mes, dia] = iso.slice(0, 10).split("-");
+  return ano && mes && dia ? `${dia}/${mes}/${ano}` : null;
+}
+
 /** Total de votos para exibição: nunca imprime "0k+" nem um texto inventado. */
 function formatTotalVotes(total: number): string {
   if (total <= 0) return "Indisponível";
@@ -57,7 +64,7 @@ export default function CidadaniaPage() {
   const cooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedCasa, setSelectedCasa] = useState<"TODAS" | "Senado" | "Câmara">("TODAS");
-  const [selectedStatus, setSelectedStatus] = useState<"TODAS" | "ABERTAS" | "ENCERRADAS">("TODAS");
+  const [selectedStatus, setSelectedStatus] = useState<"TODAS" | "ABERTAS" | "ENCERRADAS">("ABERTAS");
   const [onlyWithVotes, setOnlyWithVotes] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copyFailedId, setCopyFailedId] = useState<string | null>(null);
@@ -96,6 +103,14 @@ export default function CidadaniaPage() {
     const totalVotosColetados = consultas.reduce((acc, c) => acc + (c.total_votos ?? 0), 0);
     return { total, senadoCount, camaraCount, abertasCount, encerradasCount, totalVotosColetados };
   }, [consultas]);
+
+  // Coleta mais recente: a lista é uma foto diária, e a tela diz de quando ela é
+  const ultimaColeta = useMemo(() => {
+    const datas = consultas.map((c) => c.atualizado_em).filter((d): d is string => Boolean(d));
+    return datas.length > 0 ? datas.reduce((a, b) => (a > b ? a : b)) : null;
+  }, [consultas]);
+  const [carregadaEm] = useState(() => Date.now()); // hora em que a página abriu: compara com a última coleta
+  const coletaAtrasada = ultimaColeta !== null && carregadaEm - new Date(ultimaColeta).getTime() > 36 * 3600 * 1000;
 
   // Filtros combinados
   const filteredConsultas = useMemo(() => {
@@ -192,7 +207,7 @@ export default function CidadaniaPage() {
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 sm:p-5 backdrop-blur-sm">
             <div className="flex items-center justify-between text-slate-400 text-xs mb-2">
-              <span>Votação Aberta Agora</span>
+              <span>Votações abertas</span>
               <Radio className="w-4 h-4 text-emerald-400 animate-pulse" aria-hidden="true" />
             </div>
             <div className="text-2xl sm:text-3xl font-extrabold text-emerald-400">
@@ -374,6 +389,20 @@ export default function CidadaniaPage() {
           </div>
         </section>
 
+        {ultimaColeta && (
+          <p className="text-xs text-slate-400" data-testid="ultima-coleta">
+            Atualizado em{" "}
+            <strong className="text-slate-300">
+              {new Date(ultimaColeta).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+            </strong>
+            . A lista é atualizada uma vez por dia a partir dos portais oficiais, que não publicam a data de início nem a de
+            fim da votação popular: as datas &quot;vista aberta desde&quot; e &quot;vista encerrada em&quot; são as da nossa coleta diária.
+            {coletaAtrasada && (
+              <span className="text-amber-300"> A coleta de hoje ainda não chegou: o que está aqui pode estar desatualizado.</span>
+            )}
+          </p>
+        )}
+
         {/* Listagem de Cards de Votação */}
         {consultasQuery.error && !hasLoadedOnce ? (
           <ErrorState onRetry={consultasQuery.retry} />
@@ -381,15 +410,21 @@ export default function CidadaniaPage() {
           <div role="status" aria-live="polite" className="py-20 flex flex-col items-center justify-center space-y-4 text-center">
             <div className="w-12 h-12 rounded-full border-4 border-amber-400/20 border-t-amber-400 animate-spin" aria-hidden="true" />
             <p className="text-slate-400 text-sm font-medium">
-              Consultando as APIs do Senado Federal e da Câmara dos Deputados...
+              Carregando as votações abertas...
             </p>
           </div>
         ) : filteredConsultas.length === 0 ? (
           <div role="status" className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-12 text-center space-y-3">
             <HelpCircle className="w-10 h-10 text-slate-400 mx-auto" aria-hidden="true" />
-            <h3 className="text-lg font-bold text-white">Nenhuma consulta encontrada</h3>
+            <h3 className="text-lg font-bold text-white">
+              {selectedStatus === "ABERTAS" && consultas.length > 0 && !searchTerm.trim() && selectedCasa === "TODAS"
+                ? "Nenhuma votação aberta na última coleta"
+                : "Nenhuma consulta encontrada"}
+            </h3>
             <p className="text-sm text-slate-400 max-w-md mx-auto">
-              Nenhum projeto corresponde aos filtros aplicados. Tente buscar por outros termos ou redefinir os filtros.
+              {selectedStatus === "ABERTAS" && consultas.length > 0 && !searchTerm.trim() && selectedCasa === "TODAS"
+                ? "Os portais oficiais não tinham consulta aberta para participação popular na coleta mais recente. Veja as encerradas ou volte amanhã."
+                : "Nenhum projeto corresponde aos filtros aplicados. Tente buscar por outros termos ou redefinir os filtros."}
             </p>
             <button
               type="button"
@@ -436,7 +471,7 @@ export default function CidadaniaPage() {
                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                             </span>
-                            Votação Aberta Agora
+                            Votação aberta
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800/90 text-slate-300 border border-slate-700/80">
@@ -521,7 +556,7 @@ export default function CidadaniaPage() {
                         <div className="flex items-center justify-between text-xs">
                           <span className="font-semibold text-slate-300 flex items-center gap-1.5">
                             <Users className="w-3.5 h-3.5 text-purple-400" aria-hidden="true" />
-                            {isAberta ? "Placar Parcial em Tempo Real:" : "Placar Final Apurado:"}
+                            {isAberta ? "Placar parcial na última coleta:" : "Placar final apurado:"}
                           </span>
                           <span className="text-[11px] text-slate-400 font-mono">
                             {(item.total_votos ?? 0).toLocaleString("pt-BR")} votos computados
@@ -581,10 +616,27 @@ export default function CidadaniaPage() {
                     <div className="text-[11px] text-slate-400 flex flex-col gap-0.5">
                       <span className="flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
-                        {item.data_apresentacao
-                          ? `Apresentado em ${item.data_apresentacao}`
+                        {formatarData(item.data_apresentacao)
+                          ? `Matéria apresentada em ${formatarData(item.data_apresentacao)}`
                           : item.status || "Em tramitação"}
                       </span>
+                      {/* Os portais não publicam início nem fim da votação popular: estas datas são as da coleta diária */}
+                      {formatarData(item.primeira_coleta_em) && (
+                        <span
+                          className="pl-[18px]"
+                          title="Os portais oficiais não informam quando a votação popular começou: esta é a data em que o LegisData a viu pela primeira vez."
+                        >
+                          {isAberta ? "Vista aberta desde" : "Vista pela 1ª vez em"} {formatarData(item.primeira_coleta_em)}
+                        </span>
+                      )}
+                      {formatarData(item.encerrada_em) && (
+                        <span
+                          className="pl-[18px]"
+                          title="Os portais oficiais não informam quando a votação popular terminou: esta é a data em que o LegisData viu que ela deixou de estar aberta."
+                        >
+                          Vista encerrada em {formatarData(item.encerrada_em)}
+                        </span>
+                      )}
                       {linkTramitacao && isAberta && (
                         <a
                           href={linkTramitacao}

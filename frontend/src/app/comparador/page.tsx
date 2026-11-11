@@ -1,6 +1,9 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { Suspense, useEffect, useState, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
+import Compartilhar from "@/components/Compartilhar";
+import { atualizarUrl, montarLink } from "@/lib/compartilhar";
 import Header from "@/components/Header";
 import {
   getMandatesPerformance,
@@ -100,7 +103,8 @@ function diffIple(m1: IpleDoMandato | undefined, m2: IpleDoMandato | undefined, 
   return isNum(a) && isNum(b) ? b - a : null;
 }
 
-export default function ComparadorPage() {
+function Comparador() {
+  const parametros = useSearchParams();
   const mandatesQuery = useApi("compare-mandates-list", (signal) => getMandatesPerformance(signal));
   const presidentsQuery = useApi("compare-presidents", (signal) => getPresidentes(signal));
   const mandates = useMemo(() => mandatesQuery.data ?? [], [mandatesQuery.data]);
@@ -108,10 +112,15 @@ export default function ComparadorPage() {
   const isLoading = mandatesQuery.loading;
 
   // Seleção do usuário; sem escolha, usa os dois mandatos mais recentes retornados pela API.
-  const [picked1, setPicked1] = useState<string | null>(null);
-  const [picked2, setPicked2] = useState<string | null>(null);
+  // O link direto (?m1=...&m2=...) abre a mesma comparação.
+  const [picked1, setPicked1] = useState<string | null>(() => parametros?.get("m1") ?? null);
+  const [picked2, setPicked2] = useState<string | null>(() => parametros?.get("m2") ?? null);
   const mandate1Id = picked1 ?? (mandates.length > 1 ? mandates[mandates.length - 2].id_mandato : "");
   const mandate2Id = picked2 ?? (mandates.length > 0 ? mandates[mandates.length - 1].id_mandato : "");
+
+  useEffect(() => {
+    atualizarUrl({ m1: picked1, m2: picked2 });
+  }, [picked1, picked2]);
 
   const [chartMetric, setChartMetric] = useState<ChartMetricType>("PIB");
 
@@ -355,6 +364,25 @@ export default function ComparadorPage() {
             })}
           </div>
         </div>
+
+        {m1 && m2 && (
+          <Compartilhar
+            link={montarLink({ m1: mandate1Id, m2: mandate2Id })}
+            nomeDoArquivo={`legisdata-comparacao-${mandate1Id}-${mandate2Id}`}
+            cartao={{
+              titulo: `${m1.presidente} × ${m2.presidente}`,
+              linhas: [
+                ["Mandato A", `${m1.presidente} (${m1.anos_cobertos})`],
+                ["Mandato B", `${m2.presidente} (${m2.anos_cobertos})`],
+              ],
+              fonte: "BCB, IBGE, Portal da Transparência e Dados Abertos da Câmara e do Senado",
+              data: new Date().toLocaleDateString("pt-BR"),
+              periodo: `${m1.anos_cobertos} e ${m2.anos_cobertos}`,
+              etapa: "Comparação entre mandatos presidenciais",
+              link: montarLink({ m1: mandate1Id, m2: mandate2Id }),
+            }}
+          />
+        )}
 
         {/* Dual Selector Interativo */}
         <div className="grid grid-cols-1 md:grid-cols-11 gap-4 items-center">
@@ -2132,5 +2160,14 @@ export default function ComparadorPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function ComparadorPage() {
+  // useSearchParams exige Suspense: sem ele a página inteira sai da geração estática
+  return (
+    <Suspense fallback={<LoadingState label="Carregando comparador..." />}>
+      <Comparador />
+    </Suspense>
   );
 }

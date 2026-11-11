@@ -648,3 +648,47 @@ def test_fornecedores_que_somam_mais_que_o_gasto_deixam_a_concentracao_desconhec
     concentracao = client.get(f"{BASE}/{seed.beltrano.id}").json()["indices_inteligencia"]["concentracao_ceap"]
     assert concentracao["indice_hhi"] is None and concentracao["percentual_maior_fornecedor"] is None
     assert "não cobrem o mesmo período" in concentracao["diagnostico"]
+
+
+def test_classificacao_simbolica_mostra_a_palavra_que_decidiu_e_o_criterio(client, db, seed):
+    """A classificação é automática por palavra-chave: o dossiê mostra qual palavra decidiu e a lista inteira."""
+    from app.models import TipoProposicaoEnum
+    from tests.stg_models import Proposition
+
+    db.add_all(
+        [
+            Proposition(
+                proposition_type=TipoProposicaoEnum.PL,
+                number=501,
+                year=2024,
+                title="PL 501/2024",
+                summary="Institui o Dia Nacional do Quilombo e presta homenagem aos seus fundadores.",
+                presentation_date=date(2024, 1, 1),
+                author_politician_id=seed.fulano.id,
+                external_camara_id=50001,
+            ),
+            Proposition(
+                proposition_type=TipoProposicaoEnum.PL,
+                number=502,
+                year=2024,
+                title="PL 502/2024",
+                summary="Altera a tabela do imposto de renda da pessoa física.",
+                presentation_date=date(2024, 1, 1),
+                author_politician_id=seed.fulano.id,
+                external_camara_id=50002,
+            ),
+        ]
+    )
+    db.commit()
+    dossier = client.get(f"{BASE}/{seed.fulano.id}").json()
+    por_titulo = {m["titulo"]: m for m in dossier["materias_propostas"]}
+    simb = por_titulo["PL 501/2024"]
+    assert simb["classificacao_relevancia"] == "SIMBOLICO"
+    assert set(simb["palavras_encontradas"]) >= {"dia nacional", "homenagem"}
+    assert "simbólica ou comemorativa" in simb["justificativa_relevancia"]
+    outra = por_titulo["PL 502/2024"]
+    assert outra["classificacao_relevancia"] == "IMPACTO" and outra["palavras_encontradas"] == []
+    assert "não mede a importância" in outra["justificativa_relevancia"]
+    criterio = dossier["relevancia_legislativa"]["criterio"]
+    assert "homenagem" in criterio["palavras"] and "pode errar em ambos os sentidos" in criterio["descricao"]
+    assert "Foco em Pautas Simbólicas" not in str(dossier["relevancia_legislativa"])

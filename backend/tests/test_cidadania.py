@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 from app.core.config import settings
@@ -28,7 +28,7 @@ CONSULTAS = [
 
 @pytest.fixture()
 def fake_service():
-    with patch("app.api.v1.cidadania.get_consultas_publicas", return_value=CONSULTAS) as mock:
+    with patch("app.api.v1.cidadania.consultas_publicas", return_value=CONSULTAS) as mock:
         yield mock
 
 
@@ -49,7 +49,7 @@ def test_filter_by_unknown_house_returns_empty_list(client, fake_service):
 
 
 def test_item_without_house_key_does_not_break_the_filter(client):
-    with patch("app.api.v1.cidadania.get_consultas_publicas", return_value=[{**CONSULTAS[0], "casa": None}]):
+    with patch("app.api.v1.cidadania.consultas_publicas", return_value=[{**CONSULTAS[0], "casa": None}]):
         assert client.get(URL, params={"casa": "Senado"}).json() == []
 
 
@@ -60,25 +60,25 @@ def test_house_filter_length_is_bounded(client, fake_service):
 def test_force_refresh_is_ignored_for_anonymous_users(client, fake_service, monkeypatch):
     monkeypatch.setattr(settings, "ADMIN_REFRESH_TOKEN", "segredo-admin")
     assert client.get(URL, params={"force_refresh": "true"}).status_code == 200
-    fake_service.assert_called_with(force_refresh=False)
+    fake_service.assert_called_with(ANY, force_refresh=False)
 
 
 def test_force_refresh_rejects_wrong_token(client, fake_service, monkeypatch):
     monkeypatch.setattr(settings, "ADMIN_REFRESH_TOKEN", "segredo-admin")
     client.get(URL, params={"force_refresh": "true"}, headers={"X-Admin-Token": "errado"})
-    fake_service.assert_called_with(force_refresh=False)
+    fake_service.assert_called_with(ANY, force_refresh=False)
 
 
 def test_force_refresh_accepts_valid_token(client, fake_service, monkeypatch):
     monkeypatch.setattr(settings, "ADMIN_REFRESH_TOKEN", "segredo-admin")
     client.get(URL, params={"force_refresh": "true"}, headers={"X-Admin-Token": "segredo-admin"})
-    fake_service.assert_called_with(force_refresh=True)
+    fake_service.assert_called_with(ANY, force_refresh=True)
 
 
 def test_force_refresh_disabled_when_no_admin_token_is_configured(client, fake_service, monkeypatch):
     monkeypatch.setattr(settings, "ADMIN_REFRESH_TOKEN", "")
     client.get(URL, params={"force_refresh": "true"}, headers={"X-Admin-Token": ""})
-    fake_service.assert_called_with(force_refresh=False)
+    fake_service.assert_called_with(ANY, force_refresh=False)
 
 
 # ---------------------------------------------------------------------------
@@ -274,3 +274,155 @@ def test_senado_portal_vote_page_failure_keeps_matter_without_tally():
     with patch.object(svc.requests, "get", side_effect=fake_get):
         items = svc.fetch_senado_consultas(limit=1)
     assert items[0]["votos_sim"] is None and items[0]["percentual_sim"] is None
+
+
+# ---------------------------------------------------------------------------
+# Foto diária no banco: o job coleta e grava, a API só lê
+# ---------------------------------------------------------------------------
+@pytest.fixture()
+def tabela_limpa(db):
+    from sqlalchemy import text
+
+    db.execute(text("DELETE FROM leg.consulta_publica"))
+    db.commit()
+    yield db
+    db.execute(text("DELETE FROM leg.consulta_publica"))
+    db.commit()
+
+
+def _item(sigla, aberta, sim=None, nao=None, casa="Senado", id_externo=None, fonte="tempo_real"):
+    return {
+        "id_externo": id_externo or sigla,
+        "casa": casa,
+        "sigla_projeto": sigla,
+        "ementa": f"Ementa de {sigla}",
+        "link_oficial_votacao": f"http://x/{sigla}",
+        "link_tramitacao_oficial": None,
+        "em_votacao_aberta": aberta,
+        "votos_sim": sim,
+        "votos_nao": nao,
+        "tema": "Tema",
+        "status": "Votação Popular Aberta Agora" if aberta else "Encerrada",
+        "autor": None,
+        "data_apresentacao": "2026-03-10",
+        "destaque": aberta,
+        "fonte_dados": fonte,
+    }
+
+
+def _coleta(itens, live=True):
+    return patch.object(svc, "_build_consultas", return_value=(itens, live))
+
+
+def test_coleta_diaria_grava_a_foto_e_a_api_serve_o_banco_com_as_abertas_primeiro(client, tabela_limpa):
+    with _coleta([_item("PL 1/2026", False), _item("PL 2/2026", True, 70, 30)]):
+        resultado = svc.atualizar_consultas(tabela_limpa)
+    assert resultado == {"atualizado": True, "itens": 2, "abertas": 1}
+    corpo = client.get(URL).json()
+    assert [c["sigla_projeto"] for c in corpo] == ["PL 2/2026", "PL 1/2026"]  # a aberta vem primeiro
+    aberta = corpo[0]
+    assert aberta["percentual_sim"] == 70.0 and aberta["data_apresentacao"] == "2026-03-10"
+    assert aberta["atualizado_em"]  # a tela mostra quando foi a última coleta
+
+
+def test_rodar_de_novo_nao_duplica_e_atualiza_o_placar(client, tabela_limpa):
+    with _coleta([_item("PL 2/2026", True, 70, 30)]):
+        svc.atualizar_consultas(tabela_limpa)
+    with _coleta([_item("PL 2/2026", True, 80, 20)]):
+        svc.atualizar_consultas(tabela_limpa)
+    corpo = client.get(URL).json()
+    assert len(corpo) == 1 and corpo[0]["votos_sim"] == 80 and corpo[0]["percentual_sim"] == 80.0
+
+
+def test_materia_aberta_que_sumiu_do_portal_vira_encerrada_sem_ser_apagada(client, tabela_limpa):
+    with _coleta([_item("PL 2/2026", True, 70, 30), _item("PL 3/2026", True, 5, 5)]):
+        svc.atualizar_consultas(tabela_limpa)
+    with _coleta([_item("PL 3/2026", True, 6, 6)]):  # a PL 2 saiu do portal
+        svc.atualizar_consultas(tabela_limpa)
+    por_sigla = {c["sigla_projeto"]: c for c in client.get(URL).json()}
+    assert por_sigla["PL 2/2026"]["em_votacao_aberta"] is False
+    assert por_sigla["PL 2/2026"]["status"] == svc.STATUS_FORA_DO_PORTAL
+    assert por_sigla["PL 3/2026"]["em_votacao_aberta"] is True
+
+
+def test_fontes_fora_do_ar_nao_gravam_nada_e_mantem_a_foto_anterior(client, tabela_limpa):
+    with _coleta([_item("PL 2/2026", True, 70, 30)]):
+        svc.atualizar_consultas(tabela_limpa)
+    with _coleta([], live=False):
+        assert svc.atualizar_consultas(tabela_limpa) == {"atualizado": False, "itens": 0, "abertas": 0}
+    corpo = client.get(URL).json()
+    assert [c["sigla_projeto"] for c in corpo] == ["PL 2/2026"] and corpo[0]["em_votacao_aberta"] is True
+
+
+def test_banco_vazio_cai_na_coleta_direta_em_memoria(client, tabela_limpa):
+    with patch.object(svc, "get_consultas_publicas", return_value=CONSULTAS) as direta:
+        corpo = client.get(URL).json()
+    assert [c["id_externo"] for c in corpo] == ["123", "456"]
+    direta.assert_called_once_with(force_refresh=False)
+
+
+def test_banco_com_dados_nunca_chama_as_fontes_externas(client, tabela_limpa):
+    with _coleta([_item("PL 2/2026", True, 70, 30)]):
+        svc.atualizar_consultas(tabela_limpa)
+    with patch.object(svc, "get_consultas_publicas", side_effect=AssertionError("não deve ir à rede")):
+        assert client.get(URL).status_code == 200
+
+
+def test_filtro_por_casa_vale_para_a_foto_do_banco(client, tabela_limpa):
+    with _coleta([_item("PL 2/2026", True), _item("PEC 1/2026", True, casa="Câmara")]):
+        svc.atualizar_consultas(tabela_limpa)
+    assert [c["sigla_projeto"] for c in client.get(URL, params={"casa": " câmara "}).json()] == ["PEC 1/2026"]
+
+
+def test_primeira_coleta_fica_fixa_e_o_encerramento_e_registrado_quando_a_consulta_fecha(client, tabela_limpa):
+    with _coleta([_item("PL 2/2026", True, 70, 30)]):
+        svc.atualizar_consultas(tabela_limpa)
+    primeira = client.get(URL).json()[0]
+    assert primeira["primeira_coleta_em"] and primeira["encerrada_em"] is None
+
+    with _coleta([_item("PL 2/2026", True, 75, 25)]):  # continua aberta: a primeira coleta não muda
+        svc.atualizar_consultas(tabela_limpa)
+    de_novo = client.get(URL).json()[0]
+    assert de_novo["primeira_coleta_em"] == primeira["primeira_coleta_em"] and de_novo["encerrada_em"] is None
+
+    with _coleta([_item("PL 2/2026", False, 75, 25)]):  # o portal passou a informar como encerrada
+        svc.atualizar_consultas(tabela_limpa)
+    fechada = client.get(URL).json()[0]
+    assert fechada["encerrada_em"] is not None
+    assert fechada["primeira_coleta_em"] == primeira["primeira_coleta_em"]
+
+    with _coleta([_item("PL 2/2026", True, 80, 20)]):  # reabriu: o fim registrado deixa de valer
+        svc.atualizar_consultas(tabela_limpa)
+    assert client.get(URL).json()[0]["encerrada_em"] is None
+
+
+def test_materia_que_sumiu_do_portal_ganha_o_fim_observado(client, tabela_limpa):
+    with _coleta([_item("PL 2/2026", True), _item("PL 3/2026", True)]):
+        svc.atualizar_consultas(tabela_limpa)
+    with _coleta([_item("PL 3/2026", True)]):
+        svc.atualizar_consultas(tabela_limpa)
+    por_sigla = {c["sigla_projeto"]: c for c in client.get(URL).json()}
+    assert por_sigla["PL 2/2026"]["encerrada_em"] is not None and por_sigla["PL 3/2026"]["encerrada_em"] is None
+
+
+def test_materia_encerrada_ja_na_primeira_coleta_nao_inventa_data_de_encerramento(client, tabela_limpa):
+    with _coleta([_item("PL 1/2026", False)]):
+        svc.atualizar_consultas(tabela_limpa)
+    assert client.get(URL).json()[0]["encerrada_em"] is None  # nunca foi vista aberta
+
+
+def test_data_de_apresentacao_oficial_vem_dos_dados_abertos_do_senado():
+    payload = {"DetalheMateria": {"Materia": {"DadosBasicosMateria": {"DataApresentacao": "2020-11-05"}}}}
+    with patch.object(svc.requests, "get", return_value=_response(payload=payload)):
+        assert svc._data_apresentacao_senado("146046") == "2020-11-05"
+
+
+@pytest.mark.parametrize("resposta", [_response(status=500), _response(payload={"DetalheMateria": {}})])
+def test_sem_data_oficial_devolve_none_em_vez_de_inventar(resposta):
+    with patch.object(svc.requests, "get", return_value=resposta):
+        assert svc._data_apresentacao_senado("1") is None
+
+
+def test_falha_de_rede_na_data_de_apresentacao_devolve_none():
+    with patch.object(svc.requests, "get", side_effect=TimeoutError("lento")):
+        assert svc._data_apresentacao_senado("1") is None

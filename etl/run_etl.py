@@ -127,9 +127,9 @@ def _pnad(force: bool):
 def _votacoes(ano_inicio: Optional[int], force: bool):
     from datetime import date
 
-    from etl.extractors.votacoes_extractor import run_votacoes
+    from etl.extractors.votacoes_extractor import ANO_INICIAL_PADRAO, run_votacoes
 
-    inicio = _ano_a_partir_do_corte("CAMARA_API", "votacoes", ano_inicio, 2019)
+    inicio = _ano_a_partir_do_corte("CAMARA_API", "votacoes", ano_inicio, ANO_INICIAL_PADRAO)
     return run_votacoes(anos=list(range(inicio, date.today().year + 1)), force=force)
 
 
@@ -470,7 +470,7 @@ def montar_parser() -> argparse.ArgumentParser:
         "--votacoes-ano-inicio",
         type=int,
         default=None,
-        help="Ano inicial das votações (padrão: o ano anterior ao corte da última carga; sem corte, 2019)",
+        help="Ano inicial das votações (padrão: o ano anterior ao corte da última carga; sem corte, 2003)",
     )
     p.add_argument(
         "--allow-synthetic", action="store_true", help="Gera/carrega dados SINTÉTICOS marcados (demonstração)"

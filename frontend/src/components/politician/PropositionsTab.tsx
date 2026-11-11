@@ -1,5 +1,6 @@
 "use client";
 
+import ReportarErro from "@/components/ReportarErro";
 import React, { useState } from "react";
 import {
   ResponsiveContainer,
@@ -346,7 +347,7 @@ export default function PropositionsTab({ dossier }: PropositionsTabProps) {
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Classificação automatizada por processamento de linguagem natural: Leis Estruturais vs Homenagens Simbólicas
+                Classificação automática por palavras-chave na ementa: propostas simbólicas ou comemorativas e demais propostas
               </p>
             </div>
           </div>
@@ -371,7 +372,7 @@ export default function PropositionsTab({ dossier }: PropositionsTabProps) {
               Proporção de Relevância Legislativa
             </span>
             <span className="text-[10px] text-slate-400 font-mono mb-2">
-              Gráfico de Pizza: Projetos de Impacto ({rel?.percentual_impacto || 0}%) vs Simbólicos ({rel?.percentual_simbolico || 0}%)
+              Demais propostas ({rel?.percentual_impacto || 0}%) e simbólicas ou comemorativas ({rel?.percentual_simbolico || 0}%)
             </span>
 
             <div className="w-full h-52">
@@ -380,12 +381,12 @@ export default function PropositionsTab({ dossier }: PropositionsTabProps) {
                   <Pie
                     data={[
                       {
-                        name: "Projetos de Impacto / Substanciais",
+                        name: "Demais propostas",
                         value: rel?.projetos_impacto || 0,
                         pct: rel?.percentual_impacto || 0,
                       },
                       {
-                        name: "Projetos Simbólicos / Homenagens",
+                        name: "Simbólicas ou comemorativas",
                         value: rel?.projetos_simbolicos || 0,
                         pct: rel?.percentual_simbolico || 0,
                       },
@@ -423,7 +424,7 @@ export default function PropositionsTab({ dossier }: PropositionsTabProps) {
             <div className="grid grid-cols-2 gap-2 w-full pt-2 text-[11px] font-mono">
               <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2 text-center">
                 <span className="text-emerald-400 font-bold block">
-                  Impacto ({rel?.percentual_impacto || 0}%)
+                  Demais ({rel?.percentual_impacto || 0}%)
                 </span>
                 <span className="text-slate-400 text-[10px]">
                   {rel?.projetos_impacto || 0} projetos
@@ -431,7 +432,7 @@ export default function PropositionsTab({ dossier }: PropositionsTabProps) {
               </div>
               <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2 text-center">
                 <span className="text-amber-400 font-bold block">
-                  Simbólico ({rel?.percentual_simbolico || 0}%)
+                  Simbólicas ({rel?.percentual_simbolico || 0}%)
                 </span>
                 <span className="text-slate-400 text-[10px]">
                   {rel?.projetos_simbolicos || 0} projetos
@@ -451,26 +452,40 @@ export default function PropositionsTab({ dossier }: PropositionsTabProps) {
                 <span className="text-[10px] text-slate-400 mt-1 block">Amostra recente cadastrada</span>
               </div>
               <div className="bg-slate-950/70 border border-emerald-500/30 rounded-xl p-3.5">
-                <span className="text-[10px] text-emerald-400 font-medium block mb-1">Impacto / Estrutural</span>
+                <span className="text-[10px] text-emerald-400 font-medium block mb-1">Demais propostas</span>
                 <span className="text-xl font-black font-mono text-emerald-400 block">
                   {rel?.projetos_impacto || 0} ({rel?.percentual_impacto || 0}%)
                 </span>
-                <span className="text-[10px] text-slate-400 mt-1 block">Economia, Saúde, Código Penal</span>
+                <span className="text-[10px] text-slate-400 mt-1 block">A ementa não tem palavra-chave simbólica</span>
               </div>
               <div className="bg-slate-950/70 border border-amber-500/30 rounded-xl p-3.5">
-                <span className="text-[10px] text-amber-400 font-medium block mb-1">Simbólico / Homenagem</span>
+                <span className="text-[10px] text-amber-400 font-medium block mb-1">Simbólicas ou comemorativas</span>
                 <span className="text-xl font-black font-mono text-amber-400 block">
                   {rel?.projetos_simbolicos || 0} ({rel?.percentual_simbolico || 0}%)
                 </span>
-                <span className="text-[10px] text-slate-400 mt-1 block">Títulos, Homenagens e Datas</span>
+                <span className="text-[10px] text-slate-400 mt-1 block">Homenagens, datas comemorativas e títulos</span>
               </div>
             </div>
 
             <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5 space-y-2 text-xs">
               <span className="font-bold text-slate-200 block">Como funciona o algoritmo de classificação?</span>
               <p className="text-slate-400 leading-relaxed text-[11px]">
-                O detector analisa a ementa de cada proposição em busca de marcadores semânticos honoríficos (como <em>&quot;Dia Nacional&quot;</em>, <em>&quot;Homenagem&quot;</em>, <em>&quot;Denomina&quot;</em>, <em>&quot;Cidadão Honorário&quot;</em> e <em>&quot;Título&quot;</em>). Matérias com essas características são categorizadas como <strong>Simbólicas</strong>, enquanto as demais são classificadas como <strong>Impacto/Substancial</strong>.
+                {rel?.criterio?.descricao ??
+                  "A classificação é automática: procura palavras-chave de homenagem, data comemorativa e título honorífico no título, na ementa e na área temática."}
               </p>
+              {rel?.criterio?.palavras && (
+                <p className="text-[11px] text-slate-400">
+                  <strong className="text-slate-300">Palavras que marcam como simbólica:</strong>{" "}
+                  {rel.criterio.palavras.map((palavra) => `“${palavra}”`).join(", ")}.
+                </p>
+              )}
+              <ReportarErro
+                alvoTipo="CLASSIFICACAO"
+                alvoId={polId}
+                alvoRotulo={dossier?.perfil?.nome_eleitoral}
+                secao="Classificação de propostas simbólicas"
+                rotulo="Discorda desta classificação ou viu um erro?"
+              />
             </div>
           </div>
         </div>
@@ -557,7 +572,7 @@ export default function PropositionsTab({ dossier }: PropositionsTabProps) {
                 : "text-slate-400 hover:text-slate-200"
             }`}
           >
-            Impacto ({rel?.projetos_impacto ?? "—"})
+            Demais ({rel?.projetos_impacto ?? "—"})
           </button>
           <button
             type="button"
@@ -718,6 +733,13 @@ export default function PropositionsTab({ dossier }: PropositionsTabProps) {
                       <span>{p.justificativa_relevancia}</span>
                     </div>
                   )}
+                  <ReportarErro
+                    alvoTipo="CLASSIFICACAO"
+                    alvoId={p.id}
+                    alvoRotulo={p.titulo}
+                    secao="Classificação desta proposição"
+                    rotulo="Discorda desta classificação?"
+                  />
                 </div>
               );
             })}
