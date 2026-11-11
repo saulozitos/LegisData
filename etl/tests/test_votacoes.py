@@ -675,3 +675,8 @@ def test_atualizacao_de_votacoes_carrega_e_posprocessa_quando_pedido(monkeypatch
 
 def test_atualizacao_sem_derivados_deixa_o_posprocessamento_a_quem_chamou(monkeypatch):
     assert _atualizar_com_dublês(monkeypatch, derivados=False) == [f"ano_inicio={date.today().year - 1}", "carga"]
+
+
+def test_janela_padrao_das_votacoes_comeca_quando_a_camara_publica_orientacao():
+    # A Câmara publica `votacoesOrientacoes` desde 2003; antes disso o Basômetro não tem orientação a comparar.
+    assert ve.ANO_INICIAL_PADRAO == 2003

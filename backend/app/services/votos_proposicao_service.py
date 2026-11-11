@@ -12,6 +12,7 @@ from app.models.core import Partido, Pessoa, PessoaNome
 from app.models.enums import CasaLegislativaEnum, VotoOpcaoEnum
 from app.models.leg import Proposicao, Votacao, Voto
 from app.services.deliberacoes_service import get_proposicao_deliberacoes
+from app.services.objeto_votacao_service import objetos_das_votacoes
 from app.services.placar import (
     contagens_por_votacao,
     placar_para_tela,
@@ -163,8 +164,9 @@ def _resumo_proposicao(prop: Proposicao) -> Dict[str, Any]:
     }
 
 
-def _sessao_disponivel(s: Votacao) -> Dict[str, Any]:
+def _sessao_disponivel(s: Votacao, objeto: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     return {
+        "objeto": objeto,
         "id": str(s.uid),
         "titulo": titulo_votacao(s),
         "data_hora": s.data_hora.isoformat(),
@@ -197,7 +199,8 @@ def votos_da_proposicao(
     if not sessoes:
         return {"proposicao": resumo, "sessoes_disponiveis": [], "sessao_ativa": None, "total": 0, "votos": []}
 
-    disponiveis = [_sessao_disponivel(s) for s in sessoes]
+    objetos = objetos_das_votacoes(db, [s.id for s in sessoes])
+    disponiveis = [_sessao_disponivel(s, objetos[s.id]) for s in sessoes]
     placares = placares_das_votacoes(sessoes, contagens_por_votacao(db, Votacao.id.in_([s.id for s in sessoes])))
 
     selecionada: Optional[Votacao] = None
@@ -219,6 +222,7 @@ def votos_da_proposicao(
         return {
             "proposicao": prop_com_area,
             "sessao_ativa": {
+                "objeto": objetos[selecionada.id],
                 "id": str(selecionada.uid),
                 "titulo": titulo_votacao(selecionada),
                 "descricao": descricao,
@@ -268,6 +272,7 @@ def votos_da_proposicao(
     return {
         "proposicao": prop_com_area,
         "sessao_ativa": {
+            "objeto": objetos[selecionada.id],
             "id": str(selecionada.uid),
             "titulo": titulo_votacao(selecionada),
             "descricao": descricao,
@@ -315,6 +320,7 @@ def votos_nominais_divididos(db: Session, prop_id: str, busca: Optional[str] = N
         return vazio
     placares = placares_das_votacoes(sessoes, contagens_por_votacao(db, Votacao.id.in_([s.id for s in sessoes])))
     selecionada = sessao_principal(sessoes, placares) or sessoes[0]
+    objeto_selecionada = objetos_das_votacoes(db, [selecionada.id])[selecionada.id]
 
     consulta, _ = _consulta_votos(db, selecionada, busca)
     todos = consulta.order_by(Pessoa.nome_exibicao.asc(), Pessoa.id).all()
@@ -342,6 +348,7 @@ def votos_nominais_divididos(db: Session, prop_id: str, busca: Optional[str] = N
     return {
         "proposicao": prop_info,
         "sessao": {
+            "objeto": objeto_selecionada,
             "id": str(selecionada.uid),
             "titulo": titulo_votacao(selecionada),
             "descricao": selecionada.descricao or titulo_votacao(selecionada),

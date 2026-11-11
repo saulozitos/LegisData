@@ -1,11 +1,13 @@
 "use client";
 
+import CoberturaDoPainel from "@/components/CoberturaDoPainel";
 import React, { useState, useMemo } from "react";
 import { getVotingCalendar } from "@/services/api";
 import { useApi } from "@/hooks/useApi";
 import { safeExternalUrl } from "@/lib/safeUrl";
 import { fmtNum } from "@/lib/format";
 import { EmptyState, ErrorState } from "@/components/StateViews";
+import ObjetoDaVotacao from "@/components/ObjetoDaVotacao";
 import PropositionVoteModal from "@/components/propositions/PropositionVoteModal";
 import {
   CalendarDays,
@@ -105,7 +107,7 @@ export default function VotingCalendarPanel({
                 </span>
               </h2>
               <p className="text-xs sm:text-sm text-slate-400 mt-1">
-                Acompanhe as datas em que o Congresso realizou deliberações em plenário e consulte todas as matérias votadas.
+                Acompanhe os dias com votação nominal cadastrados na base e consulte as matérias votadas em cada um.
               </p>
             </div>
           </div>
@@ -161,19 +163,21 @@ export default function VotingCalendarPanel({
         {/* ======================================================== */}
         {data && (
           <div className="space-y-4">
+            <CoberturaDoPainel painel="votacoes" />
+
             {/* Banner Educativo de Destaque */}
             <div className="bg-gradient-to-r from-emerald-950/40 via-cyan-950/30 to-slate-950/60 border border-emerald-500/30 rounded-2xl p-5 shadow-inner">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
                     <Sparkles className="w-4 h-4" aria-hidden="true" />
-                    Transparência de Atividade Deliberativa
+                    Cobertura da base
                   </div>
                   <h3 className="text-base sm:text-lg font-black text-slate-100">
                     &ldquo;{data.estatisticas_anuais.texto_estatistica}&rdquo;
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Contabilização rigorosa de dias com sessões de votação nominal com quórum verificado no plenário da Câmara e do Senado.
+                    Conta só os dias com votação nominal que a base tem cadastrados, na Câmara e no Senado. Veja abaixo a fonte, o período e a última atualização.
                   </p>
                 </div>
 
@@ -527,6 +531,9 @@ export default function VotingCalendarPanel({
                           Autor da iniciativa: <strong className="text-slate-300 font-medium">{sess.proposicao.autor_nome}</strong>
                         </div>
                       </div>
+
+                      {/* O que foi votado: urgência, destaque ou emenda não são a aprovação do projeto */}
+                      <ObjetoDaVotacao objeto={sess.objeto} />
 
                       {/* Placar de Votação Nominal */}
                       {sess.placar && sess.placar.total > 0 && (

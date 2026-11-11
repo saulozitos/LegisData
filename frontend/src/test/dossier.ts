@@ -28,8 +28,8 @@ export function fullDossier(): PoliticoDossier {
       { id: 'm0', cargo: 'VEREADOR', esfera: 'MUNICIPAL', ano_eleicao: 2016, numero_mandato: 1, data_inicio: '2017-01-01', data_fim: '2020-12-31', status: 'CONCLUIDO', partido_sigla: 'PSB', uf: 'SP', total_votos: null, percentual_votos: null, coligacao: null },
     ],
     filiacoes_partidarias: [
-      { id: 'f1', partido_sigla: 'PT', partido_nome: 'Partido dos Trabalhadores', data_filiacao: '2018-01-01', data_desfiliacao: null, is_atual: true, motivo_desfiliacao: null, uf: 'SP' },
-      { id: 'f0', partido_sigla: 'PSB', partido_nome: 'Partido Socialista Brasileiro', data_filiacao: '2010-01-01', data_desfiliacao: '2017-12-31', is_atual: false, motivo_desfiliacao: 'TROCA_PARTIDARIA', uf: 'SP' },
+      { id: 'f1', tipo_mudanca: 'TROCA', tipo_mudanca_rotulo: 'Troca de partido', partido_sigla: 'PT', partido_nome: 'Partido dos Trabalhadores', data_filiacao: '2018-01-01', data_desfiliacao: null, is_atual: true, motivo_desfiliacao: null, uf: 'SP' },
+      { id: 'f0', tipo_mudanca: 'INICIAL', tipo_mudanca_rotulo: 'Filiação inicial', partido_sigla: 'PSB', partido_nome: 'Partido Socialista Brasileiro', data_filiacao: '2010-01-01', data_desfiliacao: '2017-12-31', is_atual: false, motivo_desfiliacao: 'TROCA_PARTIDARIA', uf: 'SP' },
     ],
     remuneracao: {
       resumo: { salario_bruto_atual: 44008.52, salario_liquido_atual: 33000, media_ceap_mensal: 30000, total_bruto_2023: 528102.24, total_ceap_2023: 360000, total_beneficios_2023: 50000 },

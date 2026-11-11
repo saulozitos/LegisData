@@ -12,7 +12,7 @@ from app.core.numeros import taxa_ou_desconhecida
 from app.core.query_utils import ALL_KEYWORDS, BRT
 from app.models.enums import CargoPoliticoEnum, CasaLegislativaEnum
 from app.models.leg import Autoria, Proposicao, Votacao, Voto
-from app.services import financas_service, politico_service
+from app.services import filiacao_service, financas_service, politico_service
 from app.services.basometro import calcular_basometro
 from app.services.ialp_pesos import carregar_pesos_ialp
 from app.services.ialp_pontos import pontos_ialp_pessoa
@@ -20,6 +20,7 @@ from app.services.judicial_service import enriquecer_registros_judiciais
 from app.services.politico_service import FiltroDeBusca, Politico
 from app.services.presidencia_service import listar_presidentes, periodo_do_mandato, presidente_por_referencia
 from app.services.resumo_votos_service import resumo_votos as resumo_votos_do_parlamentar
+from app.services.roi_cidadao import FAIXAS_PUBLICAS as FAIXAS_DO_ROI
 from app.services.roi_cidadao import METODOLOGIA as ROI_METODOLOGIA
 from app.services.roi_cidadao import PISO_DE_PONTOS, calcular_roi
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -322,7 +323,7 @@ def _trajetoria_core(db: Session, uid: uuid.UUID) -> Dict[str, Any]:
         db.execute(
             text(
                 """
-                SELECT f.id, cp.canonico_sigla AS sigla, p.nome, lower(f.periodo) AS inicio,
+                SELECT f.id, cp.canonico_id, cp.canonico_sigla AS sigla, p.nome, lower(f.periodo) AS inicio,
                        CASE WHEN upper_inf(f.periodo) THEN NULL ELSE upper(f.periodo) - 1 END AS fim,
                        upper_inf(f.periodo) AS atual, f.uf, f.motivo_saida
                 FROM core.filiacao f
@@ -338,6 +339,11 @@ def _trajetoria_core(db: Session, uid: uuid.UUID) -> Dict[str, Any]:
         .all()
     )
     hoje = date.today()
+    # a lista vem do mais recente ao mais antigo; o tipo de cada mudança compara com a filiação anterior no tempo
+    tipos = filiacao_service.classificar(
+        [f["canonico_id"] for f in reversed(filiacoes)], filiacao_service.sucessoes(db)
+    )
+    tipo_por_id = {f["id"]: tipo for f, tipo in zip(reversed(filiacoes), tipos)}
     return {
         "mandatos": [
             {
@@ -367,6 +373,8 @@ def _trajetoria_core(db: Session, uid: uuid.UUID) -> Dict[str, Any]:
                 "is_atual": f["atual"],
                 "motivo_desfiliacao": f["motivo_saida"],
                 "uf": f["uf"],
+                "tipo_mudanca": tipo_por_id[f["id"]],
+                "tipo_mudanca_rotulo": filiacao_service.ROTULOS[tipo_por_id[f["id"]]],
             }
             for f in filiacoes
         ],
@@ -441,13 +449,19 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         else 0
     )
 
-    def _classificar(p: Proposicao) -> Dict[str, str]:
+    def _classificar(p: Proposicao) -> Dict[str, Any]:
         txt_full = f"{p.titulo} {p.ementa or ''} {p.area_tematica or ''}".lower()
-        is_simb = any(k in txt_full for k in SIMBOLICO_KEYWORDS)
+        achadas = [k for k in SIMBOLICO_KEYWORDS if k in txt_full]
+        is_simb = bool(achadas)
         return {
             "classificacao_relevancia": "SIMBOLICO" if is_simb else "IMPACTO",
+            # a classificação é por palavra-chave: mostra qual palavra decidiu, para qualquer pessoa conferir
+            "palavras_encontradas": achadas,
             "justificativa_relevancia": (
-                "Matéria de cunho honorífico/simbólico" if is_simb else "Matéria com impacto estrutural e substantivo"
+                f"Proposta simbólica ou comemorativa: a ementa contém {', '.join(repr(k) for k in achadas)}."
+                if is_simb
+                else "Sem palavra-chave de homenagem, data comemorativa ou título honorífico na ementa. "
+                "Isso não mede a importância da proposta."
             ),
         }
 
@@ -546,11 +560,11 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
     if pct_imp is None:
         diagnostico_legislativo = None
     elif pct_imp >= 75:
-        diagnostico_legislativo = "Alta Relevância Estrutural"
+        diagnostico_legislativo = "Maioria das propostas sem marca simbólica na ementa"
     elif pct_imp >= 50:
-        diagnostico_legislativo = "Equilíbrio Legislativo"
+        diagnostico_legislativo = "Mistura de propostas simbólicas e demais propostas"
     else:
-        diagnostico_legislativo = "Foco em Pautas Simbólicas"
+        diagnostico_legislativo = "Maioria das propostas é simbólica ou comemorativa (por palavra-chave na ementa)"
 
     taxa_eficiencia = round((props_aprovadas / max(lideranca_count, 1)) * 100, 1) if lideranca_count > 0 else 0.0
 
@@ -583,6 +597,14 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         "percentual_impacto": pct_imp,
         "percentual_simbolico": pct_simb,
         "diagnostico": diagnostico_legislativo,
+        "criterio": {
+            "descricao": (
+                "Uma proposição é marcada como simbólica ou comemorativa quando o título, a ementa ou a área temática "
+                "contém uma destas palavras. A classificação é automática e por palavra-chave: pode errar em ambos os "
+                "sentidos, e as demais propostas não são, por isso, necessariamente de grande impacto."
+            ),
+            "palavras": sorted(set(SIMBOLICO_KEYWORDS)),
+        },
     }
 
     # E. Como Votou nas Principais Leis — agregados no banco; apenas os votos mais recentes são listados
@@ -852,6 +874,7 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         "custo_por_ponto_ialp": roi["custo_por_ponto"] if pontos_ialp >= PISO_DE_PONTOS else None,
         "projetos_estruturantes": projetos_autoria_estrutural,
         "metodologia": ROI_METODOLOGIA,
+        "faixas": FAIXAS_DO_ROI,
         "diagnostico": roi["diagnostico"],
     }
 
@@ -912,11 +935,12 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
 
     # 4. Estabilidade Partidária (período derivado das datas de filiação registradas)
     total_filiacoes = len(filiacoes_list)
-    trocas_partidarias = max(0, total_filiacoes - 1)
+    # só a troca de verdade conta: PMDB→MDB (renomeação), fusões e incorporações ficam de fora
+    trocas_partidarias = filiacao_service.contar_trocas([f["tipo_mudanca"] for f in filiacoes_list])
     filiacao_anos = [int(f["data_filiacao"][:4]) for f in filiacoes_list if f["data_filiacao"]]
     if filiacao_anos:
         anos_totais = max(1, date.today().year - min(filiacao_anos))
-        media_anos_partido: Optional[float] = round(anos_totais / max(total_filiacoes, 1), 1)
+        media_anos_partido: Optional[float] = round(anos_totais / (trocas_partidarias + 1), 1)
     else:
         media_anos_partido = None
 

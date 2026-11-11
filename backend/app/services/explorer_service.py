@@ -12,6 +12,7 @@ from app.models.core import Mandato
 from app.models.enums import CasaLegislativaEnum
 from app.models.leg import Autoria, Proposicao, Votacao
 from app.services.ialp_pesos import carregar_pesos_ialp
+from app.services.objeto_votacao_service import objetos_das_votacoes
 from app.services.party_catalog_service import SEM_PARTIDO_SIGLA
 from app.services.placar import contagens_por_votacao, placar_para_tela, placares_das_votacoes, sessao_principal
 from app.services.votos_proposicao_service import TIPOS_SESSAO, casa_codigo, sessoes_da_casa, titulo_votacao
@@ -61,9 +62,12 @@ def parse_codigo(db: Session, tabela: str, valor: Optional[str], rotulo: str) ->
 
 
 def resumo_da_casa(
-    sessoes: List[Votacao], placares: Dict[int, Dict[str, int]]
+    sessoes: List[Votacao],
+    placares: Dict[int, Dict[str, int]],
+    objetos: Optional[Dict[int, Optional[Dict[str, Any]]]] = None,
 ) -> Tuple[Dict[str, int], Optional[Dict[str, Any]], List[Dict[str, Any]]]:
     """(placar da sessão principal, resumo dela, detalhe de todas as sessões da Casa)."""
+    objetos = objetos or {}
     principal = sessao_principal(sessoes, placares)
     if principal is None:
         return dict(PLACAR_TELA_VAZIO), None, []
@@ -72,6 +76,7 @@ def resumo_da_casa(
     )
     detalhes = [
         {
+            "objeto": objetos.get(s.id),
             "sessao_id": str(s.uid),
             "external_id": s.id_externo,
             "data_hora": s.data_hora.isoformat(),
@@ -84,6 +89,7 @@ def resumo_da_casa(
         for s in ordenadas
     ]
     resumo = {
+        "objeto": objetos.get(principal.id),
         "sessao_id": str(principal.uid),
         "data_hora": principal.data_hora.isoformat(),
         "titulo": titulo_votacao(principal),
@@ -119,13 +125,14 @@ def proposicoes_com_votacao(db: Session, limite: int, deslocamento: int) -> Tupl
         sessoes, contagens_por_votacao(db, Votacao.proposicao_id.in_(ids), Votacao.tipo_deliberacao.in_(TIPOS_SESSAO))
     )
 
+    objetos = objetos_das_votacoes(db, [s.id for s in sessoes])
     resultado = []
     for p in props:
         da_proposicao = por_proposicao.get(p.id, [])
         camara = [s for s in da_proposicao if casa_codigo(s) == CasaLegislativaEnum.CAMARA_DOS_DEPUTADOS.value]
         senado = [s for s in da_proposicao if casa_codigo(s) == CasaLegislativaEnum.SENADO_FEDERAL.value]
-        placar_camara, sessao_camara, lista_camara = resumo_da_casa(camara, placares)
-        placar_senado, sessao_senado, lista_senado = resumo_da_casa(senado, placares)
+        placar_camara, sessao_camara, lista_camara = resumo_da_casa(camara, placares, objetos)
+        placar_senado, sessao_senado, lista_senado = resumo_da_casa(senado, placares, objetos)
 
         # placar consolidado padrão: prioriza a Casa onde houve votação com quórum
         if placar_camara["TOTAL"] > 0:
@@ -275,9 +282,10 @@ def explorar(
         )
         autores = {r.proposicao_id: r for r in db.execute(_AUTOR_PRINCIPAL_SQL, {"ids": ids})}
 
+    objetos = objetos_das_votacoes(db, [s.id for lista in sessoes_por_proposicao.values() for s in lista])
     itens = []
     for p in proposicoes:
-        placar, sessao, _ = resumo_da_casa(sessoes_por_proposicao.get(p.id, []), placares)
+        placar, sessao, _ = resumo_da_casa(sessoes_por_proposicao.get(p.id, []), placares, objetos)
         tem_votacao = placar["TOTAL"] > 0
 
         autor = autores.get(p.id)
