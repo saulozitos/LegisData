@@ -8,14 +8,10 @@ partido e sem valor padrão: com amostra insuficiente o indicador fica explicita
 
 from typing import Any, Dict, Optional
 
-from app.models.leg import Votacao, Voto
-from sqlalchemy import func, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 MIN_VOTACOES_AMOSTRA = 10
-
-# Votos que contam como posição do parlamentar (AUSENTE e Art. 17 não são posição).
-_VOTOS_COM_POSICAO = {"SIM", "NAO", "ABSTENCAO", "OBSTRUCAO"}
 
 _METODOLOGIA = (
     "Percentual de votações nominais em plenário (Câmara e Senado) em que o voto coincidiu com a orientação da "
@@ -45,16 +41,30 @@ SEM_VOTOS_NOMINAIS = "SEM_VOTOS_NOMINAIS"
 SEM_MANDATO = "SEM_MANDATO"
 
 
-def _cobertura(db: Session, pessoa_id: Any) -> Dict[str, Any]:
+_SQL_VOTOS = text(
+    "SELECT count(*) FILTER (WHERE vt.opcao_codigo IN ('SIM', 'NAO', 'ABSTENCAO', 'OBSTRUCAO')), "
+    "min(vo.data_hora), max(vo.data_hora), "
+    "count(*) FILTER (WHERE vo.orientacao_governo IN ('SIM', 'NAO') AND vt.opcao_codigo = vo.orientacao_governo), "
+    "count(*) FILTER (WHERE vo.orientacao_governo IN ('SIM', 'NAO') "
+    "AND vt.opcao_codigo IN ('SIM', 'NAO', 'ABSTENCAO', 'OBSTRUCAO') AND vt.opcao_codigo <> vo.orientacao_governo) "
+    "FROM leg.voto vt JOIN leg.votacao vo ON vo.id = vt.votacao_id WHERE vt.pessoa_id = :p"
+)
+
+
+def _votos_do_parlamentar(db: Session, pessoa_id: Any) -> Dict[str, Any]:
+    """Uma única passada pelos votos da pessoa: registrados, período e alinhados/divergentes ao Governo."""
+    r = db.execute(_SQL_VOTOS, {"p": pessoa_id}).one()
+    return {
+        "votos_registrados": int(r[0] or 0),
+        "primeiro_voto": r[1],
+        "ultimo_voto": r[2],
+        "alinhados": int(r[3] or 0),
+        "divergentes": int(r[4] or 0),
+    }
+
+
+def _cobertura(db: Session, pessoa_id: Any, votos: Dict[str, Any]) -> Dict[str, Any]:
     """Votos registrados do parlamentar, ano em que a base de votações começa e fim do último mandato."""
-    votos = db.execute(
-        text(
-            "SELECT count(*) FILTER (WHERE vt.opcao_codigo IN ('SIM', 'NAO', 'ABSTENCAO', 'OBSTRUCAO')), "
-            "min(vo.data_hora), max(vo.data_hora) "
-            "FROM leg.voto vt JOIN leg.votacao vo ON vo.id = vt.votacao_id WHERE vt.pessoa_id = :p"
-        ),
-        {"p": pessoa_id},
-    ).one()
     base_desde = db.execute(text("SELECT min(data_hora) FROM leg.votacao")).scalar()
     mandato = db.execute(
         text(
@@ -64,9 +74,9 @@ def _cobertura(db: Session, pessoa_id: Any) -> Dict[str, Any]:
         {"p": pessoa_id},
     ).one()
     return {
-        "votos_registrados": int(votos[0] or 0),
-        "primeiro_voto": votos[1],
-        "ultimo_voto": votos[2],
+        "votos_registrados": votos["votos_registrados"],
+        "primeiro_voto": votos["primeiro_voto"],
+        "ultimo_voto": votos["ultimo_voto"],
         "base_desde": base_desde,
         "mandatos": int(mandato[0] or 0),
         "fim_ultimo_mandato": mandato[1],
@@ -118,28 +128,16 @@ def calcular_basometro(
     votos_sim: int = 0,
     votos_nao: int = 0,
 ) -> Dict[str, Any]:
-    linhas = (
-        db.query(Votacao.orientacao_governo, Voto.opcao_codigo, func.count())
-        .join(Votacao, Voto.votacao_id == Votacao.id)
-        .filter(Voto.pessoa_id == pessoa_id, Votacao.orientacao_governo.in_(("SIM", "NAO")))
-        .group_by(Votacao.orientacao_governo, Voto.opcao_codigo)
-        .all()
+    votos = (
+        _votos_do_parlamentar(db, pessoa_id)
+        if pessoa_id is not None
+        else {"votos_registrados": 0, "primeiro_voto": None, "ultimo_voto": None, "alinhados": 0, "divergentes": 0}
     )
-    if pessoa_id is None:
-        linhas = []
-    alinhados = divergentes = 0
-    for orientacao, opcao, qtd in linhas:
-        if opcao not in _VOTOS_COM_POSICAO:
-            continue
-        if opcao == orientacao:
-            alinhados += qtd
-        else:
-            divergentes += qtd
-
+    alinhados, divergentes = votos["alinhados"], votos["divergentes"]
     analisadas = alinhados + divergentes
     suficiente = analisadas >= MIN_VOTACOES_AMOSTRA
     taxa = round(alinhados / analisadas * 100, 1) if suficiente else None
-    cob = _cobertura(db, pessoa_id) if pessoa_id is not None else None
+    cob = _cobertura(db, pessoa_id, votos) if pessoa_id is not None else None
     motivo: Dict[str, Any] = {}
     if not suficiente and cob is not None:
         motivo = explicar_indisponibilidade(analisadas, cob)
