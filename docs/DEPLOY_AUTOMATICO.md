@@ -193,6 +193,13 @@ Para pausar: `systemctl --user stop legisdata-financas.timer`.
 
 ## Atualização diária do cadastro e do legislativo (`legisdata-cadastro.timer`)
 
+O mesmo timer atualiza também o **Participe (Votações)**: antes do cadastro, o script roda `python -m etl.pipelines.cidadania_atualizacao`,
+que coleta as consultas públicas abertas nos portais do Senado (e-Cidadania) e da Câmara e grava a foto do dia em
+`leg.consulta_publica`; a API só lê essa tabela e a tela mostra "Atualizado em ..." (com aviso se passar de 36 horas). Matéria que
+estava aberta e sumiu do portal numa coleta bem-sucedida vira "encerrada"; se as fontes estiverem fora do ar nada é gravado, a
+foto anterior continua e a execução termina com erro (visível em `journalctl --user -u legisdata-cadastro.service`). Uma etapa que
+falha não impede a outra. Para rodar na hora: `systemctl --user start legisdata-cadastro.service`.
+
 Um terceiro timer do usuário roda todo dia às 06:23 UTC (03:23 em Brasília, depois das finanças; horário não redondo) o script
 `~/.legisdata-deploy/atualizar_cadastro.sh`, com o mesmo contêiner restrito das finanças (checkout somente leitura, só
 `etl/data` gravável, sem capacidades, `.env` escondido, lock compartilhado com o deploy). Ele executa
@@ -203,6 +210,13 @@ direta (`docs/ETL_SIMPLES.md`), que é idempotente. Sem `CPF_HMAC_KEY` no servid
 e deixam a verificação `camara_bulk_cobertura` em alerta, sem falhar a carga. O deploy mantém a cópia do script igual à do commit
 implantado; as units entram pelo `instalar.sh` (rode de novo depois de um deploy que mude as units). Acompanhe com
 `journalctl --user -u legisdata-cadastro.service -f`; para pausar: `systemctl --user stop legisdata-cadastro.timer`.
+
+**Histórico de votações antes de 2019 (Basômetro).** A janela padrão das votações começa em 2003, quando a Câmara passa a publicar a
+orientação das bancadas (`votacoesOrientacoes`); o Senado só publica a orientação do Governo a partir de 2019, então o Basômetro de
+quem votou só no Senado antes disso fica sem índice, e a tela mostra os votos registrados e o motivo. Como o servidor já tem corte
+em `etl.corte`, a atualização diária não volta sozinha a 2003: depois do deploy que traz esta mudança, rode uma vez no servidor
+(demora, porque baixa 16 anos nas duas casas) o mesmo contêiner restrito do script, com
+`python -m etl.run_etl --fonte votacoes --votacoes-ano-inicio 2003`. A carga é idempotente.
 
 O `make daily` (presença, votações, séries, IPPM e grafo) é outro agendador, ainda sem timer no servidor atual. Se um dia
 ele for instalado, a etapa 1d dele já inclui esta atualização (o lock do pipeline impede a execução dupla e, no host do

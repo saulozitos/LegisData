@@ -1,5 +1,6 @@
 "use client";
 
+import CoberturaDoPainel from "@/components/CoberturaDoPainel";
 import React, { useMemo, useState } from "react";
 import { CalendarX2, Info, Users2, UserX } from "lucide-react";
 import {
@@ -93,6 +94,7 @@ export default function AttendanceRankingPanel({ onSelectPolitician, onSelectPar
           Quem mais falta às sessões de plenário e qual partido tem a maior taxa de ausência. A produção legislativa
           (pontos IALP) aparece ao lado para comparar presença e entrega.
         </p>
+        <CoberturaDoPainel painel="presenca" />
 
         <div className="flex flex-wrap gap-2" role="group" aria-label="Visão do ranking">
           {(

@@ -1,5 +1,8 @@
 "use client";
 
+import ReportarErro from "@/components/ReportarErro";
+import Compartilhar from "@/components/Compartilhar";
+import { montarLink } from "@/lib/compartilhar";
 import React from "react";
 import {
   DollarSign,
@@ -8,14 +11,14 @@ import {
   ShieldAlert,
   ShieldCheck,
   MapPin,
-  ArrowRight,
   ArrowLeft,
-  Gauge,
 } from "lucide-react";
 import type { PoliticoDossier } from "@/services/api";
-import { fmtNum, isNum } from "@/lib/format";
+import { fmtNum } from "@/lib/format";
 import { safeExternalUrl } from "@/lib/safeUrl";
 import PartyLink from "@/components/PartyLink";
+import BasometroCard from "./BasometroCard";
+import FonteDoDado from "@/components/FonteDoDado";
 import { formatMoney, getFichaStatus } from "./format";
 import type { DossierTab } from "./types";
 
@@ -31,7 +34,6 @@ export default function PoliticianHeaderCard({ dossier, onBack, onChangeTab, onS
   const assiduidade = dossier.assiduidade;
   const remuneracao = dossier.remuneracao;
   const fichaStatus = getFichaStatus(dossier);
-  const taxaGov = dossier.basometro?.taxa_governismo_pct;
   const hasAttendance = Boolean(assiduidade) && (assiduidade?.total_sessoes ?? 0) > 0;
 
   return (
@@ -164,117 +166,7 @@ export default function PoliticianHeaderCard({ dossier, onBack, onChangeTab, onS
               </div>
             </div>
 
-            {/* O BASÔMETRO: TAXA DE ALINHAMENTO COM O GOVERNO */}
-            <div className="mt-6 bg-gradient-to-r from-slate-900/95 via-slate-950/95 to-slate-900/95 border border-cyan-500/30 hover:border-cyan-500/50 rounded-2xl p-4.5 shadow-xl transition-all relative overflow-hidden backdrop-blur-sm">
-              <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/5 rounded-full blur-3xl -z-10 pointer-events-none" />
-
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
-                <div className="flex items-center gap-2.5">
-                  <span className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-inner">
-                    <Gauge className="w-5 h-5" aria-hidden="true" />
-                  </span>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">
-                        O Basômetro (Alinhamento Governista)
-                      </span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-bold">
-                        Radar de Votações
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-400">
-                      Cruzamento das deliberações com a orientação do governo federal no Congresso Nacional
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400">Classificação:</span>
-                  <span
-                    className={`text-xs font-extrabold px-2.5 py-1 rounded-xl border font-mono ${
-                      !isNum(taxaGov)
-                        ? "bg-slate-800/80 border-slate-600 text-slate-200"
-                        : taxaGov >= 70
-                        ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300 ring-1 ring-emerald-500/20"
-                        : taxaGov <= 35
-                        ? "bg-rose-500/15 border-rose-500/40 text-rose-300 ring-1 ring-rose-500/20"
-                        : "bg-amber-500/15 border-amber-500/40 text-amber-300 ring-1 ring-amber-500/20"
-                    }`}
-                  >
-                    {dossier.basometro?.classificacao ?? "Dado indisponível"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Barra de Progresso Horizontal: Taxa de Governismo */}
-              <div className="pt-3.5 space-y-2">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs sm:text-sm font-bold text-slate-200">
-                      Taxa de Governismo:
-                    </span>
-                    <span className="text-lg sm:text-2xl font-black font-mono text-cyan-400">
-                      {isNum(taxaGov) ? `${taxaGov}%` : "Indisponível"}
-                    </span>
-                    <span className="text-xs text-slate-400">de alinhamento nas votações</span>
-                  </div>
-                  <span className="text-xs text-slate-400 font-mono">
-                    {dossier.basometro ? `${dossier.basometro.votos_alinhados ?? "—"} favoráveis / ${dossier.basometro.votos_divergentes ?? "—"} contrários` : "Sem dados de votação"}
-                  </span>
-                </div>
-
-                {/* Barra Estilizada com Gradiente e Marcador */}
-                <div className="w-full bg-slate-950 rounded-full h-3.5 relative overflow-hidden border border-slate-800 p-0.5">
-                  <div
-                    className={`h-full rounded-full transition-all duration-700 ease-out ${
-                      !isNum(taxaGov)
-                        ? "bg-slate-700"
-                        : taxaGov >= 70
-                        ? "bg-gradient-to-r from-teal-500 via-cyan-400 to-emerald-400 shadow-lg shadow-emerald-500/20"
-                        : taxaGov <= 35
-                        ? "bg-gradient-to-r from-rose-600 via-rose-500 to-orange-400 shadow-lg shadow-rose-500/20"
-                        : "bg-gradient-to-r from-amber-500 via-yellow-400 to-cyan-400 shadow-lg shadow-cyan-500/20"
-                    }`}
-                    style={{ width: `${isNum(taxaGov) ? Math.min(100, Math.max(0, taxaGov)) : 0}%` }}
-                  />
-                </div>
-
-                {/* Régua de Orientação Política */}
-                <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono pt-0.5">
-                  <span className="text-rose-400 font-semibold">0% Oposição</span>
-                  <span className="text-slate-400">50% Independente</span>
-                  <span className="text-emerald-400 font-semibold">100% Base Aliada</span>
-                </div>
-
-                {/* Sub-indicadores rápidos */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2">
-                  <div className="bg-slate-950/70 border border-slate-800/90 rounded-xl p-2.5 flex items-center justify-between text-xs">
-                    <span className="text-slate-400">Votos com o Governo:</span>
-                    <span className="font-mono font-bold text-emerald-400">
-                      {dossier.basometro?.votos_alinhados ?? "—"}
-                    </span>
-                  </div>
-                  <div className="bg-slate-950/70 border border-slate-800/90 rounded-xl p-2.5 flex items-center justify-between text-xs">
-                    <span className="text-slate-400">Votos Divergentes:</span>
-                    <span className="font-mono font-bold text-rose-400">
-                      {dossier.basometro?.votos_divergentes ?? "—"}
-                    </span>
-                  </div>
-                  <div className="bg-slate-950/70 border border-slate-800/90 rounded-xl p-2.5 flex items-center justify-between text-xs">
-                    <span className="text-slate-400">Total Analisado:</span>
-                    <button
-                      type="button"
-                      onClick={() => onChangeTab("votacoes")}
-                      className="font-mono font-bold text-cyan-400 hover:underline flex items-center gap-1"
-                      title="Ver histórico nominal de votos"
-                    >
-                      {dossier.basometro?.total_votacoes_analisadas ?? "—"} votos
-                      <ArrowRight className="w-3 h-3" aria-hidden="true" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <BasometroCard dossier={dossier} onChangeTab={onChangeTab} />
 
             {/* PAINÉIS DE DESTAQUE NO TOPO: SALÁRIO & REMUNERAÇÃO E ASSIDUIDADE & FALTAS */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-4">
@@ -329,6 +221,7 @@ export default function PoliticianHeaderCard({ dossier, onBack, onChangeTab, onS
                     </span>
                   </div>
                 </div>
+                <FonteDoDado painel="gastos" />
               </div>
 
               {/* PAINEL 2: ASSIDUIDADE E CONTROLE DE FALTAS */}
@@ -420,7 +313,29 @@ export default function PoliticianHeaderCard({ dossier, onBack, onChangeTab, onS
                     </span>
                   </div>
                 </div>
+                <FonteDoDado painel="presenca" />
               </div>
+            </div>
+
+            <div className="mt-3.5 flex items-center justify-between gap-3 flex-wrap">
+              <Compartilhar
+                link={montarLink({ aba: "raiox", politico: perfil.id }, "/")}
+                nomeDoArquivo={`legisdata-${perfil.nome_eleitoral.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                cartao={{
+                  titulo: perfil.nome_eleitoral,
+                  linhas: [
+                    ["Cargo", perfil.cargo_atual],
+                    ["Partido", perfil.partido_atual],
+                    ["UF", perfil.uf],
+                  ],
+                  fonte: "Dados Abertos da Câmara dos Deputados e do Senado Federal; TSE",
+                  data: new Date().toLocaleDateString("pt-BR"),
+                  periodo: "Ficha atual, com a trajetória registrada na base",
+                  etapa: "Ficha do político (cadastro, mandatos e partidos)",
+                  link: montarLink({ aba: "raiox", politico: perfil.id }, "/"),
+                }}
+              />
+              <ReportarErro alvoTipo="POLITICO" alvoId={perfil.id} alvoRotulo={perfil.nome_eleitoral} secao="Ficha do político" />
             </div>
 
             {/* Mini-resumo de Mandatos & Legendas */}

@@ -1,5 +1,9 @@
 "use client";
 
+import ReportarErro from "@/components/ReportarErro";
+import Compartilhar from "@/components/Compartilhar";
+import { montarLink } from "@/lib/compartilhar";
+import ObjetoDaVotacao from "@/components/ObjetoDaVotacao";
 import React, { useState, useMemo } from "react";
 import {
   ParlamentarVotoNominalItem,
@@ -233,6 +237,45 @@ export default function PropositionVoteModal({
                 </span>
               )}
             </div>
+
+            <ObjetoDaVotacao objeto={modalData.sessao?.objeto} />
+            <ReportarErro
+              alvoTipo="VOTACAO"
+              alvoId={propId}
+              alvoRotulo={modalData.proposicao.titulo}
+              secao="Placar e votos da votação"
+            />
+            <Compartilhar
+              link={montarLink({ proposicao: propId }, "/")}
+              nomeDoArquivo={`legisdata-votacao-${propId}`}
+              cartao={
+                modalData.sessao?.data_hora
+                  ? {
+                      titulo: modalData.proposicao.titulo,
+                      linhas: [
+                        ["Placar", `Sim ${placar?.sim ?? 0} · Não ${placar?.nao ?? 0} · Abst. ${placar?.abstencao ?? 0}`],
+                        [
+                          "Resultado",
+                          typeof modalData.sessao.aprovada === "boolean"
+                            ? modalData.sessao.aprovada
+                              ? "Aprovada"
+                              : "Rejeitada"
+                            : "Resultado não informado",
+                        ],
+                        ["Casa", modalData.sessao.casa_legislativa === "SENADO_FEDERAL" ? "Senado Federal" : "Câmara dos Deputados"],
+                      ],
+                      fonte:
+                        modalData.sessao.casa_legislativa === "SENADO_FEDERAL"
+                          ? "Dados Abertos do Senado Federal"
+                          : "Dados Abertos da Câmara dos Deputados",
+                      data: modalData.sessao.data_hora.slice(0, 10).split("-").reverse().join("/"),
+                      periodo: `Sessão de ${modalData.sessao.data_hora.slice(0, 10).split("-").reverse().join("/")}`,
+                      etapa: modalData.sessao.objeto?.rotulo ?? "Objeto da votação não informado pela fonte",
+                      link: montarLink({ proposicao: propId }, "/"),
+                    }
+                  : null
+              }
+            />
 
             <div className="flex items-center gap-3 flex-wrap">
               <h3 id="proposition-vote-title" className="text-xl sm:text-2xl font-black text-white leading-tight">

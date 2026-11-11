@@ -3,7 +3,12 @@
 from datetime import datetime, timezone
 
 from app.models import CasaLegislativaEnum, VotoOpcaoEnum
-from app.services.basometro import MIN_VOTACOES_AMOSTRA, calcular_basometro, classificar_governismo
+from app.services.basometro import (
+    MIN_VOTACOES_AMOSTRA,
+    calcular_basometro,
+    classificar_governismo,
+    explicar_indisponibilidade,
+)
 from sqlalchemy import text
 from tests.projecao import merge_staging
 from tests.stg_models import ParliamentaryVote, VotingSession
@@ -97,3 +102,52 @@ def test_dossier_exposes_real_basometro(client, db, seed):
     assert (baso["votos_alinhados"], baso["votos_divergentes"]) == (8, 3)
     estab = client.get(f"{BASE}/{seed.fulano.id}").json()["indices_inteligencia"]["estabilidade_partidaria"]
     assert estab["taxa_governismo_pct"] == 72.7
+
+
+def _cob(**kw):
+    base = {
+        "votos_registrados": 0,
+        "primeiro_voto": None,
+        "ultimo_voto": None,
+        "base_desde": datetime(2019, 2, 1, tzinfo=timezone.utc),
+        "mandatos": 1,
+        "fim_ultimo_mandato": None,
+    }
+    return {**base, **kw}
+
+
+def test_explicar_amostra_insuficiente_cita_a_contagem_e_o_minimo():
+    r = explicar_indisponibilidade(4, _cob(votos_registrados=30))
+    assert r["motivo"] == "AMOSTRA_INSUFICIENTE"
+    assert "4 voto" in r["explicacao"] and str(MIN_VOTACOES_AMOSTRA) in r["explicacao"]
+
+
+def test_explicar_votos_sem_orientacao_do_governo():
+    assert explicar_indisponibilidade(0, _cob(votos_registrados=12))["motivo"] == "SEM_ORIENTACAO"
+
+
+def test_explicar_mandato_anterior_a_base_cita_os_anos():
+    from datetime import date
+
+    r = explicar_indisponibilidade(0, _cob(fim_ultimo_mandato=date(2010, 12, 31)))
+    assert r["motivo"] == "MANDATO_ANTERIOR_A_BASE"
+    assert "2010" in r["explicacao"] and "2019" in r["explicacao"]
+
+
+def test_explicar_sem_mandato_e_sem_votos_nominais():
+    assert explicar_indisponibilidade(0, _cob(mandatos=0))["motivo"] == "SEM_MANDATO"
+    assert explicar_indisponibilidade(0, _cob())["motivo"] == "SEM_VOTOS_NOMINAIS"
+
+
+def test_basometro_integrado_informa_motivo_e_votos_registrados(db, seed):
+    _popular_fulano(db, seed)
+    ok = calcular_basometro(db, _pessoa_id(db, seed.fulano), "PT")
+    assert ok["motivo_indisponivel"] is None and ok["votos_registrados"] > 0
+    minimo = db.execute(text("SELECT min(data_hora)::date FROM leg.votacao")).scalar()
+    assert ok["base_desde"] == minimo.isoformat() and ok["ultimo_voto"] is not None
+
+    pouco = calcular_basometro(db, _pessoa_id(db, seed.beltrano), "PTB")
+    assert pouco["motivo_indisponivel"] == "SEM_ORIENTACAO"
+    assert pouco["votos_registrados"] > 0 and pouco["explicacao_indisponivel"]
+
+    assert calcular_basometro(db, None, None)["motivo_indisponivel"] == "SEM_MANDATO"

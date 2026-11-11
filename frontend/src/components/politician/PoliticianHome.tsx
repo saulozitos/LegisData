@@ -19,24 +19,26 @@ interface PoliticianHomeProps {
 }
 
 const PAGE_SIZE = 120;
+const UFS = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
 
 /** Catálogo geral de parlamentares exibido enquanto nenhum político está selecionado. */
 export default function PoliticianHome({ onSelectPolitician }: PoliticianHomeProps) {
   const [homeParty, setHomeParty] = useState<string>("TODOS");
   const [homeOffice, setHomeOffice] = useState<string>("TODOS");
+  const [homeUf, setHomeUf] = useState<string>("TODOS");
   const [homeSearchTerm, setHomeSearchTerm] = useState<string>("");
 
   const partiesQuery = useApi("parties", (signal) => getParties(signal));
   const partiesList = useMemo(() => partiesQuery.data ?? [], [partiesQuery.data]);
 
   // Sem partido escolhido, limita o volume; com partido, traz a bancada.
-  const homeQuery = useApi(`home-politicians:${homeOffice}:${homeParty}`, (signal) =>
+  const homeQuery = useApi(`home-politicians:${homeOffice}:${homeParty}:${homeUf}`, (signal) =>
     searchPoliticians(
       undefined,
       homeOffice === "TODOS" ? undefined : homeOffice,
       homeParty === "TODOS" ? undefined : homeParty,
-      undefined,
-      homeParty === "TODOS" ? 500 : 300,
+      homeUf === "TODOS" ? undefined : homeUf,
+      homeParty === "TODOS" && homeUf === "TODOS" ? 500 : 300,
       signal
     )
   );
@@ -57,7 +59,7 @@ export default function PoliticianHome({ onSelectPolitician }: PoliticianHomePro
   }, [homePoliticians, homeSearchTerm]);
 
   // Renderização incremental: evita montar centenas de cartões de uma vez. O limite volta ao inicial ao mudar filtros.
-  const filtersKey = `${homeOffice}|${homeParty}|${homeSearchTerm}`;
+  const filtersKey = `${homeOffice}|${homeParty}|${homeUf}|${homeSearchTerm}`;
   const [visible, setVisible] = useState<{ key: string; count: number }>({ key: filtersKey, count: PAGE_SIZE });
   const visibleCount = visible.key === filtersKey ? visible.count : PAGE_SIZE;
   const visiblePoliticians = useMemo(
@@ -147,6 +149,31 @@ export default function PoliticianHome({ onSelectPolitician }: PoliticianHomePro
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Quem me representa: o estado do eleitor */}
+            <div className="md:col-span-12 space-y-1.5">
+              <label htmlFor="home-uf-select" className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Landmark className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" /> Quem me representa (escolha seu estado)
+              </label>
+              <select
+                id="home-uf-select"
+                value={homeUf}
+                onChange={(e) => setHomeUf(e.target.value)}
+                className="w-full md:w-72 bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-xs font-semibold text-slate-100 focus:outline-none focus:border-cyan-400 transition-colors shadow-inner"
+              >
+                <option value="TODOS">Todos os estados</option>
+                {UFS.map((uf) => (
+                  <option key={uf} value={uf}>
+                    {uf}
+                  </option>
+                ))}
+              </select>
+              {homeUf !== "TODOS" && (
+                <p className="text-[11px] text-slate-400">
+                  Parlamentares com mandato por {homeUf}, atual ou anterior.
+                </p>
+              )}
             </div>
 
             {/* Filtro de Cargo / Casa */}
