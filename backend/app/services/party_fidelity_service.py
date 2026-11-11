@@ -8,6 +8,7 @@ from collections import defaultdict
 from datetime import date
 from typing import Any, Dict, List, Optional
 
+from app.services import filiacao_service
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -65,11 +66,11 @@ def _filiacoes(db: Session, pessoas: List[int]) -> Dict[int, List[Dict[str, Any]
         db.execute(
             text(
                 """
-                SELECT f.pessoa_id, pa.sigla, lower(f.periodo) AS inicio,
+                SELECT f.pessoa_id, cp.canonico_id, cp.canonico_sigla AS sigla, lower(f.periodo) AS inicio,
                        CASE WHEN upper_inf(f.periodo) THEN NULL ELSE upper(f.periodo) - 1 END AS fim,
                        f.motivo_saida AS motivo, upper_inf(f.periodo) AS atual
                 FROM core.filiacao f
-                JOIN core.partido pa ON pa.id = f.partido_id
+                JOIN core.vw_partido_canonico cp ON cp.id = f.partido_id
                 WHERE f.pessoa_id = ANY(:ids)
                 ORDER BY f.pessoa_id, lower(f.periodo), f.id
                 """
@@ -85,16 +86,20 @@ def _filiacoes(db: Session, pessoas: List[int]) -> Dict[int, List[Dict[str, Any]
     return por_pessoa
 
 
-def _nomade(mandato: Dict[str, Any], filiacoes: List[Dict[str, Any]], sigla_atual: str) -> Dict[str, Any]:
+def _nomade(
+    mandato: Dict[str, Any], filiacoes: List[Dict[str, Any]], sigla_atual: str, tipos: List[str]
+) -> Dict[str, Any]:
     historico = [
         {
             "partido": f["sigla"],
+            "tipo_mudanca": tipo,
+            "tipo_mudanca_rotulo": filiacao_service.ROTULOS[tipo],
             "data_filiacao": f["inicio"].isoformat(),
             "data_desfiliacao": f["fim"].isoformat() if f["fim"] else None,
             "motivo": f["motivo"],
             "is_atual": bool(f["atual"]),
         }
-        for f in filiacoes
+        for f, tipo in zip(filiacoes, tipos)
     ]
     return {
         "id": str(mandato["uid"]),
@@ -104,9 +109,10 @@ def _nomade(mandato: Dict[str, Any], filiacoes: List[Dict[str, Any]], sigla_atua
         "uf": mandato["uf"],
         "foto_url": mandato["foto"],
         "partido_atual": sigla_atual,
-        "total_trocas": len(filiacoes) - 1,
+        "total_trocas": filiacao_service.contar_trocas(tipos),
         "total_partidos": len({h["partido"] for h in historico}),
-        "siglas_sequencia": [h["partido"] for h in historico],
+        # renomeação não vira etapa nova da sequência: PMDB e MDB são o mesmo partido
+        "siglas_sequencia": [h["partido"] for h, tipo in zip(historico, tipos) if tipo != filiacao_service.RENOMEACAO],
         "historico": historico,
     }
 
@@ -124,17 +130,20 @@ def analise_de_fidelidade(db: Session, hoje: Optional[date] = None) -> Dict[str,
     bancada_atual: Dict[str, int] = defaultdict(int)
     bancada_inicial: Dict[str, int] = defaultdict(int)
     nomades: List[Dict[str, Any]] = []
+    relacoes = filiacao_service.sucessoes(db)
 
     for pessoa, filiacoes in por_pessoa.items():
         primeira = filiacoes[0]["sigla"]
         atual = next((f for f in reversed(filiacoes) if f["atual"]), filiacoes[-1])["sigla"]
+        tipos = filiacao_service.classificar([f["canonico_id"] for f in filiacoes], relacoes)
         bancada_inicial[primeira] += 1
         bancada_atual[atual] += 1
-        if len(filiacoes) > 1:
+        # só quem trocou de partido de verdade entra no balanço de ganhos e perdas e na lista de quem mais trocou
+        if filiacao_service.contar_trocas(tipos) > 0:
             if primeira != atual:
                 perdas[primeira] += 1
                 ganhos[atual] += 1
-            nomades.append(_nomade(mandatos[pessoa], filiacoes, atual))
+            nomades.append(_nomade(mandatos[pessoa], filiacoes, atual, tipos))
 
     nomades.sort(key=lambda x: (x["total_trocas"], x["total_partidos"], x["nome_eleitoral"]), reverse=True)
 

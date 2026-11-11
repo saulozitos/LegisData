@@ -1,9 +1,11 @@
 from app.api.v1.analytics import router as analytics_router
 from app.api.v1.attendance import router as attendance_router
 from app.api.v1.cidadania import router as cidadania_router
+from app.api.v1.cobertura import router as cobertura_router
 from app.api.v1.economic import router as economic_router
 from app.api.v1.emendas import router as emendas_router
 from app.api.v1.executivo import router as executivo_router
+from app.api.v1.feedback import router as feedback_router
 from app.api.v1.legislative import router as legislative_router
 from app.api.v1.parties import router as parties_router
 from app.api.v1.politicians import router as politicians_router
@@ -19,3 +21,5 @@ api_router.include_router(cidadania_router, prefix="/cidadania", tags=["Cidadani
 api_router.include_router(executivo_router, prefix="/executivo", tags=["Raio-X do Executivo"])
 api_router.include_router(emendas_router, prefix="/emendas", tags=["Emendas Orçamentárias"])
 api_router.include_router(attendance_router, prefix="/attendance", tags=["Presença & Faltas"])
+api_router.include_router(cobertura_router, prefix="/cobertura", tags=["Cobertura dos dados"])
+api_router.include_router(feedback_router, prefix="/feedback", tags=["Relatos de erro"])

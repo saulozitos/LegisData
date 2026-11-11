@@ -4,6 +4,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Home from './page';
 import * as api from '@/services/api';
 
+let parametrosDaUrl = new URLSearchParams('');
+vi.mock('next/navigation', () => ({ useSearchParams: () => parametrosDaUrl }));
+vi.mock('@/components/propositions/PropositionVoteModal', () => ({
+  default: ({ propId, onClose }: { propId: string; onClose: () => void }) => (
+    <div data-testid="PropositionVoteModal" data-prop={propId}>
+      <button onClick={onClose}>fechar-votacao</button>
+    </div>
+  ),
+}));
 vi.mock('@/components/Header', () => ({ default: () => <div data-testid="Header" /> }));
 vi.mock('@/components/LoadingSkeleton', () => ({ default: () => <div data-testid="LoadingSkeleton" /> }));
 vi.mock('@/components/PresidentTimeline', () => ({
@@ -77,6 +86,8 @@ const performances = [
 const tab = (name: string) => screen.getByRole('tab', { name });
 
 beforeEach(() => {
+  parametrosDaUrl = new URLSearchParams('');
+  window.history.replaceState(null, '', '/');
   Object.values(api).forEach((fn) => (fn as unknown as ReturnType<typeof vi.fn>).mockReset?.());
   m('getPresidentes').mockResolvedValue(presidents);
   m('getMandatesPerformance').mockResolvedValue(performances);
@@ -241,5 +252,39 @@ describe('Home (dashboard)', () => {
     m('getPresidentes').mockResolvedValue([presidents[1], { ...presidents[0], status_mandato: 'IMPEACHMENT' }]);
     render(<Home />);
     expect(await screen.findByTestId('ExecutivoPanel')).toHaveAttribute('data-mandate', 'lula-2023');
+  });
+
+  it('abre a consulta do link direto: aba e político', async () => {
+    parametrosDaUrl = new URLSearchParams('aba=raiox&politico=pol-77');
+    render(<Home />);
+    expect(await screen.findByTestId('PoliticianProfile')).toHaveAttribute('data-selected', 'pol-77');
+    expect(tab('Raio-X do Político')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('abre a votação do link direto e some ao fechar, limpando a URL', async () => {
+    parametrosDaUrl = new URLSearchParams('proposicao=prop-5');
+    render(<Home />);
+    expect(await screen.findByTestId('PropositionVoteModal')).toHaveAttribute('data-prop', 'prop-5');
+    expect(window.location.search).toBe('?proposicao=prop-5');
+    fireEvent.click(screen.getByText('fechar-votacao'));
+    await waitFor(() => expect(screen.queryByTestId('PropositionVoteModal')).not.toBeInTheDocument());
+    expect(window.location.search).toBe('');
+  });
+
+  it('a URL acompanha a aba aberta', async () => {
+    render(<Home />);
+    await screen.findByTestId('ExecutivoPanel');
+    fireEvent.click(tab('Calendário de Votações'));
+    await waitFor(() => expect(window.location.search).toBe('?aba=calendario'));
+  });
+
+  it('as perguntas da entrada levam à aba certa e a busca por assunto vai ao mural de votações', async () => {
+    render(<Home />);
+    await screen.findByTestId('ExecutivoPanel');
+    fireEvent.click(screen.getByRole('button', { name: /Para onde foram as emendas/ }));
+    expect(await screen.findByTestId('EmendasExplorerPanel')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'escala 6x1' }));
+    expect(await screen.findByTestId('PropositionsExplorerPanel')).toBeInTheDocument();
+    await waitFor(() => expect(window.location.search).toBe('?aba=produtividade&q=escala+6x1'));
   });
 });

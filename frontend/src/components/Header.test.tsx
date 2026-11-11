@@ -67,4 +67,12 @@ describe('Header', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     await screen.findByText('API Online');
   });
+
+  it('o link do Participe não leva a etiqueta "Ao Vivo": a lista é uma foto diária', async () => {
+    getHealth.mockResolvedValue({ status: 'ok' });
+    render(<Header />);
+    expect(screen.getByRole('link', { name: /Participe \(Votações\)/ })).toBeInTheDocument();
+    expect(screen.queryByText(/ao vivo/i)).not.toBeInTheDocument();
+    await screen.findByText('API Online');
+  });
 });

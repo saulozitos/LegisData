@@ -265,9 +265,9 @@ describe('PoliticianHeaderCard', () => {
     expect(screen.getByText('Ficha/Certidões: dado indisponível')).toBeInTheDocument();
     expect(screen.getByText('Presença indisponível')).toBeInTheDocument();
     expect(screen.getByText('Senador Federal')).toBeInTheDocument();
-    expect(screen.getAllByText('Dado indisponível').length).toBeGreaterThan(0);
     expect(document.body.textContent).not.toMatch(/Nada Consta/);
-    expect(screen.getByText('Taxa de Governismo:').nextElementSibling).toHaveTextContent('Indisponível');
+    expect(screen.getByText('Índice não calculado')).toBeInTheDocument();
+    expect(screen.queryByText('Taxa de Governismo:')).toBeNull();
   });
 
   it('processos declarados destacam os órgãos', () => {
@@ -640,7 +640,7 @@ describe('PropositionsTab', () => {
     render(<PropositionsTab dossier={fullDossier()} />);
     expect(screen.getAllByText('PL 100/2023').length).toBeGreaterThan(0);
     expect(screen.getAllByText('PL 200/2022').length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole('button', { name: /^Impacto/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Demais/ }));
     expect(screen.queryAllByText('PL 200/2022')).toHaveLength(0);
     fireEvent.click(screen.getByRole('button', { name: /^Simbólicas/ }));
     expect(screen.getAllByText('PL 200/2022').length).toBeGreaterThan(0);
@@ -651,7 +651,7 @@ describe('PropositionsTab', () => {
 
   it('sem classificação de relevância os contadores mostram "—" e não "0"', () => {
     render(<PropositionsTab dossier={sparseDossier()} />);
-    expect(screen.getByRole('button', { name: 'Impacto (—)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Demais (—)' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Simbólicas (—)' })).toBeInTheDocument();
   });
 });

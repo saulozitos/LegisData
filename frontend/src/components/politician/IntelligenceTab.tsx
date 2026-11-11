@@ -1,5 +1,6 @@
 "use client";
 
+import ReportarErro from "@/components/ReportarErro";
 import React from "react";
 import {
   Users,
@@ -76,7 +77,7 @@ export default function IntelligenceTab({ dossier }: IntelligenceTabProps) {
                         </span>
                       </h4>
                       <p className="text-xs text-slate-400">
-                        Relação entre os custos operacionais do mandato e a produção de leis de impacto estrutural
+                        Relação entre o custo registrado do mandato (cota parlamentar e subsídio) e a produção legislativa medida em pontos IALP
                       </p>
                     </div>
                   </div>
@@ -133,6 +134,33 @@ export default function IntelligenceTab({ dossier }: IntelligenceTabProps) {
                     </span>
                   </div>
                 </div>
+
+                {/* Como a nota é calculada: critério visível e canal para apontar erro */}
+                <details className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 text-xs text-slate-300">
+                  <summary className="cursor-pointer font-bold text-slate-200">Como esta nota é calculada</summary>
+                  <div className="mt-3 space-y-3">
+                    {indices.roi_cidadao.metodologia && (
+                      <p className="leading-relaxed text-slate-400">{indices.roi_cidadao.metodologia}</p>
+                    )}
+                    {indices.roi_cidadao.faixas && (
+                      <ul className="space-y-1">
+                        {indices.roi_cidadao.faixas.map((f) => (
+                          <li key={f.faixa}>
+                            <strong className="font-mono text-slate-200">{f.faixa}</strong>{" "}
+                            <span className="text-slate-400">(a partir de {f.nota_minima}): {f.descricao}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <ReportarErro
+                      alvoTipo="CLASSIFICACAO"
+                      alvoId={dossier?.perfil?.id}
+                      alvoRotulo={dossier?.perfil?.nome_eleitoral}
+                      secao="Nota ROI do Cidadão"
+                      rotulo="Discorda desta nota ou viu um erro?"
+                    />
+                  </div>
+                </details>
 
                 {/* Diagnóstico do Algoritmo */}
                 <div className="bg-slate-950/80 border border-cyan-500/20 rounded-xl p-4 space-y-1.5">
@@ -343,10 +371,10 @@ export default function IntelligenceTab({ dossier }: IntelligenceTabProps) {
                       Trocas de Partido
                     </span>
                     <span className="text-lg font-black font-mono text-slate-200 block">
-                      {indices.estabilidade_partidaria.total_trocas} mudanças
+                      {indices.estabilidade_partidaria.total_trocas} trocas
                     </span>
                     <span className="text-[10px] text-slate-400 block">
-                      Filiado a {dossier?.filiacoes_partidarias?.length || 1} legendas ao longo da carreira
+                      {dossier?.filiacoes_partidarias?.length || 1} siglas no histórico; mudança de nome, fusão e incorporação não contam como troca
                     </span>
                   </div>
 

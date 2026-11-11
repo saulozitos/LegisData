@@ -40,11 +40,47 @@ beforeEach(() => {
   vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
 });
 
+/** A tela abre só nas votações abertas; os testes que precisam de tudo pedem "Todas". */
+const verTodas = () => fireEvent.click(screen.getByRole('button', { name: /Todas \(\d+\)/ }));
+
 describe('CidadaniaPage', () => {
+  it('abre nas votações abertas por padrão e só mostra as encerradas quando pedidas', async () => {
+    getConsultas.mockResolvedValue(data);
+    render(<CidadaniaPage />);
+    await screen.findByRole('heading', { level: 2, name: 'PL 100/2024' });
+    expect(screen.getByRole('button', { name: /Votação Aberta \(1\)/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+    expect(screen.queryByText('PEC 7/2023')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Encerradas \(2\)/ }));
+    expect(screen.getByText('PEC 7/2023')).toBeInTheDocument();
+  });
+
+  it('sem nenhuma votação aberta diz isso e oferece as encerradas', async () => {
+    getConsultas.mockResolvedValue(data.filter((d) => !d.em_votacao_aberta));
+    render(<CidadaniaPage />);
+    expect(await screen.findByText('Nenhuma votação aberta na última coleta')).toBeInTheDocument();
+    verTodas();
+    expect(screen.getAllByRole('article')).toHaveLength(2);
+  });
+
+  it('mostra quando foi a última coleta e avisa se ela está atrasada', async () => {
+    const recente = new Date(Date.now() - 3 * 3600 * 1000).toISOString();
+    getConsultas.mockResolvedValue([item({ atualizado_em: recente })]);
+    const { unmount } = render(<CidadaniaPage />);
+    expect(await screen.findByTestId('ultima-coleta')).toHaveTextContent(/Atualizado em .* uma vez por dia/);
+    expect(screen.getByTestId('ultima-coleta')).not.toHaveTextContent('ainda não chegou');
+    unmount();
+
+    const antiga = new Date(Date.now() - 60 * 3600 * 1000).toISOString();
+    getConsultas.mockResolvedValue([item({ atualizado_em: antiga })]);
+    render(<CidadaniaPage />);
+    expect(await screen.findByText(/A coleta de hoje ainda não chegou/)).toBeInTheDocument();
+  });
+
   it('mostra carregando e depois estatísticas e cartões', async () => {
     getConsultas.mockResolvedValue(data);
     render(<CidadaniaPage />);
-    expect(screen.getByText(/Consultando as APIs/)).toBeInTheDocument();
+    expect(screen.getByText(/Carregando as votações abertas/)).toBeInTheDocument();
     expect(await screen.findByRole('heading', { level: 2, name: 'PL 100/2024' })).toBeInTheDocument();
     expect(screen.getByText('Senado (1) e Câmara (2)')).toBeInTheDocument();
     expect(screen.getByText('1k+')).toBeInTheDocument(); // total de votos 1000 + 40, em milhares
@@ -55,9 +91,10 @@ describe('CidadaniaPage', () => {
     getConsultas.mockResolvedValue(data);
     render(<CidadaniaPage />);
     await screen.findByText('PL 100/2024');
-    expect(screen.getByText('Placar Parcial em Tempo Real:')).toBeInTheDocument();
+    verTodas();
+    expect(screen.getByText('Placar parcial na última coleta:')).toBeInTheDocument();
     expect(screen.getByText(/SIM: 70%/)).toBeInTheDocument();
-    expect(screen.getByText('Placar Final Apurado:')).toBeInTheDocument();
+    expect(screen.getByText('Placar final apurado:')).toBeInTheDocument();
     expect(screen.getByText(/SIM: 25%/)).toBeInTheDocument(); // 10 de 40
     expect(screen.getByText(/NÃO: 75%/)).toBeInTheDocument();
   });
@@ -65,7 +102,8 @@ describe('CidadaniaPage', () => {
   it('sem placar nunca imprime "null%" nem barra inventada', async () => {
     getConsultas.mockResolvedValue(data);
     render(<CidadaniaPage />);
-    await screen.findByText('PEC 7/2023');
+    await screen.findByText('PL 100/2024');
+    verTodas();
     expect(screen.getByText('Matéria em tramitação legislativa no Congresso Nacional.')).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/null|undefined|NaN/);
   });
@@ -73,7 +111,8 @@ describe('CidadaniaPage', () => {
   it('links oficiais inseguros não viram href', async () => {
     getConsultas.mockResolvedValue(data);
     render(<CidadaniaPage />);
-    await screen.findByText('PEC 7/2023');
+    await screen.findByText('PL 100/2024');
+    verTodas();
     expect(screen.getByText('Link oficial indisponível')).toBeInTheDocument();
     const vote = screen.getByRole('link', { name: /Votar no Site Oficial/ });
     expect(vote).toHaveAttribute('href', 'https://www12.senado.leg.br/ecidadania/1');
@@ -85,7 +124,7 @@ describe('CidadaniaPage', () => {
     render(<CidadaniaPage />);
     await screen.findByText('PL 100/2024');
 
-    fireEvent.click(screen.getByRole('button', { name: /Votação Aberta \(1\)/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Votação Aberta \(1\)/ })); // já é o padrão
     expect(screen.queryByText('PEC 7/2023')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Encerradas \(2\)/ }));
     expect(screen.queryByText('PL 100/2024')).not.toBeInTheDocument();
@@ -111,6 +150,7 @@ describe('CidadaniaPage', () => {
     getConsultas.mockResolvedValue(data);
     render(<CidadaniaPage />);
     await screen.findByText('PL 100/2024');
+    verTodas();
     const input = screen.getByLabelText(/Buscar consultas/);
     fireEvent.change(input, { target: { value: 'ana' } }); // autoria dos itens 1 e 3
     expect(screen.getAllByRole('article')).toHaveLength(2);
@@ -176,5 +216,36 @@ describe('CidadaniaPage', () => {
     await screen.findByText('PL 100/2024');
     expect(screen.getAllByText('850').length).toBeGreaterThan(0);
     expect(document.body.textContent).not.toMatch(/0k\+/);
+  });
+
+  it('mostra as datas: apresentação oficial e as observadas pela coleta, rotuladas como tal', async () => {
+    getConsultas.mockResolvedValue([
+      item({ data_apresentacao: '2020-11-05', primeira_coleta_em: '2026-11-10T06:23:00+00:00', encerrada_em: null }),
+      item({
+        id_externo: '9',
+        sigla_projeto: 'PL 9/2021',
+        em_votacao_aberta: false,
+        data_apresentacao: null,
+        primeira_coleta_em: '2026-10-01T06:23:00+00:00',
+        encerrada_em: '2026-11-08T06:23:00+00:00',
+      }),
+    ]);
+    render(<CidadaniaPage />);
+    await screen.findByText('PL 100/2024');
+    expect(screen.getByText('Matéria apresentada em 05/11/2020')).toBeInTheDocument();
+    expect(screen.getByText('Vista aberta desde 10/11/2026')).toBeInTheDocument();
+    expect(screen.getByText('Vista aberta desde 10/11/2026')).toHaveAttribute('title', expect.stringContaining('Os portais oficiais não informam'));
+    fireEvent.click(screen.getByRole('button', { name: /Encerradas \(1\)/ }));
+    expect(screen.getByText('Vista pela 1ª vez em 01/10/2026')).toBeInTheDocument();
+    expect(screen.getByText('Vista encerrada em 08/11/2026')).toBeInTheDocument();
+  });
+
+  it('sem datas nunca imprime data inventada', async () => {
+    getConsultas.mockResolvedValue([item({ data_apresentacao: null, primeira_coleta_em: null, encerrada_em: null })]);
+    render(<CidadaniaPage />);
+    await screen.findByText('PL 100/2024');
+    expect(screen.queryByText(/Matéria apresentada em/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Vista aberta desde/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Vista encerrada em/)).not.toBeInTheDocument();
   });
 });

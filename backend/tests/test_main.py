@@ -90,19 +90,30 @@ def test_cors_rejects_foreign_origins(plain_client, origin):
     assert "access-control-allow-origin" not in response.headers
 
 
-def test_cors_preflight_only_allows_read_methods(plain_client):
-    headers = {"Origin": "http://localhost:3000", "Access-Control-Request-Method": "POST"}
-    assert plain_client.options("/api/v1/politicians", headers=headers).status_code == 400
-    headers["Access-Control-Request-Method"] = "GET"
+# A API é de leitura, com uma única exceção deliberada: o relato de informação incorreta (docs/TRANSPARENCIA_NA_TELA.md).
+ESCRITA_PERMITIDA = {("/api/v1/feedback/erros", "post")}
+
+
+def test_cors_preflight_allows_reads_and_the_single_report_write(plain_client):
+    headers = {"Origin": "http://localhost:3000", "Access-Control-Request-Method": "GET"}
     ok = plain_client.options("/api/v1/politicians", headers=headers)
     assert ok.status_code == 200
-    assert "POST" not in ok.headers["access-control-allow-methods"]
+    permitidos = {m.strip() for m in ok.headers["access-control-allow-methods"].split(",")}
+    assert permitidos == {"GET", "HEAD", "POST", "OPTIONS"}
+    for metodo in ("PUT", "PATCH", "DELETE"):
+        headers["Access-Control-Request-Method"] = metodo
+        assert plain_client.options("/api/v1/politicians", headers=headers).status_code == 400
 
 
-def test_api_exposes_no_write_routes(plain_client):
+def test_post_is_refused_on_every_route_except_the_report(plain_client):
+    assert plain_client.post("/api/v1/politicians", json={}).status_code == 405
+    assert plain_client.post("/api/v1/cidadania/consultas", json={}).status_code == 405
+
+
+def test_api_exposes_no_write_routes_besides_the_error_report(plain_client):
     schema = plain_client.get(f"{settings.API_V1_STR}/openapi.json").json()
-    methods = {method for path in schema["paths"].values() for method in path}
-    assert methods <= {"get"}
+    escritas = {(path, method) for path, item in schema["paths"].items() for method in item if method != "get"}
+    assert escritas == ESCRITA_PERMITIDA
 
 
 def test_rate_limit_returns_429_with_retry_after(plain_client, monkeypatch):

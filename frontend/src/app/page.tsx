@@ -1,12 +1,17 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import Header from "@/components/Header";
 import PresidentTimeline from "@/components/PresidentTimeline";
 import PartyMembersModal from "@/components/PartyMembersModal";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import { EmptyState, ErrorState, LoadingState } from "@/components/StateViews";
+import EntradaRapida, { type DestinoDaEntrada } from "@/components/EntradaRapida";
+import PropositionVoteModal from "@/components/propositions/PropositionVoteModal";
+import type { DossierTab } from "@/components/politician/types";
+import { atualizarUrl } from "@/lib/compartilhar";
+import { useSearchParams } from "next/navigation";
 import { useApi } from "@/hooks/useApi";
 import { isActiveMandate, isActiveStatus, toMandateRange } from "@/lib/mandate";
 import {
@@ -88,6 +93,15 @@ const TABS: Array<{ id: TabType; label: string; icon: LucideIcon; active: string
   { id: "raiox", label: "Raio-X do Político", icon: Scan, active: "bg-cyan-400 text-slate-950 shadow-md shadow-cyan-400/20" },
 ];
 
+/** Aba pedida pelo link; ?politico= e ?q= levam à aba deles quando o link não diz a aba. */
+function abaInicial(parametros: URLSearchParams | null): TabType {
+  const aba = parametros?.get("aba");
+  if (aba && TABS.some((t) => t.id === aba)) return aba as TabType;
+  if (parametros?.get("politico")) return "raiox";
+  if (parametros?.get("q")) return "produtividade";
+  return "macro";
+}
+
 function findCurrentPresidentId(presList: PresidenteHistorico[], perfList: MandatoPerformance[]): string | null {
   const activePres = presList.find((p) => isActiveMandate(p.status_mandato, p.data_fim));
   if (activePres) return activePres.id_referencia;
@@ -101,7 +115,8 @@ function findCurrentPresidentId(presList: PresidenteHistorico[], perfList: Manda
   return null;
 }
 
-export default function DashboardPage() {
+function Dashboard() {
+  const parametros = useSearchParams();
   // Dados essenciais da aba inicial; as demais abas buscam o que precisam quando abertas.
   const presidentsQuery = useApi("dashboard-presidents", (signal) => getPresidentes(signal));
   const performancesQuery = useApi("dashboard-performances", (signal) => getMandatesPerformance(signal));
@@ -111,9 +126,35 @@ export default function DashboardPage() {
   const performances = useMemo(() => performancesQuery.data ?? [], [performancesQuery.data]);
   const annualSummaries = useMemo(() => annualQuery.data ?? [], [annualQuery.data]);
 
-  const [activeTab, setActiveTab] = useState<TabType>("macro");
-  const [selectedPoliticianId, setSelectedPoliticianId] = useState<string | null>(null);
-  const [globalSelectedParty, setGlobalSelectedParty] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>(() => abaInicial(parametros));
+  const [selectedPoliticianId, setSelectedPoliticianId] = useState<string | null>(() => parametros?.get("politico") ?? null);
+  const [globalSelectedParty, setGlobalSelectedParty] = useState<string | null>(() => parametros?.get("partido") ?? null);
+  // Estado que o link direto guarda (?aba=...&politico=...&partido=...&proposicao=...&q=...&secao=...): a tela já nasce na
+  // consulta do link, sem passar por outra aba antes.
+  const [secaoDaFicha, setSecaoDaFicha] = useState<DossierTab | undefined>(
+    () => (parametros?.get("secao") as DossierTab | null) ?? undefined
+  );
+  const [assuntoBuscado, setAssuntoBuscado] = useState<string | undefined>(() => parametros?.get("q") ?? undefined);
+  const [votacaoAberta, setVotacaoAberta] = useState<string | null>(() => parametros?.get("proposicao") ?? null);
+
+  // Mantém a URL igual ao que a tela mostra, para o endereço copiado abrir a mesma consulta.
+  useEffect(() => {
+    atualizarUrl({
+      aba: activeTab === "macro" ? null : activeTab,
+      politico: activeTab === "raiox" ? selectedPoliticianId : null,
+      secao: activeTab === "raiox" ? secaoDaFicha : null,
+      partido: globalSelectedParty,
+      proposicao: votacaoAberta,
+      q: activeTab === "produtividade" ? assuntoBuscado : null,
+    });
+  }, [activeTab, selectedPoliticianId, secaoDaFicha, globalSelectedParty, votacaoAberta, assuntoBuscado]);
+
+  const irPara = (destino: DestinoDaEntrada) => {
+    setAssuntoBuscado(destino.assunto);
+    setSecaoDaFicha(destino.secao);
+    setSelectedPoliticianId(null);
+    setActiveTab(destino.aba as TabType);
+  };
 
   // `undefined` = o usuário ainda não escolheu (usa o mandato atual); `null` = "todos os mandatos".
   const [pickedMandate, setPickedMandate] = useState<string | null | undefined>(undefined);
@@ -184,6 +225,8 @@ export default function DashboardPage() {
                 onSelect={(id) => setPickedMandate(id)}
               />
             </section>
+
+            <EntradaRapida onIr={irPara} />
 
             {/* 2. Menu de Navegação por Abas Analíticas com Rolagem Horizontal Suave */}
             <div
@@ -343,7 +386,12 @@ export default function DashboardPage() {
 
               {activeTab === "produtividade" && (
                 <section>
-                  <PropositionsExplorerPanel onSelectPolitician={openPolitician} onSelectParty={handleOpenPartyMembers} />
+                  <PropositionsExplorerPanel
+                    key={assuntoBuscado ?? "sem-assunto"}
+                    initialSearch={assuntoBuscado}
+                    onSelectPolitician={openPolitician}
+                    onSelectParty={handleOpenPartyMembers}
+                  />
                 </section>
               )}
 
@@ -368,11 +416,28 @@ export default function DashboardPage() {
                     selectedPoliticianId={selectedPoliticianId}
                     onSelectParty={handleOpenPartyMembers}
                     onSelectionChange={setSelectedPoliticianId}
+                    initialTab={secaoDaFicha}
                   />
                 </section>
               )}
             </div>
           </>
+        )}
+
+        {/* Votação aberta por link direto (?proposicao=...) */}
+        {votacaoAberta && (
+          <PropositionVoteModal
+            propId={votacaoAberta}
+            onClose={() => setVotacaoAberta(null)}
+            onSelectPolitician={(id) => {
+              setVotacaoAberta(null);
+              openPolitician(id);
+            }}
+            onSelectParty={(sigla) => {
+              setVotacaoAberta(null);
+              handleOpenPartyMembers(sigla);
+            }}
+          />
         )}
 
         {/* Modal Global de Bancada Partidária (Navegação Universal: Partido -> Políticos -> Raio-X) */}
@@ -384,5 +449,14 @@ export default function DashboardPage() {
         />
       </main>
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  // useSearchParams exige Suspense: sem ele a página inteira sai da geração estática
+  return (
+    <Suspense fallback={<LoadingSkeleton />}>
+      <Dashboard />
+    </Suspense>
   );
 }

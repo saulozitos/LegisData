@@ -1752,5 +1752,18 @@ def test_o_script_das_financas_deixa_o_diretorio_de_estado_700(tmp_path):
 def test_o_script_do_cadastro_roda_so_as_cargas_diretas_e_nunca_a_etapa_de_cpf_com_a_chave():
     texto = CADASTRO_SH.read_text()
     assert "python -m etl.run_etl --fonte politicos --fonte camara-historico --fonte camara-bulk" in texto
-    assert "CPF_HMAC_KEY" not in texto.replace("# ", "").split("set -Eeuo pipefail", 1)[1]  # a chave não passa pelo script
+    assert (
+        "CPF_HMAC_KEY" not in texto.replace("# ", "").split("set -Eeuo pipefail", 1)[1]
+    )  # a chave não passa pelo script
     assert "-v /dev/null:/repo/.env:ro" in texto  # o .env (segredos) fica escondido do contêiner
+
+
+def test_o_script_diario_atualiza_o_participe_e_falha_se_qualquer_etapa_falhar():
+    texto = CADASTRO_SH.read_text()
+    assert "python -m etl.pipelines.cidadania_atualizacao" in texto
+    assert texto.index("etl.pipelines.cidadania_atualizacao") < texto.index(
+        "etl.run_etl"
+    )  # o Participe é leve e vai antes
+    assert (
+        "FALHAS" in texto and "exit 1" in texto
+    )  # uma etapa que falha não esconde a outra, mas a execução sai com erro

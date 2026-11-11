@@ -2,9 +2,11 @@ import hmac
 from typing import List, Optional
 
 from app.core.config import settings
-from app.services.cidadania_service import get_consultas_publicas
-from fastapi import APIRouter, Header, Query
+from app.core.database import get_db
+from app.services.cidadania_service import consultas_publicas
+from fastapi import APIRouter, Depends, Header, Query
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 
@@ -35,6 +37,15 @@ class ConsultaPublicaItem(BaseModel):
     fonte_dados: Optional[str] = Field(
         None, description="Origem do registro: 'tempo_real' (portal oficial) ou 'curadoria' (placar de referência)"
     )
+    atualizado_em: Optional[str] = Field(None, description="Data e hora da última coleta que viu esta matéria")
+    primeira_coleta_em: Optional[str] = Field(
+        None,
+        description="Quando a coleta diária do LegisData viu a consulta pela primeira vez (os portais não publicam o início)",
+    )
+    encerrada_em: Optional[str] = Field(
+        None,
+        description="Quando a coleta diária viu que a consulta deixou de estar aberta (os portais não publicam o fim)",
+    )
 
 
 @router.get(
@@ -44,7 +55,8 @@ class ConsultaPublicaItem(BaseModel):
     description=(
         "Retorna proposições legislativas abertas para participação popular e votação direta "
         "nos portais oficiais do Senado Federal (e-Cidadania) e da Câmara dos Deputados (e-Democracia). "
-        "Resultados cacheados em memória por 1 hora para resiliência e proteção das APIs governamentais."
+        "Os dados vêm da foto diária gravada no banco pelo job de atualização (campo atualizado_em), que protege as APIs "
+        "governamentais de consultas a cada visita."
     ),
 )
 def listar_consultas(
@@ -54,6 +66,7 @@ def listar_consultas(
         description="Forçar renovação do cache (somente com o header X-Admin-Token válido; ignorado para anônimos)",
     ),
     x_admin_token: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
 ):
     # A renovação forçada dispara dezenas de chamadas a APIs governamentais: restrita a quem tem o token
     allow_refresh = bool(
@@ -62,7 +75,7 @@ def listar_consultas(
         and x_admin_token
         and hmac.compare_digest(x_admin_token, settings.ADMIN_REFRESH_TOKEN)
     )
-    consultas = get_consultas_publicas(force_refresh=allow_refresh)
+    consultas = consultas_publicas(db, force_refresh=allow_refresh)
 
     if casa:
         casa_filtro = casa.strip().lower()

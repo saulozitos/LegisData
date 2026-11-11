@@ -2,10 +2,12 @@ import logging
 import re
 import threading
 import time
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 import requests
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger("cidadania_service")
 
@@ -164,6 +166,29 @@ def _calcular_totais_e_percentuais(item: Dict[str, Any]) -> Dict[str, Any]:
     return item
 
 
+def _data_apresentacao_senado(codigo: str) -> Optional[str]:
+    """
+    Data oficial de apresentação da matéria (Dados Abertos do Senado). O portal e-Cidadania não publica o início nem o
+    fim da votação popular, então esta é a única data oficial que a consulta tem; falha vira `None`, nunca uma data inventada.
+    """
+    try:
+        resp = requests.get(
+            f"https://legis.senado.leg.br/dadosabertos/materia/{codigo}",
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "LegisDataBot/1.0 (https://legisdata.org - Transparência Pública)",
+            },
+            timeout=4,
+        )
+        if resp.status_code != 200:
+            return None
+        bruta = resp.json()["DetalheMateria"]["Materia"]["DadosBasicosMateria"].get("DataApresentacao")
+        return str(bruta)[:10] if bruta else None
+    except Exception as e:
+        logger.debug(f"Aviso ao buscar a data de apresentação da matéria {codigo}: {e}")
+        return None
+
+
 def fetch_senado_consultas(limit: int = 6) -> List[Dict[str, Any]]:
     """
     Consome consultas públicas ativas no portal e-Cidadania do Senado Federal
@@ -227,7 +252,7 @@ def fetch_senado_consultas(limit: int = 6) -> List[Dict[str, Any]]:
                     "tema": "Legislação Federal",
                     "status": "Votação Popular Aberta Agora",
                     "autor": "Senado Federal",
-                    "data_apresentacao": None,
+                    "data_apresentacao": _data_apresentacao_senado(m_id),
                     "destaque": True,
                 }
                 resultados.append(_calcular_totais_e_percentuais(item))
@@ -416,3 +441,127 @@ def get_consultas_publicas(force_refresh: bool = False) -> List[Dict[str, Any]]:
             logger.warning("Fontes oficiais indisponíveis; mantendo o último cache válido.")
             _cache_timestamp = now - CACHE_TTL_SECONDS + MIN_COOLDOWN_SECONDS
         return _cache_data
+
+
+# ---------------------------------------------------------------------------
+# Foto diária no banco: o job diário coleta nas fontes oficiais e grava; a API só lê o banco.
+# ---------------------------------------------------------------------------
+STATUS_FORA_DO_PORTAL = "Consulta encerrada ou fora do portal na última coleta"
+
+
+def _data_ou_none(valor: Any) -> Optional[date]:
+    if isinstance(valor, date):
+        return valor
+    try:
+        return date.fromisoformat(str(valor)[:10]) if valor else None
+    except ValueError:
+        return None
+
+
+def salvar_consultas(db: Session, itens: List[Dict[str, Any]], inicio_da_coleta: datetime) -> int:
+    """
+    Grava a coleta (upsert por casa e id) e marca como encerrada a matéria que estava aberta e não apareceu nesta coleta.
+    Só deve ser chamada com uma coleta bem-sucedida: com as fontes fora do ar, a foto anterior fica como está.
+    """
+    for item in itens:
+        db.execute(
+            text(
+                """
+                INSERT INTO leg.consulta_publica (casa, id_externo, sigla_projeto, ementa, link_oficial_votacao,
+                    link_tramitacao_oficial, em_votacao_aberta, votos_sim, votos_nao, tema, status, autor,
+                    data_apresentacao, destaque, fonte_dados, coletado_em)
+                VALUES (:casa, :id_externo, :sigla_projeto, :ementa, :link_oficial_votacao, :link_tramitacao_oficial,
+                    :em_votacao_aberta, :votos_sim, :votos_nao, :tema, :status, :autor, :data_apresentacao, :destaque,
+                    :fonte_dados, :coletado_em)
+                ON CONFLICT (casa, id_externo) DO UPDATE SET
+                    sigla_projeto = EXCLUDED.sigla_projeto, ementa = EXCLUDED.ementa,
+                    link_oficial_votacao = EXCLUDED.link_oficial_votacao,
+                    link_tramitacao_oficial = EXCLUDED.link_tramitacao_oficial,
+                    em_votacao_aberta = EXCLUDED.em_votacao_aberta, votos_sim = EXCLUDED.votos_sim,
+                    votos_nao = EXCLUDED.votos_nao, tema = EXCLUDED.tema, status = EXCLUDED.status,
+                    autor = EXCLUDED.autor, data_apresentacao = EXCLUDED.data_apresentacao,
+                    destaque = EXCLUDED.destaque, fonte_dados = EXCLUDED.fonte_dados, coletado_em = EXCLUDED.coletado_em,
+                    encerrada_em = CASE
+                        WHEN EXCLUDED.em_votacao_aberta THEN NULL
+                        WHEN leg.consulta_publica.em_votacao_aberta THEN EXCLUDED.coletado_em
+                        ELSE leg.consulta_publica.encerrada_em END
+                """
+            ),
+            {
+                "casa": item["casa"],
+                "id_externo": str(item["id_externo"]),
+                "sigla_projeto": item["sigla_projeto"],
+                "ementa": item["ementa"],
+                "link_oficial_votacao": item["link_oficial_votacao"],
+                "link_tramitacao_oficial": item.get("link_tramitacao_oficial"),
+                "em_votacao_aberta": bool(item.get("em_votacao_aberta")),
+                "votos_sim": item.get("votos_sim"),
+                "votos_nao": item.get("votos_nao"),
+                "tema": item.get("tema"),
+                "status": item.get("status"),
+                "autor": item.get("autor"),
+                "data_apresentacao": _data_ou_none(item.get("data_apresentacao")),
+                "destaque": bool(item.get("destaque")),
+                "fonte_dados": item.get("fonte_dados") or "tempo_real",
+                "coletado_em": inicio_da_coleta,
+            },
+        )
+    db.execute(
+        text(
+            "UPDATE leg.consulta_publica SET em_votacao_aberta = false, status = :status, encerrada_em = :inicio "
+            "WHERE em_votacao_aberta AND coletado_em < :inicio"
+        ),
+        {"status": STATUS_FORA_DO_PORTAL, "inicio": inicio_da_coleta},
+    )
+    db.commit()
+    return len(itens)
+
+
+def atualizar_consultas(db: Session) -> Dict[str, Any]:
+    """
+    Coleta nas fontes oficiais e grava a foto do dia. Sem nenhum dado em tempo real (fontes fora do ar) nada é gravado e
+    o resultado diz `atualizado = False`, para o job falhar e a foto anterior continuar valendo.
+    """
+    inicio = datetime.now().astimezone()
+    consolidados, live_ok = _build_consultas()
+    if not live_ok:
+        return {"atualizado": False, "itens": 0, "abertas": 0}
+    gravadas = salvar_consultas(db, consolidados, inicio)
+    abertas = sum(1 for c in consolidados if c.get("em_votacao_aberta"))
+    return {"atualizado": True, "itens": gravadas, "abertas": abertas}
+
+
+def consultas_do_banco(db: Session) -> List[Dict[str, Any]]:
+    """A foto mais recente, abertas primeiro. Vazio enquanto nenhuma coleta foi gravada."""
+    linhas = (
+        db.execute(
+            text(
+                "SELECT id_externo, casa, sigla_projeto, ementa, link_oficial_votacao, link_tramitacao_oficial, "
+                "em_votacao_aberta, votos_sim, votos_nao, tema, status, autor, data_apresentacao, destaque, "
+                "fonte_dados, coletado_em, primeira_coleta_em, encerrada_em FROM leg.consulta_publica "
+                "ORDER BY em_votacao_aberta DESC, destaque DESC, coletado_em DESC, sigla_projeto"
+            )
+        )
+        .mappings()
+        .all()
+    )
+    itens: List[Dict[str, Any]] = []
+    for linha in linhas:
+        item = dict(linha)
+        item["data_apresentacao"] = item["data_apresentacao"].isoformat() if item["data_apresentacao"] else None
+        item["atualizado_em"] = item.pop("coletado_em").isoformat()
+        item["primeira_coleta_em"] = item["primeira_coleta_em"].isoformat() if item["primeira_coleta_em"] else None
+        item["encerrada_em"] = item["encerrada_em"].isoformat() if item["encerrada_em"] else None
+        itens.append(_calcular_totais_e_percentuais(item))
+    return itens
+
+
+def consultas_publicas(db: Session, force_refresh: bool = False) -> List[Dict[str, Any]]:
+    """
+    O que a tela mostra: a foto diária do banco. `force_refresh` (só com o token de administração) coleta agora e grava.
+    Enquanto o banco não tem nenhuma coleta, cai na coleta direta em memória, como a tela fazia antes do job diário.
+    """
+    if force_refresh:
+        atualizar_consultas(db)
+    itens = consultas_do_banco(db)
+    return itens if itens else get_consultas_publicas(force_refresh=force_refresh)
