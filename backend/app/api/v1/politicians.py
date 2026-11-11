@@ -759,10 +759,15 @@ def get_politician_dossier(politician_id: str, db: Session = Depends(get_db)):
         db.execute(
             text(
                 """
-                SELECT p.data_sessao, p.tipo_codigo, p.justificativa, c.codigo AS casa
-                FROM leg.presenca p JOIN ref.casa_legislativa c ON c.id = p.casa_id
-                WHERE p.pessoa_id = :pid AND p.tipo_codigo <> 'PRESENTE'
-                ORDER BY p.data_sessao DESC, c.codigo LIMIT 10
+                WITH faltas AS MATERIALIZED (
+                    -- materializada para o planejador usar a chave (pessoa_id, ...) em vez de varrer o índice de
+                    -- data de todas as partições e filtrar a pessoa linha a linha
+                    SELECT p.data_sessao, p.tipo_codigo, p.justificativa, p.casa_id
+                    FROM leg.presenca p WHERE p.pessoa_id = :pid AND p.tipo_codigo <> 'PRESENTE'
+                )
+                SELECT f.data_sessao, f.tipo_codigo, f.justificativa, c.codigo AS casa
+                FROM faltas f JOIN ref.casa_legislativa c ON c.id = f.casa_id
+                ORDER BY f.data_sessao DESC, c.codigo LIMIT 10
                 """
             ),
             {"pid": pessoa_param},
