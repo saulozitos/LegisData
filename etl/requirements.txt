@@ -3,9 +3,9 @@
 # `requests`, `tqdm`, `pydantic`, `python-dateutil` e `urllib3` foram removidos: o ETL usa apenas a biblioteca
 # padrão (urllib via etl.utils.http_client) e nunca importa esses pacotes.
 pandas>=3.1.1,<4.0
-numpy>=2.5.4,<3.0
-sqlalchemy>=2.1.8,<3.0
+numpy>=2.5.5,<3.0
+sqlalchemy>=2.1.9,<3.0
 psycopg2-binary>=2.9.13,<3.0
 # pydantic-settings é exigido por backend/app/core/config.py, importado pela carga no banco
-pydantic>=2.14.3,<3.0
-pydantic-settings>=2.16.2,<3.0
+pydantic>=2.14.4,<3.0
+pydantic-settings>=2.16.3,<3.0
